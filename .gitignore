@@ -1,0 +1,5 @@
+# Generated browser snapshots, console logs, and other MCP session output.
+.playwright-mcp/
+
+# Installed dependencies; package lockfiles remain tracked.
+node_modules/
