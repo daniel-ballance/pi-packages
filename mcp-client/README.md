@@ -9,7 +9,7 @@ Supports the original **2024-11-05** specification, the **2025-03-26**, **2025-0
 From this repository:
 
 ```sh
-cd pi-extensions/mcp-client
+cd mcp-client
 npm ci
 pi install "$PWD"
 ```

@@ -9,7 +9,7 @@ Requires Node.js 22+; developed and tested against Pi 0.85.1.
 From the repository root:
 
 ```bash
-cd pi-extensions/web-search
+cd web-search
 npm ci
 pi install "$PWD"
 ```
