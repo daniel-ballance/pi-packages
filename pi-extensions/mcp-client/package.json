@@ -1,0 +1,47 @@
+{
+  "name": "mcp-client",
+  "version": "0.1.0",
+  "description": "MCP client for Pi: initialization-based and 2026-07-28 protocols",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "mcp"
+  ],
+  "files": [
+    "index.ts",
+    "src",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "eventsource-parser": "^3.0.6",
+    "zod": "^4.3.6",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-tui": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-tui": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typebox": "^1.0.0"
+  }
+}
