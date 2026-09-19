@@ -97,3 +97,98 @@ test('sampling refuses unsupported context sharing, tools, disabled and headless
   await assert.rejects(sample('s', config, h.ctx, params, undefined, () => {}));
   assert.equal(h.calls(), 0);
 });
+
+test('sampling tools are proposals only, require release approval, and validate arguments', async () => {
+  const enabled = { ...config, samplingTools: true };
+  const request = {
+    ...params,
+    tools: [
+      {
+        name: 'weather',
+        inputSchema: {
+          type: 'object',
+          properties: { city: { type: 'string' } },
+          required: ['city'],
+        },
+      },
+    ],
+    toolChoice: { mode: 'required' },
+  };
+  const h = context();
+  let approvals = 0,
+    calls = 0;
+  h.ctx.ui.confirm = async () => {
+    approvals++;
+    return true;
+  };
+  h.ctx.modelRegistry.complete = async (_model: unknown, context: any) => {
+    calls++;
+    assert.equal(context.tools[0].name, 'weather');
+    return {
+      content: [
+        { type: 'thinking', thinking: 'never released' },
+        { type: 'toolCall', id: 'call1', name: 'weather', arguments: { city: 'Paris' } },
+      ],
+      stopReason: 'toolUse',
+      usage,
+    };
+  };
+  const result = await sample('s', enabled, h.ctx, request, undefined, () => {});
+  assert.deepEqual(result.content, [
+    { type: 'tool_use', id: 'call1', name: 'weather', input: { city: 'Paris' } },
+  ]);
+  assert.equal(result.stopReason, 'toolUse');
+  assert.equal(approvals, 2);
+  assert.equal(calls, 1);
+  await assert.rejects(
+    sample('s', enabled, h.ctx, { ...request, toolChoice: { mode: 'none' } }, undefined, () => {}),
+    /Invalid sampled/,
+  );
+});
+
+test('sampling converts balanced server tool transcripts without exposing Pi tools or running a loop', async () => {
+  const h = context();
+  h.ctx.modelRegistry.complete = async (_model: unknown, context: any) => {
+    assert.deepEqual(
+      context.messages.map((m: any) => m.role),
+      ['user', 'assistant', 'toolResult'],
+    );
+    assert.equal(context.messages[2].toolName, 'weather');
+    return { content: [{ type: 'text', text: 'sunny' }], stopReason: 'stop', usage };
+  };
+  const request = {
+    ...params,
+    messages: [
+      params.messages[0],
+      { role: 'assistant', content: { type: 'tool_use', id: 'one', name: 'weather', input: {} } },
+      {
+        role: 'user',
+        content: {
+          type: 'tool_result',
+          toolUseId: 'one',
+          content: [{ type: 'text', text: 'sunny' }],
+        },
+      },
+    ],
+  };
+  const result = await sample(
+    's',
+    { ...config, samplingTools: true },
+    h.ctx,
+    request,
+    undefined,
+    () => {},
+  );
+  assert.equal(result.content.text, 'sunny');
+  await assert.rejects(
+    sample(
+      's',
+      { ...config, samplingTools: true },
+      h.ctx,
+      { ...request, messages: request.messages.slice(0, 2) },
+      undefined,
+      () => {},
+    ),
+    /Missing sampling tool results/,
+  );
+});

@@ -3,6 +3,7 @@ import { JSONRPCMessageSchema, type JSONRPCMessage } from '@modelcontextprotocol
 import { createParser } from 'eventsource-parser';
 import { MODERN } from './config.js';
 import { encodeHeader, type ObjectValue } from './headers.js';
+import { boundedFetch } from './limits.js';
 
 export class HttpError extends Error {
   constructor(public status: number) {
@@ -19,6 +20,7 @@ export class ModernHttp implements Transport {
     private url: string,
     private headers: Record<string, string>,
     private toolHeaders: (name: string, args: ObjectValue) => Record<string, string>,
+    private fetch: typeof boundedFetch = boundedFetch,
   ) {}
   async start() {}
   async close() {
@@ -46,12 +48,14 @@ export class ModernHttp implements Transport {
       const params = message.params ?? {};
       if (['tools/call', 'prompts/get', 'resources/read'].includes(message.method))
         headers.set('Mcp-Name', encodeHeader(String(params.name ?? params.uri)));
+      if (['tasks/get', 'tasks/update', 'tasks/cancel'].includes(message.method))
+        headers.set('Mcp-Name', encodeHeader(String(params.taskId)));
       if (message.method === 'tools/call')
         for (const [key, value] of Object.entries(
           this.toolHeaders(String(params.name), (params.arguments as ObjectValue) ?? {}),
         ))
           headers.set(key, value);
-      const response = await fetch(this.url, {
+      const response = await this.fetch(this.url, {
         method: 'POST',
         headers,
         body: JSON.stringify(message),

@@ -2,6 +2,8 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { MODERN } from './config.js';
 import type { ObjectValue } from './headers.js';
+import { deadline, MAX_CATALOG_BYTES, MAX_CATALOG_ITEMS } from './limits.js';
+import { TASKS, TaskSchema } from './tasks.js';
 
 export class RpcError extends Error {
   constructor(
@@ -16,12 +18,20 @@ export interface RequestOptions {
   signal?: AbortSignal;
   timeout?: number;
   progress?: (params: ObjectValue) => void;
+  acknowledged?: () => void;
 }
 export const CLIENT_INFO = { name: 'pi-mcp-client', version: '0.1.0' };
 export class Peer {
   version = MODERN;
   capabilities: ObjectValue = {};
   logLevel?: string;
+  serverInfo?: ObjectValue;
+  instructions?: string;
+  catalogExpiry = new Map<string, number>();
+  onexpired?: () => Promise<void>;
+  onrecovering?: () => void;
+  onrecovered?: () => void;
+  private recovery?: Promise<void>;
   onnotification?: (method: string, params: ObjectValue) => void;
   onclose?: () => void;
   oninput?: (method: string, params: ObjectValue, signal?: AbortSignal) => Promise<ObjectValue>;
@@ -32,6 +42,7 @@ export class Peer {
       resolve: (result: ObjectValue) => void;
       reject: (error: Error) => void;
       progress?: RequestOptions['progress'];
+      acknowledged?: () => void;
     }
   >();
   private lifetime = new AbortController();
@@ -53,13 +64,33 @@ export class Peer {
       for (const entry of this.pending.values()) entry.reject(new Error('MCP connection closed'));
       this.onclose?.();
     };
-    this.transport.onerror = () => {
-      /* individual transport/send errors reject requests; no server secrets logged */
+    this.transport.onerror = (error) => {
+      // SDK SSE readers report errors through this callback instead of rejecting send().
+      if (/MCP (?:response|SSE event|stdio message) exceeds/.test(error.message)) {
+        for (const pending of this.pending.values()) pending.reject(error);
+        void this.close().catch(() => {});
+      }
     };
     await this.transport.start();
   }
-  private async receive(message: JSONRPCMessage) {
+  private async receive(
+    message: JSONRPCMessage,
+    reply = (m: JSONRPCMessage) => this.transport.send(m),
+  ) {
     if (this.lifetime.signal.aborted) return;
+    if (Array.isArray(message)) {
+      if (this.version !== '2025-03-26') throw new Error('Batch forbidden in this MCP revision');
+      const replies: JSONRPCMessage[] = [];
+      await Promise.all(
+        message.map((item) =>
+          this.receive(item, async (m) => {
+            replies.push(m);
+          }),
+        ),
+      );
+      if (replies.length) await reply(replies as unknown as JSONRPCMessage);
+      return;
+    }
     if ('method' in message) {
       if ('id' in message) {
         if (this.version === MODERN) return; // Never emit a forbidden response in modern mode.
@@ -73,20 +104,17 @@ export class Peer {
               ? {}
               : await this.oninput?.(message.method, message.params ?? {}, signal);
           if (!result) throw new RpcError(-32601, 'Unsupported client method');
-          if (!signal.aborted)
-            await this.transport.send({ jsonrpc: '2.0', id: message.id, result });
+          if (!signal.aborted) await reply({ jsonrpc: '2.0', id: message.id, result });
         } catch (error) {
           if (!signal.aborted)
-            await this.transport
-              .send({
-                jsonrpc: '2.0',
-                id: message.id,
-                error: {
-                  code: error instanceof RpcError ? error.code : -32603,
-                  message: 'Client request rejected',
-                },
-              })
-              .catch(() => {});
+            await reply({
+              jsonrpc: '2.0',
+              id: message.id,
+              error: {
+                code: error instanceof RpcError ? error.code : -32603,
+                message: 'Client request rejected',
+              },
+            }).catch(() => {});
         } finally {
           this.incoming.delete(message.id);
         }
@@ -115,6 +143,26 @@ export class Peer {
               )
                 return;
               subscription.acknowledged = params.notifications as ObjectValue;
+              const accepted = Object.entries(subscription.requested).every(([key, value]) =>
+                Array.isArray(value)
+                  ? Array.isArray(subscription.acknowledged![key]) &&
+                    value.every((v) => subscription.acknowledged![key].includes(v))
+                  : value !== true || subscription.acknowledged![key] === true,
+              );
+              if (!accepted) {
+                this.pending
+                  .get(subscriptionId as number)
+                  ?.reject(new Error('Subscription filters were not accepted'));
+                void this.transport
+                  .send({
+                    jsonrpc: '2.0',
+                    method: 'notifications/cancelled',
+                    params: { requestId: subscriptionId },
+                  })
+                  .catch(() => {});
+                return;
+              }
+              this.pending.get(subscriptionId as number)?.acknowledged?.();
             } else {
               const filter = subscription.acknowledged;
               if (!filter) return;
@@ -146,7 +194,13 @@ export class Peer {
           )
             return;
         }
-        if (message.method === 'notifications/progress')
+        if (
+          message.method === 'notifications/progress' &&
+          typeof message.params?.progress === 'number' &&
+          Number.isFinite(message.params.progress) &&
+          (message.params.total === undefined ||
+            (typeof message.params.total === 'number' && Number.isFinite(message.params.total)))
+        )
           this.pending
             .get(message.params?.progressToken as number)
             ?.progress?.(message.params ?? {});
@@ -185,7 +239,9 @@ export class Peer {
         : {}),
     };
     return new Promise<ObjectValue>((resolve, reject) => {
+      let acknowledgmentTimer: NodeJS.Timeout | undefined;
       const cleanup = () => {
+        clearTimeout(acknowledgmentTimer);
         this.pending.delete(id);
         this.subscriptions.delete(id);
         signal.removeEventListener('abort', abort);
@@ -193,9 +249,11 @@ export class Peer {
       const abort = () => {
         cleanup();
         reject(signal.reason);
-        void this.transport
-          .send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id } })
-          .catch(() => {});
+        // initialize MUST NOT be cancelled in initialization-based revisions.
+        if (method !== 'initialize' && !this.lifetime.signal.aborted)
+          void this.transport
+            .send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id } })
+            .catch(() => {});
       };
       if (method === 'subscriptions/listen')
         this.subscriptions.set(id, { requested: params.notifications ?? {} });
@@ -209,7 +267,18 @@ export class Peer {
           reject(e);
         },
         progress: options.progress,
+        acknowledged: () => {
+          clearTimeout(acknowledgmentTimer);
+          options.acknowledged?.();
+        },
       });
+      if (method === 'subscriptions/listen')
+        acknowledgmentTimer = setTimeout(() => {
+          this.pending.get(id)?.reject(new Error('Subscription acknowledgment timed out'));
+          void this.transport
+            .send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id } })
+            .catch(() => {});
+        }, this.timeout);
       signal.addEventListener('abort', abort, { once: true });
       void this.transport
         .send({
@@ -218,7 +287,26 @@ export class Peer {
           method,
           params: { ...params, ...(Object.keys(meta).length ? { _meta: meta } : {}) },
         })
-        .catch((error) => this.pending.get(id)?.reject(error));
+        .catch((error) => {
+          this.pending.get(id)?.reject(error);
+          if (
+            error?.sessionExpired &&
+            this.onexpired &&
+            !this.recovery &&
+            !this.lifetime.signal.aborted
+          ) {
+            this.onrecovering?.();
+            // Fresh initialization prepares future calls. Never replay the failed operation.
+            this.recovery = this.onexpired()
+              .then(() => this.onrecovered?.())
+              .catch(async () => {
+                await this.close();
+              })
+              .finally(() => {
+                this.recovery = undefined;
+              });
+          }
+        });
     });
   }
   async request(
@@ -231,6 +319,8 @@ export class Peer {
       ...(options.signal ? [options.signal] : []),
       AbortSignal.timeout(options.timeout ?? this.timeout),
     ]);
+    if (this.recovery) await deadline(this.recovery, options.timeout ?? this.timeout);
+    signal.throwIfAborted();
     let retry: ObjectValue = {};
     for (let round = 0; round < 8; round++) {
       const result = await this.raw(method, { ...params, ...retry }, { ...options, signal });
@@ -239,6 +329,16 @@ export class Peer {
         result.resultType === 'complete'
       )
         return result;
+      if (
+        result.resultType === 'task' &&
+        this.version === MODERN &&
+        method === 'tools/call' &&
+        this.clientCapabilities.extensions?.[TASKS] &&
+        this.capabilities.extensions?.[TASKS]
+      ) {
+        TaskSchema.parse(result);
+        return result;
+      }
       if (
         result.resultType !== 'input_required' ||
         !['tools/call', 'resources/read', 'prompts/get'].includes(method)
@@ -276,12 +376,28 @@ export class Peer {
   async list(method: string, key: string, signal?: AbortSignal): Promise<ObjectValue[]> {
     const values: ObjectValue[] = [],
       seen = new Set<string>();
-    let cursor: string | undefined;
+    let cursor: string | undefined,
+      bytes = 0,
+      expires = Infinity;
+    const started = Date.now();
+    signal = AbortSignal.any([AbortSignal.timeout(this.timeout), ...(signal ? [signal] : [])]);
     for (let page = 0; page < 100; page++) {
-      const result = await this.request(method, cursor ? { cursor } : {}, { signal });
+      const result = await this.request(method, cursor !== undefined ? { cursor } : {}, { signal });
       if (!Array.isArray(result[key])) throw new Error(`Invalid ${method} response`);
+      bytes += Buffer.byteLength(JSON.stringify(result));
+      if (bytes > MAX_CATALOG_BYTES || values.length + result[key].length > MAX_CATALOG_ITEMS)
+        throw new Error('MCP catalog exceeds work budget');
+      if (this.version === MODERN)
+        expires = Math.min(
+          expires,
+          started + (typeof result.ttlMs === 'number' && result.ttlMs >= 0 ? result.ttlMs : 0),
+        );
       values.push(...result[key]);
-      if (result.nextCursor === undefined) return values;
+      if (result.nextCursor === undefined) {
+        // Catalogs never cross a Peer (connection/client identity) boundary.
+        this.catalogExpiry.set(method, expires);
+        return values;
+      }
       if (typeof result.nextCursor !== 'string' || seen.has(result.nextCursor))
         throw new Error('Invalid or repeated pagination cursor');
       cursor = result.nextCursor;
@@ -291,6 +407,6 @@ export class Peer {
   }
   async close() {
     this.lifetime.abort();
-    await this.transport.close();
+    await deadline(this.transport.close(), Math.min(this.timeout, 2000));
   }
 }

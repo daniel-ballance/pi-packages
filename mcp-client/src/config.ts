@@ -20,7 +20,11 @@ const common = {
   timeout: z.number().int().min(100).max(3600000).default(60000),
   roots: z.array(z.string()).optional(),
   elicitation: z.boolean().default(false),
+  elicitationUrl: z.boolean().default(false),
+  toolLoading: z.enum(['eager', 'deferred']).default('eager'),
   sampling: z.boolean().default(false),
+  samplingTools: z.boolean().default(false),
+  tasks: z.boolean().default(false),
   samplingMaxTokens: z.number().int().min(1).max(32768).default(4096),
   logLevel: z
     .enum(['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'])
@@ -46,6 +50,14 @@ export const ServerSchema = z.discriminatedUnion('transport', [
         .min(1)
         .refine((s) => /\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(s) || httpUrl(s)),
       headers: z.record(z.string(), z.string()).default({}),
+      oauth: z
+        .object({
+          clientId: z.string().min(1).optional(),
+          redirectPort: z.number().int().min(1024).max(65535).default(36678),
+          scope: z.string().optional(),
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
 ]);
@@ -86,6 +98,16 @@ export function resolveConfig(config: ServerConfig, cwd: string): ServerConfig {
     };
   const url = expand(config.url);
   if (!httpUrl(url)) throw new Error('Expected an HTTP(S) URL without userinfo or fragment');
+  if (config.oauth) {
+    const target = new URL(url);
+    if (
+      target.protocol !== 'https:' &&
+      !['127.0.0.1', '[::1]', 'localhost'].includes(target.hostname)
+    )
+      throw new Error('OAuth requires HTTPS except on loopback');
+    if (Object.keys(config.headers).some((key) => key.toLowerCase() === 'authorization'))
+      throw new Error('Configure OAuth or an Authorization header, not both');
+  }
   return {
     ...config,
     url,

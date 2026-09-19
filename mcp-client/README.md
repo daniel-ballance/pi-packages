@@ -2,7 +2,7 @@
 
 A Pi package connecting MCP servers to native Pi tools, resource access, and user-selected prompts. Requires **Pi 0.85.1+ and Node.js 22+**.
 
-Supports the original **2024-11-05** specification, the **2025-03-26**, **2025-06-18**, and **2025-11-25** revisions, and the distinct **2026-07-28** protocol. This is a practical client implementation, **not a claim of exhaustive specification conformance**. See the limitations below.
+Supports the original **2024-11-05** specification, the **2025-03-26**, **2025-06-18**, and **2025-11-25** revisions, and the distinct **2026-07-28** protocol. This is a practical client implementation, **not a claim of exhaustive specification conformance**. See the [version-by-feature matrix](CONFORMANCE.md) and limitations below.
 
 ## Install
 
@@ -59,13 +59,18 @@ These are placeholders, not installed servers. A stdio command must already be a
 - Project entries replace global entries with the same name; they do not partially merge. Set `"disabled": true` to disable an inherited entry.
 - Missing files are fine; invalid JSON, unknown fields, or invalid configuration reject the configuration before any server starts.
 - `protocol` defaults to `auto`. Supported pins are the five dates above.
-- `timeout` is a positive request deadline in milliseconds, default **60000** (100–3600000). MRTR exchanges share one overall deadline and allow at most eight rounds, with at most 32 input requests per round.
+- `timeout` is a positive deadline in milliseconds, default **60000** (100–3600000). Connection setup (including `initialized` and fallback), catalog pagination, and each MRTR exchange have overall deadlines. MRTR allows at most eight rounds and 32 input requests per round. Cleanup is bounded separately.
 - `cwd` is stdio-only, resolved relative to Pi's session working directory. The default is that directory.
 - `${ENV_VAR}` expands in stdio command/args/env and HTTP URL/headers; missing variables fail that server's connection. No shell expansion, command substitution, or automatic `.env` loading occurs.
 - Child processes inherit the MCP SDK's minimal safe environment plus explicit `env`, **not the complete Pi environment**. Child stderr is discarded so it cannot corrupt the TUI or RPC output.
 - `roots` is opt-in. Paths resolve against Pi's session working directory and are sent as file URIs. Omit it to advertise no roots capability; `[]` advertises an empty roots list. **Roots are informational, not a filesystem sandbox.**
 - `elicitation` defaults to false. When enabled, form elicitation is advertised only in Pi's TUI/RPC modes. JSON entered through Pi's dialogs is validated against the server's requested schema; decline and cancellation are supported. Never enter secrets into form elicitation.
-- `sampling` defaults to false. Enable it to allow separately approved, billed model completions in TUI/RPC mode. `samplingMaxTokens` caps output (default 4096, range 1–32768). Pi's current model is used; server model preferences do not change it. Both the input and release of the generated text require confirmation. No Pi session context or tools are shared.
+- `elicitationUrl` separately enables URL elicitation. Pi displays the URL and requires approval before launching the system browser; non-HTTP(S) URLs and userinfo are refused. OAuth/secret entry happens in the browser, never in form dialogs. All MCP dialogs share one queue across servers.
+- `sampling` defaults to false. Enable it for separately approved, billed completions in TUI/RPC mode. `samplingMaxTokens` caps output (default 4096, range 1–32768). Pi's current model is used; server preferences do not change it. Input and release each require confirmation. No Pi session context or Pi tools are shared.
+- `samplingTools` additionally allows server-supplied tool definitions and balanced tool-use/result transcripts in sampling. Pi returns **proposals for the server to execute**; it never executes them or runs another agent loop. Proposed arguments are validated and require release approval. `required` is checked on the generated response; a model that does not provide tool use fails rather than silently violating the request.
+- `toolLoading` defaults to `eager` for compatibility. Set `deferred` on large catalogs: tools remain registered but inactive until `mcp_search_tools` activates matches through Pi's native deferred-loading API. There is no search agent or provider-specific loader.
+- `tasks` enables the **2026 Tasks extension**. Task handles are persisted in branch-local entries; `mcp_tasks` can inspect, wait, or cancel. Waiting is bounded and uses the same approval handlers for task input. Reload does not resume work automatically. Aborting a wait leaves server work running; use explicit cancellation.
+- HTTP/SSE servers may configure `oauth: {}` (optional `clientId`, `scope`, `redirectPort`, default port **36678**). Use `/mcp login SERVER`, then authorize in the browser. Discovery, dynamic registration or a pre-registered public client, PKCE, loopback state validation, and proactive token refresh use the official SDK. Requires HTTPS except on loopback. Do not combine OAuth with an `Authorization` header. Credentials are stored separately under Pi's agent directory in `mcp-auth/` with private files, never in session entries. `/mcp logout SERVER` removes local credentials; it does not revoke them at the authorization server. These commands reload the extension after success.
 - Optional `logLevel`: `debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert`, or `emergency`. Logs are bounded UI notifications, not model instructions. Enabling logs may display sensitive server data.
 - Pi's configured agent directory and branded project configuration directory are respected; the paths above are the defaults.
 
@@ -75,7 +80,7 @@ These are placeholders, not installed servers. A stdio command must already be a
 
 For HTTP, eligible legacy errors/statuses trigger initialization over the legacy Streamable HTTP transport. Authentication, network and modern protocol errors do not trigger fallback. Explicitly select `transport: "sse"` for original HTTP+SSE servers: the client does **not** guess a separate SSE endpoint. If a legacy server reports an ambiguous HTTP method-not-found error, pin its legacy protocol version.
 
-The official SDK supplies stdio, legacy Streamable HTTP and HTTP+SSE transport mechanics. The package implements a separate 2026 stateless HTTP transport; changing an SDK version constant would not implement this revision.
+The official SDK supplies legacy Streamable HTTP, HTTP+SSE, and OAuth mechanics. A small byte-bounded stdio transport handles the 2025-03-26 batch requirement; the package also implements the distinct 2026 stateless HTTP transport. Legacy HTTP session expiry triggers fresh initialization for **future operations**, never replay of the failed call. Shutdown attempts session DELETE before closing.
 
 ## Use
 
@@ -85,7 +90,9 @@ In the TUI, calls have friendly headers (for example, `Context7 · Query documen
 
 The model also gets:
 
-- **`mcp_status`** — configured server names, negotiated versions and capabilities.
+- **`mcp_status`** — server names, versions, capabilities, server metadata/guidance, subscriptions and health details.
+- **`mcp_search_tools`** — search catalogs and activate matching native Pi tools. Reports titles, annotations and icon descriptors without fetching icon URLs.
+- **`mcp_tasks`** — list locally recorded handles, inspect, wait for, or cancel a negotiated 2026 task. Never repeat the original tool call to resume one.
 - **`mcp_resources`** — list resources, list URI templates, or read an exact URI. Listings expose opaque pagination cursors. Links are never fetched automatically.
 - **`mcp_complete`** — prompt-argument and resource-template-variable completion, including already supplied argument context.
 
@@ -106,58 +113,64 @@ User commands:
 /mcp status
 /mcp refresh
 /mcp sampling
+/mcp login remote
+/mcp logout remote
 /mcp prompts local
 /mcp prompt {"server":"local","name":"review","arguments":{"language":"typescript"}}
 /mcp subscribe {"server":"local","uri":"file:///project/notes.txt"}
 /mcp unsubscribe {"server":"local","uri":"file:///project/notes.txt"}
 ```
 
+Administrative status, prompt catalogs, and sampling reports display immediately as native **non-context entries**; they never queue a model message.
+
 Prompts are user-selected reference context for your **next message**. Server-supplied user/assistant roles are preserved as data; they do not impersonate Pi's user or alter its system prompt. Prompt selection does not start a model turn.
 
-`/mcp refresh` refreshes connected servers' tool catalogs after the agent is idle. Tool-list notifications mark discovery dirty; it refreshes before the next user turn. Removed tools are disabled and cannot execute through stale registrations. Pi does not expose an unregister-tool API, so disabled definitions can remain visible in its complete registry until reload.
+`/mcp refresh` refreshes connected servers' tool catalogs after the agent is idle. Tool-list notifications mark discovery dirty. Modern TTL hints are honored before agent turns (missing/zero TTL means stale); catalogs never cross connection/client-identity boundaries. Unchanged definitions are not re-registered. Prompt/resource-list notifications notify the UI without reading or injecting content. Removed tools are disabled and cannot execute through stale registrations. Pi does not expose an unregister-tool API, so disabled definitions can remain visible in its complete registry until reload.
 
 `/mcp sampling` shows sampling usage recorded on the current session branch, including generations whose release was declined. Usage is stored in non-context custom entries and is **separate from Pi's footer totals**: legacy server-initiated requests cannot always be attributed to one of several concurrent Pi tool calls without guessing. No prompt text, generated reasoning or credentials are stored in those usage entries.
 
-Use **`/reload`** to reload configuration, reconnect failed servers and renew subscriptions. Disconnections do not automatically retry tool calls: replaying a side-effecting operation could execute it twice. Subscriptions notify the UI without autonomously reading resources or starting agent turns.
+Use **`/reload`** to reload configuration, reconnect failed servers and renew subscriptions. User subscriptions are persisted on the current branch and restored only for the same server configuration, working directory, and authorization identity. OAuth refresh retains identity; fresh browser authorization starts a new identity to prevent cross-account restoration. Missing/refused acknowledgments and graceful stream closure affect health; `/mcp refresh` retries failed subscriptions. Disconnections do not automatically retry tool calls: replaying a side-effecting operation could execute it twice. Subscriptions notify the UI without autonomously reading resources or starting agent turns.
 
 ## Coverage and Pi mapping
 
-| Feature | Mapping / support |
-|---|---|
-| Legacy initialize / initialized / version negotiation | All four legacy versions above; stdio, Streamable HTTP, original HTTP+SSE |
-| 2026 discovery and request metadata | `server/discover`; per-request version, client info, capabilities and optional log level |
-| 2026 HTTP | POST-only JSON and request-scoped SSE; no protocol sessions, standalone GET stream or response POSTs |
-| 2026 required HTTP headers | `Mcp-Method`, `Mcp-Name`, nested `x-mcp-header` extraction, sentinel Base64 encoding, safe-integer checks; invalid annotated tools excluded |
-| Tools | Native Pi registration; input JSON Schema validation; structured output schema validation; paginated discovery |
-| Content | Text, supported Pi images, textual embedded resources, resource-link descriptors and structured JSON |
-| Tool errors | MCP `isError` becomes Pi `isError` through `tool_result`, preserving error content |
-| Resources and templates | List, paginate, read; no automatic URI dereferencing |
-| Prompts and completions | User-selected prompts; prompt/resource argument completions |
-| Progress and cancellation | Correlated Pi tool updates, request deadlines, abort signals; stdio cancel notifications / 2026 HTTP stream abort |
-| Roots | Explicit configured roots; legacy requests and 2026 MRTR |
-| Form elicitation | Opt-in Pi dialogs with JSON Schema validation; legacy requests and 2026 MRTR |
-| Sampling | Opt-in, doubly approved completion through Pi's model registry; text and compatible user images; output/token caps and separate persisted usage; legacy requests and 2026 MRTR |
-| 2026 MRTR | Fresh request IDs; isolated opaque request state and matching input responses; bounded rounds |
-| Notifications/subscriptions | Legacy resource subscription and tool-list changes; 2026 filtered `subscriptions/listen`, acknowledgment and subscription-ID correlation |
-| Logging | Legacy `logging/setLevel`; 2026 per-request log level; bounded UI-only display |
-| Lifecycle | No processes/sockets in the extension factory; session startup and idempotent shutdown/reload cleanup |
+| Feature                                               | Mapping / support                                                                                                                                                                 |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Legacy initialize / initialized / version negotiation | All four legacy versions above; stdio, Streamable HTTP, original HTTP+SSE                                                                                                         |
+| 2026 discovery and request metadata                   | `server/discover`; per-request version, client info, capabilities and optional log level                                                                                          |
+| 2026 HTTP                                             | POST-only JSON and request-scoped SSE; no protocol sessions, standalone GET stream or response POSTs                                                                              |
+| 2026 required HTTP headers                            | `Mcp-Method`, `Mcp-Name`, nested `x-mcp-header` extraction, sentinel Base64 encoding, safe-integer checks; invalid annotated tools excluded                                       |
+| Tools                                                 | Native registration and optional deferred activation; original JSON Schema validation including root refs/compositions; structured output validation; bounded paginated discovery |
+| Content                                               | Ordered text/images (including prompts), textual resources, links and deduplicated structured JSON; full raw result preserved in details or an artifact                           |
+| Tool errors                                           | MCP `isError` becomes Pi `isError` through `tool_result`, preserving error content                                                                                                |
+| Resources and templates                               | List, paginate, read; no automatic URI dereferencing                                                                                                                              |
+| Prompts and completions                               | User-selected prompts; prompt/resource argument completions                                                                                                                       |
+| Progress and cancellation                             | Correlated Pi tool updates, request deadlines, abort signals; stdio cancel notifications / 2026 HTTP stream abort                                                                 |
+| Roots                                                 | Explicit configured roots; legacy requests and 2026 MRTR                                                                                                                          |
+| Elicitation                                           | Separately opt-in form and URL modes, shared Pi dialog queue; legacy requests and 2026 MRTR                                                                                       |
+| Sampling                                              | Doubly approved native model-registry completion; optional server-tool proposals; token caps and persisted usage; legacy and MRTR                                                 |
+| OAuth                                                 | Opt-in browser authorization, PKCE/state, discovery/registration, private token persistence and proactive refresh                                                                 |
+| 2026 Tasks                                            | Negotiated task handles, explicit polling/cancellation, persisted IDs and input deduplication; no background agent                                                                |
+| 2026 MRTR                                             | Fresh request IDs; isolated opaque request state and matching input responses; bounded rounds                                                                                     |
+| Notifications/subscriptions                           | Legacy resource subscription and tool-list changes; 2026 filtered `subscriptions/listen`, acknowledgment and subscription-ID correlation                                          |
+| Logging                                               | Legacy `logging/setLevel`; 2026 per-request log level; bounded UI-only display                                                                                                    |
+| Lifecycle                                             | No processes/sockets in the extension factory; session startup and idempotent shutdown/reload cleanup                                                                             |
 
 ### Limits and deliberately unimplemented features
 
-- **Sampling is intentionally limited to independent completions.** No sampling tools, shared session context, assistant-image input, model switching, provider reasoning output or recursive agent execution. Sampling input is capped at 50 KiB; only generated text is returned. Stop sequences are applied to the completed output locally (they do not stop provider billing early). Closing a confirmation does not undo already billed generation.
-- **OAuth discovery/login/refresh is not implemented.** Use explicitly configured headers or an externally managed token. Pi's model-provider `/login` is not repurposed as an MCP authorization manager. Tokens should be scoped to the configured server; avoid HTTP except on trusted loopback networks. Redirects are refused.
-- **URL elicitation and MCP Apps/browser UI are not advertised.** There is no hidden browser, automatic URL opening, HTML execution or iframe emulation.
-- **Audio/binary rendering** has no direct Pi tool-result mapping. Such blocks are represented as JSON rather than pretending to be playable or silently dropping them. Image emission is limited to four images and 5 MiB of Base64 data per result.
-- **Tasks, experimental extensions, cross-server context inclusion, and automatic reconnection/replay** are not implemented. The legacy experimental task feature is not translated into Pi's agent loop. Unknown `resultType` values fail explicitly.
+- **Sampling remains independent completions.** No session-context sharing, assistant-image/audio input, model switching, reasoning release or recursive agent execution. Input is capped at 50 KiB. Text-only stop sequences are applied after generation; they do not stop billing early. Declining release does not undo generation charges.
+- **OAuth is public-client browser authorization, not every grant/vendor scheme.** No device/client-credentials grants, confidential-client secrets, or headless auto-login. Pi's model-provider `/login` is not repurposed. HTTP redirects are refused. A 401 is not automatically replayed; use `/mcp login SERVER` to reauthorize explicitly.
+- **MCP Apps and remote Skills installation are not advertised.** Pi's terminal is not a browser/iframe host. Ordinary resource reads remain data, not skill installation or approval to execute supporting files. A compliant Skills host requires provenance, content-bound approvals, integrity checks and read mediation—not merely downloading `SKILL.md`.
+- **Audio/unsupported binary** has no native Pi result mapping. It is saved to a private full-result artifact, not dumped into context as Base64 or silently discarded. Images are limited to four and 5 MiB of Base64 per result.
+- **Legacy experimental Tasks and arbitrary vendor extensions** are not advertised. Modern Tasks use explicit polling, not task-notification streams; handles survive reload but polling resumes only on request. Input response keys are persisted before delivery to avoid repeating billed sampling after uncertain delivery. A failed input delivery may require cancellation/restarting the task. Unknown result types fail explicitly.
 - Server instructions are not injected into Pi's system prompt. Tool annotations are not security permissions; they do not bypass Pi hooks or authorize actions.
-- No conditional caching, stream resumption for 2026, automatic retry on header mismatch, or exhaustive batching/conformance guarantee. Legacy stream behavior is delegated to the pinned SDK.
-- Schemas that cannot be compiled locally (including unresolved remote `$ref`) are rejected; schemas are never fetched. Discovery is limited to 100 pages. Large catalogs can still consume substantial model context; tools are eagerly registered rather than using a separate search-agent abstraction.
+- No conditional caching, 2026 stream resumption, automatic header-mismatch retry, or exhaustive conformance guarantee. 2025-03-26 batches are covered on stdio and HTTP JSON/SSE, including grouped server-request replies; other revisions do not enable this compatibility path. See the matrix.
+- Schemas that cannot compile locally (including unresolved remote `$ref`) are rejected; schemas are never fetched. Limits: 100 pages, 2000 catalog entries, 10 MiB aggregate catalog data; each schema 128 KiB, 4000 nodes and depth 40. These are resource budgets, not a sandbox for malicious schemas/regular expressions. Use deferred loading to keep large catalogs out of the initial model context.
 
 ## Output and security
 
-Textual tool output is limited to **2000 lines / 50 KiB**. Larger results are stored in a private temporary directory with a mode-0600 JSON file, and the returned text points to it. Files are not deleted at session shutdown, so the agent/user can inspect them afterward; normal system temporary-file cleanup applies. Files and Pi session history can contain server output or sensitive data.
+Textual tool output and execution errors are limited to **2000 lines / 50 KiB**. Large or unsupported results are stored in a private temporary directory with a mode-0600 JSON file. The artifact pointer is placed **first**, so it survives Pi's tool-result compaction preview. Small raw results (including annotations/metadata) are retained in non-context result details. Files are not deleted at session shutdown, so the agent/user can inspect them afterward; normal system temporary-file cleanup applies. Files and Pi session history can contain server output or sensitive data.
 
-Stdio frames, HTTP JSON responses and SSE parser buffers are bounded at approximately **10 MiB**. Cancellation is best-effort: it does not undo server-side effects. Servers and their tool descriptions/results remain untrusted input; use only servers you intend to grant tool access to. Project trust protects configuration loading, **not** execution inside a sandbox.
+Incoming stdio frames, HTTP JSON bodies (including errors), and individual SSE events are bounded at **10 MiB**, including legacy transports. Long-lived streams are limited per event, not cumulatively. Cancellation is best-effort: it does not undo server-side effects. Servers and their tool descriptions/results remain untrusted input; use only servers you intend to grant tool access to. Project trust protects configuration loading, **not** execution inside a sandbox.
 
 Capabilities are advertised only when their handlers are enabled. TUI/RPC dialogs fail closed when dismissed; print/JSON modes never auto-approve human input. Server failure is isolated from other servers and existing Pi tools.
 
@@ -166,11 +179,12 @@ Capabilities are advertised only when their handlers are enabled. TUI/RPC dialog
 ```sh
 npm ci
 npm run check
+npm run format:check
 npm test
 npm pack --dry-run
 ```
 
-Tests use local fixtures: real child processes for every supported version, official-SDK legacy HTTP and SSE servers, a 2026 HTTP server with fragmented SSE and header checks, and mocked Pi lifecycle/UI APIs. No live model calls or external server credentials are required. They are interoperability/regression tests, not an official MCP conformance certification.
+Tests use real child processes for each version; official SDK v1 legacy HTTP/SSE and SDK v2 2026 stdio/HTTP servers; a real Pi SDK session/reload without a model call; local OAuth/PKCE fixtures; bounded transport/error probes; and mocked sampling/UI APIs. No live model calls or external server credentials are required. They are interoperability/regression tests, not an official MCP conformance certification.
 
 Specification references:
 

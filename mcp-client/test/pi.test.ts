@@ -28,6 +28,8 @@ function harness(cwd: string, trusted = true) {
       active = names;
     },
     sendMessage() {},
+    appendEntry() {},
+    registerEntryRenderer() {},
   };
   const statuses = new Map<string, string>();
   const ctx: any = {
@@ -43,6 +45,7 @@ function harness(cwd: string, trusted = true) {
       },
     },
     waitForIdle: async () => {},
+    sessionManager: { getBranch: () => [] },
   };
   extension(pi);
   return { pi, ctx, handlers, tools, commands, statuses };
@@ -113,8 +116,16 @@ test('content mapping preserves text, images, resources, structured data and MCP
   });
   assert.equal(result.details.mcpError, true);
   assert.equal(result.content[1].type, 'image');
-  assert.match((result.content[0] as any).text, /embedded/);
-  assert.match((result.content[0] as any).text, /"value": 3/);
+  const text = result.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n');
+  assert.match(text, /embedded/);
+  assert.match(text, /"value": 3/);
+  assert.deepEqual(
+    result.content.map((b) => b.type),
+    ['text', 'image', 'text', 'text', 'text'],
+  );
 });
 
 test('oversized tool results are bounded and saved privately', async () => {

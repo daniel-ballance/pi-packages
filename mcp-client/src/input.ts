@@ -7,14 +7,21 @@ import { validator } from './validation.js';
 import type { ObjectValue } from './headers.js';
 import { sample, type SamplingUsage } from './sampling.js';
 
+// Pi has one dialog surface, not one per MCP server.
+let queue: Promise<unknown> = Promise.resolve();
+export function withMcpDialog<T>(work: () => Promise<T>): Promise<T> {
+  const run = queue.then(work);
+  queue = run.catch(() => {});
+  return run;
+}
+
 export function inputHandler(
   name: string,
   config: ServerConfig,
   context: ExtensionContext | (() => ExtensionContext),
   recordSampling: (usage: SamplingUsage, model: string) => void = () => {},
+  openUrl?: (url: string) => Promise<void>,
 ) {
-  // Serialize dialogs; sibling tool calls may elicit concurrently.
-  let queue: Promise<unknown> = Promise.resolve();
   return async (
     method: string,
     params: ObjectValue,
@@ -36,6 +43,39 @@ export function inputHandler(
       return {
         roots: config.roots.map((path) => ({ uri: pathToFileURL(resolve(ctx.cwd, path)).href })),
       };
+    if (
+      method === 'elicitation/create' &&
+      params.mode === 'url' &&
+      config.elicitationUrl &&
+      ctx.hasUI &&
+      openUrl
+    ) {
+      const run = queue.then(async () => {
+        signal?.throwIfAborted();
+        if (
+          typeof params.message !== 'string' ||
+          typeof params.elicitationId !== 'string' ||
+          typeof params.url !== 'string' ||
+          Buffer.byteLength(JSON.stringify(params)) > 50 * 1024
+        )
+          throw new RpcError(-32602, 'Invalid URL elicitation');
+        const url = new URL(params.url);
+        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password)
+          throw new RpcError(-32602, 'Unsafe elicitation URL');
+        const choice = await ctx.ui.select(
+          `MCP ${name}: ${params.message}\nOpen in your browser: ${url.href}\nOnly continue if you trust this site.`,
+          ['Open URL', 'Decline'],
+          { signal, timeout: config.timeout },
+        );
+        if (choice === undefined) return { action: 'cancel' };
+        if (choice !== 'Open URL') return { action: 'decline' };
+        signal?.throwIfAborted();
+        await openUrl(url.href);
+        return { action: 'accept' };
+      });
+      queue = run.catch(() => {});
+      return run;
+    }
     if (
       method !== 'elicitation/create' ||
       !config.elicitation ||

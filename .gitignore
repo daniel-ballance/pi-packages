@@ -3,3 +3,8 @@
 
 # Installed dependencies; package lockfiles remain tracked.
 node_modules/
+
+# Secrets
+.env
+*.env
+**/.env/
