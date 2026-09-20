@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, type Packet } from "./rpc.js";
+import type { Composition } from "./policy.js";
 
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
 export interface SpawnOptions {
@@ -9,6 +10,7 @@ export interface SpawnOptions {
   model?: string; thinking?: string; tools?: string[];
   executable?: string; executableArgs?: string[]; cliArgs?: string[];
   inheritExtensions?: boolean; env?: Record<string, string>;
+  selection?: Composition;
 }
 export interface Update { cursor: number; kind: string; text: string; time: string }
 export interface AgentRecord {
@@ -20,8 +22,10 @@ export interface AgentRecord {
   usage?: unknown; updates: Update[]; cursor: number; readCursor: number;
   uiRequests: Packet[]; hadEnvOverrides: boolean;
   runStartCursor?: number; aborted?: boolean; runRevision?: number;
+  observedCursors?: number[];
 }
-export interface Notice { id: string; name: string; kind: string; text: string }
+export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string }
+export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
 const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
@@ -31,8 +35,10 @@ export class SubagentManager {
   private children = new Map<string, RpcChild>();
   private logSizes = new Map<string, number>();
   private shuttingDown = false;
+  private verifiedTools = new Map<string, string[]>();
+  private notices = new Map<string, Notice>();
   private registry: string;
-  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4) {
+  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"]) => AgentRecord["config"]) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     this.registry = join(directory, "registry.json");
     if (existsSync(this.registry)) {
@@ -45,11 +51,16 @@ export class SubagentManager {
         record.activity = "No process attached. Resume explicitly to continue the saved conversation.";
         this.records.set(record.id, record);
       }
+      // Old registries have no pending queue: never reconstruct already-sent reports.
+      for (const notice of (stored.pendingNotices ?? []) as Notice[]) {
+        const record = this.records.get(notice.id);
+        if (record && notice.kind !== "input_requested" && !record.observedCursors?.includes(notice.cursor)) this.notices.set(notice.key, notice);
+      }
     }
   }
   private persist() {
     const temp = this.registry + ".tmp";
-    writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()] }, null, 2), { mode: 0o600 });
+    writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()], pendingNotices: [...this.notices.values()] }, null, 2), { mode: 0o600 });
     renameSync(temp, this.registry);
     this.changed();
   }
@@ -66,8 +77,44 @@ export class SubagentManager {
     appendFileSync(path, bytes.subarray(0, MAX_LOG - size), { mode: 0o600 });
     this.logSizes.set(path, size + Math.min(bytes.length, MAX_LOG - size));
   }
-  private announce(record: AgentRecord, kind: string, text: string) {
-    if (!this.shuttingDown) this.notice({ id: record.id, name: record.name, kind, text: text.slice(0, 4000) });
+  private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
+    if (this.shuttingDown || record.observedCursors?.includes(cursor)) return;
+    const key = `${record.id}:${cursor}:${kind}`;
+    if (this.notices.has(key)) return;
+    const notice = { id: record.id, name: record.name, kind, text: text.slice(0, 4000), cursor, key, requestId };
+    this.notices.set(key, notice);
+    this.persist();
+    this.notice(notice); // Wake the delivery scheduler; don't inject into the parent here.
+  }
+  pendingNotices(): Notice[] { return [...this.notices.values()]; }
+  private observe(record: AgentRecord, cursors: number[]) {
+    record.observedCursors = [...new Set([...(record.observedCursors ?? []), ...cursors])].sort((a, b) => a - b).slice(-200);
+    const seen = new Set(cursors);
+    for (const [key, notice] of this.notices) if (notice.id === record.id && seen.has(notice.cursor)) this.notices.delete(key);
+  }
+  markNoticesDelivered(keys: string[]) {
+    for (const key of keys) {
+      const notice = this.notices.get(key);
+      if (notice) this.observe(this.get(notice.id), [notice.cursor]);
+    }
+    this.persist();
+  }
+  acknowledgeRead(receipt: ReadReceipt, advanceCursor: boolean) {
+    const record = this.get(receipt.id);
+    const cursors = receipt.updates.map(update => update.cursor);
+    const requests = new Set(receipt.uiRequests.map(request => request.id));
+    for (const notice of this.notices.values()) {
+      if (notice.id === record.id && notice.requestId && requests.has(notice.requestId)) cursors.push(notice.cursor);
+    }
+    this.observe(record, cursors);
+    if (advanceCursor) record.readCursor = Math.max(record.readCursor, receipt.nextCursor);
+    this.persist();
+  }
+  private expireInputNotices(record: AgentRecord) {
+    const live = new Set(record.uiRequests.map(request => request.id));
+    for (const [key, notice] of this.notices) {
+      if (notice.id === record.id && notice.requestId && !live.has(notice.requestId)) this.notices.delete(key);
+    }
   }
   get(id: string) {
     const record = this.records.get(id);
@@ -81,12 +128,12 @@ export class SubagentManager {
     return child;
   }
   list() {
-    return [...this.records.values()].map(({ updates, config, runStartCursor, runRevision, aborted, ...record }) => ({
+    return [...this.records.values()].map(({ updates, config, runStartCursor, runRevision, aborted, observedCursors, ...record }) => ({
       ...record, cwd: config.cwd, unread: updates.filter(u => u.cursor > record.readCursor).length,
       uiRequests: record.uiRequests.map(({ id, method, title }) => ({ id, method, title })),
     }));
   }
-  read(id: string, since?: number) {
+  read(id: string, since?: number, acknowledge = true) {
     const record = this.get(id);
     const cursor = since ?? record.readCursor;
     const updates: Update[] = [];
@@ -96,14 +143,15 @@ export class SubagentManager {
       updates.push(update); size += update.text.length;
     }
     const nextCursor = updates.at(-1)?.cursor ?? cursor;
-    if (since === undefined) { record.readCursor = nextCursor; this.persist(); }
-    return {
+    const result = {
       id, name: record.name, status: record.status, activity: record.activity,
       updates, nextCursor, hasMore: record.cursor > nextCursor,
       gap: record.updates.length > 0 && cursor < record.updates[0].cursor - 1,
       uiRequests: record.uiRequests, sessionFile: record.sessionFile,
       logFile: record.logFile, stderrFile: record.stderrFile, error: record.error,
     };
+    if (acknowledge) this.acknowledgeRead(result, since === undefined);
+    return result;
   }
   async spawn(options: SpawnOptions) {
     const id = `subagent-${randomUUID().slice(0, 8)}`;
@@ -135,7 +183,8 @@ export class SubagentManager {
     if (this.shuttingDown) throw new Error("Manager is shutting down");
     if (this.children.has(record.id)) throw new Error(`${record.id} already has a process`);
     if (this.children.size >= this.maxChildren) throw new Error(`Live-child limit (${this.maxChildren}) reached; close an idle child first.`);
-    const config = record.config;
+    const config = this.authorize ? this.authorize(record.config) : record.config;
+    record.config = config;
     const extra = config.cliArgs ?? [];
     if (extra.some(arg => RESERVED.has(arg.split("=")[0]))) throw new Error("cliArgs cannot override manager-owned RPC mode/session flags, print/export modes, or contain --");
     const args = [...(config.executableArgs ?? [])];
@@ -147,7 +196,11 @@ export class SubagentManager {
     args.push(...extra, "--mode", "rpc", "--session", record.sessionFile);
     const env: NodeJS.ProcessEnv = { ...process.env, PI_SUBAGENT: "1" };
     for (const key of ["PI_SESSION_ID", "PI_SESSION_FILE", "PI_PROVIDER", "PI_MODEL", "PI_REASONING_LEVEL"]) delete env[key];
+    if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
     Object.assign(env, overrides);
+    env.PI_SUBAGENT = "1";
+    if (config.selection) env.PI_SUBAGENT_ALLOWED_TOOLS = JSON.stringify(config.tools ?? []);
+    this.verifiedTools.delete(record.id);
     record.status = "starting";
     record.error = undefined;
     record.uiRequests = [];
@@ -162,6 +215,7 @@ export class SubagentManager {
         record.status = expected ? "stopped" : "failed";
         record.activity = expected ? "Stopped; saved conversation available" : "Process exited";
         record.uiRequests = [];
+        this.expireInputNotices(record);
         if (!expected) record.error = error?.message || "Child exited unexpectedly";
         this.update(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
         if (!expected) this.announce(record, "failure", record.error!);
@@ -173,6 +227,16 @@ export class SubagentManager {
     const state = await child.request({ type: "get_state" });
     if (!state.sessionFile || resolve(state.sessionFile) !== resolve(record.sessionFile)) {
       throw new Error("Child did not use the managed persistent session file");
+    }
+    if (config.selection) {
+      const expected = config.selection.model;
+      const actual = state.model ? `${state.model.provider}/${state.model.id}:${state.thinkingLevel}` : "no-model";
+      if (actual !== expected) throw new Error(`Child resolved ${actual}, expected exactly ${expected}; refusing fallback.`);
+      await child.request({ type: "prompt", message: "/_child-policy-check" });
+      const tools = this.verifiedTools.get(record.id);
+      if (!tools || tools.some(name => name.startsWith("subagent_")) || (config.tools ?? []).some(name => !tools.includes(name))) {
+        throw new Error("Child tool policy check failed: selected tools unavailable, or mandatory guard did not load.");
+      }
     }
     record.sessionId = state.sessionId;
     record.model = state.model ? `${state.model.provider}/${state.model.id}` : undefined;
@@ -194,6 +258,9 @@ export class SubagentManager {
         record.activity = `Tool: ${packet.toolName}`; this.changed(); break;
       case "message_end": {
         const message = packet.message;
+        if (message?.customType === "child-policy-check" && Array.isArray(message.details?.tools)) {
+          this.verifiedTools.set(record.id, message.details.tools);
+        }
         if (message?.role !== "assistant") break;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
         if (text) this.update(record, "assistant", text);
@@ -210,9 +277,13 @@ export class SubagentManager {
         record.status = record.error ? "failed" : "idle";
         record.activity = record.error ? "Run failed; process remains available" : "Waiting for instructions";
         record.uiRequests = [];
+        this.expireInputNotices(record);
+        const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
+        const last = record.updates.findLast(u => u.kind === (record.error ? "error" : "assistant") && u.cursor > (record.runStartCursor ?? 0));
+        const text = record.error || last?.text || "Run settled without a text response.";
+        if (!last) this.update(record, kind, text);
         this.persist();
-        const last = record.updates.findLast(u => u.kind === "assistant" && u.cursor > (record.runStartCursor ?? 0));
-        this.announce(record, record.error ? "failure" : record.aborted ? "aborted" : "completed", record.error || last?.text || "Run settled without a text response.");
+        this.announce(record, kind, text, last?.cursor ?? record.cursor);
         void this.children.get(record.id)?.request({ type: "get_session_stats" }).then(stats => {
           record.usage = stats; this.persist();
         }).catch(() => {});
@@ -225,7 +296,7 @@ export class SubagentManager {
           record.uiRequests.push(packet);
           record.status = "waiting_input";
           this.update(record, "input_requested", JSON.stringify(packet));
-          this.announce(record, "input_requested", JSON.stringify(packet));
+          this.announce(record, "input_requested", JSON.stringify(packet), record.cursor, packet.id);
         }
         break;
     }
@@ -278,6 +349,11 @@ export class SubagentManager {
     // if a wedged child cannot acknowledge cancellation.
     await child.request({ type: "clear_queue" }, 1000).catch(() => {});
     await child.request({ type: "abort" }, 2000).catch(() => {});
+    // Capture the final cumulative cost even when closing interrupts a run.
+    // On failure retain the last known snapshot rather than resetting to zero.
+    await child.request({ type: "get_session_stats" }, 1000).then(stats => {
+      record.usage = stats; this.persist();
+    }).catch(() => {});
     await child.stop();
     return this.summary(id);
   }
@@ -285,7 +361,7 @@ export class SubagentManager {
     const record = this.get(id);
     if (this.children.has(id)) throw new Error(`${id} already has a process`);
     if (!existsSync(record.sessionFile)) throw new Error("No saved child session exists");
-    if (record.hadEnvOverrides && !env) throw new Error("This child used environment overrides. Supply them again; they are not stored.");
+    if (!this.authorize && record.hadEnvOverrides && !env) throw new Error("This child used environment overrides. Supply them again; they are not stored.");
     try {
       await this.start(record, env);
       if (message) await this.send(id, message);
@@ -301,6 +377,7 @@ export class SubagentManager {
     if (!record.uiRequests.some(r => r.id === requestId)) throw new Error("Unknown or expired UI request");
     this.child(id).respond({ type: "extension_ui_response", id: requestId, ...response });
     record.uiRequests = record.uiRequests.filter(r => r.id !== requestId);
+    this.expireInputNotices(record);
     record.status = record.uiRequests.length ? "waiting_input" : "working";
     this.persist();
     return this.summary(id);

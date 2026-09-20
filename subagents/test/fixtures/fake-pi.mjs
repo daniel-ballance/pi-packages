@@ -37,6 +37,10 @@ process.stdin.on('data', chunk => {
       working = true; emit({ type: 'agent_start' }); respond(cmd);
       clearTimeout(timer);
       if (cmd.message === 'ui') { pendingUI = true; emit({ type: 'extension_ui_request', id: 'ui-1', method: 'confirm', title: 'Confirm test action?' }); }
+      else if (cmd.message === 'split-settle') {
+        emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'early result' }], stopReason: 'stop' } });
+        timer = setTimeout(() => { working = false; emit({ type: 'agent_settled' }); }, 150);
+      }
       else timer = setTimeout(() => settle(`${history.length}:${cmd.message}`, cmd.message === 'error'), cmd.message.startsWith('slow') ? 5000 : 25);
     }
     else if (cmd.type === 'clear_queue') respond(cmd, { steering: [], followUp: [] });

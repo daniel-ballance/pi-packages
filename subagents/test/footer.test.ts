@@ -2,9 +2,30 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { decorateFooter, installFooterDecoration } from "../src/footer.js";
+import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "../src/footer.js";
 const dim = (text: string) => `\x1b[38;5;242m${text}\x1b[39m`;
-const label = "subagents: 0 active · 0 idle · 3 tracked";
+const label = "subagents: 0/3 • $1.234";
+
+test("summary counts active/all children and sums cumulative costs including closed sessions", () => {
+  assert.equal(formatSubagentSummary([
+    { status: "working", usage: { cost: 0.1234 } },
+    { status: "idle", usage: { cost: 0.2 } },
+    { status: "stopped", usage: { cost: 0.9106 } },
+  ]), "subagents: 1/3 • $1.234");
+  const resumed = [{ status: "working", usage: { cost: 1 } }];
+  assert.equal(formatSubagentSummary(resumed), "subagents: 1/1 • $1.000");
+  resumed[0].usage = { cost: 1.25 };
+  resumed[0].status = "stopped";
+  assert.equal(formatSubagentSummary(resumed), "subagents: 0/1 • $1.250");
+});
+
+test("summary handles no agents, missing/invalid costs and all active lifecycle states", () => {
+  assert.equal(formatSubagentSummary([]), "");
+  assert.equal(formatSubagentSummary([
+    { status: "starting" }, { status: "waiting_input", usage: { cost: NaN } },
+    { status: "failed", usage: { cost: -1 } }, { status: "stopped", usage: { cost: "unknown" } },
+  ]), "subagents: 2/4 • $0.000");
+});
 
 test("right aligns dim lowercase status above the model and preserves stock rows", () => {
   const stock = [dim("~/Code/pi-extensions (main)"), dim("usage stats                         model · medium"), "other extension"];
@@ -18,7 +39,7 @@ test("right aligns dim lowercase status above the model and preserves stock rows
 });
 
 test("narrow widths preserve directory, add a bounded row, and handle unicode/ANSI", () => {
-  for (const width of [1, 8, 20, 40]) {
+  for (const width of [1, 8, 20]) {
     const stock = ["界", "model"];
     const rendered = decorateFooter(stock, width, label, dim);
     assert.equal(rendered[0], stock[0]);

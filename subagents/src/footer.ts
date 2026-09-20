@@ -1,5 +1,17 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
+/** Usage is a cumulative snapshot per child session, not a per-run charge. */
+export function formatSubagentSummary(records: readonly { status: string; usage?: unknown }[]): string {
+  if (!records.length) return "";
+  const active = records.filter(r => ["starting", "working", "waiting_input"].includes(r.status)).length;
+  const cost = records.reduce((total, record) => {
+    const usage = record.usage;
+    const value = usage && typeof usage === "object" && "cost" in usage ? usage.cost : undefined;
+    return total + (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0);
+  }, 0);
+  return `subagents: ${active}/${records.length} • $${cost.toFixed(3)}`;
+}
+
 /** Decorate, don't recreate, Pi's first footer row. Remaining rows are untouched. */
 export function decorateFooter(lines: string[], width: number, label: string, dim: (text: string) => string): string[] {
   if (!label || lines.length < 2 || width < 1) return lines;
