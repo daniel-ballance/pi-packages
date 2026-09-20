@@ -1,0 +1,41 @@
+{
+  "name": "subscription-usage",
+  "version": "0.1.0",
+  "description": "ChatGPT Pro and SuperGrok subscription usage in the Pi footer and via /usage",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "usage",
+    "chatgpt",
+    "supergrok"
+  ],
+  "files": [
+    "index.ts",
+    "src/",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typebox": "^1.0.0",
+    "typescript": "^5.9.3"
+  }
+}
