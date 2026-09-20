@@ -11,7 +11,8 @@
     "index.ts",
     "src",
     "skills",
-    "README.md"
+    "README.md",
+    "ROADMAP.md"
   ],
   "pi": {
     "extensions": [

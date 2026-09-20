@@ -159,6 +159,10 @@ Normal reload/session replacement/exit clears queues, requests abort, then sends
 
 A parent crash/SIGKILL may orphan processes; inspect and stop them before resuming sessions. Concurrent parent processes using the same parent session/registry are unsupported. Background daemons deliberately created by children are not guaranteed to be cleaned up.
 
+## Future directions
+
+The [roadmap](ROADMAP.md) records deferred ideas for inter-subagent communication, higher-level workflows and optional sandboxing, along with open design questions and constraints. These are exploratory directions, not implemented features or release commitments.
+
 ## Development
 
 ```bash
