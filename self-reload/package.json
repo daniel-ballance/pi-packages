@@ -1,0 +1,25 @@
+{
+  "name": "self-reload",
+  "version": "0.1.0",
+  "description": "Agent-requested Pi runtime reload with automatic continuation",
+  "type": "module",
+  "keywords": ["pi-package", "reload"],
+  "files": ["index.ts", "README.md"],
+  "pi": { "extensions": ["./index.ts"] },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typebox": "^1.0.0"
+  }
+}

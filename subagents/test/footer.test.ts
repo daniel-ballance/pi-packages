@@ -1,0 +1,67 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { stripVTControlCharacters } from "node:util";
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { decorateFooter, installFooterDecoration } from "../src/footer.js";
+const dim = (text: string) => `\x1b[38;5;242m${text}\x1b[39m`;
+const label = "subagents: 0 active · 0 idle · 3 tracked";
+
+test("right aligns dim lowercase status above the model and preserves stock rows", () => {
+  const stock = [dim("~/Code/pi-extensions (main)"), dim("usage stats                         model · medium"), "other extension"];
+  const rendered = decorateFooter(stock, 120, label, dim);
+  assert.equal(rendered.length, stock.length);
+  assert.ok(stripVTControlCharacters(rendered[0]).endsWith(label));
+  assert.equal(visibleWidth(rendered[0]), 120);
+  assert.ok(rendered[0].includes(dim(label)));
+  assert.deepEqual(rendered.slice(1), stock.slice(1));
+  assert.equal(stock[0], dim("~/Code/pi-extensions (main)"));
+});
+
+test("narrow widths preserve directory, add a bounded row, and handle unicode/ANSI", () => {
+  for (const width of [1, 8, 20, 40]) {
+    const stock = ["界", "model"];
+    const rendered = decorateFooter(stock, width, label, dim);
+    assert.equal(rendered[0], stock[0]);
+    assert.equal(rendered.at(-1), "model");
+    assert.ok(visibleWidth(rendered[1]) <= width);
+  }
+  const rendered = decorateFooter([dim("界"), "model"], 60, label, dim);
+  assert.equal(visibleWidth(rendered[0]), 60);
+});
+
+test("empty status or unexpected stock layout is unchanged", () => {
+  const stock = ["cwd", "stats"];
+  assert.equal(decorateFooter(stock, 80, "", dim), stock);
+  const future = ["changed layout"];
+  assert.equal(decorateFooter(future, 80, label, dim), future);
+});
+
+test("wrapper uses real renderer/receiver, current theme, and restores on disposal", () => {
+  class Footer {
+    constructor(readonly directory: string) {}
+    render(_width: number) { return [this.directory, "stats"]; }
+  }
+  const original = Footer.prototype.render;
+  let color = "a";
+  const footer = new Footer("actual instance");
+  const dispose = installFooterDecoration(Footer.prototype, () => label, text => `${color}:${text}`);
+  try {
+    assert.ok(footer.render(100)[0].includes("actual instance"));
+    assert.ok(footer.render(100)[0].endsWith(`a:${label}`));
+    color = "b";
+    assert.ok(footer.render(100)[0].endsWith(`b:${label}`));
+  } finally { dispose(); }
+  assert.equal(Footer.prototype.render, original);
+});
+
+test("cleanup doesn't clobber later wrappers; cosmetic errors fall back to stock", () => {
+  const prototype = { render: (_width: number) => ["cwd", "stats"] };
+  const dispose = installFooterDecoration(prototype, () => { throw new Error("bad label"); }, dim);
+  assert.deepEqual(prototype.render(80), ["cwd", "stats"]);
+  const wrapped = prototype.render;
+  prototype.render = width => [...wrapped(width), "later extension"];
+  const later = prototype.render;
+  dispose();
+  assert.equal(prototype.render, later);
+  assert.deepEqual(prototype.render(80), ["cwd", "stats", "later extension"]);
+});
