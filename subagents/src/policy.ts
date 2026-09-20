@@ -23,8 +23,8 @@ export interface LocalModel {
 export const DEFAULT_POLICY: PolicyConfig = {
   version: 1,
   models: [
-    { id: "openai-codex/gpt-5.6-luna:medium", description: "General summarization and exploration." },
-    { id: "openai-codex/gpt-5.6-luna:xhigh", description: "Basic code implementation and harder reasoning tasks." },
+    { id: "openai-codex/gpt-5.6-luna:medium", description: "Usage guidance, not benchmark claims. Prefer for summarization, repository exploration, factual lookup, and small well-bounded investigations. Ask for concrete evidence and file references. Escalate multi-step debugging, interacting constraints, or implementation decisions to xhigh; do not rely on this choice alone for broad architectural or security review." },
+    { id: "openai-codex/gpt-5.6-luna:xhigh", description: "Usage guidance, not benchmark claims. Prefer for scoped code implementation, multi-step debugging, regression analysis, and tasks that require comparing constraints or approaches. Require tests and verification. Prefer medium for simple extraction or summarization to avoid unnecessary reasoning effort; higher thinking is not a correctness guarantee or a substitute for independent review." },
   ],
   tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
   extensions: [], skills: [], promptTemplates: [], themes: [],

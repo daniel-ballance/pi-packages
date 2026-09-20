@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,37 @@ import { SubagentManager } from "../src/manager.js";
 
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/provider.mjs", import.meta.url));
+
+for (const task of ["slow-codex", "slow-genuine"]) {
+  test(`real Pi RPC abort: ${task} emits error stopReason without masking unrelated failures`, { timeout: 15000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "subagent-real-abort-"));
+    const manager = new SubagentManager(join(dir, "manager"));
+    try {
+      const a = await manager.spawn({
+        name: task, task, cwd: dir, executable: process.execPath, executableArgs: [cli],
+        env: { PI_CODING_AGENT_DIR: join(dir, "config"), PI_OFFLINE: "1", PI_TELEMETRY: "0" },
+        model: "subagent-test/stub:off", tools: [],
+        cliArgs: ["--no-context-files", "--no-skills", "--no-prompt-templates", "-e", provider],
+      });
+      await manager.abort(a.id);
+      await manager.wait([a.id], "all", 5000);
+      const result = manager.summary(a.id);
+      const cancelled = task === "slow-codex";
+      assert.equal(result.status, cancelled ? "idle" : "failed");
+      assert.equal(result.aborted, cancelled);
+      assert.equal(result.error, cancelled ? undefined : "429 quota exceeded");
+      assert.equal(manager.pendingNotices().at(-1)?.kind, cancelled ? "aborted" : "failure");
+      const events = (await readFile(result.logFile, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+      const message = events.find(e => e.type === "message_end" && e.message?.stopReason === "error")?.message;
+      assert.ok(message, "fixture must reproduce the real adapter's error stopReason on the RPC wire");
+      assert.equal(message.errorMessage, cancelled ? "The operation was aborted." : "429 quota exceeded");
+      await manager.send(a.id, "normal follow-up");
+      await manager.wait([a.id], "all", 5000);
+      assert.equal(manager.summary(a.id).status, "idle");
+      assert.equal(manager.summary(a.id).aborted, false);
+    } finally { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); }
+  });
+}
 
 test("real Pi RPC children: parallel prompts, abort, follow-up, shutdown, and persisted resumption", { timeout: 30000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "subagent-real-pi-"));

@@ -146,9 +146,9 @@ export default function subagents(pi: ExtensionAPI) {
   });
   pi.registerTool({
     name: "subagent_list", label: "List Subagents",
-    description: "List tracked persistent children: lifecycle, resolved model, unread counts, saved sessions, log paths and usage. Stopped entries can be resumed. Output capped at 30KB/1000 lines.",
-    parameters: Type.Object({}),
-    async execute(_call, _args, _signal, _update, ctx) { return result(get(ctx).list(), ctx); },
+    description: "List tracked children plus aggregate totals (live/active counts and summed reported cost, including closed sessions). unread counts reports, unreadAssistant counts assistant output, unreadUpdates includes lifecycle/sent echoes. Old rejected-spawn artifacts are hidden unless includeRejected is true. Output capped at 30KB/1000 lines.",
+    parameters: Type.Object({ includeRejected: Type.Optional(Type.Boolean()) }),
+    async execute(_call, args, _signal, _update, ctx) { return result(get(ctx).overview(args.includeRejected), ctx); },
   });
   pi.registerTool({
     name: "subagent_send", label: "Message Subagent",
@@ -187,7 +187,7 @@ export default function subagents(pi: ExtensionAPI) {
   });
   pi.registerTool({
     name: "subagent_close", label: "Close Subagent",
-    description: "Abort and shut down a child process, keeping its saved conversation and logs. Idempotent. Use subagent_resume to restart it later. Output capped at 30KB/1000 lines.",
+    description: "Abort and shut down a child, dismissing its pending notifications but keeping its saved conversation and readable results. Idempotent. Use subagent_resume to restart it later. Parent reload shutdown instead preserves unread notifications. Output capped at 30KB/1000 lines.",
     parameters: Type.Object({ id }),
     async execute(_call, args, _signal, _update, ctx) { return result(await get(ctx).close(args.id), ctx); },
   });

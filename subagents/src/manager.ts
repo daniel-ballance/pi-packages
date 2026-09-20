@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSy
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, type Packet } from "./rpc.js";
 import type { Composition } from "./policy.js";
+import { summarizeAgents } from "./usage.js";
 
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
 export interface SpawnOptions {
@@ -18,7 +19,8 @@ export interface AgentRecord {
   config: Omit<SpawnOptions, "env" | "task" | "name">;
   sessionFile: string; sessionId?: string; logFile: string; stderrFile: string;
   createdAt: string; updatedAt: string; pid?: number;
-  model?: string; thinking?: string; activity?: string; error?: string;
+  model?: string; thinking?: string; activity?: string; error?: string; lastError?: string;
+  rejected?: boolean; startedAt?: string;
   usage?: unknown; updates: Update[]; cursor: number; readCursor: number;
   uiRequests: Packet[]; hadEnvOverrides: boolean;
   runStartCursor?: number; aborted?: boolean; runRevision?: number;
@@ -29,6 +31,11 @@ export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
 const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
+const REPORT_KINDS = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure"]);
+// Deliberately narrow: a generic failure mentioning cancellation is still a failure.
+export function isCancellationError(message: unknown): boolean {
+  return typeof message === "string" && /^(?:AbortError:\s*)?(?:(?:(?:the|this) )?operation (?:was )?aborted|request (?:was )?aborted|aborted|cancelled|canceled)[.!]?$/i.test(message.trim());
+}
 
 export class SubagentManager {
   private records = new Map<string, AgentRecord>();
@@ -37,6 +44,9 @@ export class SubagentManager {
   private shuttingDown = false;
   private verifiedTools = new Map<string, string[]>();
   private notices = new Map<string, Notice>();
+  private activeRuns = new Set<string>();
+  private abortIntents = new Map<string, { revision: number; awaitingStart: boolean }>();
+  private aborting = new Set<string>();
   private registry: string;
   constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"]) => AgentRecord["config"]) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -45,7 +55,14 @@ export class SubagentManager {
       const stored = JSON.parse(readFileSync(this.registry, "utf8"));
       if (stored.version !== 1 || !Array.isArray(stored.agents)) throw new Error("Unsupported subagent registry");
       for (const record of stored.agents as AgentRecord[]) {
+        // Keep old cap-preflight artifacts inspectable, but don't count
+        // them as agents by default. Never hide actual process launch failures.
+        if (!record.sessionId && !record.startedAt && !existsSync(record.sessionFile) &&
+            /^Error: Live-child limit \(\d+\) reached;/.test(record.error ?? "")) record.rejected = true;
         record.status = record.status === "failed" ? "failed" : "stopped";
+        if (record.status === "stopped" && record.error) {
+          record.lastError = record.error; delete record.error;
+        }
         delete record.pid;
         record.uiRequests = [];
         record.activity = "No process attached. Resume explicitly to continue the saved conversation.";
@@ -127,11 +144,29 @@ export class SubagentManager {
     if (!child) throw new Error(`${id} has no running process. Use subagent_resume.`);
     return child;
   }
-  list() {
-    return [...this.records.values()].map(({ updates, config, runStartCursor, runRevision, aborted, observedCursors, ...record }) => ({
-      ...record, cwd: config.cwd, unread: updates.filter(u => u.cursor > record.readCursor).length,
-      uiRequests: record.uiRequests.map(({ id, method, title }) => ({ id, method, title })),
-    }));
+  list(includeRejected = false) {
+    return [...this.records.values()].filter(record => includeRejected || !record.rejected).map(({ updates, config, runStartCursor, runRevision, observedCursors, ...record }) => {
+      const unreadUpdates = updates.filter(u => u.cursor > record.readCursor);
+      return {
+        ...record, cwd: config.cwd,
+        unread: unreadUpdates.filter(u => REPORT_KINDS.has(u.kind)).length,
+        unreadAssistant: unreadUpdates.filter(u => u.kind === "assistant").length,
+        unreadUpdates: unreadUpdates.length,
+        uiRequests: record.uiRequests.map(({ id, method, title }) => ({ id, method, title })),
+      };
+    });
+  }
+  overview(includeRejected = false) {
+    return { totals: summarizeAgents(this.list()), agents: this.list(includeRejected) };
+  }
+  private preflight(config: AgentRecord["config"], overrides?: Record<string, string>) {
+    if (this.shuttingDown) throw new Error("Manager is shutting down");
+    if (this.children.size >= this.maxChildren) throw new Error(`Live-child limit (${this.maxChildren}) reached; close an idle child first.`);
+    if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
+    const checked = this.authorize ? this.authorize(config) : config;
+    if (!isAbsolute(checked.cwd) || !statSync(checked.cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");
+    if ((checked.cliArgs ?? []).some(arg => RESERVED.has(arg.split("=")[0]))) throw new Error("cliArgs cannot override manager-owned RPC mode/session flags, print/export modes, or contain --");
+    return checked;
   }
   read(id: string, since?: number, acknowledge = true) {
     const record = this.get(id);
@@ -155,9 +190,10 @@ export class SubagentManager {
   }
   async spawn(options: SpawnOptions) {
     const id = `subagent-${randomUUID().slice(0, 8)}`;
-    const { name, task, env, ...config } = options;
+    const { name, task, env, ...requested } = options;
     if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
-    if (!isAbsolute(config.cwd)) throw new Error("cwd must be an absolute path");
+    // No record/session/log paths for requests rejected before any launch attempt.
+    const config = this.preflight(requested, env);
     const record: AgentRecord = {
       id, name, task, config, status: "stopped",
       sessionFile: join(this.directory, `${id}.session.jsonl`),
@@ -172,21 +208,18 @@ export class SubagentManager {
       await this.send(id, task);
       return this.summary(id);
     } catch (error) {
-      record.error = String(error);
       if (this.children.has(id)) await this.close(id);
       record.status = "failed";
+      record.error = String(error);
       this.update(record, "error", String(error));
       throw new Error(`${id}: ${error}. Diagnostics: ${record.stderrFile}`);
     }
   }
   private async start(record: AgentRecord, overrides?: Record<string, string>) {
-    if (this.shuttingDown) throw new Error("Manager is shutting down");
     if (this.children.has(record.id)) throw new Error(`${record.id} already has a process`);
-    if (this.children.size >= this.maxChildren) throw new Error(`Live-child limit (${this.maxChildren}) reached; close an idle child first.`);
-    const config = this.authorize ? this.authorize(record.config) : record.config;
+    const config = this.preflight(record.config, overrides);
     record.config = config;
     const extra = config.cliArgs ?? [];
-    if (extra.some(arg => RESERVED.has(arg.split("=")[0]))) throw new Error("cliArgs cannot override manager-owned RPC mode/session flags, print/export modes, or contain --");
     const args = [...(config.executableArgs ?? [])];
     if (!config.inheritExtensions) args.push("--no-extensions");
     if (config.model) args.push("--model", config.model);
@@ -201,6 +234,9 @@ export class SubagentManager {
     env.PI_SUBAGENT = "1";
     if (config.selection) env.PI_SUBAGENT_ALLOWED_TOOLS = JSON.stringify(config.tools ?? []);
     this.verifiedTools.delete(record.id);
+    this.abortIntents.delete(record.id);
+    this.activeRuns.delete(record.id);
+    record.aborted = false;
     record.status = "starting";
     record.error = undefined;
     record.uiRequests = [];
@@ -210,6 +246,8 @@ export class SubagentManager {
       stderr: text => this.log(record.stderrFile, text),
       exit: error => {
         this.children.delete(record.id);
+        this.activeRuns.delete(record.id);
+        this.abortIntents.delete(record.id);
         delete record.pid;
         const expected = record.status === "stopping" || this.shuttingDown;
         record.status = expected ? "stopped" : "failed";
@@ -217,12 +255,14 @@ export class SubagentManager {
         record.uiRequests = [];
         this.expireInputNotices(record);
         if (!expected) record.error = error?.message || "Child exited unexpectedly";
+        else if (record.error) { record.lastError = record.error; delete record.error; }
         this.update(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
         if (!expected) this.announce(record, "failure", record.error!);
       },
     });
     this.children.set(record.id, child);
     record.pid = child.child.pid;
+    if (record.pid) record.startedAt ??= new Date().toISOString();
     this.persist();
     const state = await child.request({ type: "get_state" });
     if (!state.sessionFile || resolve(state.sessionFile) !== resolve(record.sessionFile)) {
@@ -248,10 +288,16 @@ export class SubagentManager {
     this.log(record.logFile, JSON.stringify(packet) + "\n");
     switch (packet.type) {
       case "agent_start":
-        if (record.status === "stopping") break;
         record.runRevision = (record.runRevision ?? 0) + 1;
+        this.activeRuns.add(record.id);
+        const intent = this.abortIntents.get(record.id);
+        if (intent?.awaitingStart) { intent.revision = record.runRevision; intent.awaitingStart = false; }
+        else this.abortIntents.delete(record.id);
         record.runStartCursor = record.cursor;
         record.aborted = false;
+        // A prompt accepted before its start event can be closed immediately.
+        // Track cancellation identity without reviving the stopping lifecycle.
+        if (record.status === "stopping") { this.persist(); break; }
         record.status = "working"; record.error = undefined; record.activity = "Working";
         this.persist(); break;
       case "tool_execution_start":
@@ -264,22 +310,32 @@ export class SubagentManager {
         if (message?.role !== "assistant") break;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
         if (text) this.update(record, "assistant", text);
-        if (message.stopReason === "aborted") record.aborted = true;
-        if (message.stopReason === "error") {
+        const intent = this.abortIntents.get(record.id);
+        const requestedAbort = intent && !intent.awaitingStart && intent.revision === (record.runRevision ?? 0);
+        const cancelled = message.stopReason === "aborted" ||
+          (message.stopReason === "error" && requestedAbort && isCancellationError(message.errorMessage));
+        if (cancelled) {
+          if (!record.aborted) {
+            record.aborted = true;
+            this.update(record, "aborted", "Work cancelled; child remains available for instructions.");
+          }
+        } else if (message.stopReason === "error") {
           record.error = message.errorMessage || "Assistant request failed";
           this.update(record, "error", record.error!);
         }
         break;
       }
       case "agent_settled": {
+        this.activeRuns.delete(record.id);
+        this.abortIntents.delete(record.id);
         if (record.status === "stopping") break;
         record.runRevision = (record.runRevision ?? 0) + 1;
         record.status = record.error ? "failed" : "idle";
-        record.activity = record.error ? "Run failed; process remains available" : "Waiting for instructions";
+        record.activity = record.error ? "Run failed; process remains available" : record.aborted ? "Work aborted; waiting for instructions" : "Waiting for instructions";
         record.uiRequests = [];
         this.expireInputNotices(record);
         const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
-        const last = record.updates.findLast(u => u.kind === (record.error ? "error" : "assistant") && u.cursor > (record.runStartCursor ?? 0));
+        const last = record.updates.findLast(u => u.kind === (record.error ? "error" : record.aborted ? "aborted" : "assistant") && u.cursor > (record.runStartCursor ?? 0));
         const text = record.error || last?.text || "Run settled without a text response.";
         if (!last) this.update(record, kind, text);
         this.persist();
@@ -292,6 +348,7 @@ export class SubagentManager {
       case "extension_error":
         this.update(record, "extension_error", packet.error || JSON.stringify(packet)); break;
       case "extension_ui_request":
+        if (record.status === "stopping") break;
         if (["confirm", "select", "input", "editor"].includes(packet.method)) {
           record.uiRequests.push(packet);
           record.status = "waiting_input";
@@ -301,9 +358,10 @@ export class SubagentManager {
         break;
     }
   }
-  summary(id: string) { return this.list().find(record => record.id === id)!; }
+  summary(id: string) { return this.list(true).find(record => record.id === id)!; }
   async send(id: string, message: string, behavior?: "steer" | "followUp") {
     if (!message.trim()) throw new Error("message must not be empty");
+    if (this.aborting.has(id)) throw new Error("Abort is still in progress; wait for its acknowledgement before sending another task.");
     const record = this.get(id);
     const child = this.child(id);
     // Acceptance can precede agent_start on a later stdout chunk. Reserve the
@@ -333,16 +391,46 @@ export class SubagentManager {
     this.update(record, "sent", message);
     return this.summary(id);
   }
-  async abort(id: string) {
-    const child = this.child(id);
-    await child.request({ type: "clear_queue" });
-    await child.request({ type: "abort" });
-    return this.summary(id);
+  private markAbortIntent(record: AgentRecord) {
+    if (this.activeRuns.has(record.id) || record.status === "working" || record.status === "waiting_input") {
+      this.abortIntents.set(record.id, { revision: record.runRevision ?? 0, awaitingStart: !this.activeRuns.has(record.id) });
+    }
   }
-  async close(id: string) {
+  async abort(id: string) {
     const record = this.get(id);
+    const child = this.child(id);
+    if (this.aborting.has(id)) throw new Error("Abort is already in progress");
+    this.aborting.add(id);
+    this.markAbortIntent(record); // Before awaiting anything: adapters may emit cancellation immediately.
+    try {
+      await child.request({ type: "clear_queue" });
+      this.markAbortIntent(record); // A queued run may have started while clearing.
+      await child.request({ type: "abort" });
+      return this.summary(id);
+    } finally {
+      this.aborting.delete(id);
+      // On timeout the run may still deliver cancellation later. Keep its scoped
+      // intent until settle/new-run/exit, rather than misclassifying a late abort.
+      if (!this.activeRuns.has(id) && record.status !== "working") this.abortIntents.delete(id);
+    }
+  }
+  async close(id: string, preserveNotices = false) {
+    const record = this.get(id);
+    // Explicit close means abandon pending notifications, not erase results.
+    // Reload/exit shutdown deliberately preserves unread results for recovery.
+    if (!preserveNotices) {
+      this.observe(record, this.pendingNotices().filter(n => n.id === id).map(n => n.cursor));
+      this.persist();
+    }
     const child = this.children.get(id);
-    if (!child) return this.summary(id);
+    if (!child) {
+      if (record.error) { record.lastError = record.error; delete record.error; }
+      record.status = "stopped";
+      record.activity = "Stopped; retained history available";
+      this.persist();
+      return this.summary(id);
+    }
+    this.markAbortIntent(record);
     record.status = "stopping";
     this.persist();
     // Cancel active tools before terminating the process. Cleanup still happens
@@ -362,6 +450,7 @@ export class SubagentManager {
     if (this.children.has(id)) throw new Error(`${id} already has a process`);
     if (!existsSync(record.sessionFile)) throw new Error("No saved child session exists");
     if (!this.authorize && record.hadEnvOverrides && !env) throw new Error("This child used environment overrides. Supply them again; they are not stored.");
+    this.preflight(record.config, env);
     try {
       await this.start(record, env);
       if (message) await this.send(id, message);
@@ -383,7 +472,7 @@ export class SubagentManager {
     return this.summary(id);
   }
   async wait(ids: string[], mode: "any" | "all", timeoutMs: number, signal?: AbortSignal) {
-    const selected = ids.length ? ids : [...this.records.keys()];
+    const selected = ids.length ? ids : this.list().map(record => record.id);
     for (const id of selected) this.get(id);
     const deadline = Date.now() + timeoutMs;
     while (true) {
@@ -399,6 +488,6 @@ export class SubagentManager {
   }
   async shutdown() {
     this.shuttingDown = true;
-    await Promise.all([...this.children.keys()].map(id => this.close(id)));
+    await Promise.all([...this.children.keys()].map(id => this.close(id, true)));
   }
 }

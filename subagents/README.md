@@ -10,6 +10,12 @@ pi install ./subagents
 
 Reload the parent manually or with `self_reload`. Tested with Pi 0.85.1 and Node 22+. TUI and RPC parents are supported.
 
+## Bundled setup and model-selection skill
+
+Installation also exposes `/skill:subagents` (unless skills are filtered out in your Pi package settings). Use it to choose policy scope, configure providers/models/tools/resources, and operate persistent children. The [skill](skills/subagents/SKILL.md) includes [complete example policies](skills/subagents/reference/configuration.md) and a [model-research process](skills/subagents/reference/model-research.md): triangulate Artificial Analysis, Datacurve DeepSWE and CursorBench, then refine the initial hypothesis through trials of the actual deployment. It distinguishes evidence from inference, covers local quantization/runtime differences, and avoids turning incomparable leaderboard scores into a fake universal ranking.
+
+This is parent-side guidance, not automatic configuration or child resource inheritance. It does not overwrite user policies or grant permissions. Example model IDs are placeholders and must be replaced with exact available Pi identities.
+
 ## Allowlist: `subagents.json`
 
 The highest-priority existing configuration wins, as a **whole-file replacement**:
@@ -20,7 +26,7 @@ The highest-priority existing configuration wins, as a **whole-file replacement*
 
 No merging or upward directory search. Reload Pi to pick up configuration edits. Resource/model availability is rechecked on catalog requests, spawn and resume. An invalid selected file disables new spawning/resumption instead of falling back to broader defaults. Listing, reading, aborting and closing tracked children remain available. Untrusted project configuration is ignored with a user-facing diagnostic.
 
-The built-in policy is equivalent to:
+The built-in policy is equivalent to the following (model descriptions abbreviated):
 
 ```json
 {
@@ -65,6 +71,8 @@ No user configuration files are generated or overwritten automatically.
 
 `subagent_catalog` exposes only usable options: allowed exact models with configured authentication and supported thinking levels, their guidance, modalities, context/output limits and registry pricing; locally known tools; existing resource files; prompt permissions; and allowed directories. Descriptions are user guidance, not measured model benchmarks. Registry prices may not reflect subscription billing or your actual provider bill.
 
+Built-in selection guidance recommends **medium** for exploration, summarization, factual lookup and small bounded investigations; escalate multi-step debugging and implementation decisions to **xhigh**. Prefer xhigh for scoped implementation, regression analysis and interacting constraints—not simple extraction. Both require evidence and verification; higher thinking does not guarantee correctness. The catalog includes this guidance directly, so the parent need not infer it from the model names. Custom policies can supply their own descriptions.
+
 Unavailable entries are omitted, never silently substituted. Their names/reasons are shown to the **user** through `/subagents diagnostics`; the model-facing catalog contains only an omitted-entry count. If no model is usable, spawning is disabled until configuration/availability is fixed.
 
 Configured credentials do not guarantee a successful request: expired authentication, provider outages, remote entitlement problems, and resource load errors can still surface at launch/use. Custom provider models must also be configured in the child environment or supplied by an explicitly selected extension. The child must resolve the exact requested model/thinking selection; fallback is rejected before sending the task.
@@ -75,12 +83,12 @@ Configured credentials do not guarantee a successful request: expired authentica
 |---|---|
 | `subagent_catalog` | Discover allowed, currently usable ingredients |
 | `subagent_spawn` | Compose and start a child; returns prompt acceptance, not completion |
-| `subagent_list` | Status, resolved model/thinking, unread counts, usage and session/log paths |
+| `subagent_list` | `{ totals, agents }`: aggregate reported cost/live counts plus child status, unread counts, usage and paths |
 | `subagent_send` | Prompt an idle child, or explicitly steer/queue a follow-up for a working child |
 | `subagent_read` | Read new output or replay from a cursor |
 | `subagent_wait` | Wait for any/all selected children, at most 60 seconds per call |
 | `subagent_abort` | Clear queues and cancel work, keeping the child alive |
-| `subagent_close` | Abort and stop a child, retaining its saved conversation |
+| `subagent_close` | Abort and stop a child, dismissing pending notifications but retaining readable results and conversation |
 | `subagent_resume` | Revalidate a stopped child's saved composition, restart and optionally prompt it |
 | `subagent_respond` | Answer a pending extension dialog; human-required approvals remain human decisions |
 
@@ -103,6 +111,18 @@ All normal extension, skill, prompt-template and theme discovery is disabled; on
 
 A completed child remains idle. Use `subagent_send` for discussion or another assignment. On a working child, specify `behavior: "steer"` or `"followUp"`; steering is delivered at a tool boundary, while `subagent_abort` cancels current work. Cancelling `subagent_wait` does not stop children. Wait returns early for pending extension dialogs.
 
+Abort intent is scoped to the current run and recorded before cancellation requests are sent. Native `stopReason: "aborted"` and cancellation-shaped `stopReason: "error"` responses to an explicit abort produce an idle, reusable child with `aborted: true`, not a failure. Unrelated provider errors remain failures even when racing an abort. A later run resets cancellation state. Wait for abort acknowledgement before sending another task. Closing archives a genuine current error as `lastError`; detailed history remains readable, while `error` no longer suggests an unresolved failure on a stopped child.
+
+### Listing, unread counts and cost
+
+`subagent_list` returns an **object**, `{ totals, agents }`, rather than the previous bare array. Totals cover actual tracked attempts, including stopped children and launch failures:
+
+- `tracked`, `live` (attached processes, including idle), `active` (starting/working/waiting for input), and `unreadReports`.
+- `reportedCost`: summed latest cumulative Pi-reported session costs, in USD; `missingCost`: sessions without valid cost data. Missing usage is not a claim that the work was free. Snapshots refresh on settle/close, not continuously, and are not guaranteed provider billing amounts. Resume replaces a child's snapshot rather than adding the same session twice.
+- Each child has `unread` (report/error/input/cancellation updates), `unreadAssistant` (assistant output only), and `unreadUpdates` (all updates, including lifecycle/sent echoes). These count retained updates after the default read cursor, not tokens, new runs, or pending notifications. Explicit replay reads and notification delivery do not advance that cursor. An unread result remains readable even after its notification is dismissed by close.
+
+Cap, policy, CLI and directory preflight rejections no longer create child records or diagnostic paths. A real process launch failure remains inspectable. Legacy never-started cap-rejection records are hidden by default; `subagent_list({ "includeRejected": true })` includes them with `rejected: true`, but they remain excluded from totals, footer counts and implicit wait-all selection. Explicit reads by ID still work. Only attached child processes count toward the live cap.
+
 `subagent_read` advances a persistent cursor unless `since` is supplied. Either kind of read acknowledges the updates actually returned, cancelling their pending notifications; a partial page does not acknowledge omitted updates. Returned extension UI requests are acknowledged too. If the formatted tool result exceeds its cap and spills to disk, it does not advance the read cursor or acknowledge unseen output. The last 100 updates are retained, each capped at 12,000 characters; a read returns about 24,000 characters and explicitly reports cursor gaps. Tool results are capped at 30KB/1000 lines, with overflow saved to a private result file.
 
 ## Non-recursion: invariant, not policy
@@ -113,7 +133,7 @@ This does **not** prevent a child with unrestricted bash from invoking Pi itself
 
 ## Reports and UI
 
-Completion, failure and extension input requests become durable **pending notifications in the manager**, not immediately queued parent messages. Reading an update through `subagent_read` acknowledges it, removing its pending notification—even if that read happens just before the child settles. Acknowledgement is keyed by child ID and update cursor, so reading an earlier result cannot suppress a newer run. `subagent_list` and `subagent_wait` do not acknowledge findings.
+Completion, failure and extension input requests become durable **pending notifications in the manager**, not immediately queued parent messages. Reading an update through `subagent_read` acknowledges it, removing its pending notification—even if that read happens just before the child settles. Acknowledgement is keyed by child ID and update cursor, so reading an earlier result cannot suppress a newer run. `subagent_list` and `subagent_wait` do not acknowledge findings. Explicit `subagent_close` dismisses that child's pending notifications, even if its result was never read. It does not delete or advance the result history. Already-delivered reports cannot be retracted. Parent reload/exit shutdown is different: unread pending notices are preserved for recovery.
 
 While the parent is working, notices stay in the manager. When it settles (or when a notice arrives while it is already idle), a short 100ms batching window collects remaining unread notices into one attributed custom report, with at most eight short summaries per batch. Idle state and pending notices are rechecked immediately before sending. Remaining batches wait for another idle opportunity. A report is marked delivered only when it enters the parent's message history; it is not announced again. Pending notices and read/delivery acknowledgements persist across reloads. Startup reconciles saved report receipts with the registry, and expired/stopped-child dialogs are discarded. Old registries without a pending queue do not synthesize historical notifications.
 
@@ -127,7 +147,7 @@ These reports are delegated work output, **not user instructions or permission g
 /subagents close-all
 ```
 
-The TUI summary is `subagents: active/total • $cost` (three decimal places), lowercase and theme-dim, right-aligned above the model. Active counts starting, working and waiting-for-input children; total counts all tracked children in this parent session, including closed/failed attempts. Cost sums the latest cumulative Pi session-stat snapshots, including closed children; resuming a child updates its existing snapshot rather than adding its previous cost again. Snapshots refresh when runs settle and before processes close, so running work may not yet be included. Missing/unavailable usage contributes zero until reported. These are Pi-reported costs, not guaranteed subscription billing amounts. Narrow terminals get a separate row. `src/footer.ts` decorates the actual `FooterComponent.prototype.render`; it is an isolated process-wide compatibility hook, not a supported Pi decoration API. It preserves stock rendering and restores the original method on shutdown. It assumes the directory/model remain the first two rows; completely custom footers that do not use that class are unaffected. RPC clients receive a normal status entry.
+The TUI summary is `subagents: active/total • $cost` (three decimal places), lowercase and theme-dim, right-aligned above the model. Active counts starting, working and waiting-for-input children; total counts all tracked children in this parent session, including closed children and actual launch failures, but not preflight rejections. Cost sums the latest cumulative Pi session-stat snapshots, including closed children; resuming a child updates its existing snapshot rather than adding its previous cost again. Snapshots refresh when runs settle and before processes close, so running work may not yet be included. Missing/unavailable usage contributes zero until reported. These are Pi-reported costs, not guaranteed subscription billing amounts. Narrow terminals get a separate row. `src/footer.ts` decorates the actual `FooterComponent.prototype.render`; it is an isolated process-wide compatibility hook, not a supported Pi decoration API. It preserves stock rendering and restores the original method on shutdown. It assumes the directory/model remain the first two rows; completely custom footers that do not use that class are unaffected. RPC clients receive a normal status entry.
 
 ## Persistence, reload, and migration
 
@@ -148,4 +168,4 @@ npm run check
 npm test
 ```
 
-Tests include policy precedence/trust, fail-closed parsing, model/resource filtering, prompt compilation, symlink boundaries, non-recursion, schema escape-hatch removal, lifecycle/cancellation/recovery, notification batching/read acknowledgements/reload recovery, and real Pi RPC policy enforcement using a deterministic local provider. End-to-end parent/child RPC tests verify that reading suppresses notifications and unread results trigger exactly one acknowledged report. No real credentials or provider calls are needed for automated tests.
+Tests include policy precedence/trust, fail-closed parsing, model/resource filtering, prompt compilation, symlink boundaries, non-recursion, schema escape-hatch removal, lifecycle/cancellation/recovery, notification batching/read acknowledgements/explicit-close dismissal/reload recovery, reported-cost totals and report-only unread counts, preflight rejection without phantom records, both native-abort and Codex-shaped error-abort events with genuine-failure race coverage, and real Pi RPC policy enforcement using a deterministic local provider. End-to-end parent/child RPC tests verify that reading suppresses notifications and unread results trigger exactly one acknowledged report. No real credentials or provider calls are needed for automated tests.

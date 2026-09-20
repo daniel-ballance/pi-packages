@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "example-cloud/example-explorer:medium",
+      "description": "Provisional guidance: prefer exploration and concise evidence gathering. Escalate interacting constraints or multi-file implementation to a locally validated alternative."
+    },
+    {
+      "id": "example-cloud/example-implementer:xhigh",
+      "description": "Provisional implementation candidate for scoped changes and multi-step debugging. Require independent tests and patch review; prefer a cheaper validated alternative for simple lookup."
+    }
+  ],
+  "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
+  "extensions": [],
+  "skills": [],
+  "promptTemplates": [],
+  "themes": [],
+  "systemPrompt": false,
+  "appendSystemPrompt": true,
+  "contextFiles": true,
+  "maxChildren": 4,
+  "workingDirectories": ["."]
+}

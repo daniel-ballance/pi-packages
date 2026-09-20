@@ -7,9 +7,9 @@ let working = false;
 let pendingUI = false;
 const emit = data => process.stdout.write(JSON.stringify(data) + '\n');
 const respond = (cmd, data) => emit({ type: 'response', id: cmd.id, command: cmd.type, success: true, data });
-const settle = (text, error = false) => {
+const settle = (text, error = false, stopReason = error ? 'error' : 'stop') => {
   clearTimeout(timer); working = false;
-  emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text }], stopReason: error ? 'error' : 'stop', errorMessage: error ? text : undefined } });
+  emit({ type: 'message_end', message: { role: 'assistant', content: text ? [{ type: 'text', text }] : [], stopReason, errorMessage: error ? text : undefined } });
   emit({ type: 'agent_settled' });
 };
 let buffer = '';
@@ -20,7 +20,7 @@ process.stdin.on('data', chunk => {
   while ((nl = buffer.indexOf('\n')) >= 0) {
     const cmd = JSON.parse(buffer.slice(0, nl)); buffer = buffer.slice(nl + 1);
     if (cmd.type === 'get_state') respond(cmd, { sessionFile: file, sessionId: 'fake-session', model: { provider: 'test', id: 'fake' }, thinkingLevel: 'medium', isStreaming: working });
-    else if (cmd.type === 'get_session_stats') respond(cmd, { userMessages: history.length, cost: 0 });
+    else if (cmd.type === 'get_session_stats') respond(cmd, { userMessages: history.length, cost: Number(process.env.TEST_COST ?? 0) });
     else if (cmd.type === 'prompt') {
       if (working && !cmd.streamingBehavior) { emit({ type: 'response', id: cmd.id, success: false, error: 'Already working' }); continue; }
       history.push(cmd.message); writeFileSync(file, JSON.stringify(history));
@@ -41,10 +41,27 @@ process.stdin.on('data', chunk => {
         emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'early result' }], stopReason: 'stop' } });
         timer = setTimeout(() => { working = false; emit({ type: 'agent_settled' }); }, 150);
       }
-      else timer = setTimeout(() => settle(`${history.length}:${cmd.message}`, cmd.message === 'error'), cmd.message.startsWith('slow') ? 5000 : 25);
+      else timer = setTimeout(() => cmd.message === 'unrequested-cancel-error'
+        ? settle('The operation was aborted.', true)
+        : settle(`${history.length}:${cmd.message}`, cmd.message === 'error'), cmd.message.startsWith('slow') ? 5000 : 25);
     }
-    else if (cmd.type === 'clear_queue') respond(cmd, { steering: [], followUp: [] });
-    else if (cmd.type === 'abort') { if (working) settle('aborted'); respond(cmd); }
+    else if (cmd.type === 'clear_queue') {
+      if (working && history.at(-1) === 'slow-on-clear') settle('The operation was aborted.', true);
+      respond(cmd, { steering: [], followUp: [] });
+    }
+    else if (cmd.type === 'abort') {
+      if (!working && history.at(-1) === 'accept-before-start') {
+        clearTimeout(timer); working = true; emit({ type: 'agent_start' });
+      }
+      if (working) {
+        const last = history.at(-1);
+        if (last === 'slow-genuine') settle('429 quota exceeded', true);
+        else if (last === 'slow-native') settle('', false, 'aborted');
+        else settle('The operation was aborted.', true); // Real openai-codex representation.
+      }
+      if (history.at(-1) === 'slow-delayed-ack') setTimeout(() => respond(cmd), 80);
+      else respond(cmd);
+    }
     else if (cmd.type === 'extension_ui_response' && pendingUI) { pendingUI = false; settle(`confirmed=${cmd.confirmed}`); }
     else emit({ type: 'response', id: cmd.id, success: false, error: 'Unknown command' });
   }

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "example-local/example-quantized-model:off",
+      "description": "Provisional local exploration candidate. Base-model benchmark results are indirect evidence, not measurements of this quantization/runtime. Validate tool calls, grounding, latency and resource usage before expanding scope or concurrency."
+    }
+  ],
+  "tools": ["read", "grep", "find", "ls"],
+  "extensions": ["./providers/local-provider.ts"],
+  "skills": [],
+  "promptTemplates": [],
+  "themes": [],
+  "systemPrompt": false,
+  "appendSystemPrompt": true,
+  "contextFiles": false,
+  "maxChildren": 1,
+  "workingDirectories": ["."]
+}

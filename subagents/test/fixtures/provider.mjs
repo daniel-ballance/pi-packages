@@ -20,13 +20,17 @@ export default function (pi) {
         stream.push({ type: "done", reason: "stop", message: output });
         stream.end();
       };
-      if (text.endsWith("slow")) {
+      if (/slow(?:-codex|-genuine)?$/.test(text)) {
         const timer = setTimeout(finish, 10000);
-        options?.signal?.addEventListener("abort", () => {
+        const abort = () => {
           clearTimeout(timer);
-          stream.push({ type: "error", reason: "aborted", error: { ...output, content: [], stopReason: "aborted" } });
+          const stopReason = text.endsWith("slow") ? "aborted" : "error";
+          const errorMessage = text.endsWith("slow-codex") ? "The operation was aborted." : "429 quota exceeded";
+          stream.push({ type: "error", reason: stopReason, error: { ...output, content: [], stopReason, errorMessage } });
           stream.end();
-        }, { once: true });
+        };
+        if (options?.signal?.aborted) abort();
+        else options?.signal?.addEventListener("abort", abort, { once: true });
       } else queueMicrotask(finish);
       return stream;
     }

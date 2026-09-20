@@ -1,0 +1,89 @@
+# Configuring `subagents.json`
+
+This reference describes this package's policy, not Pi's provider registry or global settings. See the [package README](../../../README.md) for the complete contract.
+
+## Scope and precedence
+
+The first existing eligible file wins as a **whole-file replacement**:
+
+1. `<parent launch cwd>/.pi/subagents.json`, only when that project is trusted.
+2. `<Pi agent directory>/subagents.json`, normally `~/.pi/agent/subagents.json`.
+3. The package's built-in defaults.
+
+The Pi agent directory can be customized. Inspect the actual runtime/configuration rather than assuming the default home path. Project policy lookup uses the parent's launch cwd: it does not walk up to find a parent repository's policy. Changing a child's cwd does not select a different policy. Resource availability is rechecked, but editing a policy requires parent reload.
+
+An untrusted project's policy is ignored. A malformed selected file disables new spawning/resumption; it does **not** fall back to a more permissive file. Existing children remain listable/readable/abortable/closable. A policy edit does not silently change a running child's tools.
+
+A project override must restate every capability it needs from the global configuration. Do not describe it as an overlay. If deleting a project policy is authorized, explain that the global or built-in policy underneath it will become effective; deletion is not equivalent to disabling delegation.
+
+## Fields and defaults
+
+| Field | Meaning |
+|---|---|
+| `version` | Required, currently `1`. |
+| `models` | Required array of `{ "id": "provider/model:thinking", "description": "optional guidance" }`. Exact identities, no aliases/fallbacks. |
+| `tools` | Allowed tool names; omitted means none. Spawn still chooses an explicit subset. Recursive `subagent_*` tools are always forbidden. |
+| `extensions`, `skills`, `promptTemplates`, `themes` | Allowed explicit resource **files**; omitted means none. Not packages, globs, or directories. |
+| `systemPrompt`, `appendSystemPrompt` | Allow replacing/appending system-prompt text; omitted means false. Omit both spawn arguments to keep Pi's normal prompt behavior. |
+| `contextFiles` | Permit normal AGENTS.md/CLAUDE.md discovery; omitted means false. Children may opt out. This is distinct from the system prompt. |
+| `workingDirectories` | Allowed roots and descendants; default `["."]`. Real paths are checked. |
+| `maxChildren` | Live-process cap, including idle children; integer 1–64, default 4. Not a cost, token or tool-execution limit. |
+
+Unknown policy fields fail validation. There are no `profiles`, per-model tool permissions, routing rules, cost ceilings, benchmark-score fields or automatic escalation settings. Keep research evidence outside the policy; summarize recommendations in `description`.
+
+**Relative paths have two different bases:**
+
+- Resource files resolve relative to the selected configuration file's directory. `./providers/local.ts` in `.pi/subagents.json` means `.pi/providers/local.ts`.
+- `workingDirectories` resolve relative to the **parent launch cwd**, even in a global policy. `"."` is a portable launch-directory boundary, not the Pi agent directory. Absolute roots and `~/` paths are supported.
+
+Directories must exist; use exact real absolute paths from the catalog in spawn requests. Shell `bash` grants broad machine access despite a restricted starting cwd. Even without bash, this package is not a filesystem sandbox: file tools and trusted extensions can access outside cwd. Prompt instructions and working-directory restrictions do not provide OS-level isolation.
+
+## Complete example policies
+
+These examples are syntactically/schema-valid templates, **not ready-to-run model registrations**. Every `example-*` provider/model identity is deliberately a placeholder. Replace it with an exact locally registered/authenticated Pi identity and a supported thinking level; `off`, `medium`, and `xhigh` are illustrative, not universally supported. Never copy a benchmark's `max` label into Pi without verifying its mapping.
+
+Each example is a separate whole policy, not a fragment to merge automatically:
+
+### Global: conservative exploration
+
+[global-readonly.subagents.json](../examples/global-readonly.subagents.json)
+
+Suggested destination: `<Pi agent directory>/subagents.json`. Offers one exploration model and read/search tools, no shell/edit/write tools, two live children, and cwd limited to the launch tree. This reduces permitted actions; it is **not** a sandbox or a guarantee that arbitrary trusted code is read-only.
+
+### Trusted project: exploration plus implementation
+
+[project-development.subagents.json](../examples/project-development.subagents.json)
+
+Suggested destination: `<project launch cwd>/.pi/subagents.json`. Offers separate exploration and harder-reasoning entries with editing/testing tools. All listed models are permitted to select any listed tool; their descriptions recommend usage, not enforce roles. This example deliberately restates tools and permissions because it replaces the global policy entirely.
+
+To enforce a read/search-only policy, remove write/edit/bash capabilities from the effective policy for **all** children. To isolate execution, use an external OS/container boundary; model descriptions cannot do this.
+
+### Local deployment: custom provider and limited concurrency
+
+[local-provider.subagents.json](../examples/local-provider.subagents.json)
+
+Suggested destination: whichever of the above scopes the user intends. Starts with one live child to avoid assuming a local server can sustain concurrency; measure before increasing it. Allows an explicit custom provider extension at `./providers/local-provider.ts`, relative to that chosen policy file. Replace the example resource path with the actual trusted extension file.
+
+The parent must already have the provider/model registered to advertise it. The child must also receive that provider, either through its normal Pi provider configuration or an explicitly allowlisted **and selected** extension. Adding an extension to the allowlist does not automatically select/load it for every child. Use the catalog's resolved absolute extension path in the spawn `extensions` array. If the provider is defined in Pi's model configuration instead, omit the unnecessary extension entry.
+
+A quantized model served through a compatible API still needs working tool-call serialization, chat templates and reasoning controls. A successful plain-chat request does not establish agent compatibility. Do not assume an API key is required or not required: follow that provider's registration/authentication behavior in Pi. Do not put credentials in `subagents.json`.
+
+### Disable new delegation at a scope
+
+[disabled.subagents.json](../examples/disabled.subagents.json)
+
+An empty `models` array intentionally permits no spawning/resumption. It does not kill existing children; use explicit close for cleanup. This is different from removing the selected policy and revealing defaults underneath.
+
+## Safe setup and verification
+
+1. Inspect existing policies and ask which scope to change. Preserve unrelated fields and permissions; explain the full-file precedence. Before replacing a file, make an authorized backup outside active policy lookup paths.
+2. Resolve exact models/thinking levels through Pi's installed registry/provider setup. For a not-yet-allowlisted model, absence from `subagent_catalog` alone says nothing about whether Pi supports it. Configure/register it first if needed; do not guess an identity from marketing names.
+3. Adapt a complete example. Confirm all paths exist, selected resources are trusted, and no broader permission was added merely to make a model appear available.
+4. Parse as strict JSON (no comments/trailing commas). Check against this field table or the installed `parsePolicy` implementation. Syntax-valid JSON can still violate policy or refer to unavailable ingredients.
+5. Warn about live children, then reload that parent. Call `subagent_catalog`; ask the user to inspect `/subagents diagnostics` for omitted items. Expected usable entries must actually appear. Do not silently substitute another model or reasoning level.
+6. With authorization, spawn a small no-tools task, wait/read, send a recall follow-up, then close. Separately test any tools/resources the real workload requires in a disposable workspace. Confirm zero live test children afterward. A no-tools test is a denial-path check, not proof of a sandbox.
+7. To roll back, restore the approved prior whole file, reload, and recheck the catalog. Other open parents need their own reload.
+
+## Parent skill versus child skills
+
+Installing this package exposes `/skill:subagents` to the parent. It does not make this or other skills automatically available to children. To give a child a task-specific skill, allow its exact `SKILL.md` in `skills` and explicitly select the catalog's resolved path at spawn. The management skill is meant for the parent; allowing it in a child cannot grant recursive management tools.
