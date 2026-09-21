@@ -47,6 +47,7 @@ export class SubagentManager {
   private activeRuns = new Set<string>();
   private abortIntents = new Map<string, { revision: number; awaitingStart: boolean }>();
   private aborting = new Set<string>();
+  private usageRevision = new Map<string, number>();
   private registry: string;
   constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"]) => AgentRecord["config"]) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -283,6 +284,20 @@ export class SubagentManager {
     record.thinking = state.thinkingLevel;
     record.status = state.isStreaming ? "working" : "idle";
     this.update(record, "lifecycle", `Child ready: ${record.model ?? "no model"}, thinking=${record.thinking}`);
+    await this.refreshUsage(record);
+  }
+  private async refreshUsage(record: AgentRecord, timeout = 1000) {
+    const child = this.children.get(record.id);
+    if (!child) return;
+    const revision = (this.usageRevision.get(record.id) ?? 0) + 1;
+    this.usageRevision.set(record.id, revision);
+    try {
+      const stats = await child.request({ type: "get_session_stats" }, timeout);
+      // Ignore older responses and responses from a replaced/stopped process.
+      if (this.children.get(record.id) !== child || this.usageRevision.get(record.id) !== revision) return;
+      record.usage = stats;
+      this.persist(); // Also refreshes the parent's footer while the child is busy.
+    } catch { /* Keep the last known cumulative snapshot on failure. */ }
   }
   private event(record: AgentRecord, packet: Packet) {
     this.log(record.logFile, JSON.stringify(packet) + "\n");
@@ -304,6 +319,7 @@ export class SubagentManager {
         record.activity = `Tool: ${packet.toolName}`; this.changed(); break;
       case "message_end": {
         const message = packet.message;
+        if (message?.role === "assistant" || message?.role === "toolResult") void this.refreshUsage(record);
         if (message?.customType === "child-policy-check" && Array.isArray(message.details?.tools)) {
           this.verifiedTools.set(record.id, message.details.tools);
         }
@@ -325,6 +341,9 @@ export class SubagentManager {
         }
         break;
       }
+      case "turn_end":
+      case "compaction_end":
+        void this.refreshUsage(record); break;
       case "agent_settled": {
         this.activeRuns.delete(record.id);
         this.abortIntents.delete(record.id);
@@ -340,9 +359,7 @@ export class SubagentManager {
         if (!last) this.update(record, kind, text);
         this.persist();
         this.announce(record, kind, text, last?.cursor ?? record.cursor);
-        void this.children.get(record.id)?.request({ type: "get_session_stats" }).then(stats => {
-          record.usage = stats; this.persist();
-        }).catch(() => {});
+        void this.refreshUsage(record);
         break;
       }
       case "extension_error":
@@ -439,9 +456,7 @@ export class SubagentManager {
     await child.request({ type: "abort" }, 2000).catch(() => {});
     // Capture the final cumulative cost even when closing interrupts a run.
     // On failure retain the last known snapshot rather than resetting to zero.
-    await child.request({ type: "get_session_stats" }, 1000).then(stats => {
-      record.usage = stats; this.persist();
-    }).catch(() => {});
+    await this.refreshUsage(record);
     await child.stop();
     return this.summary(id);
   }

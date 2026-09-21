@@ -134,7 +134,8 @@ test("report counters exclude lifecycle/sent echoes; overview sums cumulative co
     assert.equal(a.unread, 0);
     assert.equal(a.unreadAssistant, 0);
     assert.equal(a.unreadUpdates, 2);
-    assert.equal(s.manager.overview().totals.missingCost, 1);
+    assert.equal(s.manager.overview().totals.missingCost, 0); // Startup now fetches a baseline snapshot.
+    assert.equal(s.manager.overview().totals.reportedCost, 0.25);
     await s.manager.abort(a.id);
     await s.manager.close(a.id);
     const b = await s.manager.spawn({ ...s.options, task: "answer", env: { TEST_COST: "0.5" } });

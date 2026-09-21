@@ -9,6 +9,7 @@ import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { SubagentPolicy } from "./src/policy.js";
 import { NoticeScheduler } from "./src/notifications.js";
+import { formatAgentListing } from "./src/usage.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
 const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path from subagent_catalog." })));
@@ -222,7 +223,7 @@ export default function subagents(pi: ExtensionAPI) {
       else if (action === "close" && target) await manager.close(target);
       else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | abort <id> | close <id> | close-all]");
       const records = manager.list();
-      ctx.ui.notify(records.map(r => `${r.id} · ${r.name} · ${r.status} · ${r.model ?? "no model"}`).join("\n") || "No subagents tracked.", "info");
+      ctx.ui.notify(records.map(formatAgentListing).join("\n") || "No subagents tracked.", "info");
     },
   });
 }

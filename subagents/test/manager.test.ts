@@ -10,9 +10,10 @@ const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url)
 async function setup(limit = 4) {
   const dir = await mkdtemp(join(tmpdir(), "subagent-test-"));
   const notices: Notice[] = [];
-  const manager = new SubagentManager(dir, n => notices.push(n), undefined, limit);
+  const costs: number[] = [];
+  const manager = new SubagentManager(dir, n => notices.push(n), () => costs.push(manager.overview().totals.reportedCost), limit);
   const spawn = (task: string) => manager.spawn({ name: task, task, cwd: dir, executable: process.execPath, executableArgs: [fixture] });
-  return { dir, manager, spawn, notices, async cleanup() { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); } };
+  return { dir, manager, spawn, notices, costs, async cleanup() { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); } };
 }
 
 test("JSONL framing preserves Unicode separators and split records", () => {
@@ -42,6 +43,23 @@ test("parallel children, incremental read, follow-up and usage", async () => {
     assert.equal(s.manager.read(a.id, 0).gap, false);
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal((s.manager.get(a.id).usage as { userMessages: number }).userMessages, 2);
+  } finally { await s.cleanup(); }
+});
+
+test("usage and footer refresh before a multi-turn child settles, without double counting", async () => {
+  const s = await setup();
+  try {
+    const a = await s.spawn("live-usage");
+    const deadline = Date.now() + 2000;
+    while ((s.manager.get(a.id).usage as { cost?: number })?.cost !== 0.125 && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(s.manager.get(a.id).status, "working");
+    assert.equal((s.manager.get(a.id).usage as { assistantMessages: number }).assistantMessages, 1);
+    assert.equal(s.manager.overview().totals.reportedCost, 0.125);
+    assert.ok(s.costs.includes(0.125), "UI change callback receives mid-run cost");
+    await s.manager.close(a.id);
+    assert.equal(s.manager.overview().totals.reportedCost, 0.25);
   } finally { await s.cleanup(); }
 });
 
