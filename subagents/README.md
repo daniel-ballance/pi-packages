@@ -133,6 +133,15 @@ This does **not** prevent a child with unrestricted bash from invoking Pi itself
 
 ## Reports and UI
 
+Tool calls use compact, themed TUI summaries instead of raw JSON by default:
+
+- **Catalog:** availability, model options, tool names and child limit.
+- **Spawn/send/resume/abort/close/respond:** child name, status, ID, model, turns and footer-style usage when available.
+- **List/wait:** child summaries and aggregate usage where supplied; timeouts and input requirements remain visible.
+- **Read:** the latest assistant reply rather than lifecycle/sent echoes, plus errors, pending input, history gaps and pagination warnings.
+
+Expand tool output (Ctrl+O by default, respecting Pi keybindings) to see the full returned JSON, including paths, policy guidance and all returned updates. Collapsed views bound reply previews and large lists; names and metadata truncate to terminal width. Truncated tool results explicitly show the saved full-result path. Rendering is presentation-only: model-facing content, RPC payloads, output caps and read acknowledgements are unchanged. Rendered statuses are snapshots at the time of each tool result, not live widgets.
+
 Completion, failure and extension input requests become durable **pending notifications in the manager**, not immediately queued parent messages. Reading an update through `subagent_read` acknowledges it, removing its pending notification—even if that read happens just before the child settles. Acknowledgement is keyed by child ID and update cursor, so reading an earlier result cannot suppress a newer run. `subagent_list` and `subagent_wait` do not acknowledge findings. Explicit `subagent_close` dismisses that child's pending notifications, even if its result was never read. It does not delete or advance the result history. Already-delivered reports cannot be retracted. Parent reload/exit shutdown is different: unread pending notices are preserved for recovery.
 
 While the parent is working, notices stay in the manager. When it settles (or when a notice arrives while it is already idle), a short 100ms batching window collects remaining unread notices into one attributed custom report, with at most eight short summaries per batch. Idle state and pending notices are rechecked immediately before sending. Remaining batches wait for another idle opportunity. A report is marked delivered only when it enters the parent's message history; it is not announced again. Pending notices and read/delivery acknowledgements persist across reloads. Startup reconciles saved report receipts with the registry, and expired/stopped-child dialogs are discarded. Old registries without a pending queue do not synthesize historical notifications.
