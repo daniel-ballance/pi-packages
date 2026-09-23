@@ -1,4 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { Duplex } from "node:stream";
+import { servePeer } from "./peer-transport.js";
+
+/** A negative RPC acknowledgement proves the command was not accepted. */
+export class RpcRejectedError extends Error {}
 
 export type Packet = Record<string, any>;
 
@@ -12,10 +17,10 @@ export class JsonlDecoder {
     while ((newline = this.buffer.indexOf("\n")) >= 0) {
       const line = this.buffer.slice(0, newline).replace(/\r$/, "");
       this.buffer = this.buffer.slice(newline + 1);
-      if (Buffer.byteLength(line) > this.maxBytes) throw new Error("RPC record exceeded 8 MiB");
+      if (Buffer.byteLength(line) > this.maxBytes) throw new Error(`JSONL record exceeded ${this.maxBytes} bytes`);
       if (line.trim()) this.receive(JSON.parse(line));
     }
-    if (Buffer.byteLength(this.buffer) > this.maxBytes) throw new Error("Unterminated RPC record exceeded 8 MiB");
+    if (Buffer.byteLength(this.buffer) > this.maxBytes) throw new Error(`Unterminated JSONL record exceeded ${this.maxBytes} bytes`);
   }
 }
 
@@ -31,11 +36,15 @@ export class RpcChild {
     executable: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv;
     event: (packet: Packet) => void; stderr: (text: string) => void;
     exit: (error?: Error) => void;
+    peerRequest?: (packet: Packet) => Promise<unknown>;
   }) {
+    const env = { ...options.env };
+    delete env.PI_SUBAGENT_PEER_FD;
+    if (options.peerRequest) env.PI_SUBAGENT_PEER_FD = "3";
     this.child = spawn(options.executable, options.args, {
-      cwd: options.cwd, env: options.env, stdio: ["pipe", "pipe", "pipe"],
+      cwd: options.cwd, env, stdio: options.peerRequest ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
-    });
+    }) as ChildProcessWithoutNullStreams;
     const fail = (error: Error) => {
       this.failure = error;
       this.rejectAll(error);
@@ -48,7 +57,7 @@ export class RpcChild {
           clearTimeout(waiter.timer);
           this.pending.delete(packet.id);
           if (packet.success) waiter.resolve(packet.data);
-          else waiter.reject(new Error(packet.error || "RPC command failed"));
+          else waiter.reject(new RpcRejectedError(packet.error || "RPC command failed"));
         }
       }
       options.event(packet);
@@ -70,6 +79,13 @@ export class RpcChild {
         resolve();
       });
     });
+    if (options.peerRequest) {
+      const peer = this.child.stdio[3] as Duplex | null;
+      try {
+        if (!peer) throw new Error("Failed to attach managed peer pipe");
+        servePeer(peer, options.peerRequest);
+      } catch (error) { fail(error as Error); }
+    }
   }
   private rejectAll(error: Error) {
     for (const waiter of this.pending.values()) { clearTimeout(waiter.timer); waiter.reject(error); }

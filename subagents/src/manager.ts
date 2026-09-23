@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSy
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, type Packet } from "./rpc.js";
 import type { Composition } from "./policy.js";
+import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
 
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
@@ -49,12 +50,15 @@ export class SubagentManager {
   private aborting = new Set<string>();
   private usageRevision = new Map<string, number>();
   private registry: string;
-  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"]) => AgentRecord["config"]) {
+  readonly peers: PeerBroker;
+  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"]) => AgentRecord["config"], readonly peerMessageLimit = 0) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     this.registry = join(directory, "registry.json");
+    let peerState: PeerState | undefined;
     if (existsSync(this.registry)) {
       const stored = JSON.parse(readFileSync(this.registry, "utf8"));
       if (stored.version !== 1 || !Array.isArray(stored.agents)) throw new Error("Unsupported subagent registry");
+      peerState = stored.peers;
       for (const record of stored.agents as AgentRecord[]) {
         // Keep old cap-preflight artifacts inspectable, but don't count
         // them as agents by default. Never hide actual process launch failures.
@@ -75,10 +79,21 @@ export class SubagentManager {
         if (record && notice.kind !== "input_requested" && !record.observedCursors?.includes(notice.cursor)) this.notices.set(notice.key, notice);
       }
     }
+    this.peers = new PeerBroker({
+      state: peerState, ceiling: peerMessageLimit, persist: () => this.persist(),
+      participant: id => {
+        const record = this.get(id);
+        if (this.shuttingDown || this.aborting.has(id)) throw new Error("Peer messaging unavailable during shutdown/abort");
+        if (!record.config.selection?.tools.includes("peer_send") || !record.config.tools?.includes("peer_send")) throw new Error(`${id} did not select peer_send`);
+        if (!this.children.has(id) || !["idle", "working"].includes(record.status)) throw new Error(`${id} is not a ready live peer (${record.status}); no implicit resume or human-input bypass`);
+        return { name: record.name };
+      },
+      deliver: (id, text) => this.send(id, text, "steer"),
+    });
   }
   private persist() {
     const temp = this.registry + ".tmp";
-    writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()], pendingNotices: [...this.notices.values()] }, null, 2), { mode: 0o600 });
+    writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()], pendingNotices: [...this.notices.values()], peers: this.peers?.state }, null, 2), { mode: 0o600 });
     renameSync(temp, this.registry);
     this.changed();
   }
@@ -243,9 +258,14 @@ export class SubagentManager {
     record.uiRequests = [];
     const child = new RpcChild({
       executable: config.executable || "pi", args, cwd: resolve(config.cwd), env,
+      peerRequest: config.selection?.tools.includes("peer_send") && this.peerMessageLimit > 0 ? async packet => {
+        if (this.children.get(record.id) !== child) throw new Error("Stale peer process");
+        return this.peers.send(record.id, packet.recipient, packet.message);
+      } : undefined,
       event: packet => this.event(record, packet),
       stderr: text => this.log(record.stderrFile, text),
       exit: error => {
+        this.peers.interrupt(record.id);
         this.children.delete(record.id);
         this.activeRuns.delete(record.id);
         this.abortIntents.delete(record.id);
@@ -327,6 +347,10 @@ export class SubagentManager {
         record.activity = `Tool: ${packet.toolName}`; this.changed(); break;
       case "message_end": {
         const message = packet.message;
+        if (message?.role === "user") {
+          const text = typeof message.content === "string" ? message.content : (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
+          this.peers.received(record.id, text);
+        }
         if (message?.role === "assistant") record.usage = noteAssistantCacheHit(record.usage, message);
         if (message?.role === "assistant" || message?.role === "toolResult") void this.refreshUsage(record);
         if (message?.customType === "child-policy-check" && Array.isArray(message.details?.tools)) {
@@ -437,6 +461,7 @@ export class SubagentManager {
       await child.request({ type: "abort" });
       return this.summary(id);
     } finally {
+      this.peers.interrupt(id);
       this.aborting.delete(id);
       // On timeout the run may still deliver cancellation later. Keep its scoped
       // intent until settle/new-run/exit, rather than misclassifying a late abort.
@@ -461,6 +486,7 @@ export class SubagentManager {
     }
     this.markAbortIntent(record);
     record.status = "stopping";
+    this.peers.interrupt(id);
     this.persist();
     // Cancel active tools before terminating the process. Cleanup still happens
     // if a wedged child cannot acknowledge cancellation.

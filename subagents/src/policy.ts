@@ -15,6 +15,7 @@ export interface PolicyConfig {
   extensions: string[]; skills: string[]; promptTemplates: string[]; themes: string[];
   systemPrompt: boolean; appendSystemPrompt: boolean; contextFiles: boolean;
   maxChildren: number; workingDirectories: string[];
+  peerMessageLimit: number;
 }
 export interface LocalModel {
   provider: string; id: string; input: readonly string[]; contextWindow: number; maxTokens: number;
@@ -29,7 +30,7 @@ export const DEFAULT_POLICY: PolicyConfig = {
   tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
   extensions: [], skills: [], promptTemplates: [], themes: [],
   systemPrompt: true, appendSystemPrompt: true, contextFiles: true,
-  maxChildren: 4, workingDirectories: ["."],
+  maxChildren: 4, workingDirectories: ["."], peerMessageLimit: 0,
 };
 const RESOURCES = ["extensions", "skills", "promptTemplates", "themes"] as const;
 const KNOWN = new Set(Object.keys(DEFAULT_POLICY));
@@ -62,12 +63,14 @@ export function parsePolicy(value: unknown): PolicyConfig {
   }
   const maxChildren = v.maxChildren ?? 4;
   if (typeof maxChildren !== "number" || !Number.isInteger(maxChildren) || maxChildren < 1 || maxChildren > 64) throw new Error("maxChildren must be an integer from 1 to 64");
+  const peerMessageLimit = v.peerMessageLimit === undefined ? 0 : v.peerMessageLimit;
+  if (typeof peerMessageLimit !== "number" || !Number.isInteger(peerMessageLimit) || peerMessageLimit < 0 || peerMessageLimit > 1000) throw new Error("peerMessageLimit must be an integer from 0 to 1000");
   return {
     version: 1, models, tools: strings(v.tools ?? [], "tools"),
     extensions: strings(v.extensions ?? [], "extensions"), skills: strings(v.skills ?? [], "skills"),
     promptTemplates: strings(v.promptTemplates ?? [], "promptTemplates"), themes: strings(v.themes ?? [], "themes"),
     systemPrompt: flags.systemPrompt, appendSystemPrompt: flags.appendSystemPrompt, contextFiles: flags.contextFiles,
-    maxChildren, workingDirectories: strings(v.workingDirectories ?? ["."], "workingDirectories"),
+    maxChildren, workingDirectories: strings(v.workingDirectories ?? ["."], "workingDirectories"), peerMessageLimit,
   };
 }
 export interface PolicyEnvironment {
@@ -97,7 +100,7 @@ export class SubagentPolicy {
     this.diagnostics = this.ignoredProject ? [this.ignoredProject] : [];
     if (!this.config) {
       this.diagnostics.push(`${this.source}: ${this.error}`);
-      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], workingDirectories: [] as string[], maxChildren: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false };
+      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], workingDirectories: [] as string[], maxChildren: 0, peerMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false };
     }
     const config = this.config;
     const available = this.environment.models();
@@ -111,6 +114,10 @@ export class SubagentPolicy {
     });
     const knownTools = new Set(this.environment.tools());
     const tools = config.tools.filter(tool => {
+      if (tool === "peer_send") {
+        if (config.peerMessageLimit > 0) return true;
+        this.diagnostics.push("peer_send requires a positive peerMessageLimit (ignored)"); return false;
+      }
       if (tool.startsWith("subagent_")) { this.diagnostics.push(`Forbidden recursive tool (ignored): ${tool}`); return false; }
       if (!knownTools.has(tool)) { this.diagnostics.push(`Tool not locally known (ignored): ${tool}`); return false; }
       return true;
@@ -134,7 +141,7 @@ export class SubagentPolicy {
       source: this.source, spawnEnabled: !!models.length && !!workingDirectories.length,
       models, tools, ...resources, workingDirectories,
       systemPrompt: config.systemPrompt, appendSystemPrompt: config.appendSystemPrompt,
-      contextFiles: config.contextFiles, maxChildren: config.maxChildren,
+      contextFiles: config.contextFiles, maxChildren: config.maxChildren, peerMessageLimit: config.peerMessageLimit,
       omittedEntries: this.diagnostics.length,
     };
   }

@@ -28,8 +28,9 @@ A project override must restate every capability it needs from the global config
 | `contextFiles` | Permit normal AGENTS.md/CLAUDE.md discovery; omitted means false. Children may opt out. This is distinct from the system prompt. |
 | `workingDirectories` | Allowed roots and descendants; default `["."]`. Real paths are checked. |
 | `maxChildren` | Live-process cap, including idle children; integer 1–64, default 4. Not a cost, token or tool-execution limit. |
+| `peerMessageLimit` | Integer 0–1000; default 0 disables peer messaging. Positive value caps each directional allowance. Also allowlist `peer_send` and explicitly select it in both participating children. Parent must then connect the pair; no implicit links. |
 
-Unknown policy fields fail validation. There are no `profiles`, per-model tool permissions, routing rules, cost ceilings, benchmark-score fields or automatic escalation settings. Keep research evidence outside the policy; summarize recommendations in `description`.
+Unknown policy fields fail validation. There are no `profiles`, per-model tool permissions, routing rules, cost ceilings, benchmark-score fields or automatic escalation settings. Peer-message counts bound exchanges, not token/cost usage; parent-only renewal can grant further exchanges. Keep research evidence outside the policy; summarize recommendations in `description`.
 
 **Relative paths have two different bases:**
 

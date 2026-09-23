@@ -8,7 +8,7 @@ Persistent Pi RPC children, composed by the parent from a user-controlled allowl
 pi install ./subagents
 ```
 
-Reload the parent manually or with `self_reload`. Tested with Pi 0.85.1 and Node 22+. TUI and RPC parents are supported.
+Reload the parent manually or with `self_reload`. Tested with Pi 0.85.1 (Node 22+) and Pi 0.87.1's bundled runtime on Linux. TUI and RPC parents are supported.
 
 ## Bundled setup and model-selection skill
 
@@ -50,6 +50,7 @@ The built-in policy is equivalent to the following (model descriptions abbreviat
   "appendSystemPrompt": true,
   "contextFiles": true,
   "maxChildren": 4,
+  "peerMessageLimit": 0,
   "workingDirectories": ["."]
 }
 ```
@@ -62,6 +63,7 @@ The built-in policy is equivalent to the following (model descriptions abbreviat
 - `systemPrompt` and `appendSystemPrompt` permit freely composed text for the corresponding CLI flags. Omit both spawn fields to use Pi's normal default/`SYSTEM.md`; supply `appendSystemPrompt` to augment it, or `systemPrompt` to replace it. Both may be supplied, matching CLI semantics. Pi may interpret an existing file path as prompt-file input, as it does on its CLI.
 - `contextFiles` permits normal `AGENTS.md`/`CLAUDE.md` context discovery. It does not replace system-prompt handling. Children can opt out even when permitted. The resolved choice is saved for resume validation.
 - `workingDirectories` permits directory roots and their descendants. Relative roots resolve against the parent launch cwd, **not** the configuration directory. Real paths are checked so symlink traversal cannot escape an allowed root. The default is `["."]`.
+- `peerMessageLimit` is an integer from 0 to 1000, default **0 (disabled)** in both built-in and user policies. A positive value caps each directional peer-message allowance. Also allowlist `peer_send` and explicitly select it in each participating child's `tools`. No existing policy gains communication implicitly. This limits message-triggered turns, not tokens or provider costs.
 - `maxChildren` is the live-process cap, including idle children, from 1 to 64 (default 4). The previous `PI_SUBAGENTS_MAX_CHILDREN` override is no longer used.
 - In user files, omitted tools/resources mean empty allowlists and omitted permission booleans mean `false`. They do not inherit built-in permissions. Unknown configuration fields are errors.
 
@@ -85,6 +87,10 @@ Configured credentials do not guarantee a successful request: expired authentica
 | `subagent_spawn` | Compose and start a child; returns prompt acceptance, not completion |
 | `subagent_list` | `{ totals, agents }`: aggregate reported cost/live counts plus child status, unread counts, usage and paths |
 | `subagent_send` | Prompt an idle child, or explicitly steer/queue a follow-up for a working child |
+| `subagent_connect` | Parent authorizes a bidirectional peer link with independent directional allowances |
+| `subagent_disconnect` | Disable a link without erasing counters/history or stopping children |
+| `subagent_renew` | Parent explicitly replenishes one direction's allowance |
+| `subagent_peers` | Inspect links/counters and paginated peer-message history |
 | `subagent_read` | Read new output or replay from a cursor |
 | `subagent_wait` | Wait for any/all selected children, at most 60 seconds per call |
 | `subagent_abort` | Clear queues and cancel work, keeping the child alive |
@@ -124,6 +130,36 @@ Abort intent is scoped to the current run and recorded before cancellation reque
 Cap, policy, CLI and directory preflight rejections no longer create child records or diagnostic paths. A real process launch failure remains inspectable. Legacy never-started cap-rejection records are hidden by default; `subagent_list({ "includeRejected": true })` includes them with `rejected: true`, but they remain excluded from totals, footer counts and implicit wait-all selection. Explicit reads by ID still work. Only attached child processes count toward the live cap.
 
 `subagent_read` advances a persistent cursor unless `since` is supplied. Either kind of read acknowledges the updates actually returned, cancelling their pending notifications; a partial page does not acknowledge omitted updates. Returned extension UI requests are acknowledged too. If the formatted tool result exceeds its cap and spills to disk, it does not advance the read cursor or acknowledge unseen output. The last 100 updates are retained, each capped at 12,000 characters; a read returns about 24,000 characters and explicitly reports cursor gaps. Tool results are capped at 30KB/1000 lines, with overflow saved to a private result file.
+
+## Peer communication
+
+Opt in with `"peerMessageLimit": 10` and add `"peer_send"` to the policy's tool allowlist. Reload, then spawn participating children with `peer_send` explicitly selected. This tool is provided by the mandatory guard; no extra extension/resource is required. Children without it cannot participate. The parent does not receive `peer_send`.
+
+After spawning A, B and C, authorize only B↔C:
+
+```text
+subagent_connect({ a: B_ID, b: C_ID, limit: 3 })
+```
+
+Tell B and C their peer IDs using ordinary parent prompts. Each may now call `peer_send({ recipient: OTHER_ID, message: "findings or question" })`. B can send C three messages and C can independently send B three. A cannot send to or receive from either. Links are not transitive. No channel, broadcast or polling inbox is implied.
+
+The manager binds sender identity to a private inherited process pipe. Message text cannot supply a different sender or call parent management tools. Recipients receive manager-attributed peer work output, **not user instructions, permissions or human approvals**. A leading slash in the body is escaped inside the envelope, never dispatched as a command. Unrestricted bash and trusted extensions still have host access; this is not a sandbox.
+
+Delivery uses RPC `prompt` with `streamingBehavior: "steer"`: working recipients get steering at a tool boundary; idle recipients start a new turn. Pi makes this choice, avoiding an external working→idle race. Starting/stopping/stopped/failed/waiting-for-input recipients and abort-in-progress are rejected. No process is implicitly resumed and no human dialog is answered. Ordinary assistant replies remain parent-visible; replying to a peer requires another explicit `peer_send` call. Existing completion/error/input notifications still apply; peer messages themselves do not generate extra parent notices.
+
+### Allowances and delivery state
+
+- Every send reserves a slot **before** asynchronous submission. Concurrent calls cannot overspend. The result includes a stable message ID and remaining allowance.
+- Definitive RPC rejection refunds the slot (`rejected`). Timeout/transport failure retains it (`unknown`); ask the parent to inspect before retrying. No automatic replay or retry.
+- `accepted` means RPC accepted/queued, not completion. `received` means the matching message entered the recipient's conversation, not proof the model read or answered it. Parent history can show `submitting` while a send is in flight.
+- Abort/close/reload may discard queued messages. Unconfirmed receipts are marked `interrupted`, retaining their consumed allowance. Already-received history stays received; interrupted messages are never automatically redelivered.
+- Disconnect prevents subsequent sends but cannot retract already-submitted ones. Reconnecting with no `limit` preserves both allowances, including exhaustion. Repeating connect is not renewal.
+- `subagent_renew({ sender, recipient, limit })` starts a new generation for **one direction**, resetting `used` while retaining lifetime `total`. It requires an enabled link and ready live peers and refuses in-flight sends for that direction. Renewal can cause additional model usage; use deliberately.
+- Links, counters and generations survive reload/resume. Current policy ceilings still apply; disabling communication prevents new sends/connections/renewals, not inspection/disconnection.
+
+`subagent_peers({ id?, since? })` shows links and up to five messages per page from the last 200 retained. Follow `nextCursor` while `hasMore`; `gap` reports evicted history. These are message-creation cursors, not status-change cursors: replay a page to refresh statuses. Message bodies are capped at 4000 characters. Counts outlive body eviction. Reading peer history does not acknowledge ordinary child reports. This is bounded audit history, not a durable delivery inbox or an exactly-once messaging guarantee.
+
+See [the design note](PEER-MESSAGING.md) for scope, failure semantics and acceptance tests.
 
 ## Non-recursion: invariant, not policy
 
@@ -172,7 +208,7 @@ A parent crash/SIGKILL may orphan processes; inspect and stop them before resumi
 
 ## Future directions
 
-The [roadmap](ROADMAP.md) records deferred ideas for inter-subagent communication, higher-level workflows and optional sandboxing, along with open design questions and constraints. These are exploratory directions, not implemented features or release commitments.
+The [roadmap](ROADMAP.md) records remaining communication ideas, higher-level workflows and optional sandboxing. Point-to-point peer messaging is implemented as described above; channels, shared boards, cross-parent messaging, workflow orchestration and sandboxing remain deferred.
 
 ## Development
 
@@ -181,6 +217,10 @@ cd subagents
 npm ci --ignore-scripts
 npm run check
 npm test
+# Also exercise the locally installed Pi executable (including its runtime):
+PEER_TEST_EXECUTABLE="$(command -v pi)" node --import tsx --test test/peers-rpc.test.ts test/peers-parent-rpc.test.ts
 ```
+
+Peer tests cover graph permissions/non-transitivity, sender spoof rejection, bounded transport, concurrent directional accounting, definite rejection versus uncertain acceptance, receipts, renewal/reconnect, policy downgrade, input-blocked/stopped recipients, cancellation, reload/resume, and real parent→child-tool→peer exchanges. `test/fixtures/peer-parent-provider.mjs` also drives the same parent tool sequence in an isolated TUI with the prompt `PEER SMOKE`; it uses a deterministic provider, not a paid model.
 
 Tests include policy precedence/trust, fail-closed parsing, model/resource filtering, prompt compilation, symlink boundaries, non-recursion, schema escape-hatch removal, lifecycle/cancellation/recovery, notification batching/read acknowledgements/explicit-close dismissal/reload recovery, reported-cost totals and report-only unread counts, preflight rejection without phantom records, both native-abort and Codex-shaped error-abort events with genuine-failure race coverage, and real Pi RPC policy enforcement using a deterministic local provider. End-to-end parent/child RPC tests verify that reading suppresses notifications and unread results trigger exactly one acknowledged report. No real credentials or provider calls are needed for automated tests.

@@ -4,12 +4,13 @@ import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-wor
 import { formatFooterStats, reportedCost } from "./usage.js";
 
 type Data = Record<string, unknown>;
-type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "resume" | "respond";
+type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers";
 type Color = Parameters<Theme["fg"]>[0];
 const titles: Record<Action, string> = {
   catalog: "Subagent catalog", spawn: "Spawn subagent", list: "Subagents", send: "Message subagent",
   read: "Read subagent", wait: "Wait for subagents", abort: "Abort subagent work",
   close: "Close subagent", resume: "Resume subagent", respond: "Respond to subagent",
+  connect: "Connect peers", disconnect: "Disconnect peers", renew: "Renew peer allowance", peers: "Peer exchanges",
 };
 const object = (value: unknown): Data | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value) ? value as Data : undefined;
@@ -103,6 +104,23 @@ function groupLines(data: Data, theme: Theme): string[] {
   return lines;
 }
 
+function peerLines(data: Data, theme: Theme): string[] {
+  const links = data.a ? [data] : array(data.links).map(object).filter((l): l is Data => !!l);
+  const lines: string[] = [];
+  for (const link of links.slice(0, 4)) {
+    const ab = object(link.ab), ba = object(link.ba);
+    lines.push(theme.fg(link.enabled ? "success" : "dim", `${inline(link.a)} ↔ ${inline(link.b)} · ${link.enabled ? "connected" : "disconnected"}`));
+    lines.push(theme.fg("muted", `  → ${count(ab?.used) ?? "?"}/${count(ab?.limit) ?? "?"} used · ← ${count(ba?.used) ?? "?"}/${count(ba?.limit) ?? "?"} used`));
+  }
+  if (links.length > 4) lines.push(theme.fg("dim", `… ${links.length - 4} more links`));
+  if (data.sender) lines.push(theme.fg("success", `${inline(data.sender)} → ${inline(data.recipient)} · generation ${count(data.generation) ?? "?"} · ${count(data.remaining) ?? "?"} remaining`));
+  const messages = array(data.messages).map(object).filter((m): m is Data => !!m);
+  for (const m of messages) lines.push(theme.fg("muted", `${inline(m.sender)} → ${inline(m.recipient)} · ${inline(m.status)} · ${inline(m.id)}`));
+  if (data.gap) lines.push(theme.fg("warning", "History gap · older exchanges no longer retained"));
+  if (data.hasMore) lines.push(theme.fg("warning", `More exchanges · continue from cursor ${count(data.nextCursor) ?? "?"}`));
+  return lines.length ? lines : [theme.fg("dim", "No peer links or exchanges.")];
+}
+
 function readLines(data: Data, width: number, theme: Theme): string[] {
   const lines = childLines(data, theme);
   if (data.gap === true) lines.push(theme.fg("warning", "History gap · some older updates are no longer retained"));
@@ -127,7 +145,7 @@ export function subagentRenderers(action: Action): Required<Pick<ToolDefinition,
     renderCall(args, theme) {
       return component(() => {
         const data = object(args) ?? {};
-        const target = inline(data.name) || inline(data.id);
+        const target = inline(data.name) || inline(data.id) || (data.a ? `${inline(data.a)} ↔ ${inline(data.b)}` : data.sender ? `${inline(data.sender)} → ${inline(data.recipient)}` : "");
         const scope = action === "wait" ? `${array(data.ids).length || "all"} children · ${inline(data.mode) || "all"} · ${count(data.timeoutSeconds) ?? 30}s` : target;
         return [theme.fg("toolTitle", theme.bold(titles[action])) + (scope ? theme.fg("dim", `  ${scope}`) : "")];
       });
@@ -145,6 +163,7 @@ export function subagentRenderers(action: Action): Required<Pick<ToolDefinition,
         else if (action === "catalog") lines = catalogLines(data, theme);
         else if (action === "list" || action === "wait") lines = groupLines(data, theme);
         else if (action === "read") lines = readLines(data, width, theme);
+        else if (["connect", "disconnect", "renew", "peers"].includes(action)) lines = peerLines(data, theme);
         else {
           lines = childLines(data, theme);
           if (action === "spawn" && data.task) lines.push(theme.fg("dim", `Task: ${inline(data.task)}`));

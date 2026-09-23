@@ -1,6 +1,6 @@
 # Subagents: future directions
 
-This records ideas deliberately deferred while building the persistent-child foundation. **It is not a release schedule or a specification of supported features.** Peer communication, higher-level workflows and sandboxing are not implemented. The design questions below are starting points, not settled API or configuration decisions.
+This records ideas deliberately deferred while building the persistent-child foundation. **It is not a release schedule.** Bounded point-to-point peer communication is now implemented; higher-level workflows, channels/shared boards, cross-parent communication and sandboxing are not. See the README for supported behavior; unresolved questions below are not settled API decisions.
 
 See the [README](README.md) for the current behavior and policy contract.
 
@@ -18,22 +18,17 @@ See the [README](README.md) for the current behavior and policy contract.
 
 **Goal:** let cooperating children exchange questions, findings and handoffs without making the parent manually relay every message.
 
-Today, the parent can read one child's findings and send relevant information to another. There is no dedicated peer messaging capability. A future communication interface must be distinct from management access; the current guard rejects all `subagent_*` tools in children, so both capability separation and tool naming need explicit design.
+**Implemented foundation:** parent-controlled bidirectional, non-transitive links; child-only `peer_send`; private process-bound transport; steering/new-turn delivery; persistent per-sender→recipient allowances and bounded parent-inspectable history. Parent-only connect/disconnect/renew/inspect tools remain under `subagent_*`, so the child guard still rejects every management tool. See [design and acceptance tests](PEER-MESSAGING.md) and the [README](README.md#peer-communication).
 
-### Questions to resolve
+### Still deferred
 
-- Should the manager broker messages, expose per-child inboxes, or use another transport? What must the parent be able to inspect or intervene in?
-- Does the parent explicitly permit individual sender/recipient pairs, groups, or communication within a particular task? What is the default-deny boundary?
-- Should the first version be restricted to children of the same parent? Cross-parent messaging would require a separate identity, ownership and authorization design; it is not implied by peer support.
-- How are sender identity, recipient identity, task/run identity and reply relationships authenticated and recorded, rather than accepted from model-written text?
-- When is a message considered accepted, delivered, read or answered? How do ordering, duplicate suppression and read acknowledgements survive reload?
-- What happens when a recipient is busy, awaiting human input, stopped, closed or resumed? Queuing a message must not silently restart an abandoned child or grant permission to resume it.
-- Should a message wake an idle child, wait for its next turn, or require parent approval? How do we prevent ping-pong conversations, unbounded inboxes and surprise provider usage?
-- Which peer exchanges merit a parent notification, and which should remain inspectable history? Existing read acknowledgement, idle batching and explicit-close dismissal should continue to make sense.
+- Channels or shared message boards: distinguish visibility from triggering work in every participant.
+- Multi-recipient delivery and authenticated reply/thread relationships, if concrete workflows need them.
+- Cross-parent messaging: requires separate identity, ownership and authorization design.
+- Durable delivery inboxes, automatic retry/deduplication and model-read/answered acknowledgements. Current receipt means entry into conversation, not model understanding; interrupted/unknown messages are not replayed.
+- More selective completion notifications for peer-driven work, if practical use shows existing child-completion reporting is too noisy.
 
-### Evidence needed before shipping
-
-Tests for unauthorized recipients and spoofed identities; durable delivery/read semantics; stopped-recipient and reload behavior; cancellation during an exchange; bounded messages and wakeups; and proof that messaging does not expose management or human-approval capabilities.
+Preserve explicit authorization, bounded work, cancellation/recovery and the separation from management/human approvals when extending the foundation.
 
 ## 2. Higher-level workflows and coordination
 
@@ -84,4 +79,4 @@ Treat that as an architectural option to evaluate if communication/workflow requ
 
 For each direction, capture a concrete user scenario, the smallest useful behavior, permission and lifecycle implications, failure cases, and acceptance tests before committing to an API or schema. Update this document as decisions are made, clearly separating implemented behavior from experiments and unresolved ideas.
 
-No new tool names, policy fields or compatibility commitments are established by this roadmap.
+Deferred ideas establish no new tool names, policy fields or compatibility commitments. Implemented peer API and policy are documented separately in the README.

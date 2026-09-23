@@ -12,7 +12,8 @@
     "src",
     "skills",
     "README.md",
-    "ROADMAP.md"
+    "ROADMAP.md",
+    "PEER-MESSAGING.md"
   ],
   "pi": {
     "extensions": [

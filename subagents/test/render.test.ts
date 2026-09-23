@@ -23,12 +23,24 @@ function render(action: Action, details: unknown, expanded = false, width = 120)
 test("all subagent tools register call/result renderers without changing execution schemas", () => {
   const tools: ToolDefinition[] = [];
   subagents({ on() {}, registerCommand() {}, registerTool(tool: ToolDefinition) { tools.push(tool); } } as unknown as ExtensionAPI);
-  assert.equal(tools.length, 10);
+  assert.equal(tools.length, 14);
   for (const tool of tools) {
     assert.equal(typeof tool.renderCall, "function", tool.name);
     assert.equal(typeof tool.renderResult, "function", tool.name);
     assert.equal(typeof tool.execute, "function", tool.name);
   }
+});
+
+test("peer renderers show directional budgets and receipt state with bounded widths", () => {
+  const data = { links: [{ a: "A", b: "B", enabled: true, ab: { used: 1, limit: 2 }, ba: { used: 0, limit: 2 } }],
+    messages: [{ sender: "A", recipient: "B", status: "received", id: "peer-123", message: "private body" }], gap: true, hasMore: true, nextCursor: 5 };
+  const text = render("peers", data);
+  assert.match(text, /A ↔ B · connected/); assert.match(text, /→ 1\/2 used · ← 0\/2 used/);
+  assert.match(text, /received/); assert.match(text, /History gap/); assert.match(text, /cursor 5/);
+  assert.doesNotMatch(text, /private body/);
+  assert.match(render("peers", data, true), /private body/);
+  assert.match(render("renew", { sender: "A", recipient: "B", generation: 2, remaining: 3 }), /generation 2 · 3 remaining/);
+  for (const line of render("peers", data, false, 30).split("\n")) assert.ok(visibleWidth(line) <= 30);
 });
 
 test("spawn shows a compact identity, status, model, usage and task instead of raw JSON", () => {
