@@ -18,6 +18,22 @@ function fixture() {
   return { root, cwd, environment, global, project, put: (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value)), cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
+test("deterministic workflow commands require explicit bash permission and an allowed directory", () => {
+  const f = fixture();
+  try {
+    f.put(f.global, { version: 1, models: DEFAULT_POLICY.models, tools: ["read"] });
+    const readonly = new SubagentPolicy(f.environment);
+    assert.equal(readonly.directory(f.cwd), f.cwd);
+    assert.throws(() => readonly.commandDirectory(f.cwd), /require bash/);
+    f.put(f.global, { version: 1, models: DEFAULT_POLICY.models, tools: ["bash"] });
+    const allowed = new SubagentPolicy(f.environment);
+    assert.equal(allowed.commandDirectory(f.cwd), f.cwd);
+    assert.throws(() => allowed.commandDirectory(f.root), /outside allowed/);
+    writeFileSync(f.global, "broken");
+    assert.throws(() => new SubagentPolicy(f.environment).commandDirectory(f.cwd), /require bash/);
+  } finally { f.cleanup(); }
+});
+
 test("built-in -> global -> trusted project: whole-file replacement, omitted capabilities stay disabled", () => {
   const f = fixture();
   try {

@@ -13,11 +13,14 @@ export interface SpawnOptions {
   executable?: string; executableArgs?: string[]; cliArgs?: string[];
   inheritExtensions?: boolean; env?: Record<string, string>;
   selection?: Composition;
+  /** Internal workflow ownership; not exposed by subagent_spawn. */
+  workflow?: string; deferTask?: boolean;
 }
 export interface Update { cursor: number; kind: string; text: string; time: string }
 export interface AgentRecord {
   id: string; name: string; task: string; status: Status;
-  config: Omit<SpawnOptions, "env" | "task" | "name">;
+  config: Omit<SpawnOptions, "env" | "task" | "name" | "workflow" | "deferTask">;
+  workflow?: string;
   sessionFile: string; sessionId?: string; logFile: string; stderrFile: string;
   createdAt: string; updatedAt: string; pid?: number;
   model?: string; thinking?: string; activity?: string; error?: string; lastError?: string;
@@ -46,6 +49,7 @@ export class SubagentManager {
   private verifiedTools = new Map<string, string[]>();
   private notices = new Map<string, Notice>();
   private activeRuns = new Set<string>();
+  private workflowChildren = new Set<string>();
   private abortIntents = new Map<string, { revision: number; awaitingStart: boolean }>();
   private aborting = new Set<string>();
   private usageRevision = new Map<string, number>();
@@ -111,7 +115,7 @@ export class SubagentManager {
     this.logSizes.set(path, size + Math.min(bytes.length, MAX_LOG - size));
   }
   private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
-    if (this.shuttingDown || record.observedCursors?.includes(cursor)) return;
+    if (this.shuttingDown || this.workflowChildren.has(record.id) || record.observedCursors?.includes(cursor)) return;
     const key = `${record.id}:${cursor}:${kind}`;
     if (this.notices.has(key)) return;
     const notice = { id: record.id, name: record.name, kind, text: text.slice(0, 4000), cursor, key, requestId };
@@ -206,12 +210,12 @@ export class SubagentManager {
   }
   async spawn(options: SpawnOptions) {
     const id = `subagent-${randomUUID().slice(0, 8)}`;
-    const { name, task, env, ...requested } = options;
+    const { name, task, env, workflow, deferTask, ...requested } = options;
     if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
     // No record/session/log paths for requests rejected before any launch attempt.
     const config = this.preflight(requested, env);
     const record: AgentRecord = {
-      id, name, task, config, status: "stopped",
+      id, name, task, config, workflow, status: "stopped",
       sessionFile: join(this.directory, `${id}.session.jsonl`),
       logFile: join(this.directory, `${id}.events.jsonl`),
       stderrFile: join(this.directory, `${id}.stderr.log`),
@@ -219,12 +223,14 @@ export class SubagentManager {
       updates: [], cursor: 0, readCursor: 0, uiRequests: [], hadEnvOverrides: !!env,
     };
     this.records.set(id, record);
+    if (workflow) this.workflowChildren.add(id);
     try {
       await this.start(record, env);
-      await this.send(id, task);
+      if (!deferTask) await this.send(id, task);
       return this.summary(id);
     } catch (error) {
       if (this.children.has(id)) await this.close(id);
+      this.workflowChildren.delete(id);
       record.status = "failed";
       record.error = String(error);
       this.update(record, "error", String(error));
@@ -470,6 +476,7 @@ export class SubagentManager {
   }
   async close(id: string, preserveNotices = false) {
     const record = this.get(id);
+    this.workflowChildren.delete(id);
     // Explicit close means abandon pending notifications, not erase results.
     // Reload/exit shutdown deliberately preserves unread results for recovery.
     if (!preserveNotices) {

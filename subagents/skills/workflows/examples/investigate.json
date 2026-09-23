@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "Investigate and synthesize",
+  "cwd": "/absolute/path/to/project",
+  "limits": { "concurrency": 2, "maxAttempts": 6, "timeoutSeconds": 300 },
+  "steps": [
+    {
+      "id": "implementation",
+      "kind": "task",
+      "worker": { "model": "example-provider/example-model:off", "tools": ["read", "find", "grep"], "contextFiles": false },
+      "instructions": "Investigate the current implementation of the user-specified feature. Do not edit source. Return file references, invariants and unknowns. Replace this instruction with the actual feature and relevant source paths."
+    },
+    {
+      "id": "tests",
+      "kind": "task",
+      "worker": { "model": "example-provider/example-model:off", "tools": ["read", "find", "grep"], "contextFiles": false },
+      "instructions": "Independently investigate existing tests for the same feature. Return evidence, coverage gaps and proposed acceptance criteria. Do not edit source."
+    },
+    {
+      "id": "synthesis",
+      "kind": "task",
+      "dependsOn": ["implementation", "tests"],
+      "worker": { "model": "example-provider/example-model:off", "tools": ["read"], "contextFiles": false },
+      "instructions": "Read both predecessor artifacts. Produce an implementation proposal separating evidence, inference and unresolved decisions. Do not treat either worker's confidence as proof."
+    },
+    {
+      "id": "accept",
+      "kind": "check",
+      "input": "synthesis",
+      "validator": { "kind": "human", "instructions": "Review the proposal and its evidence before authorizing implementation." }
+    }
+  ]
+}

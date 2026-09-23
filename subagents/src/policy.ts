@@ -145,14 +145,23 @@ export class SubagentPolicy {
       omittedEntries: this.diagnostics.length,
     };
   }
+  private checkedDirectory(cwd: string, roots: string[]) {
+    if (!isAbsolute(cwd)) throw new Error("cwd must be absolute");
+    const directory = this.path(cwd);
+    if (!statSync(directory).isDirectory() || !roots.some(root => {
+      const rel = relative(root, directory); return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
+    })) throw new Error("cwd is outside allowed workingDirectories");
+    return directory;
+  }
+  directory(cwd: string) { return this.checkedDirectory(cwd, this.catalog().workingDirectories); }
+  commandDirectory(cwd: string) {
+    if (!this.catalog().tools.includes("bash")) throw new Error("Workflow commands require bash in the subagent tool policy");
+    return this.directory(cwd);
+  }
   compile(cwd: string, selection: Composition): Omit<SpawnOptions, "name" | "task"> {
     const catalog = this.catalog();
     if (!catalog.spawnEnabled) throw new Error("No spawnable configuration. Inspect subagent_catalog; user diagnostics: /subagents diagnostics.");
-    if (!isAbsolute(cwd)) throw new Error("cwd must be absolute");
-    const directory = this.path(cwd);
-    if (!catalog.workingDirectories.some(root => {
-      const rel = relative(root, directory); return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
-    })) throw new Error("cwd is outside allowed workingDirectories");
+    const directory = this.checkedDirectory(cwd, catalog.workingDirectories);
     if (!catalog.models.some(m => m.id === selection.model)) throw new Error("Model/thinking selection is not currently allowed and usable; use subagent_catalog.");
     for (const tool of selection.tools) if (tool.startsWith("subagent_") || !catalog.tools.includes(tool)) throw new Error(`Tool not allowed: ${tool}`);
     const relativeToProject = relative(this.path(this.environment.cwd), directory);

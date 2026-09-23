@@ -23,7 +23,7 @@ function render(action: Action, details: unknown, expanded = false, width = 120)
 test("all subagent tools register call/result renderers without changing execution schemas", () => {
   const tools: ToolDefinition[] = [];
   subagents({ on() {}, registerCommand() {}, registerTool(tool: ToolDefinition) { tools.push(tool); } } as unknown as ExtensionAPI);
-  assert.equal(tools.length, 14);
+  assert.equal(tools.length, 17);
   for (const tool of tools) {
     assert.equal(typeof tool.renderCall, "function", tool.name);
     assert.equal(typeof tool.renderResult, "function", tool.name);

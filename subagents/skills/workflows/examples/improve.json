@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Bounded optimization experiment",
+  "cwd": "/absolute/path/to/project",
+  "limits": { "concurrency": 1, "maxAttempts": 12, "timeoutSeconds": 600 },
+  "steps": [
+    {
+      "id": "baseline",
+      "kind": "task",
+      "worker": { "model": "example-provider/example-model:off", "tools": ["read", "write"], "contextFiles": false },
+      "instructions": "Copy the user-specified implementation files into the supplied candidate directory without changes. Replace this instruction with exact source paths. Do not copy symlinks, dependencies or build caches. Preserve the source project and evaluator."
+    },
+    {
+      "id": "optimize",
+      "kind": "loop",
+      "mode": "improve",
+      "seed": "baseline",
+      "direction": "min",
+      "minImprovement": 0.01,
+      "maxIterations": 5,
+      "worker": { "model": "example-provider/example-model:off", "tools": ["read", "write", "edit"], "contextFiles": false },
+      "instructions": "Propose one latency improvement to the candidate while preserving correctness. Explain the hypothesis and trade-offs in the final reply. Change only candidate files, never the evaluator. Use prior results to guide the next hypothesis. Each iteration begins from the best accepted candidate.",
+      "validator": {
+        "kind": "command",
+        "command": "python3 /absolute/path/to/fixed-evaluator.py \"$WORKFLOW_CANDIDATE\""
+      }
+    }
+  ]
+}

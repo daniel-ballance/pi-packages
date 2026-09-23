@@ -16,6 +16,12 @@ Installation also exposes `/skill:subagents` (unless skills are filtered out in 
 
 This is parent-side guidance, not automatic configuration or child resource inheritance. It does not overwrite user policies or grant permissions. Example model IDs are placeholders and must be replaced with exact available Pi identities.
 
+## Workflows
+
+The bundled `/skill:workflows` helps the parent author and supervise JSON workflows using the same manager: task DAGs with explicit fan-out/all-input fan-in, command/agent/human checks, bounded repair and improvement loops, and optional peer task groups. The runtime schedules authorized work without manual parent relaying, retains artifact/validation history, and reports completion or exceptions rather than routine worker chatter.
+
+See [WORKFLOWS.md](WORKFLOWS.md) for the contract, examples, observability, limits and explicit recovery. Start/inspect/control tools are `subagent_workflow_start`, `subagent_workflow_inspect`, `subagent_workflow_control`; `/workflows` is the human interface. These remain parent-only under the existing non-recursion guard. No new daemon or workflow permission schema: workers use current subagent policy; deterministic commands additionally require its `bash` permission. Each run explicitly sets concurrency, total attempts and a wall-clock deadline. Candidate paths/digest checks are not an OS sandbox.
+
 ## Allowlist: `subagents.json`
 
 The highest-priority existing configuration wins, as a **whole-file replacement**:
@@ -97,6 +103,9 @@ Configured credentials do not guarantee a successful request: expired authentica
 | `subagent_close` | Abort and stop a child, dismissing pending notifications but retaining readable results and conversation |
 | `subagent_resume` | Revalidate a stopped child's saved composition, restart and optionally prompt it |
 | `subagent_respond` | Answer a pending extension dialog; human-required approvals remain human decisions |
+| `subagent_workflow_start` | Start a parent-authored JSON workflow; returns acceptance |
+| `subagent_workflow_inspect` | Inspect run/step progress, artifacts, validation and attempts |
+| `subagent_workflow_control` | Pause, explicitly resume/retry, or cancel a workflow |
 
 Example composition, after consulting the catalog:
 
@@ -208,7 +217,7 @@ A parent crash/SIGKILL may orphan processes; inspect and stop them before resumi
 
 ## Future directions
 
-The [roadmap](ROADMAP.md) records remaining communication ideas, higher-level workflows and optional sandboxing. Point-to-point peer messaging is implemented as described above; channels, shared boards, cross-parent messaging, workflow orchestration and sandboxing remain deferred.
+The [roadmap](ROADMAP.md) records remaining communication, workflow and isolation ideas. Point-to-point peer messaging and the bounded workflow foundation are implemented; channels, shared boards, cross-parent messaging, dynamic/nested workflow graphs and sandboxing remain deferred.
 
 ## Development
 

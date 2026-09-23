@@ -11,6 +11,9 @@ import { SubagentPolicy } from "./src/policy.js";
 import { NoticeScheduler } from "./src/notifications.js";
 import { formatAgentListing } from "./src/usage.js";
 import { subagentRenderers } from "./src/render.js";
+import { Workflows } from "./src/workflows.js";
+import { managerWorkflowHost } from "./src/workflow-host.js";
+import { registerWorkflowUI } from "./src/workflow-ui.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
 const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path from subagent_catalog." })));
@@ -26,6 +29,7 @@ export default function subagents(pi: ExtensionAPI) {
   let manager: SubagentManager | undefined;
   let notifications: NoticeScheduler | undefined;
   let policy: SubagentPolicy | undefined;
+  let workflows: Workflows | undefined;
   const getPolicy = (ctx: ExtensionContext) => policy ??= new SubagentPolicy({
     cwd: ctx.cwd, agentDir: getAgentDir(), projectTrusted: ctx.isProjectTrusted(),
     guardPath: fileURLToPath(new URL("./src/child-guard.ts", import.meta.url)),
@@ -53,6 +57,13 @@ export default function subagents(pi: ExtensionAPI) {
     }
     return manager;
   };
+  const getWorkflows = (ctx: ExtensionContext) => workflows ??= new Workflows(join(get(ctx).directory, "workflows"), managerWorkflowHost(get(ctx), () => getPolicy(ctx)), () => {
+    if (context?.hasUI && workflows) {
+      const running = (workflows.inspect() as { runs: { status: string; name: string }[] }).runs.filter(r => ["running", "pausing"].includes(r.status));
+      context.ui.setStatus("workflows", running.length ? `workflow: ${running[0].name}` : undefined);
+    }
+    notifications?.wake();
+  });
   const result = (data: unknown, ctx: ExtensionContext) => {
     const text = JSON.stringify(data, null, 2);
     const truncated = truncateHead(text, { maxBytes: 30000, maxLines: 1000 });
@@ -75,11 +86,12 @@ export default function subagents(pi: ExtensionAPI) {
       // entered history but before the registry acknowledgement was persisted.
       const delivered = ctx.sessionManager.getEntries().flatMap(entry =>
         entry.type === "custom_message" && entry.customType === "subagent-report" ? noticeKeys(entry.details) : []);
-      if (delivered.length) manager.markNoticesDelivered(delivered);
+      const workflows = getWorkflows(ctx);
+      if (delivered.length) { manager.markNoticesDelivered(delivered); workflows.markNoticesDelivered(delivered); }
       notifications?.dispose();
       notifications = new NoticeScheduler({
         idle: () => context?.isIdle() === true,
-        pending: () => manager.pendingNotices(),
+        pending: () => [...manager.pendingNotices(), ...workflows.pendingNotices()],
         send: batch => pi.sendMessage({
           customType: "subagent-report", content: batch.content, display: true,
           details: { noticeKeys: batch.notices.map(notice => notice.key) },
@@ -100,6 +112,7 @@ export default function subagents(pi: ExtensionAPI) {
       const keys = noticeKeys(event.message.details);
       if (keys.length) {
         manager?.markNoticesDelivered(keys);
+        workflows?.markNoticesDelivered(keys);
         notifications?.delivered(keys);
       }
     }
@@ -107,16 +120,20 @@ export default function subagents(pi: ExtensionAPI) {
   pi.on("session_shutdown", async () => {
     notifications?.dispose();
     notifications = undefined;
-    try { await manager?.shutdown(); }
+    try { await workflows?.shutdown(); await manager?.shutdown(); }
     finally {
       restoreFooter?.();
       restoreFooter = undefined;
       footerLabel = "";
       manager = undefined;
+      workflows = undefined;
+      context?.ui.setStatus("workflows", undefined);
       policy = undefined;
       context = undefined;
     }
   });
+
+  registerWorkflowUI(pi, getWorkflows, result);
 
   pi.registerTool({
     name: "subagent_catalog", label: "Subagent Catalog",

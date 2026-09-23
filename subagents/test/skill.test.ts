@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 import { parsePolicy } from "../src/policy.js";
+import { parseWorkflow } from "../src/workflow-definition.js";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const skill = join(root, "skills/subagents");
@@ -15,9 +16,8 @@ test("package explicitly discovers and ships the parent skill without validation
   assert.deepEqual(manifest.pi.skills, ["./skills"]);
   const loaded = loadSkillsFromDir({ dir: join(root, "skills"), source: "test" });
   assert.deepEqual(loaded.diagnostics, []);
-  assert.equal(loaded.skills.length, 1);
-  assert.equal(loaded.skills[0].name, "subagents");
-  assert.equal(loaded.skills[0].filePath, join(skill, "SKILL.md"));
+  assert.deepEqual(loaded.skills.map(s => s.name).sort(), ["subagents", "workflows"]);
+  assert.equal(loaded.skills.find(s => s.name === "subagents")?.filePath, join(skill, "SKILL.md"));
 });
 
 test("every shipped example is valid whole-policy JSON with unmistakable placeholder models", () => {
@@ -32,8 +32,16 @@ test("every shipped example is valid whole-policy JSON with unmistakable placeho
   }
 });
 
+test("shipped workflow examples are valid definitions, with explicit placeholder models", () => {
+  const directory = join(root, "skills/workflows/examples");
+  for (const file of readdirSync(directory)) {
+    const def = parseWorkflow(JSON.parse(readFileSync(join(directory, file), "utf8")));
+    for (const step of def.steps) if (step.kind !== "check") assert.match(step.worker.model, /^example-provider\//);
+  }
+});
+
 test("skill and reference relative links resolve inside the shipped package", () => {
-  const docs = [join(skill, "SKILL.md"), ...readdirSync(join(skill, "reference")).filter(n => n.endsWith(".md")).map(n => join(skill, "reference", n))];
+  const docs = [join(root, "skills/workflows/SKILL.md"), join(root, "WORKFLOWS.md"), join(skill, "SKILL.md"), ...readdirSync(join(skill, "reference")).filter(n => n.endsWith(".md")).map(n => join(skill, "reference", n))];
   for (const doc of docs) {
     for (const match of readFileSync(doc, "utf8").matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
       if (/^https?:/.test(match[1])) continue;

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "Implement and validate slugify",
+  "cwd": "/absolute/path/to/project",
+  "limits": { "concurrency": 1, "maxAttempts": 8, "timeoutSeconds": 300 },
+  "steps": [
+    {
+      "id": "implementation",
+      "kind": "loop",
+      "mode": "repair",
+      "maxIterations": 4,
+      "worker": { "model": "example-provider/example-model:off", "tools": ["read", "write", "edit"], "contextFiles": false },
+      "instructions": "Write solution.py in the supplied candidate directory with slugify(text): lowercase, remove punctuation, collapse whitespace to hyphens, trim leading/trailing hyphens. Return an empty string for empty/punctuation-only input. No imports with side effects, no source/evaluator edits. Use validation feedback to repair the candidate.",
+      "validator": {
+        "kind": "command",
+        "command": "python3 -c 'import os,runpy; f=runpy.run_path(os.path.join(os.environ[\"WORKFLOW_CANDIDATE\"],\"solution.py\"))[\"slugify\"]; assert f(\"  Hello, World!  \")==\"hello-world\"; assert f(\"a   b\")==\"a-b\"; assert f(\"!!!\")==\"\"; assert f(\"\")==\"\"'"
+      }
+    }
+  ]
+}

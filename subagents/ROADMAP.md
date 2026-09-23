@@ -1,6 +1,6 @@
 # Subagents: future directions
 
-This records ideas deliberately deferred while building the persistent-child foundation. **It is not a release schedule.** Bounded point-to-point peer communication is now implemented; higher-level workflows, channels/shared boards, cross-parent communication and sandboxing are not. See the README for supported behavior; unresolved questions below are not settled API decisions.
+This records ideas deliberately deferred while building the persistent-child foundation. **It is not a release schedule.** Bounded point-to-point peer communication and a small workflow scheduler are now implemented; channels/shared boards, dynamic/nested workflow graphs, cross-parent communication and sandboxing are not. See the README for supported behavior; unresolved questions below are not settled API decisions.
 
 See the [README](README.md) for the current behavior and policy contract.
 
@@ -34,21 +34,16 @@ Preserve explicit authorization, bounded work, cancellation/recovery and the sep
 
 **Goal:** make repeated patterns such as parallel investigation, implementation followed by review, and dependent handoffs easier to supervise.
 
-Today, the parent builds these patterns using spawn/send/wait/read/close. A workflow layer should build on those primitives, not replace explicit model/tool/resource composition with hidden defaults or mandatory profiles.
+**Implemented foundation:** JSON task/check/loop definitions, static DAG scheduling with bounded concurrency, command/agent/human validation, candidate snapshots and digest-bound verdicts, fixed worker/check repair and improvement loops, peer task groups, run-level attempt/deadline limits, observable attempt history and explicit recovery. It reuses the existing child manager and policy; workers do not orchestrate. See [WORKFLOWS.md](WORKFLOWS.md).
 
-### Questions to resolve
+### Still deferred until concrete workflows need them
 
-- What needs a first-class representation: task dependencies, acceptance criteria, handoffs, reviewer assignments, or simply reusable parent-side guidance? Start with concrete repeated friction before introducing a workflow language.
-- How does a dependency become satisfied: a child saying “done,” a verified artifact, passing tests, or explicit parent acceptance? A completed model turn alone is not proof of task success.
-- How are failures, retries, timeouts, partial completion and user cancellation propagated? Retrying must not replay non-idempotent file edits or external actions without considering their effects.
-- What is the workspace coordination model? Possible approaches include explicit file ownership, separate worktrees, or parent-reviewed patch handoffs. Shared-directory edits need a conflict policy; a worktree alone is not a sandbox.
-- How are live-process limits, provider concurrency, usage estimates and any future budgets handled across a workflow? Current cost reporting is not budget enforcement, and subscription estimates are not exact bills.
-- How do workflow state and message history remain consistent through parent reload and explicit child resumption? Recovery must distinguish retained progress from permission to run again.
-- Which decisions remain with the parent or user, especially acceptance, merging changes, changing permissions and approving consequential actions?
+- Dynamic fan-out/graph expansion, conditional routing, quorum/first-success joins and arbitrary nested loop subgraphs.
+- In-place workflow revision, reusable executable workflow languages and evaluator plugin frameworks.
+- Multiple simultaneously executing workflows in one parent, cross-parent scheduling and a detached supervisor.
+- Automatic worktree/source merging, deployment, exact billing/token budgets and OS-enforced evaluator isolation.
 
-### Evidence needed before shipping
-
-A small number of useful end-to-end workflows with inspectable state, predictable cancellation/recovery, conflict handling and bounded resource use. Prefer a minimal coordination layer over a large orchestration framework until experience establishes a need.
+Retain KISS/DRY/YAGNI: extend from observed friction in the three supported vertical slices (investigation/synthesis, implementation/repair, and candidate/evaluate/keep-discard), not hypothetical orchestration requirements.
 
 ## 3. Optional execution isolation / sandboxing
 

@@ -4,13 +4,13 @@ import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-wor
 import { formatFooterStats, reportedCost } from "./usage.js";
 
 type Data = Record<string, unknown>;
-type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers";
+type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow";
 type Color = Parameters<Theme["fg"]>[0];
 const titles: Record<Action, string> = {
   catalog: "Subagent catalog", spawn: "Spawn subagent", list: "Subagents", send: "Message subagent",
   read: "Read subagent", wait: "Wait for subagents", abort: "Abort subagent work",
   close: "Close subagent", resume: "Resume subagent", respond: "Respond to subagent",
-  connect: "Connect peers", disconnect: "Disconnect peers", renew: "Renew peer allowance", peers: "Peer exchanges",
+  connect: "Connect peers", disconnect: "Disconnect peers", renew: "Renew peer allowance", peers: "Peer exchanges", workflow: "Workflow",
 };
 const object = (value: unknown): Data | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value) ? value as Data : undefined;
@@ -104,6 +104,22 @@ function groupLines(data: Data, theme: Theme): string[] {
   return lines;
 }
 
+function workflowLines(data: Data, theme: Theme): string[] {
+  const runs = data.id ? [data] : array(data.runs).map(object).filter((r): r is Data => !!r);
+  const lines: string[] = [];
+  for (const run of runs.slice(0, 4)) {
+    lines.push(theme.fg(run.status === "succeeded" ? "success" : run.status === "running" ? "accent" : "warning", `${inline(run.name)} · ${inline(run.status)} · ${inline(run.id)}`));
+    const limits = object(run.limits);
+    lines.push(theme.fg("muted", `${count(run.usedAttempts) ?? 0}/${count(limits?.maxAttempts) ?? "?"} attempts · ${count(run.remainingSeconds) ?? "?"}s remaining`));
+    if (run.reason) lines.push(theme.fg("dim", inline(run.reason)));
+    for (const step of array(run.steps).map(object).filter((s): s is Data => !!s).slice(0, 6)) {
+      lines.push(theme.fg("muted", `  ${inline(step.id)} · ${inline(step.status)} · iteration ${count(step.iteration) ?? 0}${step.activity ? ` · ${inline(step.activity)}` : ""}`));
+    }
+  }
+  if (runs.length > 4) lines.push(theme.fg("dim", `… ${runs.length - 4} more workflows`));
+  return lines.length ? lines : [theme.fg("dim", "No workflows tracked.")];
+}
+
 function peerLines(data: Data, theme: Theme): string[] {
   const links = data.a ? [data] : array(data.links).map(object).filter((l): l is Data => !!l);
   const lines: string[] = [];
@@ -161,6 +177,7 @@ export function subagentRenderers(action: Action): Required<Pick<ToolDefinition,
           lines = [theme.fg("warning", "Result truncated · full output saved to file"), ...preview(data.fullResult, width, theme, "dim", 3)];
         } else if (!data) lines = preview(raw || "No result data.", width, theme);
         else if (action === "catalog") lines = catalogLines(data, theme);
+        else if (action === "workflow") lines = workflowLines(data, theme);
         else if (action === "list" || action === "wait") lines = groupLines(data, theme);
         else if (action === "read") lines = readLines(data, width, theme);
         else if (["connect", "disconnect", "renew", "peers"].includes(action)) lines = peerLines(data, theme);

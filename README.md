@@ -1,6 +1,6 @@
 # Pi extensions
 
-- [subagents](subagents/README.md) — persistent RPC child agents with composable `subagents.json` allowlists, messaging, supervision, and saved-session recovery.
+- [subagents](subagents/README.md) — persistent RPC child agents with composable `subagents.json` allowlists, peer messaging, bounded workflows, supervision, and saved-session recovery.
 - [self-reload](self-reload/README.md) — agent-requested runtime reload with automatic continuation, for rapid extension development.
 
 - [web-search](web-search/README.md) — zero-configuration DuckDuckGo web search with titles, URLs, and snippets; no API key required.
