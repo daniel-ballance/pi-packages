@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { SubagentManager, type Notice } from "../src/manager.js";
+import { formatAgentListing } from "../src/usage.js";
 import { JsonlDecoder } from "../src/rpc.js";
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 async function setup(limit = 4) {
@@ -43,6 +44,20 @@ test("parallel children, incremental read, follow-up and usage", async () => {
     assert.equal(s.manager.read(a.id, 0).gap, false);
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal((s.manager.get(a.id).usage as { userMessages: number }).userMessages, 2);
+  } finally { await s.cleanup(); }
+});
+
+test("listing keeps footer cache-hit and auto-compaction across usage refresh", async () => {
+  const s = await setup();
+  try {
+    const a = await s.spawn("footer-stats");
+    await s.manager.wait([a.id], "all", 2000);
+    await s.manager.refreshUsageSnapshots();
+    const usage = s.manager.get(a.id).usage as { cacheHitRate?: number; autoCompaction?: boolean };
+    assert.equal(usage.autoCompaction, true);
+    assert.equal(usage.cacheHitRate, (300 / 420) * 100);
+    assert.equal(formatAgentListing(s.manager.list().find(agent => agent.id === a.id)!),
+      `${a.id} · footer-stats · idle · test/fake:medium · 1 turn · ↑1.2k ↓340 R12k W800 CH71.4% 12.4%/272k (auto)`);
   } finally { await s.cleanup(); }
 });
 

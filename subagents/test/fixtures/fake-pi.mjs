@@ -23,8 +23,15 @@ process.stdin.on('data', chunk => {
   let nl;
   while ((nl = buffer.indexOf('\n')) >= 0) {
     const cmd = JSON.parse(buffer.slice(0, nl)); buffer = buffer.slice(nl + 1);
-    if (cmd.type === 'get_state') respond(cmd, { sessionFile: file, sessionId: 'fake-session', model: { provider: 'test', id: 'fake' }, thinkingLevel: 'medium', isStreaming: working });
-    else if (cmd.type === 'get_session_stats') respond(cmd, { userMessages: history.length, assistantMessages, cost: history.includes('live-usage') ? assistantMessages * 0.125 : Number(process.env.TEST_COST ?? 0) });
+    if (cmd.type === 'get_state') respond(cmd, { sessionFile: file, sessionId: 'fake-session', model: { provider: 'test', id: 'fake' }, thinkingLevel: 'medium', isStreaming: working, autoCompactionEnabled: true });
+    else if (cmd.type === 'get_session_stats') respond(cmd, {
+      userMessages: history.length, assistantMessages,
+      cost: history.includes('live-usage') ? assistantMessages * 0.125 : Number(process.env.TEST_COST ?? 0),
+      ...(history.includes('footer-stats') ? {
+        tokens: { input: 1200, output: 340, cacheRead: 12000, cacheWrite: 800, total: 14340 },
+        contextUsage: { tokens: 33728, contextWindow: 272000, percent: 12.4 },
+      } : {}),
+    });
     else if (cmd.type === 'prompt') {
       if (working && !cmd.streamingBehavior) { emit({ type: 'response', id: cmd.id, success: false, error: 'Already working' }); continue; }
       history.push(cmd.message); writeFileSync(file, JSON.stringify(history));
@@ -49,6 +56,12 @@ process.stdin.on('data', chunk => {
       else if (cmd.message === 'split-settle') {
         emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'early result' }], stopReason: 'stop' } });
         timer = setTimeout(() => { working = false; emit({ type: 'agent_settled' }); }, 150);
+      }
+      else if (cmd.message === 'footer-stats') {
+        clearTimeout(timer); working = false;
+        emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'stats' }], stopReason: 'stop',
+          usage: { input: 100, output: 40, cacheRead: 300, cacheWrite: 20, totalTokens: 460, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.01 } } } });
+        emit({ type: 'agent_settled' });
       }
       else timer = setTimeout(() => cmd.message === 'unrequested-cancel-error'
         ? settle('The operation was aborted.', true)

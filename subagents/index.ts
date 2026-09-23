@@ -208,7 +208,7 @@ export default function subagents(pi: ExtensionAPI) {
     },
   });
   pi.registerCommand("subagents", {
-    description: "List children, inspect diagnostics, or /subagents abort <id>, close <id>, close-all",
+    description: "List children with footer-style usage, inspect diagnostics, or /subagents abort <id>, close <id>, close-all",
     handler: async (args, ctx) => {
       const [action, target] = args.trim().split(/\s+/);
       const manager = get(ctx);
@@ -222,6 +222,7 @@ export default function subagents(pi: ExtensionAPI) {
       else if (action === "abort" && target) await manager.abort(target);
       else if (action === "close" && target) await manager.close(target);
       else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | abort <id> | close <id> | close-all]");
+      await manager.refreshUsageSnapshots();
       const records = manager.list();
       ctx.ui.notify(records.map(formatAgentListing).join("\n") || "No subagents tracked.", "info");
     },

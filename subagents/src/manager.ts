@@ -3,7 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSy
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, type Packet } from "./rpc.js";
 import type { Composition } from "./policy.js";
-import { summarizeAgents } from "./usage.js";
+import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
 
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
 export interface SpawnOptions {
@@ -282,6 +282,7 @@ export class SubagentManager {
     record.sessionId = state.sessionId;
     record.model = state.model ? `${state.model.provider}/${state.model.id}` : undefined;
     record.thinking = state.thinkingLevel;
+    record.usage = noteAutoCompaction(record.usage, state.autoCompactionEnabled);
     record.status = state.isStreaming ? "working" : "idle";
     this.update(record, "lifecycle", `Child ready: ${record.model ?? "no model"}, thinking=${record.thinking}`);
     await this.refreshUsage(record);
@@ -295,9 +296,16 @@ export class SubagentManager {
       const stats = await child.request({ type: "get_session_stats" }, timeout);
       // Ignore older responses and responses from a replaced/stopped process.
       if (this.children.get(record.id) !== child || this.usageRevision.get(record.id) !== revision) return;
-      record.usage = stats;
+      record.usage = retainFooterExtras(record.usage, stats);
       this.persist(); // Also refreshes the parent's footer while the child is busy.
     } catch { /* Keep the last known cumulative snapshot on failure. */ }
+  }
+  /** Refresh live snapshots before a user listing. Stopped children keep their last stats. */
+  async refreshUsageSnapshots() {
+    await Promise.all([...this.children.keys()].map(id => {
+      const record = this.records.get(id);
+      return record ? this.refreshUsage(record) : undefined;
+    }));
   }
   private event(record: AgentRecord, packet: Packet) {
     this.log(record.logFile, JSON.stringify(packet) + "\n");
@@ -319,6 +327,7 @@ export class SubagentManager {
         record.activity = `Tool: ${packet.toolName}`; this.changed(); break;
       case "message_end": {
         const message = packet.message;
+        if (message?.role === "assistant") record.usage = noteAssistantCacheHit(record.usage, message);
         if (message?.role === "assistant" || message?.role === "toolResult") void this.refreshUsage(record);
         if (message?.customType === "child-policy-check" && Array.isArray(message.details?.tools)) {
           this.verifiedTools.set(record.id, message.details.tools);
@@ -395,7 +404,10 @@ export class SubagentManager {
       // Slash commands can complete without ever starting an agent run.
       if (message.startsWith("/") && record.runRevision === revision) {
         const state = await child.request({ type: "get_state" });
-        if (record.runRevision === revision) record.status = state.isStreaming ? "working" : "idle";
+        if (record.runRevision === revision) {
+          record.usage = noteAutoCompaction(record.usage, state.autoCompactionEnabled);
+          record.status = state.isStreaming ? "working" : "idle";
+        }
       }
     } catch (error) {
       if (record.runRevision === revision && this.children.has(id)) {
