@@ -1,0 +1,3 @@
+[submodule "agent-skills/vendor/matt-pocock"]
+	path = agent-skills/vendor/matt-pocock
+	url = https://github.com/mattpocock/skills.git

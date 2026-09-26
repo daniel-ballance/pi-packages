@@ -1,0 +1,20 @@
+{
+  "name": "agent-skills",
+  "version": "0.1.0",
+  "description": "Matt Pocock's engineering skills translated for the Pi harness: grilling, domain modelling, deep-module design, TDD, two-axis code review, disciplined bug diagnosis, and cited research.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "skills"
+  ],
+  "files": [
+    "skills",
+    "AGENTS.md",
+    "README.md"
+  ],
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}
