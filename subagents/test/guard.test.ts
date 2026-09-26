@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import childGuard from "../src/child-guard.js";
 import subagents from "../index.js";
 
@@ -27,6 +27,29 @@ test("child guard hides recursive and unselected tools and blocks later reactiva
   } finally {
     if (old === undefined) delete process.env.PI_SUBAGENT_ALLOWED_TOOLS;
     else process.env.PI_SUBAGENT_ALLOWED_TOOLS = old;
+  }
+});
+
+test("peer send call row names the recipient and previews the message", () => {
+  const oldTools = process.env.PI_SUBAGENT_ALLOWED_TOOLS;
+  const oldFd = process.env.PI_SUBAGENT_PEER_FD;
+  process.env.PI_SUBAGENT_ALLOWED_TOOLS = JSON.stringify(["peer_send"]);
+  process.env.PI_SUBAGENT_PEER_FD = "3";
+  const tools = new Map<string, { name: string; renderCall?: Function }>();
+  try {
+    childGuard({
+      on() {}, registerCommand() {},
+      registerTool(tool: { name: string; renderCall?: Function }) { tools.set(tool.name, tool); },
+      getActiveTools: () => [], setActiveTools() {},
+    } as unknown as ExtensionAPI);
+    const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme;
+    const line = tools.get("peer_send")!.renderCall!({ recipient: "reviewer", message: "Remember kiwi" }, theme, { argsComplete: true }).render(80)[0];
+    assert.equal(line.trimEnd(), "reviewer • send Remember kiwi");
+  } finally {
+    if (oldTools === undefined) delete process.env.PI_SUBAGENT_ALLOWED_TOOLS;
+    else process.env.PI_SUBAGENT_ALLOWED_TOOLS = oldTools;
+    if (oldFd === undefined) delete process.env.PI_SUBAGENT_PEER_FD;
+    else process.env.PI_SUBAGENT_PEER_FD = oldFd;
   }
 });
 

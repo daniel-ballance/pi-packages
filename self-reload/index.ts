@@ -1,6 +1,8 @@
 import process from "node:process";
 import type { EventEmitter } from "node:events";
+import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 // pi.events belongs to the old runtime and cannot be used after ctx.reload().
@@ -64,6 +66,19 @@ export default function selfReload(pi: ExtensionAPI) {
   pi.registerTool({
     name: "self_reload",
     label: "Self Reload",
+    renderCall(args, theme, context) {
+      const raw = typeof args?.continuation === "string"
+        ? stripVTControlCharacters(args.continuation).replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/\s+/g, " ").trim()
+        : "";
+      const continuation = raw.length > (context?.expanded ? 240 : 80) ? `${raw.slice(0, context?.expanded ? 240 : 80)}...` : raw;
+      let text = theme.fg("toolTitle", theme.bold("self reload"));
+      if (args?.continuation != null && typeof args.continuation !== "string") text += " " + theme.fg("error", "[invalid arg]");
+      else if (continuation) text += " " + theme.fg("accent", continuation);
+      else if (!context?.argsComplete) text += " " + theme.fg("toolOutput", "...");
+      const component = context?.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
+      component.setText(text);
+      return component;
+    },
     description: "Request a reload of Pi extensions, skills, prompts, themes, and context files. " +
       "Ends the current run, then resumes with a completion message from the new runtime. " +
       "Call alone, after saving changes and running checks. The immediate result means queued, not completed. " +

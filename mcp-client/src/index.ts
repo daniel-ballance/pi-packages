@@ -22,7 +22,14 @@ import { McpOAuth } from './oauth.js';
 import { RpcError, type Peer } from './peer.js';
 import { HttpError } from './http.js';
 import { validator } from './validation.js';
-import { renderMcpCall } from './render.js';
+import {
+  renderComplete,
+  renderMcpCall,
+  renderResources,
+  renderSearchTools,
+  renderServerStatus,
+  renderTasks,
+} from './render.js';
 import { healthStatus } from './status.js';
 import { TASKS, TaskSchema, waitForTask, type SavedTask } from './tasks.js';
 
@@ -583,6 +590,7 @@ export default function mcpClient(pi: ExtensionAPI) {
   registerTool({
     name: 'mcp_tasks',
     label: 'MCP Tasks',
+    renderCall: renderTasks(),
     description:
       'List locally recorded MCP task handles, inspect, wait for, or cancel a 2026 task. Waiting uses native approval for input and respects polling intervals. Aborting a wait does not cancel server work; use cancel explicitly. Never repeat the original tool call to resume a task.',
     parameters: Type.Object({
@@ -656,6 +664,7 @@ export default function mcpClient(pi: ExtensionAPI) {
   registerTool({
     name: 'mcp_search_tools',
     label: 'Find MCP Tools',
+    renderCall: renderSearchTools(),
     description:
       'Search configured MCP tool catalogs and activate matching tools using Pi native deferred loading. Returns names and descriptions, not full schemas.',
     parameters: Type.Object({
@@ -697,7 +706,7 @@ export default function mcpClient(pi: ExtensionAPI) {
   registerTool({
     name: 'mcp_status',
     label: 'MCP Servers',
-    renderCall: renderMcpCall('MCP', { name: 'status', title: 'Servers' }),
+    renderCall: renderServerStatus(),
     description:
       'List configured MCP server names, connection status and advertised capabilities. Use before accessing MCP resources or completions.',
     parameters: Type.Object({}),
@@ -724,7 +733,7 @@ export default function mcpClient(pi: ExtensionAPI) {
   registerTool({
     name: 'mcp_resources',
     label: 'MCP Resources',
-    renderCall: renderMcpCall('MCP', { name: 'resources', title: 'Resources' }),
+    renderCall: renderResources(),
     description:
       'List MCP resources/templates or read a resource URI from a configured server. Does not fetch links automatically. Output limited to 2000 lines / 50 KiB.',
     parameters: Type.Object({
@@ -760,7 +769,7 @@ export default function mcpClient(pi: ExtensionAPI) {
   registerTool({
     name: 'mcp_complete',
     label: 'MCP Completion',
-    renderCall: renderMcpCall('MCP', { name: 'complete', title: 'Argument completion' }),
+    renderCall: renderComplete(),
     description:
       'Complete an MCP prompt argument or resource-template variable. Use the exact prompt name or template URI.',
     parameters: Type.Object({

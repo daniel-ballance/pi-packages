@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MAX_RESPONSE_BYTES, parseResults, searchDuckDuckGo } from '../src/duckduckgo.js';
 import extension from '../index.js';
-import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-agent';
+import type { ExtensionAPI, Theme, ToolDefinition } from '@earendil-works/pi-coding-agent';
 
 // Representative HTML fixtures: tests never contact DuckDuckGo.
 const row = (href: string, title = 'Example &amp; docs', snippet = 'A <b>useful</b> snippet.') =>
@@ -120,6 +120,8 @@ test('registers web_search and returns bounded tool output', async () => {
   let tool: ToolDefinition | undefined;
   extension({ registerTool: (definition: ToolDefinition) => { tool = definition; } } as ExtensionAPI);
   assert.equal(tool?.name, 'web_search');
+  const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme;
+  assert.equal(tool!.renderCall!({ query: 'Authenticate without CLI', limit: 3 }, theme, { argsComplete: true, expanded: false } as never).render(120)[0].trimEnd(), 'web search Authenticate without CLI (limit 3)');
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = responseFetch(Array.from({ length: 10 }, (_, i) =>

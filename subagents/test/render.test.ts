@@ -126,11 +126,35 @@ test("plain errors, partial results and spilled results remain intelligible", ()
 });
 
 test("renderers handle partial arguments and use bounded call headers", () => {
-  for (const action of ["catalog", "spawn", "list", "send", "read", "wait", "abort", "close", "resume", "respond"] as const) {
+  for (const action of ["catalog", "spawn", "list", "send", "read", "wait", "abort", "close", "resume", "respond", "workflow-start", "workflow-inspect", "workflow-control"] as const) {
     const call = subagentRenderers(action).renderCall({}, theme, context());
     assert.equal(call.render(60).length, 1);
     assert.ok(visibleWidth(call.render(10)[0]) <= 10);
   }
+});
+
+test("call rows name the thing, then the action, then the parameters", () => {
+  const names = (kind: "child" | "workflow", id: string) => kind === "child" ? ({ "subagent-1": "footer-smoke-test", "subagent-2": "worker-b" } as Record<string, string>)[id] : id === "workflow-1" ? "autonomous repair" : undefined;
+  const line = (action: Parameters<typeof subagentRenderers>[0], args: Record<string, unknown>) =>
+    subagentRenderers(action, names).renderCall(args, theme, { argsComplete: true } as ReturnType<typeof context>).render(160)[0];
+  assert.equal(line("catalog", {}), "catalog");
+  assert.equal(line("list", { includeRejected: true }), "list rejected");
+  assert.equal(line("spawn", { name: "footer-smoke-test", task: "Return a short answer", model: "openai-codex/gpt-5.6-luna", thinking: "high" }),
+    "footer-smoke-test • spawn Return a short answer openai-codex/gpt-5.6-luna:high");
+  assert.equal(line("send", { id: "subagent-1", message: "Return a short answer", behavior: "steer" }),
+    "footer-smoke-test • send Return a short answer (steer)");
+  assert.equal(line("read", { id: "subagent-1", since: 12 }), "footer-smoke-test • read (since 12)");
+  assert.equal(line("wait", { ids: ["subagent-1"], timeoutSeconds: 10 }), "footer-smoke-test • wait 10s");
+  assert.equal(line("wait", { ids: ["subagent-1", "subagent-2"], timeoutSeconds: 10 }), "wait footer-smoke-test worker-b 10s");
+  assert.equal(line("wait", {}), "wait");
+  assert.equal(line("connect", { a: "subagent-1", b: "subagent-2", limit: 5 }), "footer-smoke-test • connect worker-b (limit 5)");
+  assert.equal(line("peers", {}), "peers");
+  assert.equal(line("respond", { id: "subagent-1", requestId: "ui-1", confirmed: true }), "footer-smoke-test • respond confirmed");
+  assert.equal(line("workflow-start", { path: "skills/workflows/examples/repair.json" }), "workflow start skills/workflows/examples/repair.json");
+  assert.equal(line("workflow-inspect", {}), "workflows");
+  assert.equal(line("workflow-inspect", { id: "workflow-1", step: "build" }), "autonomous repair • inspect build");
+  assert.equal(line("workflow-control", { id: "workflow-1", action: "resume", retry: ["build", "test"] }), "autonomous repair • resume build test");
+  assert.equal(line("read", { id: "missing" }), "missing • read");
 });
 
 test("collapsed previews are bounded in physical rows and strip child terminal controls", () => {
@@ -160,8 +184,7 @@ test("Pi's tool execution shell uses the custom views and expands the original p
   tool.setArgsComplete();
   tool.updateResult({ ...result(child), isError: false });
   const collapsed = tool.render(80).map(stripVTControlCharacters).join("\n");
-  assert.match(collapsed, /Spawn subagent/);
-  assert.match(collapsed, /footer-smoke-test/);
+  assert.match(collapsed, /footer-smoke-test • spawn/);
   assert.doesNotMatch(collapsed, /sessionFile/);
   tool.setExpanded(true);
   const expanded = tool.render(80).map(stripVTControlCharacters).join("\n");

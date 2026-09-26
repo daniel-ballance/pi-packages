@@ -1,17 +1,15 @@
+import { homedir } from "node:os";
+import { sep } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { keyText, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { formatFooterStats, reportedCost } from "./usage.js";
 
 type Data = Record<string, unknown>;
-type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow";
+type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow" | "workflow-start" | "workflow-inspect" | "workflow-control";
 type Color = Parameters<Theme["fg"]>[0];
-const titles: Record<Action, string> = {
-  catalog: "Subagent catalog", spawn: "Spawn subagent", list: "Subagents", send: "Message subagent",
-  read: "Read subagent", wait: "Wait for subagents", abort: "Abort subagent work",
-  close: "Close subagent", resume: "Resume subagent", respond: "Respond to subagent",
-  connect: "Connect peers", disconnect: "Disconnect peers", renew: "Renew peer allowance", peers: "Peer exchanges", workflow: "Workflow",
-};
+export type NameLookup = (kind: "child" | "workflow", id: string) => string | undefined;
+const workflowAction = (action: Action) => action === "workflow" || action.startsWith("workflow-");
 const object = (value: unknown): Data | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value) ? value as Data : undefined;
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
@@ -155,16 +153,176 @@ function readLines(data: Data, width: number, theme: Theme): string[] {
   return lines;
 }
 
+function words(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function clip(value: string, limit = 80): string {
+  const text = inline(value);
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+}
+function named(kind: "child" | "workflow", value: unknown, names?: NameLookup): string {
+  const raw = inline(value);
+  if (!raw) return "";
+  return clip(names?.(kind, raw) || raw, 120);
+}
+function command(theme: Theme, action: string, thing?: string): string {
+  return theme.fg("toolTitle", theme.bold(thing ? `${thing} • ${action}` : action));
+}
+function shortenPath(value: string): string {
+  const home = homedir();
+  return home && (value === home || value.startsWith(home + sep)) ? `~${value.slice(home.length)}` : value;
+}
+
+/** Call row only. Result dashboards stay as they are. */
+function formatCall(action: Action, data: Data, theme: Theme, complete: boolean, names?: NameLookup): string {
+  const accent = (value: string) => value ? " " + theme.fg("accent", clip(value)) : "";
+  const output = (value: string) => value ? " " + theme.fg("toolOutput", clip(value)) : "";
+  const muted = (value: string) => theme.fg("muted", ` (${value})`);
+  const pending = " " + theme.fg("toolOutput", "...");
+  const invalid = " " + theme.fg("error", "[invalid arg]");
+  const bad = (value: unknown) => value != null && typeof value !== "string";
+  const childCall = (verb: string, key: string, messageKey?: string) => {
+    if (bad(data[key])) return command(theme, verb) + invalid;
+    const id = named("child", data[key], names);
+    let text = command(theme, verb, id || undefined);
+    if (!id && !complete) text += pending;
+    if (messageKey) {
+      if (bad(data[messageKey])) text += invalid;
+      else {
+        const message = inline(data[messageKey]);
+        if (message) text += accent(message);
+        else if (verb === "send" && !complete) text += pending;
+      }
+    }
+    return text;
+  };
+  switch (action) {
+    case "catalog":
+      return command(theme, "catalog");
+    case "list":
+      return command(theme, "list") + (data.includeRejected === true ? output("rejected") : "");
+    case "spawn": {
+      if (bad(data.name)) return command(theme, "spawn") + invalid;
+      const name = inline(data.name);
+      let text = command(theme, "spawn", name || undefined);
+      if (!name && !complete) text += pending;
+      if (bad(data.task)) text += invalid;
+      else {
+        const task = inline(data.task);
+        if (task) text += accent(task);
+        else if (name && !complete) text += pending;
+      }
+      const model = inline(data.model);
+      if (model) text += output(`${model}${data.thinking ? `:${inline(data.thinking)}` : ""}`);
+      return text;
+    }
+    case "send": {
+      let text = childCall("send", "id", "message");
+      if (typeof data.behavior === "string" && data.behavior) text += muted(words(data.behavior));
+      return text;
+    }
+    case "resume":
+      return childCall("resume", "id", "message");
+    case "read": {
+      let text = childCall("read", "id");
+      if (count(data.since) !== undefined) text += muted(`since ${data.since}`);
+      return text;
+    }
+    case "abort":
+      return childCall("abort", "id");
+    case "close":
+      return childCall("close", "id");
+    case "respond": {
+      if (bad(data.id)) return command(theme, "respond") + invalid;
+      const id = named("child", data.id, names);
+      let text = command(theme, "respond", id || undefined);
+      if (!id && !complete) text += pending;
+      if (typeof data.value === "string" && inline(data.value)) text += accent(data.value);
+      else if (data.confirmed === true) text += accent("confirmed");
+      else if (data.cancelled === true) text += accent("cancelled");
+      else if (!complete) text += pending;
+      return text;
+    }
+    case "wait": {
+      const ids = array(data.ids);
+      if (ids.some(id => id != null && typeof id !== "string")) return command(theme, "wait") + invalid;
+      const labels = ids.map(id => named("child", id, names)).filter(Boolean);
+      const mode = inline(data.mode);
+      const timeout = count(data.timeoutSeconds);
+      const tail = (mode && mode !== "all" ? output(mode) : "") + (timeout !== undefined && timeout !== 30 ? output(`${timeout}s`) : "");
+      if (labels.length === 1) return command(theme, "wait", labels[0]) + tail;
+      let text = command(theme, "wait");
+      if (labels[0]) text += accent(labels[0]);
+      for (const label of labels.slice(1)) text += output(label);
+      if (!labels.length && !mode && timeout === undefined && !complete) text += pending;
+      return text + tail;
+    }
+    case "connect":
+    case "disconnect":
+    case "renew": {
+      const leftKey = action === "renew" ? "sender" : "a";
+      const rightKey = action === "renew" ? "recipient" : "b";
+      if (bad(data[leftKey]) || bad(data[rightKey])) return command(theme, action) + invalid;
+      const left = named("child", data[leftKey], names);
+      const right = named("child", data[rightKey], names);
+      let text = command(theme, action, left || undefined);
+      if (!left && !complete) text += pending;
+      if (right) text += accent(right);
+      else if (left && !complete) text += pending;
+      if (count(data.limit) !== undefined) text += muted(`limit ${data.limit}`);
+      return text;
+    }
+    case "peers": {
+      if (bad(data.id)) return command(theme, "peers") + invalid;
+      const id = named("child", data.id, names);
+      return command(theme, "peers", id || undefined) + (count(data.since) !== undefined ? muted(`since ${data.since}`) : "");
+    }
+    case "workflow-start":
+      return workflowStart(data, theme, complete);
+    case "workflow-inspect":
+      return workflowInspect(data, theme, names);
+    case "workflow-control":
+      return workflowControl(data, theme, complete, names);
+    case "workflow":
+      if ("path" in data) return workflowStart(data, theme, complete);
+      if (typeof data.action === "string" || Array.isArray(data.retry)) return workflowControl(data, theme, complete, names);
+      if ("id" in data || "step" in data) return workflowInspect(data, theme, names);
+      return command(theme, "workflows") + (complete ? "" : pending);
+    default:
+      return command(theme, action);
+  }
+}
+
+function workflowStart(data: Data, theme: Theme, complete: boolean): string {
+  const text = command(theme, "workflow start");
+  if (data.path != null && typeof data.path !== "string") return text + " " + theme.fg("error", "[invalid arg]");
+  const path = typeof data.path === "string" ? shortenPath(inline(data.path)) : "";
+  if (path) return text + " " + theme.fg("accent", clip(path, 120));
+  return complete ? text : text + " " + theme.fg("toolOutput", "...");
+}
+function workflowInspect(data: Data, theme: Theme, names?: NameLookup): string {
+  const id = named("workflow", data.id, names);
+  if (!id) return command(theme, "workflows");
+  return command(theme, "inspect", id) + (inline(data.step) ? " " + theme.fg("accent", clip(inline(data.step))) : "");
+}
+function workflowControl(data: Data, theme: Theme, complete: boolean, names?: NameLookup): string {
+  const id = named("workflow", data.id, names);
+  const verb = inline(data.action);
+  const known = verb === "pause" || verb === "resume" || verb === "cancel";
+  if (data.action != null && !known) return command(theme, "control", id || undefined) + " " + theme.fg("error", "[invalid arg]");
+  let text = command(theme, known ? verb : "control", id || undefined);
+  if ((!id || !known) && !complete) text += " " + theme.fg("toolOutput", "...");
+  const retry = array(data.retry).map(inline).filter(Boolean);
+  if (retry[0]) text += " " + theme.fg("accent", clip(retry[0]));
+  for (const step of retry.slice(1)) text += " " + theme.fg("toolOutput", clip(step));
+  return text;
+}
+
 /** UI-only adapters. Never mutate results, read files, or acknowledge child updates. */
-export function subagentRenderers(action: Action): Required<Pick<ToolDefinition, "renderCall" | "renderResult">> {
+export function subagentRenderers(action: Action, names?: NameLookup): Required<Pick<ToolDefinition, "renderCall" | "renderResult">> {
   return {
-    renderCall(args, theme) {
-      return component(() => {
-        const data = object(args) ?? {};
-        const target = inline(data.name) || inline(data.id) || (data.a ? `${inline(data.a)} ↔ ${inline(data.b)}` : data.sender ? `${inline(data.sender)} → ${inline(data.recipient)}` : "");
-        const scope = action === "wait" ? `${array(data.ids).length || "all"} children · ${inline(data.mode) || "all"} · ${count(data.timeoutSeconds) ?? 30}s` : target;
-        return [theme.fg("toolTitle", theme.bold(titles[action])) + (scope ? theme.fg("dim", `  ${scope}`) : "")];
-      });
+    renderCall(args, theme, context) {
+      return component(() => [formatCall(action, object(args) ?? {}, theme, context?.argsComplete === true, names)]);
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
       return component(width => {
@@ -177,7 +335,7 @@ export function subagentRenderers(action: Action): Required<Pick<ToolDefinition,
           lines = [theme.fg("warning", "Result truncated · full output saved to file"), ...preview(data.fullResult, width, theme, "dim", 3)];
         } else if (!data) lines = preview(raw || "No result data.", width, theme);
         else if (action === "catalog") lines = catalogLines(data, theme);
-        else if (action === "workflow") lines = workflowLines(data, theme);
+        else if (workflowAction(action)) lines = workflowLines(data, theme);
         else if (action === "list" || action === "wait") lines = groupLines(data, theme);
         else if (action === "read") lines = readLines(data, width, theme);
         else if (["connect", "disconnect", "renew", "peers"].includes(action)) lines = peerLines(data, theme);

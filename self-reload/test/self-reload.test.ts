@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import selfReload from "../index.js";
 
 type Tool = Parameters<ExtensionAPI["registerTool"]>[0];
@@ -37,6 +37,8 @@ async function invoke(r: ReturnType<typeof runtime>, continuation = "Check the u
 test("tool dispatches command explicitly, returns queued and ends the run", async () => {
   const r = runtime();
   try {
+    const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme;
+    assert.equal(r.tools.get("self_reload")!.renderCall!({ continuation: "Verify the new version." }, theme, { argsComplete: true } as never).render(120)[0].trimEnd(), "self reload Verify the new version.");
     const result = await invoke(r);
     assert.equal(result.terminate, true);
     assert.deepEqual(result.details, { status: "queued" });
