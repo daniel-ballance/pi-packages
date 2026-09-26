@@ -43,5 +43,11 @@ Then `/reload`. Skills arrive as `/skill:<name>`.
 
 ## Before first use
 
-Seed a `CONTEXT.md` in the repo you work in. Several of these skills point at it
-and it does not exist yet in `pi-packages`.
+If the work needs a shared glossary, run `domain-modeling` in the repo you work
+in. It creates or updates `CONTEXT.md` lazily when terms are resolved.
+
+## Attribution and license
+
+The shipped skills are derived from [Matt Pocock's skills](https://github.com/mattpocock/skills)
+and translated for Pi. The upstream MIT license and copyright notice are shipped
+in [LICENSE](LICENSE).

@@ -77,13 +77,15 @@ tripwire counted across the whole generated tree.
 | `skill-tool-call-upper` / `-lower` | `Call/call the Skill tool with "X"` → `Read/read \`../X/SKILL.md\`` |
 | `subagent-plural` / `-singular` | `sub-agent(s)` → `subagent(s)`, matching our tool naming |
 | `subagent-spawn-review` | `Spawn both subagents in parallel` → `Spawn both reviewers with \`subagent_spawn\`, then \`subagent_wait\`` |
-| `subagent-background` | `Spin up a **background agent**` → `Spawn a child with \`subagent_spawn\`` |
-| `subagent-dispatch` | `dispatch a subagent to find it` → `spawn a child with \`subagent_spawn\` to find it` |
+| `subagent-background` | research delegation → bounded child guidance with a direct-lookup fallback |
+| `subagent-dispatch` | grilling's environment-fact paragraph → bounded child guidance with a direct-lookup fallback |
+| `subagent-spawn-many` | `Spawn 3+ subagents in parallel` → up to three bounded children with `subagent_spawn`, wait/read/close |
 | `subagent-design-twice` | `spin up parallel subagents` → `spawn parallel children with \`subagent_spawn\`` |
 | `clear-to-new` | `/clear` → `/new` |
 | `arg-hint` | drops `argument-hint:` frontmatter lines |
 | slash-namespacing | `/<skillname>` → `/skill:<skillname>`, with a lookbehind that protects `../name/SKILL.md` paths and real Pi commands |
-| tracker swap | `code-review`'s issue-tracker precondition → "the spec is the repo doc the conversation names" |
+| tracker swap | `code-review`'s issue-tracker precondition and issue-fetch step → repo-doc spec guidance |
+| child delegation | writes one shared `skills/references/CHILD-DELEGATION.md` reference and pointers from child workflows |
 
 Two ordering constraints that are easy to break:
 
@@ -124,9 +126,10 @@ thing you are looking for is upstream changing a **decision**, not a sentence.
 
 ## Before first use
 
-Run `domain-modeling` against `~/Code/pi-packages` to seed a `CONTEXT.md`.
-`wait-what`, `grill-with-docs` and `code-review`'s spec axis all point at it and
-it does not exist yet.
+Run `domain-modeling` against `~/Code/pi-packages` if this repo needs a shared
+glossary. It creates or updates `CONTEXT.md` lazily when terms are resolved;
+`wait-what`, `grill-with-docs` and `code-review`'s spec axis consume it when
+present.
 
 ## Installing
 

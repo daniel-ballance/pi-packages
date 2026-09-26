@@ -10,8 +10,13 @@
   "files": [
     "skills",
     "AGENTS.md",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
+  "scripts": {
+    "check": "bash scripts/sync.sh --check",
+    "test": "bash scripts/test-sync.sh"
+  },
   "pi": {
     "skills": [
       "./skills"

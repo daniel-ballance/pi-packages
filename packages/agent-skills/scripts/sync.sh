@@ -10,10 +10,27 @@
 
 set -euo pipefail
 
+usage() {
+  cat <<'USAGE'
+Usage: ./scripts/sync.sh [--check]
+
+  (no argument)  regenerate skills/ from vendor/matt-pocock
+  --check        validate a fresh translation and compare it with skills/
+USAGE
+}
+
+case "$#:$*" in
+  0:) MODE=sync ;;
+  1:sync) MODE=sync ;;
+  1:--check) MODE=check ;;
+  1:-h|1:--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENDOR="$ROOT/vendor/matt-pocock"
 OUT="$ROOT/skills"
-MODE="${1:-sync}"
+OUT_PARENT="$ROOT"
 
 # ---------------------------------------------------------------------------
 # Allowlist. Only these skills are ever copied, so a new upstream skill cannot
@@ -48,11 +65,12 @@ cat >"$RULES_FILE" <<'RULES'
 skill-tool-twice|1|Call the Skill tool twice, for "([^"]+)" and "([^"]+)"\.|Read `../$1/SKILL.md` and `../$2/SKILL.md`, and follow both.
 skill-tool-call-upper|0|Call the Skill tool with "([^"]+)"|Read `../$1/SKILL.md`
 skill-tool-call-lower|1|call the Skill tool with "([^"]+)"|read `../$1/SKILL.md`
+subagent-dispatch|1|Finding _facts_ is your job, never the user's\. When a frontier question needs a fact from the environment \(filesystem, tools, etc\.\), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself\. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now\. The _decisions_ are the user's: put each to them and wait\.|Facts are your job, never the user's. For a non-trivial environment investigation, when child and retrieval tools are available, spawn a bounded child to gather it. For a trivial lookup, or when those tools are unavailable, inspect it directly. Ask independent frontier questions now and wait only for dependent child work. Decisions remain the user's: ask and wait.
 subagent-plural|1|sub-agents|subagents
 subagent-singular|1|sub-agent|subagent
+subagent-spawn-many|1|Spawn 3\+ subagents in parallel|Spawn up to 3 parallel children with `subagent_spawn`, within the catalog's live-child limit; then `subagent_wait`, `subagent_read`, and `subagent_close` each child
 subagent-spawn-review|1|Spawn both subagents in parallel|Spawn both reviewers with `subagent_spawn`, then `subagent_wait`
-subagent-background|1|Spin up a \*\*background agent\*\*|Spawn a child with `subagent_spawn`
-subagent-dispatch|1|dispatch a subagent to find it|spawn a child with `subagent_spawn` to find it
+subagent-background|1|Spin up a \*\*background agent\*\* to do the research, so you keep working while it reads\.|For substantial research, when child and retrieval tools are available, spawn a bounded child so you can keep working while it reads. For a trivial lookup, or when those tools are unavailable, research directly.
 subagent-design-twice|1|spin up parallel subagents|spawn parallel children with `subagent_spawn`
 clear-to-new|0|(?<![\w/-])/clear\b|/new
 arg-hint|0|^argument-hint:.*\n||
@@ -68,8 +86,24 @@ SLASH_SKILLS=(tdd code-review grill-me grill-with-docs grilling domain-modeling 
 # in repo docs, not in an issue tracker.
 TRACKER_OLD='The issue tracker should have been provided to you. If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.'
 TRACKER_NEW='The spec is whatever the conversation already names: a package design doc (`docs/<name>.md`), the package `README.md`, `ROADMAP.md`, or a spec file under `docs/`. If nothing is named, ask the user where the spec is. These repos keep specs in the repo, not in an issue tracker.'
+TRACKER_ISSUE_OLD='1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.), fetched via the workflow in `docs/agents/issue-tracker.md`.'
+TRACKER_ISSUE_NEW='1. A spec path named in the conversation or commit messages.'
+
+# This is a shared reference for the translated child workflows. Keep the
+# mechanics here rather than duplicating them in every generated skill.
+CHILD_POINTER='Read `../references/CHILD-DELEGATION.md` before using child delegation.'
+
+CHILD_GUIDANCE=$(cat <<'GUIDANCE'
+# Child delegation
+
+Use a child for bounded, non-trivial work. First call `subagent_catalog` to see usable exact models, tools, and the live-child limit. Compose one focused child with `subagent_spawn`, selecting only the tools it needs and an explicit task and working directory. Parallelize only independent tasks and stay within the catalog limit. Call `subagent_wait` for the selected IDs, then `subagent_read` to inspect replies, errors, and requested artifacts. Verify the result; completion is not proof. Call `subagent_close` for every child after reading it, including failed work.
+
+If catalog or spawn is unavailable, or the task has no retrieval tools available to the child, do the work directly or state the limitation. Do not assume a fallback model or child composition: unavailable catalog entries are not silently substituted.
+GUIDANCE
+)
 
 declare -A COUNTS=()
+MISSING=0
 
 find_src() {
   local name="$1" d
@@ -112,10 +146,42 @@ apply_literal_to_tree() {
   done < <(find "$dir" -name '*.md' -print0)
 }
 
+write_child_guidance() {
+  local target="$1"
+  mkdir -p -- "$target/references"
+  printf '%s\n' "$CHILD_GUIDANCE" > "$target/references/CHILD-DELEGATION.md"
+}
+
+inject_child_pointer() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  grep -Fq "$CHILD_POINTER" "$file" && return 0
+  P="$CHILD_POINTER" perl -0777 -pi -e '
+    my $p = $ENV{P};
+    if (index($_, $p) < 0) {
+      s/\A(---\n.*?\n---\n)/$1 . "\n" . $p . "\n"/se or die "missing skill frontmatter\n";
+    }
+  ' "$file"
+}
+
+prepend_child_pointer() {
+  local file="$1" tmp
+  [ -f "$file" ] || return 0
+  grep -Fq "$CHILD_POINTER" "$file" && return 0
+  tmp="$file.tmp.$$"
+  {
+    printf '%s\n\n' "$CHILD_POINTER"
+    cat "$file"
+  } > "$tmp"
+  mv -- "$tmp" "$file"
+}
+
 run_translation() {
   local target="$1" name src id min pat rep
-  rm -rf "$target"
-  mkdir -p "$target"
+  rm -rf -- "$target"
+  mkdir -p -- "$target"
+  MISSING=0
+  COUNTS=()
 
   for name in "${ALLOW[@]}"; do
     if ! src="$(find_src "$name")"; then
@@ -123,11 +189,13 @@ run_translation() {
       MISSING=1
       continue
     fi
-    cp -R "$src" "$target/$name"
+    cp -R -- "$src" "$target/$name"
     # Pi never reads agents/openai.yaml. disable-model-invocation in SKILL.md is
     # the supported equivalent and is already present where it matters.
-    rm -rf "$target/$name/agents"
+    rm -rf -- "$target/$name/agents"
   done
+
+  write_child_guidance "$target"
 
   # Count then apply, one rule at a time, in order. Rules that rewrite text an
   # earlier rule produced (sub-agent -> subagent -> spawn a child) must be
@@ -138,14 +206,22 @@ run_translation() {
     apply_to_tree "$target" "$pat" "$rep"
   done < "$RULES_FILE"
 
-  # Tracker swap runs BEFORE slash-namespacing, or its literal source text has
+  # Tracker swaps run BEFORE slash-namespacing, or their literal source text has
   # already been rewritten and will never match.
   apply_literal_to_tree "$target" "$TRACKER_OLD" "$TRACKER_NEW"
+  apply_literal_to_tree "$target" "$TRACKER_ISSUE_OLD" "$TRACKER_ISSUE_NEW"
 
   # Slash-command namespacing.
   for s in "${SLASH_SKILLS[@]}"; do
     apply_to_tree "$target" "(?<![\\w./-])/$s\b" "/skill:$s"
   done
+
+  # Keep child mechanics reusable while making the pointer visible at the point
+  # where each translated child workflow asks for delegation.
+  inject_child_pointer "$target/grilling/SKILL.md"
+  inject_child_pointer "$target/research/SKILL.md"
+  inject_child_pointer "$target/code-review/SKILL.md"
+  prepend_child_pointer "$target/codebase-design/DESIGN-IT-TWICE.md"
 }
 
 report_rules() {
@@ -155,41 +231,153 @@ report_rules() {
   while IFS='|' read -r id min pat rep; do
     [ -z "${id:-}" ] && continue
     n="${COUNTS[$id]:-0}"
-    if [ "$n" -eq 0 ] && [ "$min" -gt 0 ]; then
-      printf '  DRIFT  %-24s 0 matches, expected >= %s. Upstream reworded it.\n' "$id" "$min"
+    if [ "$n" -lt "$min" ]; then
+      printf '  DRIFT  %-24s %s match(es), expected >= %s. Upstream reworded it.\n' "$id" "$n" "$min"
       fail=1
     else
       printf '  ok     %-24s %s match(es)\n' "$id" "$n"
     fi
   done < "$RULES_FILE"
-  return $fail
+  return "$fail"
 }
 
-if [ "$MODE" = "--check" ]; then
-  TMP="$(mktemp -d)"
-  trap 'rm -rf "$TMP"; rm -f "$RULES_FILE"' EXIT
+validate_output() {
+  local target="$1" fail=0 name
+  for name in "${ALLOW[@]}"; do
+    if [ ! -f "$target/$name/SKILL.md" ]; then
+      printf '  INVALID output: %s/SKILL.md is missing\n' "$name" >&2
+      fail=1
+    fi
+  done
+  if find "$target" -type l -print -quit | grep -q .; then
+    echo '  INVALID output: generated skills contain a symlink' >&2
+    fail=1
+  fi
+  if grep -R -n -F 'docs/agents/issue-tracker.md' "$target" >/dev/null 2>&1; then
+    echo '  INVALID output: generated skills retain an issue-tracker reference' >&2
+    fail=1
+  fi
+  return "$fail"
+}
+
+validate_translation() {
+  local target="$1" fail=0
+  if ! report_rules; then
+    fail=1
+  fi
+  if [ "$MISSING" -ne 0 ]; then
+    echo '  INVALID output: an allowlisted upstream skill is missing' >&2
+    fail=1
+  fi
+  if ! validate_output "$target"; then
+    fail=1
+  fi
+  return "$fail"
+}
+
+print_upstream_pin() {
+  local pin
+  if pin="$(git -C "$VENDOR" log --oneline -1 2>/dev/null)"; then
+    echo "$pin"
+  else
+    echo '(unavailable: upstream is not a Git checkout)'
+  fi
+}
+
+TMP="$(mktemp -d "$OUT_PARENT/.agent-skills-sync.XXXXXX")"
+BACKUP_DIR=""
+INSTALL_MOVED=0
+
+cleanup_backup() {
+  local saved="$BACKUP_DIR/skills"
+  [ -n "$BACKUP_DIR" ] || return 0
+
+  if [ "$INSTALL_MOVED" -eq 1 ]; then
+    if rm -rf -- "$BACKUP_DIR"; then
+      BACKUP_DIR=""
+    else
+      echo "Installed skills/, but could not delete the old backup; retained at $saved" >&2
+    fi
+    return 0
+  fi
+
+  if { [ ! -e "$OUT" ] && [ ! -L "$OUT" ]; } && { [ -e "$saved" ] || [ -L "$saved" ]; }; then
+    if mv -- "$saved" "$OUT"; then
+      echo "Restored previous skills/ after failed replacement." >&2
+      if rm -rf -- "$BACKUP_DIR"; then
+        BACKUP_DIR=""
+      else
+        echo "Previous skills/ restored; backup directory retained at $BACKUP_DIR" >&2
+      fi
+    else
+      echo "Could not restore previous skills/; recovery copy retained at $saved" >&2
+    fi
+  elif { [ -e "$OUT" ] || [ -L "$OUT" ]; } && { [ ! -e "$saved" ] && [ ! -L "$saved" ]; }; then
+    # Moving the old tree failed before a recovery copy was made.
+    if rm -rf -- "$BACKUP_DIR"; then
+      BACKUP_DIR=""
+    fi
+  elif [ -e "$saved" ] || [ -L "$saved" ]; then
+    echo "Previous skills/ backup retained at $saved; output path is occupied." >&2
+  else
+    if rm -rf -- "$BACKUP_DIR"; then
+      BACKUP_DIR=""
+    else
+      echo "Backup directory retained at $BACKUP_DIR" >&2
+    fi
+  fi
+}
+
+cleanup() {
+  rm -rf -- "$TMP" || true
+  cleanup_backup
+  rm -f -- "$RULES_FILE" || true
+}
+trap cleanup EXIT
+
+if [ "$MODE" = check ]; then
   echo "Checking generated output against committed skills/"
   run_translation "$TMP/skills"
-  report_rules || true
+  status=0
+  if ! validate_translation "$TMP/skills"; then
+    status=1
+  fi
   echo
-  if diff -rq "$OUT" "$TMP/skills" >/dev/null 2>&1; then
+  if diff -rq -- "$OUT" "$TMP/skills" >/dev/null 2>&1; then
     echo "skills/ is up to date with upstream + rules"
   else
     echo "skills/ differs from a fresh translation. Re-run ./scripts/sync.sh"
-    diff -rq "$OUT" "$TMP/skills" || true
+    diff -rq -- "$OUT" "$TMP/skills" || true
+    status=1
   fi
   echo
   echo "Upstream pin:"
-  git -C "$VENDOR" log --oneline -1
-else
-  echo "Regenerating skills/ from vendor/matt-pocock"
-  run_translation "$OUT"
-  report_rules || true
-  echo
-  echo "Upstream pin:"
-  git -C "$VENDOR" log --oneline -1
-  if [ "${MISSING:-0}" -ne 0 ]; then
-    echo "An allowlisted skill is missing upstream. Fix the allowlist." >&2
-    exit 1
-  fi
+  print_upstream_pin
+  exit "$status"
 fi
+
+echo "Regenerating skills/ from vendor/matt-pocock"
+run_translation "$TMP/skills"
+if ! validate_translation "$TMP/skills"; then
+  echo 'Refusing to replace committed skills/; staged output failed validation.' >&2
+  exit 1
+fi
+
+# Swap only after generation, drift checks, allowlist checks, and output checks
+# all pass. Restore the old tree if the final move itself fails.
+BACKUP_DIR="$(mktemp -d "$OUT_PARENT/.agent-skills-backup.XXXXXX")"
+if [ -e "$OUT" ] || [ -L "$OUT" ]; then
+  mv -- "$OUT" "$BACKUP_DIR/skills"
+fi
+if mv -- "$TMP/skills" "$OUT"; then
+  INSTALL_MOVED=1
+  cleanup_backup
+else
+  status=$?
+  echo 'Failed to replace skills/; the previous output remains staged for recovery.' >&2
+  exit "$status"
+fi
+
+echo
+echo "Upstream pin:"
+print_upstream_pin
