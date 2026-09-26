@@ -1,0 +1,40 @@
+name: check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (Pi ${{ matrix.pi-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        pi-version: ["0.85.1", "0.87.1"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Initialize submodules
+        run: git submodule update --init --recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+
+      - name: Show runtime
+        run: node --version && npm --version
+
+      - name: Install package dependencies
+        run: ./scripts/ci-install.sh "${{ matrix.pi-version }}"
+
+      - name: Run root check
+        run: ./scripts/check.sh

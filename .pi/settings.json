@@ -1,5 +1,6 @@
 {
   "packages": [
+    "../packages/self-reload",
     {
       "source": "../packages/agent-skills",
       "skills": [

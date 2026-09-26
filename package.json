@@ -1,0 +1,9 @@
+{
+  "name": "pi-packages-repo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Repository tooling for the Pi packages collection",
+  "scripts": {
+    "check": "bash scripts/check.sh"
+  }
+}
