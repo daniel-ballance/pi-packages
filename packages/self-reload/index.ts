@@ -8,7 +8,7 @@ import { Type } from "typebox";
 // pi.events belongs to the old runtime and cannot be used after ctx.reload().
 // A process-local event bridges only the completion signal to the NEW instance.
 const bridge: EventEmitter = process;
-const COMPLETED = "pi-extensions:self-reload:completed:v1";
+const COMPLETED = "pi-packages:self-reload:completed:v1";
 interface Completion {
   sessionId: string;
   continuation: string;

@@ -124,7 +124,7 @@ thing you are looking for is upstream changing a **decision**, not a sentence.
 
 ## Before first use
 
-Run `domain-modeling` against `~/Code/pi-extensions` to seed a `CONTEXT.md`.
+Run `domain-modeling` against `~/Code/pi-packages` to seed a `CONTEXT.md`.
 `wait-what`, `grill-with-docs` and `code-review`'s spec axis all point at it and
 it does not exist yet.
 
@@ -133,7 +133,7 @@ it does not exist yet.
 Add to `~/.pi/agent/settings.json`:
 
 ```json
-"packages": ["../../Code/pi-extensions/agent-skills"]
+"packages": ["../../Code/pi-packages/packages/agent-skills"]
 ```
 
 Then `/reload`. Skills arrive as `/skill:<name>`.

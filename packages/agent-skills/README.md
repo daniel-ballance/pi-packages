@@ -13,7 +13,7 @@ before changing anything in here.
 Add to `~/.pi/agent/settings.json`:
 
 ```json
-"packages": ["../../Code/pi-extensions/agent-skills"]
+"packages": ["../../Code/pi-packages/packages/agent-skills"]
 ```
 
 Then `/reload`. Skills arrive as `/skill:<name>`.
@@ -44,4 +44,4 @@ Then `/reload`. Skills arrive as `/skill:<name>`.
 ## Before first use
 
 Seed a `CONTEXT.md` in the repo you work in. Several of these skills point at it
-and it does not exist yet in `pi-extensions`.
+and it does not exist yet in `pi-packages`.

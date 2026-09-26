@@ -225,6 +225,6 @@ For the exact currently-running desktop Chromium instance, the Playwright Extens
 - Playwright browser extension README: <https://github.com/microsoft/playwright/blob/main/packages/extension/README.md>
 - Playwright `connectOverCDP` API: <https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp>
 - Chrome remote-debugging security changes: <https://developer.chrome.com/blog/remote-debugging-port>
-- Local MCP client configuration: `mcp-client/src/config.ts`
-- Local MCP stdio transport: `mcp-client/src/stdio.ts`
-- Local MCP extension entry point: `mcp-client/src/index.ts`
+- Local MCP client configuration: `packages/mcp-client/src/config.ts`
+- Local MCP stdio transport: `packages/mcp-client/src/stdio.ts`
+- Local MCP extension entry point: `packages/mcp-client/src/index.ts`

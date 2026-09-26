@@ -28,14 +28,14 @@ test("summary handles no agents, missing/invalid costs and all active lifecycle 
 });
 
 test("right aligns dim lowercase status above the model and preserves stock rows", () => {
-  const stock = [dim("~/Code/pi-extensions (main)"), dim("usage stats                         model · medium"), "other extension"];
+  const stock = [dim("~/Code/pi-packages (main)"), dim("usage stats                         model · medium"), "other extension"];
   const rendered = decorateFooter(stock, 120, label, dim);
   assert.equal(rendered.length, stock.length);
   assert.ok(stripVTControlCharacters(rendered[0]).endsWith(label));
   assert.equal(visibleWidth(rendered[0]), 120);
   assert.ok(rendered[0].includes(dim(label)));
   assert.deepEqual(rendered.slice(1), stock.slice(1));
-  assert.equal(stock[0], dim("~/Code/pi-extensions (main)"));
+  assert.equal(stock[0], dim("~/Code/pi-packages (main)"));
 });
 
 test("narrow widths preserve directory, add a bounded row, and handle unicode/ANSI", () => {

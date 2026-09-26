@@ -1,7 +1,7 @@
 {
   "packages": [
     {
-      "source": "../agent-skills",
+      "source": "../packages/agent-skills",
       "skills": [
         "skills/wait-what/SKILL.md",
         "skills/research/SKILL.md",

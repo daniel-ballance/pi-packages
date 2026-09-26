@@ -1,9 +1,9 @@
-# Pi Extensions
+# Pi Packages
 
 A collection of Pi packages that extend the harness with capabilities it does not
 ship: persistent child agents, bounded workflow scheduling, peer messaging between
-children, MCP protocol integration, web search, self-reload, and subscription
-usage reporting.
+children, MCP protocol integration, web search, and self-reload. Each package
+lives under `packages/`.
 
 ## Language
 
