@@ -153,6 +153,14 @@ test('sampling converts balanced server tool transcripts without exposing Pi too
       context.messages.map((m: any) => m.role),
       ['user', 'assistant', 'toolResult'],
     );
+    assert.deepEqual(context.messages[1].content, [
+      {
+        type: 'toolCall',
+        id: 'one',
+        name: 'weather',
+        arguments: { city: 'Paris', options: { units: ['metric'], alerts: false }, limit: null },
+      },
+    ]);
     assert.equal(context.messages[2].toolName, 'weather');
     return { content: [{ type: 'text', text: 'sunny' }], stopReason: 'stop', usage };
   };
@@ -160,7 +168,15 @@ test('sampling converts balanced server tool transcripts without exposing Pi too
     ...params,
     messages: [
       params.messages[0],
-      { role: 'assistant', content: { type: 'tool_use', id: 'one', name: 'weather', input: {} } },
+      {
+        role: 'assistant',
+        content: {
+          type: 'tool_use',
+          id: 'one',
+          name: 'weather',
+          input: { city: 'Paris', options: { units: ['metric'], alerts: false }, limit: null },
+        },
+      },
       {
         role: 'user',
         content: {

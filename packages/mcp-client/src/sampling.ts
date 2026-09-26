@@ -18,7 +18,7 @@ const ToolUse = z.object({
   type: z.literal('tool_use'),
   id: z.string().min(1),
   name: z.string().min(1),
-  input: z.record(z.string(), z.unknown()),
+  input: z.record(z.string(), z.json()),
 });
 const ToolResult = z.object({
   type: z.literal('tool_result'),
