@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, type Packet } from "./rpc.js";
 import type { Composition } from "./policy.js";
@@ -32,10 +32,23 @@ export interface AgentRecord {
 }
 export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string }
 export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
+export interface SlotReservation { readonly id: symbol }
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
 const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
 const REPORT_KINDS = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure"]);
+function enforcePrivatePath(path: string, mode: number, directory: boolean) {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile())) throw new Error(`Unsafe subagent state path: ${path}`);
+  chmodSync(path, mode);
+}
+function enforcePrivatePathIfPresent(path: string, mode: number, directory: boolean) {
+  try { enforcePrivatePath(path, mode, directory); return true; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
 // Deliberately narrow: a generic failure mentioning cancellation is still a failure.
 export function isCancellationError(message: unknown): boolean {
   return typeof message === "string" && /^(?:AbortError:\s*)?(?:(?:(?:the|this) )?operation (?:was )?aborted|request (?:was )?aborted|aborted|cancelled|canceled)[.!]?$/i.test(message.trim());
@@ -52,14 +65,18 @@ export class SubagentManager {
   private workflowChildren = new Set<string>();
   private abortIntents = new Map<string, { revision: number; awaitingStart: boolean }>();
   private aborting = new Set<string>();
+  private responding = new Set<string>();
+  private reservations = new Map<SlotReservation, number>();
+  private reservedSlots = 0;
   private usageRevision = new Map<string, number>();
   private registry: string;
   readonly peers: PeerBroker;
   constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"]) => AgentRecord["config"], readonly peerMessageLimit = 0) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
+    enforcePrivatePath(directory, 0o700, true);
     this.registry = join(directory, "registry.json");
     let peerState: PeerState | undefined;
-    if (existsSync(this.registry)) {
+    if (enforcePrivatePathIfPresent(this.registry, 0o600, false)) {
       const stored = JSON.parse(readFileSync(this.registry, "utf8"));
       if (stored.version !== 1 || !Array.isArray(stored.agents)) throw new Error("Unsupported subagent registry");
       peerState = stored.peers;
@@ -75,6 +92,8 @@ export class SubagentManager {
         delete record.pid;
         record.uiRequests = [];
         record.activity = "No process attached. Resume explicitly to continue the saved conversation.";
+        enforcePrivatePathIfPresent(record.logFile, 0o600, false);
+        enforcePrivatePathIfPresent(record.stderrFile, 0o600, false);
         this.records.set(record.id, record);
       }
       // Old registries have no pending queue: never reconstruct already-sent reports.
@@ -97,8 +116,11 @@ export class SubagentManager {
   }
   private persist() {
     const temp = this.registry + ".tmp";
+    enforcePrivatePathIfPresent(temp, 0o600, false);
     writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()], pendingNotices: [...this.notices.values()], peers: this.peers?.state }, null, 2), { mode: 0o600 });
+    enforcePrivatePath(temp, 0o600, false);
     renameSync(temp, this.registry);
+    enforcePrivatePath(this.registry, 0o600, false);
     this.changed();
   }
   private update(record: AgentRecord, kind: string, text: string) {
@@ -179,9 +201,37 @@ export class SubagentManager {
   overview(includeRejected = false) {
     return { totals: summarizeAgents(this.list()), agents: this.list(includeRejected) };
   }
-  private preflight(config: AgentRecord["config"], overrides?: Record<string, string>) {
+  reserveSlots(count: number): SlotReservation | undefined {
+    if (!Number.isInteger(count) || count < 1) throw new Error("Slot reservation count must be a positive integer");
     if (this.shuttingDown) throw new Error("Manager is shutting down");
-    if (this.children.size >= this.maxChildren) throw new Error(`Live-child limit (${this.maxChildren}) reached; close an idle child first.`);
+    if (this.children.size + this.reservedSlots + count > this.maxChildren) return undefined;
+    const reservation = { id: Symbol("subagent-slot-reservation") };
+    this.reservations.set(reservation, count);
+    this.reservedSlots += count;
+    return reservation;
+  }
+  releaseSlots(reservation: SlotReservation) {
+    const remaining = this.reservations.get(reservation);
+    if (remaining === undefined) return;
+    this.reservations.delete(reservation);
+    this.reservedSlots -= remaining;
+  }
+  private claimSlot(reservation: SlotReservation) {
+    const remaining = this.reservations.get(reservation);
+    if (!remaining) throw new Error("Invalid or exhausted live-child slot reservation");
+    this.reservedSlots--;
+    if (remaining === 1) this.reservations.delete(reservation);
+    else this.reservations.set(reservation, remaining - 1);
+  }
+  private preflight(config: AgentRecord["config"], overrides?: Record<string, string>, reservation?: SlotReservation, capacityReserved = false) {
+    if (this.shuttingDown) throw new Error("Manager is shutting down");
+    if (!capacityReserved) {
+      if (reservation) {
+        if (!this.reservations.get(reservation)) throw new Error("Invalid or exhausted live-child slot reservation");
+      } else if (this.children.size + this.reservedSlots >= this.maxChildren) {
+        throw new Error(`Live-child limit (${this.maxChildren}) reached; close an idle child first.`);
+      }
+    }
     if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
     const checked = this.authorize ? this.authorize(config) : config;
     if (!isAbsolute(checked.cwd) || !statSync(checked.cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");
@@ -208,12 +258,13 @@ export class SubagentManager {
     if (acknowledge) this.acknowledgeRead(result, since === undefined);
     return result;
   }
-  async spawn(options: SpawnOptions) {
+  async spawn(options: SpawnOptions, reservation?: SlotReservation) {
     const id = `subagent-${randomUUID().slice(0, 8)}`;
     const { name, task, env, workflow, deferTask, ...requested } = options;
     if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
     // No record/session/log paths for requests rejected before any launch attempt.
-    const config = this.preflight(requested, env);
+    const config = this.preflight(requested, env, reservation);
+    if (reservation) this.claimSlot(reservation);
     const record: AgentRecord = {
       id, name, task, config, workflow, status: "stopped",
       sessionFile: join(this.directory, `${id}.session.jsonl`),
@@ -225,7 +276,7 @@ export class SubagentManager {
     this.records.set(id, record);
     if (workflow) this.workflowChildren.add(id);
     try {
-      await this.start(record, env);
+      await this.start(record, env, !!reservation);
       if (!deferTask) await this.send(id, task);
       return this.summary(id);
     } catch (error) {
@@ -237,9 +288,11 @@ export class SubagentManager {
       throw new Error(`${id}: ${error}. Diagnostics: ${record.stderrFile}`);
     }
   }
-  private async start(record: AgentRecord, overrides?: Record<string, string>) {
+  private async start(record: AgentRecord, overrides?: Record<string, string>, capacityReserved = false) {
     if (this.children.has(record.id)) throw new Error(`${record.id} already has a process`);
-    const config = this.preflight(record.config, overrides);
+    const config = this.preflight(record.config, overrides, undefined, capacityReserved);
+    enforcePrivatePathIfPresent(record.logFile, 0o600, false);
+    enforcePrivatePathIfPresent(record.stderrFile, 0o600, false);
     record.config = config;
     const extra = config.cliArgs ?? [];
     const args = [...(config.executableArgs ?? [])];
@@ -521,15 +574,27 @@ export class SubagentManager {
       throw error;
     }
   }
-  respond(id: string, requestId: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) {
+  async respond(id: string, requestId: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) {
     const record = this.get(id);
+    const key = `${id}:${requestId}`;
+    if (this.responding.has(key)) throw new Error("A response to this UI request is already being submitted");
     if (!record.uiRequests.some(r => r.id === requestId)) throw new Error("Unknown or expired UI request");
-    this.child(id).respond({ type: "extension_ui_response", id: requestId, ...response });
-    record.uiRequests = record.uiRequests.filter(r => r.id !== requestId);
-    this.expireInputNotices(record);
-    record.status = record.uiRequests.length ? "waiting_input" : "working";
-    this.persist();
-    return this.summary(id);
+    const child = this.child(id);
+    this.responding.add(key);
+    try {
+      await child.respond({ type: "extension_ui_response", id: requestId, ...response });
+      record.uiRequests = record.uiRequests.filter(r => r.id !== requestId);
+      this.expireInputNotices(record);
+      if (record.uiRequests.length) record.status = "waiting_input";
+      else if (record.status === "waiting_input") {
+        record.status = "working";
+        record.activity = "UI response queued; awaiting child continuation";
+      }
+      this.persist();
+      return { ...this.summary(id), responseDelivery: { transport: "queued" as const, receipt: "unconfirmed" as const } };
+    } finally {
+      this.responding.delete(key);
+    }
   }
   async wait(ids: string[], mode: "any" | "all", timeoutMs: number, signal?: AbortSignal) {
     const selected = ids.length ? ids : this.list().map(record => record.id);
@@ -548,6 +613,8 @@ export class SubagentManager {
   }
   async shutdown() {
     this.shuttingDown = true;
+    this.reservations.clear();
+    this.reservedSlots = 0;
     await Promise.all([...this.children.keys()].map(id => this.close(id, true)));
   }
 }

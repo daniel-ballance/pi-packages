@@ -107,10 +107,12 @@ export class RpcChild {
       });
     });
   }
-  /** UI responses are protocol messages, not acknowledged RPC commands. */
-  respond(packet: Packet) {
-    if (this.ended || this.stopping) throw new Error("Child is stopped or stopping");
-    this.child.stdin.write(JSON.stringify(packet) + "\n");
+  /** UI responses have no protocol acknowledgement; this resolves only when transport accepts the write. */
+  respond(packet: Packet): Promise<void> {
+    if (this.ended || this.stopping) return Promise.reject(new Error("Child is stopped or stopping"));
+    return new Promise((resolve, reject) => {
+      this.child.stdin.write(JSON.stringify(packet) + "\n", error => error ? reject(error) : resolve());
+    });
   }
   private signal(signal: NodeJS.Signals) {
     if (this.ended) return;

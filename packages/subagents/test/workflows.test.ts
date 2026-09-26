@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -130,6 +130,19 @@ test("human approval is explicit, tied to input, and never supplied by resume", 
     h.engine.decide(id, "approval", "pass"); await h.engine.control(id, "resume"); run = await settled(h.engine, id);
     assert.equal(run.status, "succeeded"); assert.equal(run.usedAttempts, 3);
   } finally { await h.close(); }
+});
+
+test("existing workflow state permissions are repaired on reopen", { skip: process.platform === "win32" }, async () => {
+  const h = setup();
+  let restored: Workflows | undefined;
+  try {
+    const run = await settled(h.engine, idOf(h.engine.start(definition(h.root, [task("privacy")]))));
+    chmodSync(h.engine.directory, 0o777); chmodSync(run.directory, 0o777); chmodSync(join(run.directory, "run.json"), 0o666);
+    restored = new Workflows(h.engine.directory, h.host);
+    assert.equal(statSync(h.engine.directory).mode & 0o777, 0o700);
+    assert.equal(statSync(run.directory).mode & 0o777, 0o700);
+    assert.equal(statSync(join(run.directory, "run.json")).mode & 0o777, 0o600);
+  } finally { await restored?.shutdown(); await h.close(); }
 });
 
 test("shutdown/reload does not replay; explicit retry preserves total allowance and deadline", async () => {

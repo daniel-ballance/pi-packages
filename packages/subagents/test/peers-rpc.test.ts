@@ -76,7 +76,7 @@ test("real child peer tools: idle prompt, busy steering, limits, graph, resume a
     assert.equal(manager.get(c.id).status, "waiting_input");
     await assert.rejects(manager.peers.send(b.id, c.id, "do not bypass input"), /waiting_input/);
     const request = manager.get(c.id).uiRequests[0];
-    manager.respond(c.id, request.id, { confirmed: false }); await settle();
+    await manager.respond(c.id, request.id, { confirmed: false }); await settle();
     // Accepted steering can be cancelled before its tool boundary; no replay/refund.
     await manager.send(c.id, "HOLD");
     for (let i = 0; i < 100 && manager.get(c.id).activity !== "Tool: peer_test_hold"; i++) await delay(10);

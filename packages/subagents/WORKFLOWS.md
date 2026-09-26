@@ -12,7 +12,7 @@ A small parent-owned DAG scheduler built on the existing subagent manager. The p
 
 `/workflows` lists runs. `/workflows inspect <id> [step]`, `pause <id>`, `resume <id> [retry-step …]` and `cancel <id>` provide human controls. `/workflows approve <id> <step>` or `reject <id> <step>` records a human check decision; resume explicitly afterward. There is deliberately **no model-callable human-approval operation**.
 
-One workflow executes per parent at a time; paused/blocked runs can be retained while another executes. Its children share the parent's live-child cap with manually spawned children. A task can therefore wait for available child slots; inspect child IDs/status through ordinary subagent tools. Workflow children are closed when their task/group finishes. They are not persistent workflow orchestrators.
+One workflow executes per parent at a time; paused/blocked runs can be retained while another executes. Its children share the parent's live-child cap with manually spawned children. A task can therefore wait for available child slots; inspect child IDs/status through ordinary subagent tools. Multi-worker groups reserve all required manager slots atomically before starting their first child, so a racing manual spawn cannot leave a partially started group. Cancellation releases unused reservations and closes members already started. Workflow children are closed when their task/group finishes. They are not persistent workflow orchestrators.
 
 ## Definition
 

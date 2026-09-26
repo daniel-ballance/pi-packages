@@ -102,7 +102,7 @@ Configured credentials do not guarantee a successful request: expired authentica
 | `subagent_abort` | Clear queues and cancel work, keeping the child alive |
 | `subagent_close` | Abort and stop a child, dismissing pending notifications but retaining readable results and conversation |
 | `subagent_resume` | Revalidate a stopped child's saved composition, restart and optionally prompt it |
-| `subagent_respond` | Answer a pending extension dialog; human-required approvals remain human decisions |
+| `subagent_respond` | Queue an answer to a pending extension dialog; human-required approvals remain human decisions |
 | `subagent_workflow_start` | Start a parent-authored JSON workflow; returns acceptance |
 | `subagent_workflow_inspect` | Inspect run/step progress, artifacts, validation and attempts |
 | `subagent_workflow_control` | Pause, explicitly resume/retry, or cancel a workflow |
@@ -124,7 +124,7 @@ Example composition, after consulting the catalog:
 
 All normal extension, skill, prompt-template and theme discovery is disabled; only explicitly selected resources load. Context files and normal system prompts follow their own permitted settings. Parent project trust is propagated only within that project's directory tree; child directories outside it do not automatically inherit trust. Children still use normal Pi global settings and credentials, so this is a spawn-composition boundary rather than a hermetic configuration or sandbox.
 
-A completed child remains idle. Use `subagent_send` for discussion or another assignment. On a working child, specify `behavior: "steer"` or `"followUp"`; steering is delivered at a tool boundary, while `subagent_abort` cancels current work. Cancelling `subagent_wait` does not stop children. Wait returns early for pending extension dialogs.
+A completed child remains idle. Use `subagent_send` for discussion or another assignment. On a working child, specify `behavior: "steer"` or `"followUp"`; steering is delivered at a tool boundary, while `subagent_abort` cancels current work. Cancelling `subagent_wait` does not stop children. Wait returns early for pending extension dialogs. `subagent_respond` removes a pending dialog only after the child stdin write callback succeeds; its result reports transport `queued` and receipt `unconfirmed`, because Pi's extension UI response protocol has no acknowledgement record.
 
 Abort intent is scoped to the current run and recorded before cancellation requests are sent. Native `stopReason: "aborted"` and cancellation-shaped `stopReason: "error"` responses to an explicit abort produce an idle, reusable child with `aborted: true`, not a failure. Unrelated provider errors remain failures even when racing an abort. A later run resets cancellation state. Wait for abort acknowledgement before sending another task. Closing archives a genuine current error as `lastError`; detailed history remains readable, while `error` no longer suggests an unresolved failure on a stopped child.
 

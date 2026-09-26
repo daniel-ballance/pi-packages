@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, chmodSync, lstatSync } from "node:fs";
 import { join } from "node:path";
 import type { Artifact } from "./workflow-artifacts.js";
 import { verifyArtifact } from "./workflow-artifacts.js";
 import { authorizeWorkflow, type PeerLink, type Worker, type WorkflowDefinition } from "./workflow-definition.js";
-import type { SubagentManager } from "./manager.js";
+import type { SlotReservation, SubagentManager } from "./manager.js";
 import type { SubagentPolicy } from "./policy.js";
 
 export interface AgentJob {
@@ -24,14 +24,16 @@ export function managerWorkflowHost(manager: SubagentManager, policy: () => Suba
     authorize: def => authorizeWorkflow(def, policy()),
     async agents(jobs, links, signal) {
       const ids = new Map<string, string>();
+      let reservation: SlotReservation | undefined;
       try {
-        // Reserve an entire peer group before prompting it; no half-started conversations.
+        // Atomically reserve the entire group before starting any member. Manual
+        // spawns then see those permits as occupied throughout sequential setup.
         jobs.forEach(job => job.onActivity("Waiting for enough live-child slots"));
-        while (manager.list().filter(a => a.pid).length + jobs.length > manager.maxChildren) { signal.throwIfAborted(); await sleep(100); }
+        while (!(reservation = manager.reserveSlots(jobs.length))) { signal.throwIfAborted(); await sleep(100); }
         for (const job of jobs) {
           signal.throwIfAborted(); job.onActivity("Starting worker");
           const child = await manager.spawn({ name: `${job.workflow}/${job.step}`.slice(0, 120), task: job.instructions,
-            ...policy().compile(job.cwd, job.worker), workflow: job.workflow, deferTask: true });
+            ...policy().compile(job.cwd, job.worker), workflow: job.workflow, deferTask: true }, reservation);
           ids.set(job.step, child.id); job.onChild(child.id);
         }
         for (const link of links) manager.peers.connect(ids.get(link.a)!, ids.get(link.b)!, link.limit);
@@ -57,6 +59,7 @@ export function managerWorkflowHost(manager: SubagentManager, policy: () => Suba
           return reply;
         });
       } finally {
+        if (reservation) manager.releaseSlots(reservation);
         for (const link of links) {
           if (ids.has(link.a) && ids.has(link.b)) {
             try { manager.peers.disconnect(ids.get(link.a)!, ids.get(link.b)!); } catch { /* Setup may have failed before connecting. */ }
@@ -76,6 +79,14 @@ export function managerWorkflowHost(manager: SubagentManager, policy: () => Suba
 /** Deterministic checks use an explicit shell command, not an LLM asked to run it. */
 export function runCommand(command: string, cwd: string, env: Record<string, string>, directory: string, signal: AbortSignal): Promise<{ code: number; stdout: string }> {
   signal.throwIfAborted();
+  const logPath = join(directory, "command.log");
+  try {
+    const stat = lstatSync(logPath);
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error(`Unsafe workflow command log path: ${logPath}`);
+    chmodSync(logPath, 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   return new Promise((resolve, reject) => {
     const child = spawn("bash", ["-c", command], { cwd, env: { ...process.env, ...env }, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", logged = 0, killer: NodeJS.Timeout | undefined, failure: Error | undefined;
@@ -86,7 +97,10 @@ export function runCommand(command: string, cwd: string, env: Record<string, str
     const abort = () => { kill("SIGTERM"); killer ??= setTimeout(() => kill("SIGKILL"), 1500); };
     signal.addEventListener("abort", abort, { once: true });
     const log = (chunk: Buffer) => {
-      if (logged < 1024 * 1024) { const bytes = chunk.subarray(0, 1024 * 1024 - logged); appendFileSync(join(directory, "command.log"), bytes, { mode: 0o600 }); logged += bytes.length; }
+      if (logged < 1024 * 1024) {
+        const bytes = chunk.subarray(0, 1024 * 1024 - logged);
+        appendFileSync(logPath, bytes, { mode: 0o600 }); chmodSync(logPath, 0o600); logged += bytes.length;
+      }
     };
     child.stdout.on("data", chunk => { stdout = (stdout + chunk.toString()).slice(-16000); log(chunk); });
     child.stderr.on("data", log);

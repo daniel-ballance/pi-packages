@@ -173,7 +173,7 @@ test("failures and input requests use the same read acknowledgement; obsolete di
     assert.equal(s.manager.pendingNotices()[0].kind, "input_requested");
     const data = s.manager.read(a.id, 9999); // UI requests are returned even if updates are skipped
     assert.equal(data.uiRequests.length, 1); assert.equal(s.manager.pendingNotices().length, 0);
-    s.manager.respond(a.id, "ui-1", { confirmed: false });
+    await s.manager.respond(a.id, "ui-1", { confirmed: false });
     await s.manager.wait([a.id], "all", 2000); s.manager.read(a.id);
     await s.manager.send(a.id, "ui"); await s.manager.wait([a.id], "all", 2000);
     await s.manager.close(a.id);

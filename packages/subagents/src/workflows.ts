@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { candidateDirectory, snapshot, verifyArtifact, type Artifact } from "./workflow-artifacts.js";
 import { dependencies, parseWorkflow, workUnits, type WorkflowDefinition, type WorkflowStep, type Validator } from "./workflow-definition.js";
@@ -23,6 +23,18 @@ export interface WorkflowRun {
 }
 class Exhausted extends Error {}
 const terminal = new Set(["succeeded", "exhausted", "cancelled"]);
+function enforcePrivatePath(path: string, mode: number, directory: boolean) {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile())) throw new Error(`Unsafe workflow state path: ${path}`);
+  chmodSync(path, mode);
+}
+function enforcePrivatePathIfPresent(path: string, mode: number, directory: boolean) {
+  try { enforcePrivatePath(path, mode, directory); return true; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
 
 export function parseVerdict(text: string): Verdict {
   const value = JSON.parse(text.trim());
@@ -39,9 +51,12 @@ export class Workflows {
   private closed = false;
   constructor(readonly directory: string, private host: WorkflowHost, private changed: () => void = () => {}) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
+    enforcePrivatePath(directory, 0o700, true);
     for (const name of readdirSync(directory)) {
-      const path = join(directory, name, "run.json");
+      const runDirectory = join(directory, name), path = join(runDirectory, "run.json");
       if (!existsSync(path)) continue;
+      enforcePrivatePath(runDirectory, 0o700, true);
+      enforcePrivatePath(path, 0o600, false);
       const run = JSON.parse(readFileSync(path, "utf8")) as WorkflowRun;
       run.definition = parseWorkflow(run.definition);
       if (["running", "pausing"].includes(run.status)) {
@@ -57,7 +72,10 @@ export class Workflows {
   }
   private save(run: WorkflowRun) {
     const path = join(run.directory, "run.json"), temp = path + ".tmp";
-    writeFileSync(temp, JSON.stringify(run, null, 2), { mode: 0o600 }); renameSync(temp, path); this.changed();
+    enforcePrivatePath(run.directory, 0o700, true);
+    enforcePrivatePathIfPresent(temp, 0o600, false);
+    writeFileSync(temp, JSON.stringify(run, null, 2), { mode: 0o600 });
+    enforcePrivatePath(temp, 0o600, false); renameSync(temp, path); enforcePrivatePath(path, 0o600, false); this.changed();
   }
   get(id: string) { const run = this.runs.get(id); if (!run) throw new Error(`Unknown workflow: ${id}`); return run; }
   private notify(run: WorkflowRun) { run.unread = true; run.noticeRevision++; this.save(run); }
@@ -86,6 +104,7 @@ export class Workflows {
     const definition = parseWorkflow(value); this.host.authorize(definition);
     const id = `workflow-${randomUUID().slice(0, 8)}`, directory = join(this.directory, id);
     mkdirSync(directory, { mode: 0o700 });
+    enforcePrivatePath(directory, 0o700, true);
     const run: WorkflowRun = { id, definition, directory, created: new Date().toISOString(), deadline: Date.now() + definition.limits.timeoutSeconds * 1000,
       status: "running", usedAttempts: 0, noticeRevision: 0, unread: false,
       steps: Object.fromEntries(definition.steps.map(s => [s.id, { status: "pending", iteration: 0, attempts: [] }])) };
@@ -136,6 +155,7 @@ export class Workflows {
     if (run.usedAttempts >= run.definition.limits.maxAttempts) throw new Exhausted("Total attempt allowance exhausted (workers and checks both count)");
     const number = ++run.usedAttempts, directory = join(run.directory, `${number}-${step}-${kind}`);
     mkdirSync(directory, { mode: 0o700 });
+    enforcePrivatePath(directory, 0o700, true);
     const a: Attempt = { number, kind, directory, started: new Date().toISOString(), status: "running", children: [] };
     run.steps[step].attempts.push(a); this.save(run); return a;
   }

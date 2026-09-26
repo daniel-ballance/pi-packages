@@ -268,11 +268,11 @@ export default function subagents(pi: ExtensionAPI) {
   pi.registerTool({
     name: "subagent_respond", label: "Respond to Subagent UI",
     ...render("respond"),
-    description: "Answer a pending RPC extension dialog by request ID (from subagent_read). Supply value, confirmed, or cancelled. Human-required approvals must be referred to the user, not silently approved by the parent agent. Output capped at 30KB/1000 lines.",
+    description: "Queue an answer to a pending RPC extension dialog by request ID (from subagent_read). Supply value, confirmed, or cancelled. The result confirms stdin transport queued the record, not that the child acknowledged receipt. Human-required approvals must be referred to the user, not silently approved by the parent agent. Output capped at 30KB/1000 lines.",
     parameters: Type.Object({ id, requestId: Type.String(), value: Type.Optional(Type.String()), confirmed: Type.Optional(Type.Boolean()), cancelled: Type.Optional(Type.Boolean()) }),
     async execute(_call, { id, requestId, ...response }, _signal, _update, ctx) {
       if (Object.values(response).filter(v => v !== undefined).length !== 1) throw new Error("Supply exactly one of value, confirmed, cancelled");
-      return result(get(ctx).respond(id, requestId, response), ctx);
+      return result(await get(ctx).respond(id, requestId, response), ctx);
     },
   });
   pi.registerCommand("subagents", {
