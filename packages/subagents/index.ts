@@ -14,6 +14,8 @@ import { subagentRenderers } from "./src/render.js";
 import { Workflows } from "./src/workflows.js";
 import { managerWorkflowHost } from "./src/workflow-host.js";
 import { registerWorkflowUI } from "./src/workflow-ui.js";
+import { inspectorSource } from "./src/inspector-data.js";
+import { showInspector, type InspectorPanel } from "./src/inspector.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
 const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path from subagent_catalog." })));
@@ -30,6 +32,7 @@ export default function subagents(pi: ExtensionAPI) {
   let notifications: NoticeScheduler | undefined;
   let policy: SubagentPolicy | undefined;
   let workflows: Workflows | undefined;
+  let inspector: InspectorPanel | undefined;
   const getPolicy = (ctx: ExtensionContext) => policy ??= new SubagentPolicy({
     cwd: ctx.cwd, agentDir: getAgentDir(), projectTrusted: ctx.isProjectTrusted(),
     guardPath: fileURLToPath(new URL("./src/child-guard.ts", import.meta.url)),
@@ -60,7 +63,7 @@ export default function subagents(pi: ExtensionAPI) {
   const getWorkflows = (ctx: ExtensionContext) => workflows ??= new Workflows(join(get(ctx).directory, "workflows"), managerWorkflowHost(get(ctx), () => getPolicy(ctx)), () => {
     if (context?.hasUI && workflows) {
       const running = (workflows.inspect() as { runs: { status: string; name: string }[] }).runs.filter(r => ["running", "pausing"].includes(r.status));
-      context.ui.setStatus("workflows", running.length ? `workflow: ${running[0].name}` : undefined);
+      context.ui.setStatus("workflows", context.mode !== "tui" && running.length ? `workflow: ${running[0].name}` : undefined);
     }
     notifications?.wake();
   });
@@ -118,6 +121,8 @@ export default function subagents(pi: ExtensionAPI) {
     }
   });
   pi.on("session_shutdown", async () => {
+    inspector?.close();
+    inspector = undefined;
     notifications?.dispose();
     notifications = undefined;
     try { await workflows?.shutdown(); await manager?.shutdown(); }
@@ -276,10 +281,16 @@ export default function subagents(pi: ExtensionAPI) {
     },
   });
   pi.registerCommand("subagents", {
-    description: "List children with footer-style usage, inspect diagnostics, or /subagents abort <id>, close <id>, close-all",
+    description: "Open the read-only agent/workflow inspector; list, diagnostics, abort <id>, close <id>, close-all",
     handler: async (args, ctx) => {
       const [action, target] = args.trim().split(/\s+/);
       const manager = get(ctx);
+      if (!action && ctx.mode === "tui") {
+        if (inspector) return;
+        try { await showInspector(ctx, inspectorSource(manager, getWorkflows(ctx)), panel => { inspector = panel; }); }
+        finally { inspector = undefined; }
+        return;
+      }
       if (action === "diagnostics") {
         const policy = getPolicy(ctx);
         policy.catalog();

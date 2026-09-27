@@ -77,6 +77,8 @@ export class Workflows {
     writeFileSync(temp, JSON.stringify(run, null, 2), { mode: 0o600 });
     enforcePrivatePath(temp, 0o600, false); renameSync(temp, path); enforcePrivatePath(path, 0o600, false); this.changed();
   }
+  /** Presentation-only enumeration: unlike inspect(id), does not acknowledge notices. */
+  list(): readonly WorkflowRun[] { return [...this.runs.values()]; }
   get(id: string) { const run = this.runs.get(id); if (!run) throw new Error(`Unknown workflow: ${id}`); return run; }
   private notify(run: WorkflowRun) { run.unread = true; run.noticeRevision++; this.save(run); }
   pendingNotices(): Notice[] {

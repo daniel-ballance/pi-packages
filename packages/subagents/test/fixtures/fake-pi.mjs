@@ -48,6 +48,13 @@ process.stdin.on('data', chunk => {
       working = true; emit({ type: 'agent_start' }); respond(cmd);
       clearTimeout(timer);
       if (cmd.message === 'ui') { pendingUI = true; emit({ type: 'extension_ui_request', id: 'ui-1', method: 'confirm', title: 'Confirm test action?' }); }
+      else if (cmd.message === 'inspector-stream') {
+        emit({ type: 'tool_execution_start', toolCallId: 'read-1', toolName: 'read', args: { path: 'docs.md' } });
+        emit({ type: 'tool_execution_end', toolCallId: 'read-1', toolName: 'read', result: { content: [{ type: 'text', text: 'Documentation' }] }, isError: false });
+        emit({ type: 'message_start', message: { role: 'assistant', content: [] } });
+        emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Live partial response' } });
+        timer = setTimeout(() => settle('Live partial response, completed.'), 5000);
+      }
       else if (cmd.message === 'live-usage') {
         emit({ type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'toolUse' } });
         emit({ type: 'turn_end' });

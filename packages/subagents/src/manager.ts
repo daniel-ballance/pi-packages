@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, type Packet } from "./rpc.js";
+import { ActivityFeed, type LiveActivity } from "./activity.js";
 import type { Composition } from "./policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
@@ -56,6 +57,7 @@ export function isCancellationError(message: unknown): boolean {
 
 export class SubagentManager {
   private records = new Map<string, AgentRecord>();
+  private activityFeeds = new Map<string, ActivityFeed>();
   private children = new Map<string, RpcChild>();
   private logSizes = new Map<string, number>();
   private shuttingDown = false;
@@ -179,6 +181,12 @@ export class SubagentManager {
     const record = this.records.get(id);
     if (!record) throw new Error(`Unknown subagent: ${id}`);
     return record;
+  }
+  /** Read-only transient view; no read cursor, notices, or child RPCs are touched. */
+  activitySnapshot(id: string): LiveActivity {
+    const record = this.get(id);
+    const snapshot = this.activityFeeds.get(id)?.snapshot() ?? { tools: [], text: "" };
+    return record.status === "working" ? snapshot : { ...snapshot, text: "", phase: undefined };
   }
   private child(id: string) {
     this.get(id);
@@ -388,6 +396,10 @@ export class SubagentManager {
   }
   private event(record: AgentRecord, packet: Packet) {
     this.log(record.logFile, JSON.stringify(packet) + "\n");
+    let activity = this.activityFeeds.get(record.id);
+    if (!activity) this.activityFeeds.set(record.id, activity = new ActivityFeed());
+    try { activity.accept(packet); }
+    catch { this.activityFeeds.delete(record.id); } // Cosmetic data must never break execution.
     switch (packet.type) {
       case "agent_start":
         record.runRevision = (record.runRevision ?? 0) + 1;
