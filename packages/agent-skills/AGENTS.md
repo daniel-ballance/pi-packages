@@ -1,7 +1,14 @@
 # agent-skills
 
-Matt Pocock's engineering skills, translated for the Pi harness. This package is a
-**generated vendor overlay**, not a hand-maintained fork.
+Matt Pocock's engineering skills, translated for the Pi harness, plus the
+hand-maintained `lint-skill` authoring CLI. The skill collection is a **generated
+vendor overlay**, not a hand-maintained fork.
+
+The CLI lives in `scripts/lint-skill*.mjs` and `lib/`; its contract and usage are in
+[docs/lint-skill.md](docs/lint-skill.md). Run `npm ci --ignore-scripts` in this package
+before `npm run check` and `npm test`. The checks keep translation drift and lint
+separate. The public CLI intentionally takes explicit skill directories; the
+package-only `scripts/check-skills.mjs` adapter selects this collection.
 
 `skills/` is generated. Never edit it by hand. Edit the rules in
 `scripts/sync.sh`, then re-run.
@@ -85,15 +92,22 @@ tripwire counted across the whole generated tree.
 | `arg-hint` | drops `argument-hint:` frontmatter lines |
 | slash-namespacing | `/<skillname>` → `/skill:<skillname>`, with a lookbehind that protects `../name/SKILL.md` paths and real Pi commands |
 | tracker swap | `code-review`'s issue-tracker precondition and issue-fetch step → repo-doc spec guidance |
-| child delegation | writes one shared `skills/references/CHILD-DELEGATION.md` reference and pointers from child workflows |
+| child delegation | writes one shared `skills/references/CHILD-DELEGATION.md` reference and explicit Markdown pointers from child workflows |
+| `hitl-resource-link` | makes the bundled HITL script discoverable through a Markdown link |
+| `skill-resource-link` | turns translated sibling-skill paths into explicit dependency links |
+| `tdd-command-link` / `review-command-link` | attaches sibling-skill links to commands before slash-namespacing |
 
-Two ordering constraints that are easy to break:
+Ordering constraints that are easy to break:
 
 - **Count, then apply, per rule, in order.** Several rules rewrite text an earlier
   rule produced (`sub-agent` → `subagent` → `spawn a child`). Counting everything
   against the original tree makes those chained rules report zero and false-alarm.
 - **The tracker swap runs before slash-namespacing.** Otherwise its literal source
   text has already become `/skill:setup-matt-pocock-skills` and never matches.
+- **Resource links run after skill-tool translation and before slash-namespacing.**
+  This makes generated `../name/SKILL.md` paths explicit links and preserves the
+  `/skill:` command labels without rewriting link destinations. Project/output
+  paths and code examples remain prose, not invented bundled dependencies.
 
 `agents/openai.yaml` is dropped from the output. Pi never reads it;
 `disable-model-invocation` in `SKILL.md` is the supported equivalent and is

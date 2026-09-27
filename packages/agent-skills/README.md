@@ -4,7 +4,11 @@ Matt Pocock's engineering skills, translated for Pi. Eleven skills covering
 design interviews, domain modelling, deep-module design, TDD, two-axis code
 review, disciplined bug diagnosis, and cited research.
 
-This is a **generated vendor overlay**. `skills/` is produced by
+The package also ships [`lint-skill`](docs/lint-skill.md), an offline JavaScript
+CLI for validating Pi skill frontmatter, explicit references, resource depth,
+and orphaned files. It can lint skills outside this package.
+
+The skill collection is a **generated vendor overlay**. `skills/` is produced by
 `scripts/sync.sh` from a git submodule of upstream. Read [AGENTS.md](AGENTS.md)
 before changing anything in here.
 
@@ -17,6 +21,20 @@ Add to `~/.pi/agent/settings.json`:
 ```
 
 Then `/reload`. Skills arrive as `/skill:<name>`.
+
+## Lint a skill
+
+Requires Node.js 22.19 or newer. From this package directory:
+
+```sh
+npm ci --ignore-scripts
+node scripts/lint-skill.mjs /path/to/my-skill
+node scripts/lint-skill.mjs --resource-root /path/to/skills /path/to/skills/my-skill
+```
+
+The npm binary is `lint-skill`; Pi package installation does not necessarily put
+it on your shell PATH. See [the command guide](docs/lint-skill.md) for JSON output,
+strict mode, explicit exceptions, and the Pi-specific root-relative link contract.
 
 ## The eleven
 

@@ -13,7 +13,11 @@ fail() {
 
 new_case() {
   local name="$1" case_root="$TMP/$1"
-  cp -a "$ROOT" "$case_root"
+  mkdir -p "$case_root/scripts" "$case_root/vendor"
+  cp -a "$ROOT/scripts/sync.sh" "$case_root/scripts/"
+  cp -a "$ROOT/skills" "$case_root/skills"
+  cp -a "$ROOT/vendor/matt-pocock" "$case_root/vendor/matt-pocock"
+  # Copy only sync inputs: the package now also has installed CLI dependencies.
   # The copied submodule metadata points back at the real checkout. Tests only
   # need its files, so keep this fixture independent of Git/network state.
   rm -rf "$case_root/vendor/matt-pocock/.git"
@@ -84,6 +88,15 @@ printf '\nstale output\n' >> "$case_root/skills/grilling/SKILL.md"
 (cd "$case_root" && ./scripts/sync.sh >"$TMP/success.log" 2>&1)
 ! grep -Fq 'stale output' "$case_root/skills/grilling/SKILL.md" || fail 'successful sync kept stale output'
 [ -f "$case_root/skills/references/CHILD-DELEGATION.md" ] || fail 'shared child guidance was not generated'
+# Resource pointers must be discoverable by the Markdown reference graph.
+grep -Fq '[HITL loop template](scripts/hitl-loop.template.sh)' "$case_root/skills/diagnosing-bugs/SKILL.md" || fail 'HITL script has no explicit resource link'
+grep -Fq '[grilling](../grilling/SKILL.md)' "$case_root/skills/grill-with-docs/SKILL.md" || fail 'sibling skill has no explicit resource link'
+grep -Fq '[child delegation guidance](../references/CHILD-DELEGATION.md)' "$case_root/skills/research/SKILL.md" || fail 'shared guidance has no explicit resource link'
+grep -Fq '[/skill:tdd](../tdd/SKILL.md)' "$case_root/skills/implement/SKILL.md" || fail 'TDD command has no dependency link'
+grep -Fq '[/skill:code-review](../code-review/SKILL.md)' "$case_root/skills/implement/SKILL.md" || fail 'review command has no dependency link'
+# Project/output paths and fenced examples are not bundled resources.
+grep -Fq 'read `CONTEXT.md` (if it exists)' "$case_root/skills/tdd/SKILL.md" || fail 'project path was incorrectly rewritten'
+grep -Fq '[Ordering](./src/ordering/CONTEXT.md)' "$case_root/skills/domain-modeling/CONTEXT-FORMAT.md" || fail 'fenced example was incorrectly rewritten'
 (cd "$case_root" && ./scripts/sync.sh --check >"$TMP/success-check.log" 2>&1)
 
 # A failed install move restores the old tree through the EXIT trap.

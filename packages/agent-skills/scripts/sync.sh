@@ -74,6 +74,10 @@ subagent-background|1|Spin up a \*\*background agent\*\* to do the research, so 
 subagent-design-twice|1|spin up parallel subagents|spawn parallel children with `subagent_spawn`
 clear-to-new|0|(?<![\w/-])/clear\b|/new
 arg-hint|0|^argument-hint:.*\n||
+hitl-resource-link|1|`scripts/hitl-loop\.template\.sh`|[HITL loop template](scripts/hitl-loop.template.sh)
+skill-resource-link|1|`\.\./([a-z0-9-]+)/SKILL\.md`|[$1](../$1/SKILL.md)
+tdd-command-link|1|(?<![\w./-])/tdd\b|[/tdd](../tdd/SKILL.md)
+review-command-link|1|(?<![\w./-])/code-review\b|[/code-review](../code-review/SKILL.md)
 RULES
 
 # Slash-command namespacing: /name -> /skill:name for every skill we might name.
@@ -91,7 +95,7 @@ TRACKER_ISSUE_NEW='1. A spec path named in the conversation or commit messages.'
 
 # This is a shared reference for the translated child workflows. Keep the
 # mechanics here rather than duplicating them in every generated skill.
-CHILD_POINTER='Read `../references/CHILD-DELEGATION.md` before using child delegation.'
+CHILD_POINTER='Read [child delegation guidance](../references/CHILD-DELEGATION.md) before using child delegation.'
 
 CHILD_GUIDANCE=$(cat <<'GUIDANCE'
 # Child delegation

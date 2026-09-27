@@ -3,23 +3,38 @@
   "version": "0.1.0",
   "description": "Matt Pocock's engineering skills translated for the Pi harness: grilling, domain modelling, deep-module design, TDD, two-axis code review, disciplined bug diagnosis, and cited research.",
   "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "bin": {
+    "lint-skill": "scripts/lint-skill.mjs"
+  },
   "keywords": [
     "pi-package",
     "skills"
   ],
   "files": [
     "skills",
+    "lib",
+    "scripts/lint-skill.mjs",
+    "scripts/lint-skill-config.mjs",
+    "docs/lint-skill.md",
     "AGENTS.md",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "check": "bash scripts/sync.sh --check",
-    "test": "bash scripts/test-sync.sh"
+    "check": "bash scripts/sync.sh --check && npm run lint:skills",
+    "lint:skills": "node scripts/check-skills.mjs",
+    "test": "node --test test/*.test.mjs && bash scripts/test-sync.sh"
   },
   "pi": {
     "skills": [
       "./skills"
     ]
+  },
+  "dependencies": {
+    "mdast-util-from-markdown": "2.0.3",
+    "yaml": "2.9.1"
   }
 }
