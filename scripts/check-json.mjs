@@ -23,7 +23,9 @@ function isConfigurationJson(file) {
   );
 }
 
-const files = new Set(tracked.filter(isConfigurationJson));
+// Unstaged deletions remain in git ls-files; validate the working tree, not
+// removed configuration (notably an intentionally deleted project override).
+const files = new Set(tracked.filter(file => isConfigurationJson(file) && existsSync(resolve(root, file))));
 // Include a newly created root manifest before it is staged. Example, proposal,
 // and other fixture JSON remains data rather than repository configuration.
 if (existsSync(resolve(root, "package.json"))) files.add("package.json");

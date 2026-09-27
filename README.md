@@ -26,7 +26,7 @@ install or root lockfile; packages own their dependencies and lockfiles. For a
 local dependency setup, use `npm ci --ignore-scripts` in each package that has a
 lockfile. The CI-equivalent installer is [`scripts/ci-install.sh`](scripts/ci-install.sh).
 
-Launch Pi from this repository root when the project settings in `.pi/settings.json` or the project policy in `.pi/subagents.json` should apply:
+Launch Pi from this repository root when the project settings in `.pi/settings.json` or project-local skills should apply:
 
 ```sh
 cd /path/to/pi-packages
@@ -35,10 +35,12 @@ pi
 
 Pi project settings and policy do not walk up from a nested package working
 directory, so starting Pi inside `packages/<name>` does not discover the root
-`.pi/` configuration. This project explicitly enables development child tools
-and peer messaging. On this workstation, the personal global policy is
-read/search-only and `self-reload` is project-local. Policies replace the global
-policy as a whole, and are not a filesystem sandbox.
+`.pi/` configuration. This repository does not ship a project subagent override;
+the personal global policy takes precedence over package defaults when present.
+On this workstation, the global override uses the new model menu with
+read/search-only permissions; `self-reload` remains project-local. A project
+policy, if added, replaces the global policy as a whole; policies are not a
+filesystem sandbox.
 
 ## Repository check
 
@@ -75,6 +77,12 @@ The matrix is evidence for those two versions, not every intervening Pi release
 or older Node.js runtime. Tests use local deterministic providers and fixtures;
 external services and optional installed-Pi executable overrides are outside the
 root gate.
+
+## Refreshing subagent model recommendations
+
+From the trusted repository root, `/skill:refresh-subagent-models` runs the maintainer workflow: runtime-aligned subscription inventory, private Artificial Analysis snapshots, deterministic per-pool Pareto analysis, then an evidence/experience-grounded proposal. Reload project skills after adding it to a running session. It does not change policy or run model trials automatically.
+
+Analysis preferences live in [`.pi/model-selection.json`](.pi/model-selection.json), separately from the subagent policy. [Decisions](docs/subagents-model-selection/decisions.md) and [practical experience](docs/subagents-model-selection/experience.md) guide interpretation; [helper documentation](packages/subagents/skills/subagents/reference/frontier-analysis.md) describes private artifacts and reproducible commands. Shipped defaults live in `packages/subagents/src/policy.ts`; a personal `subagents.json` or an explicitly added project `.pi/subagents.json` replaces them.
 
 ## Design notes
 

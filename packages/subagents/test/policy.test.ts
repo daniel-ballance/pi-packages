@@ -5,13 +5,38 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_POLICY, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../src/policy.js";
 
+test("built-in model menu covers independent subscription pools without changing permissions", () => {
+  const policy = parsePolicy(DEFAULT_POLICY);
+  assert.deepEqual(policy.models.map(m => m.id), [
+    "openai-codex/gpt-6-luna:medium",
+    "openai-codex/gpt-6-luna:max",
+    "openai-codex/gpt-6-sol:high",
+    "openai-codex/gpt-6-sol:max",
+    "xai/grok-4.6:low",
+    "xai/grok-4.6:high",
+    "xai/grok-4.7:high",
+  ]);
+  for (const model of policy.models) {
+    assert.match(model.description!, /Provisional/);
+    assert.match(model.description!, /ChatGPT|Grok/);
+  }
+  assert.deepEqual(policy.tools, ["read", "bash", "edit", "write", "grep", "find", "ls"]);
+  assert.equal(policy.peerMessageLimit, 0);
+  assert.equal(policy.maxChildren, 4);
+  assert.deepEqual(policy.workingDirectories, ["."]);
+  for (const resources of [policy.extensions, policy.skills, policy.promptTemplates, policy.themes]) assert.deepEqual(resources, []);
+  assert.equal(policy.systemPrompt, true);
+  assert.equal(policy.appendSystemPrompt, true);
+  assert.equal(policy.contextFiles, true);
+});
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "subagent-policy-"));
   const cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   const environment: PolicyEnvironment = {
     cwd, agentDir, projectTrusted: true, guardPath: "/internal/child-guard.ts",
-    models: () => [{ provider: "openai-codex", id: "gpt-5.6-luna", input: ["text", "image"], contextWindow: 272000, maxTokens: 128000, cost: { input: 1 }, thinkingLevels: ["medium", "xhigh"] }],
+    models: () => [{ provider: "openai-codex", id: "gpt-6-luna", input: ["text", "image"], contextWindow: 272000, maxTokens: 128000, cost: { input: 1 }, thinkingLevels: ["medium", "max"] }],
     tools: () => ["read", "bash", "subagent_spawn"],
   };
   const global = join(agentDir, "subagents.json"), project = join(cwd, ".pi/subagents.json");
@@ -47,6 +72,10 @@ test("built-in -> global -> trusted project: whole-file replacement, omitted cap
     assert.equal(project.systemPrompt, false);
     assert.deepEqual(project.extensions, []);
     assert.equal(new SubagentPolicy({ ...f.environment, projectTrusted: false }).source, f.global);
+    rmSync(f.project);
+    assert.equal(new SubagentPolicy(f.environment).source, f.global);
+    rmSync(f.global);
+    assert.equal(new SubagentPolicy(f.environment).source, "built-in");
   } finally { f.cleanup(); }
 });
 
@@ -66,7 +95,7 @@ test("malformed selected policy fails closed, never falls through to broader def
 test("catalog removes unavailable entries, recursive tools and missing resources; diagnostics remain user-facing", () => {
   const f = fixture();
   try {
-    f.put(f.global, { ...DEFAULT_POLICY, models: [...DEFAULT_POLICY.models, { id: "anthropic/missing:medium" }, { id: "openai-codex/gpt-5.6-luna:max" }], tools: ["read", "absent", "subagent_spawn"], extensions: ["missing.ts"] });
+    f.put(f.global, { ...DEFAULT_POLICY, models: [...DEFAULT_POLICY.models, { id: "anthropic/missing:medium" }, { id: "openai-codex/gpt-6-luna:xhigh" }], tools: ["read", "absent", "subagent_spawn"], extensions: ["missing.ts"] });
     const p = new SubagentPolicy(f.environment);
     const catalog = p.catalog();
     assert.equal(catalog.models.length, 2);
@@ -99,7 +128,7 @@ test("compile enforces exact composition, prompt modes, scoped directories and e
     const unchanged = policy.compile(f.cwd, { model: selection.model, tools: [] });
     assert.ok(!unchanged.cliArgs!.includes("--system-prompt"));
     assert.ok(!unchanged.cliArgs!.includes("--append-system-prompt"));
-    assert.throws(() => policy.compile(f.cwd, { ...selection, model: "gpt-5.6-luna:medium" }), /not currently allowed/);
+    assert.throws(() => policy.compile(f.cwd, { ...selection, model: "gpt-6-luna:medium" }), /not currently allowed/);
     assert.throws(() => policy.compile(f.cwd, { ...selection, tools: ["subagent_spawn"] }), /not allowed/);
     assert.throws(() => policy.compile(f.cwd, { ...selection, extensions: ["/tmp/not-allowed.ts"] }), /not allowed/);
     symlinkSync(f.environment.agentDir, join(f.cwd, "escape"));

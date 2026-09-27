@@ -39,12 +39,32 @@ The built-in policy is equivalent to the following (model descriptions abbreviat
   "version": 1,
   "models": [
     {
-      "id": "openai-codex/gpt-5.6-luna:medium",
-      "description": "General summarization and exploration."
+      "id": "openai-codex/gpt-6-luna:medium",
+      "description": "Cheap ChatGPT-pool exploration and grounded summaries."
     },
     {
-      "id": "openai-codex/gpt-5.6-luna:xhigh",
-      "description": "Basic code implementation and harder reasoning tasks."
+      "id": "openai-codex/gpt-6-luna:max",
+      "description": "Stronger budget reasoning and scoped implementation."
+    },
+    {
+      "id": "openai-codex/gpt-6-sol:high",
+      "description": "Substantive ChatGPT-pool implementation and debugging."
+    },
+    {
+      "id": "openai-codex/gpt-6-sol:max",
+      "description": "Upper ChatGPT-pool subagent escalation."
+    },
+    {
+      "id": "xai/grok-4.6:low",
+      "description": "Economical Grok-pool investigation and second opinions."
+    },
+    {
+      "id": "xai/grok-4.6:high",
+      "description": "Demanding Grok-pool implementation and review."
+    },
+    {
+      "id": "xai/grok-4.7:high",
+      "description": "Upper Grok-pool subagent escalation."
     }
   ],
   "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
@@ -79,7 +99,9 @@ No user configuration files are generated or overwritten automatically.
 
 `subagent_catalog` exposes only usable options: allowed exact models with configured authentication and supported thinking levels, their guidance, modalities, context/output limits and registry pricing; locally known tools; existing resource files; prompt permissions; and allowed directories. Descriptions are user guidance, not measured model benchmarks. Registry prices may not reflect subscription billing or your actual provider bill.
 
-Built-in selection guidance recommends **medium** for exploration, summarization, factual lookup and small bounded investigations; escalate multi-step debugging and implementation decisions to **xhigh**. Prefer xhigh for scoped implementation, regression analysis and interacting constraints—not simple extraction. Both require evidence and verification; higher thinking does not guarantee correctness. The catalog includes this guidance directly, so the parent need not infer it from the model names. Custom policies can supply their own descriptions.
+Built-in selection guidance offers two provisional menus: **GPT-6 Luna medium → Luna max → Sol high → Sol max** in the ChatGPT pool, and **Grok 4.6 low → 4.6 high → 4.7 high** in the Grok pool. These are starting-tier choices, not mandatory retry chains. Prefer the OpenAI options for benchmark-derived global value when both pools are healthy; choose suitable Grok options when conserving the separate ChatGPT allowance, especially for the parent. No live quota detection or automatic routing is implied. Astra is deliberately absent from the subagent defaults; return persistent blockers to the parent.
+
+This is benchmark-informed guidance, not demonstrated Pi task performance. Require grounded evidence, tests and review; refine descriptions from accepted outcomes. Higher thinking is not a correctness guarantee. The catalog includes each entry's guidance directly. Custom policies can supply their own descriptions; detailed evidence stays outside policy.
 
 Unavailable entries are omitted, never silently substituted. Their names/reasons are shown to the **user** through `/subagents diagnostics`; the model-facing catalog contains only an omitted-entry count. If no model is usable, spawning is disabled until configuration/availability is fixed.
 
@@ -114,7 +136,7 @@ Example composition, after consulting the catalog:
   "name": "reviewer",
   "task": "Review src/auth.ts for correctness. Do not edit. Report file/line references.",
   "cwd": "/absolute/path/to/project",
-  "model": "openai-codex/gpt-5.6-luna:medium",
+  "model": "openai-codex/gpt-6-luna:medium",
   "tools": ["read", "grep", "find", "ls"],
   "appendSystemPrompt": "Concentrate on authentication correctness and regression risks."
 }
