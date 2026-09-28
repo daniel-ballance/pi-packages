@@ -143,3 +143,60 @@ test('registers web_search and returns bounded tool output', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+function registeredTool(): ToolDefinition {
+  let tool: ToolDefinition | undefined;
+  extension({ registerTool: (definition: ToolDefinition) => { tool = definition; } } as ExtensionAPI);
+  return tool!;
+}
+
+const plainTheme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme;
+
+test('renders compact and expanded results without changing model content', () => {
+  const tool = registeredTool();
+  const results = Array.from({ length: 5 }, (_, i) => ({ title: `Title ${i}`, url: `https://example.com/${i}`, snippet: `Snippet ${i}` }));
+  const result = { content: [{ type: 'text' as const, text: 'model-only JSON' }], details: { provider: 'duckduckgo', results } };
+  const render = (expanded: boolean) => tool.renderResult!(result, { expanded, isPartial: false }, plainTheme, {} as never).render(120).join('\n');
+  assert.match(render(false), /5 results.*snippets only.*pages not opened/);
+  assert.match(render(false), /Title 0 — example.com/);
+  assert.match(render(false), /2 more results/);
+  assert.doesNotMatch(render(false), /Snippet|Title 4|model-only/);
+  assert.match(render(true), /https:\/\/example.com\/4/);
+  assert.match(render(true), /Snippet 4/);
+  assert.equal(result.content[0].text, 'model-only JSON');
+});
+
+test('renders running, empty and failed results distinctly', () => {
+  const tool = registeredTool();
+  const result = { content: [{ type: 'text' as const, text: '[blocked] Do not retry.\u001b[31m' }], details: { provider: 'duckduckgo', results: [] } };
+  const render = (isPartial: boolean, isError = false) => tool.renderResult!(result, { expanded: false, isPartial }, plainTheme, { isError } as never).render(120).join('\n');
+  assert.match(render(true), /Searching DuckDuckGo/);
+  assert.match(render(false), /no results.*broader query/);
+  assert.match(render(false, true), /\[blocked\]/);
+  assert.doesNotMatch(render(false, true), /no results|\u001b/);
+});
+
+test('expanded calls show complete queries and render safely at narrow widths', () => {
+  const tool = registeredTool();
+  const query = '文'.repeat(300) + ' final-token';
+  const component = tool.renderCall!({ query }, plainTheme, { argsComplete: true, expanded: true } as never);
+  assert.match(component.render(40).join('\n'), /final-token/);
+  const partial = tool.renderCall!({}, plainTheme, { argsComplete: false } as never);
+  assert.match(partial.render(40).join('\n'), /\.\.\./);
+});
+
+test('emits progress before results and preserves failed-tool semantics', async () => {
+  const tool = registeredTool();
+  const originalFetch = globalThis.fetch;
+  const updates: unknown[] = [];
+  try {
+    globalThis.fetch = responseFetch(html);
+    await tool.execute('id', { query: 'test' }, undefined, update => { updates.push(update); }, {} as never);
+    assert.equal(updates.length, 1);
+    assert.match(JSON.stringify(updates[0]), /Searching DuckDuckGo/);
+    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+    await assert.rejects(tool.execute('id', { query: 'test' }, undefined, undefined, {} as never), /\[network_error\]/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

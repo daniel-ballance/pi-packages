@@ -2,7 +2,7 @@ import { load } from 'cheerio';
 
 const ENDPOINT = 'https://html.duckduckgo.com/html/';
 export const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
-const BLOCKED = 'DuckDuckGo blocked this search (CAPTCHA or rate limit). Try again later; do not retry repeatedly.';
+const BLOCKED = '[blocked] DuckDuckGo blocked this search (CAPTCHA or rate limit). No results retrieved; no automatic retry attempted. Try again later; do not retry repeatedly.';
 
 export interface SearchResult {
   title: string;
@@ -55,13 +55,13 @@ export function parseResults(html: string, limit = 5): SearchResult[] {
     results.push({ title, url, snippet: clip(row.find('.result__snippet').first().text(), 500) });
   });
   if (!results.length && !$('.no-results, .result--no-result').length) {
-    throw new Error('DuckDuckGo returned an unrecognized page, not confirmed empty results. It may be blocking requests or its HTML may have changed.');
+    throw new Error('[unexpected_page] DuckDuckGo returned an unrecognized page, not confirmed empty results. It may be blocking requests or its HTML may have changed. Reformulating the query is unlikely to help.');
   }
   return results.slice(0, limit);
 }
 
 async function readBounded(response: Response): Promise<string> {
-  if (!response.body) throw new Error('DuckDuckGo returned an empty response.');
+  if (!response.body) throw new Error('[unexpected_page] DuckDuckGo returned an empty response.');
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -70,7 +70,7 @@ async function readBounded(response: Response): Promise<string> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_RESPONSE_BYTES) throw new Error('DuckDuckGo response exceeded the 2 MiB safety limit.');
+      if (size > MAX_RESPONSE_BYTES) throw new Error('[response_too_large] DuckDuckGo response exceeded the 2 MiB safety limit.');
       chunks.push(value);
     }
     return Buffer.concat(chunks).toString('utf8');
@@ -101,6 +101,8 @@ export async function searchDuckDuckGo(
       signal: combined,
       redirect: 'error',
       headers: { Accept: 'text/html', 'User-Agent': 'pi-web-search/0.1.0' },
+    }).catch((cause: unknown) => {
+      throw new Error('[network_error] Could not reach DuckDuckGo. Check connectivity before trying again.', { cause });
     });
     if ([202, 403, 429].includes(response.status)) {
       await response.body?.cancel();
@@ -108,14 +110,14 @@ export async function searchDuckDuckGo(
     }
     if (!response.ok) {
       await response.body?.cancel();
-      throw new Error(`DuckDuckGo search failed (HTTP ${response.status}).`);
+      throw new Error(`[http_error] DuckDuckGo search failed (HTTP ${response.status}). No automatic retry attempted.`);
     }
     const html = await readBounded(response);
     combined.throwIfAborted();
     return parseResults(html, limit);
   } catch (error) {
     signal?.throwIfAborted();
-    if (timeout.signal.aborted) throw new Error('DuckDuckGo search timed out. Try again later.');
+    if (timeout.signal.aborted) throw new Error('[timeout] DuckDuckGo search timed out. No automatic retry attempted. Try again later.');
     throw error;
   } finally {
     clearTimeout(timer);
