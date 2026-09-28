@@ -1,8 +1,17 @@
-import { Ajv } from 'ajv';
+import { Ajv, type ValidateFunction } from 'ajv';
+import { displayText } from './diagnostics.js';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormatsModule from 'ajv-formats';
 import type { ObjectValue } from './headers.js';
 const addFormats = addFormatsModule as unknown as (ajv: Ajv | Ajv2020) => void;
+/** Explain the constraint and location without echoing submitted values or schema enums. */
+export function validationIssue(validate: ValidateFunction): string {
+  const issue = validate.errors?.[0];
+  if (!issue) return 'schema constraint failed';
+  const field = issue.keyword === 'required' ? `/${String(issue.params.missingProperty)}` : '';
+  return `${displayText((issue.instancePath || '') + field || '(root)', 160)}: ${displayText(issue.keyword, 40)} constraint failed`;
+}
+
 export function validator(schema: ObjectValue) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema))
     throw new Error('Expected a JSON Schema object');

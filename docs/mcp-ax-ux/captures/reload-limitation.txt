@@ -1,0 +1,36 @@
+
+ {}
+ Tool execution outcome is unknown; inspect server state before retrying a side-effecting call. No automatic
+ retry was performed.
+ Server/transport diagnostic (untrusted): Fixture failure; no external operation was performed.
+
+
+ Offline fixture finished. No paid model or external service was used.
+
+
+ slow
+
+
+
+ mcp_demo_slow_preview_3163f6d34b9b437e
+
+ {
+   "target": "fixture:notes",
+   "enabled": false,
+   "options": {
+     "token": "fixture-secret",
+     "count": 2
+   }
+ }
+ Preview complete. No files were changed.
+
+
+ Offline fixture finished. No paid model or external service was used.
+
+ Reloaded keybindings, extensions, skills, prompts, themes, and context files
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+~/Code/pi-packages-mcp-ax-ux (experiment/mcp-ax-ux)
+4.1%/32k (auto)                                                                                        offline

@@ -1,0 +1,24 @@
+
+ Tool output: expanded
+
+ Offline fixture finished. No paid model or
+ external service was used.
+
+
+ form
+
+
+
+ demo • ask form
+ Form response: {"action":"cancel"}
+
+
+ Offline fixture finished. No paid model or
+ external service was used.
+
+────────────────────────────────────────────────
+
+────────────────────────────────────────────────
+~/Code/pi-packages-mcp-ax-ux (experiment/mcp-...
+4.0%/32k (auto)                          offline
+MCP · demo · refreshing tools · 2s

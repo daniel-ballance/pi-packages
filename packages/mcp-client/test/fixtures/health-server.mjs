@@ -26,6 +26,9 @@ for await (const line of createInterface({ input: process.stdin })) {
       send({
         resultType: 'complete',
         tools: [
+          ...(mode === 'rejected'
+            ? [{ name: 'invalid', inputSchema: { $ref: 'https://example.invalid/schema' } }]
+            : []),
           {
             name: 'echo',
             inputSchema: { type: 'object', properties: { text: { type: 'string' } } },

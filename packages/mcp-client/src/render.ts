@@ -8,6 +8,12 @@ type CallContext = { lastComponent?: unknown; expanded?: boolean; argsComplete?:
 const secretName =
   /password|passwd|secret|token|authorization|credential|api[-_]?key|private[-_]?key/i;
 const qualifierName = /^(limit|timeout|timeoutseconds)$/i;
+const protectedSchema = (shape?: Schema) =>
+  shape &&
+  typeof shape === 'object' &&
+  (shape.writeOnly === true ||
+    shape.format === 'password' ||
+    ['$ref', 'allOf', 'anyOf', 'oneOf', 'if', 'patternProperties'].some((key) => key in shape));
 
 function plain(value: string, limit: number): string {
   const text = stripVTControlCharacters(value)
@@ -94,12 +100,15 @@ function preview(
   limit: number,
 ): string | undefined {
   if (value === undefined || value === false || value === null || value === '') return undefined;
+  if (protectedSchema(schema)) return '[schema-protected]';
   if (schema?.writeOnly === true || schema?.format === 'password' || secretName.test(key))
     return '[redacted]';
   if (typeof value === 'string') return plain(value, limit) || undefined;
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   if (value === true) return words(key);
   if (Array.isArray(value)) {
+    if (protectedSchema(schema?.items) || schema?.prefixItems?.some(protectedSchema))
+      return '[schema-protected]';
     if (value.length === 0) return undefined;
     const strings = value.every((item) => typeof item === 'string')
       ? value.map((item) => plain(String(item), 40)).filter(Boolean)
@@ -116,12 +125,63 @@ function preview(
   return undefined;
 }
 
+function expandedArguments(args: unknown, schema: Schema | undefined): string[] {
+  let remaining = 80;
+  const redact = (key: string, value: unknown, shape?: Schema, depth = 0): unknown => {
+    if (secretName.test(key) || shape?.writeOnly || shape?.format === 'password')
+      return '[redacted]';
+    // Sensitivity may be hidden behind schema composition/references; fail closed for display.
+    if (protectedSchema(shape)) return '[schema-protected]';
+    if (--remaining < 0 || depth > 4) return '[preview limit]';
+    if (typeof value === 'string') return plain(value, 240);
+    if (Array.isArray(value)) {
+      const items = value
+        .slice(0, 8)
+        .map((item, index) =>
+          redact(String(index), item, shape?.prefixItems?.[index] ?? shape?.items, depth + 1),
+        );
+      if (value.length > 8) items.push(`[${value.length - 8} more items]`);
+      return items;
+    }
+    if (value && typeof value === 'object') {
+      const entries = Object.entries(value);
+      const result = Object.fromEntries(
+        entries
+          .slice(0, 8)
+          .map(([child, item]) => [
+            plain(child, 80),
+            redact(
+              child,
+              item,
+              shape?.properties?.[child] ?? shape?.additionalProperties,
+              depth + 1,
+            ),
+          ]),
+      );
+      if (entries.length > 8) result['…'] = `${entries.length - 8} more fields`;
+      return result;
+    }
+    return value;
+  };
+  if (protectedSchema(schema)) return ['arguments: [schema-protected]'];
+  const entries = Object.entries(argsOf(args)).filter(([, value]) => value !== undefined);
+  const lines = entries
+    .slice(0, 16)
+    .map(
+      ([key, value]) =>
+        `${plain(key, 80)}: ${plain(JSON.stringify(redact(key, value, schema?.properties?.[key] ?? schema?.additionalProperties)), 500)}`,
+    );
+  if (entries.length > 16) lines.push(`… ${entries.length - 16} more arguments`);
+  return lines;
+}
+
 function dynamicParts(
   args: unknown,
   schema: Schema | undefined,
   expanded: boolean,
   complete: boolean,
 ) {
+  if (protectedSchema(schema)) return { accent: '[schema-protected]' };
   const limit = expanded ? 240 : 80;
   const max = expanded ? 8 : 2;
   const shown: string[] = [];
@@ -133,7 +193,12 @@ function dynamicParts(
       continue;
     }
     if (shown.length >= max) continue;
-    const text = preview(key, value, schema?.properties?.[key], limit);
+    const text = preview(
+      key,
+      value,
+      schema?.properties?.[key] ?? schema?.additionalProperties,
+      limit,
+    );
     if (text) shown.push(text);
   }
   const [accent, ...output] = shown;
@@ -159,8 +224,13 @@ export function renderMcpCall(
         theme,
         action,
         thing || undefined,
-        dynamicParts(args, tool.inputSchema, context.expanded, context.argsComplete),
-      ),
+        dynamicParts(args, tool.inputSchema, false, context.argsComplete),
+      ) +
+        (context.expanded
+          ? expandedArguments(args, tool.inputSchema)
+              .map((line) => `\n  ${theme.fg('toolOutput', line)}`)
+              .join('')
+          : ''),
     );
 }
 
@@ -173,8 +243,9 @@ export function renderSearchTools(): Render {
     const data = argsOf(args);
     const server = typeof data.server === 'string' ? thingName(data.server) : undefined;
     const query = stringArg(data.query, context.expanded ? 240 : 80, context.argsComplete);
-    const limit =
-      typeof data.limit === 'number' && Number.isFinite(data.limit) ? [`limit ${data.limit}`] : [];
+    const limit = ['limit', 'offset'].flatMap((key) =>
+      typeof data[key] === 'number' && Number.isFinite(data[key]) ? [`${key} ${data[key]}`] : [],
+    );
     return textLine(
       context,
       paint(theme, 'search tools', server || undefined, {

@@ -64,7 +64,7 @@ These are placeholders, not installed servers. A stdio command must already be a
 - `${ENV_VAR}` expands in stdio command/args/env and HTTP URL/headers; missing variables fail that server's connection. No shell expansion, command substitution, or automatic `.env` loading occurs.
 - Child processes inherit the MCP SDK's minimal safe environment plus explicit `env`, **not the complete Pi environment**. Child stderr is discarded so it cannot corrupt the TUI or RPC output.
 - `roots` is opt-in. Paths resolve against Pi's session working directory and are sent as file URIs. Omit it to advertise no roots capability; `[]` advertises an empty roots list. **Roots are informational, not a filesystem sandbox.**
-- `elicitation` defaults to false. When enabled, form elicitation is advertised only in Pi's TUI/RPC modes. JSON entered through Pi's dialogs is validated against the server's requested schema; decline and cancellation are supported. Never enter secrets into form elicitation.
+- `elicitation` defaults to false. When enabled, form elicitation is advertised only in Pi's TUI/RPC modes. Simple scalar forms offer **Fill in fields**: strings/numbers use native inputs, enums/booleans use selections, optional fields can be skipped, and a review requires **Send answers** before release. Field errors do not echo entered values; three invalid attempts cancel the form. The complete original schema is still validated. Complex/reference-based schemas retain **Provide JSON**; guided forms are limited to 16 fields and 40 enum choices and do not offer credential-named/password/write-only fields. Decline and cancellation remain available. Never enter secrets into form elicitation.
 - `elicitationUrl` separately enables URL elicitation. Pi displays the URL and requires approval before launching the system browser; non-HTTP(S) URLs and userinfo are refused. OAuth/secret entry happens in the browser, never in form dialogs. All MCP dialogs share one queue across servers.
 - `sampling` defaults to false. Enable it for separately approved, billed completions in TUI/RPC mode. `samplingMaxTokens` caps output (default 4096, range 1–32768). Pi's current model is used; server preferences do not change it. Input and release each require confirmation. No Pi session context or Pi tools are shared.
 - `samplingTools` additionally allows server-supplied tool definitions and balanced tool-use/result transcripts in sampling. Pi returns **proposals for the server to execute**; it never executes them or runs another agent loop. Proposed arguments are validated and require release approval. `required` is checked on the generated response; a model that does not provide tool use fails rather than silently violating the request.
@@ -86,36 +86,49 @@ The official SDK supplies legacy Streamable HTTP, HTTP+SSE, and OAuth mechanics.
 
 Server tools become Pi tools named `mcp_<server>_<tool>_<hash>`. Names are stable, collision-resistant, and at most 64 characters. Original server names and descriptions remain visible. Existing Pi tools are preserved; server tools cannot replace `bash`, `read`, etc.
 
-In the TUI, a call is one line in the built-in tool style, not the internal hash. The server is the thing and the tool name is the action, both bold: `context7 • query docs /earendil-works/pi How does renderCall work`. A leading `browser` is dropped, so Playwright reads `playwright • navigate https://example.com`. Tools that are not aimed at one server are just the action: `server status`, `tasks`, `search tools pydantic`. The first argument is accent-colored, the rest use the tool-output color, and `limit` or `timeout` is a muted `(limit 5)`. Server-provided titles are not used on this line. Argument previews are bounded; expanding the tool reveals more values inline. Obvious secret-named and `writeOnly` fields are redacted in these previews (not a guarantee of secret detection). This is display-only: wire names, model-visible arguments/results, Pi's result preview, images, errors, and result expansion are unchanged.
+In the TUI, a call is one line in the built-in tool style, not the internal hash. The server is the thing and the tool name is the action, both bold: `context7 • query docs /earendil-works/pi How does renderCall work`. A leading `browser` is dropped, so Playwright reads `playwright • navigate https://example.com`. Tools that are not aimed at one server are just the action: `server status`, `tasks`, `search tools pydantic`. The first argument is accent-colored, the rest use the tool-output color, and `limit` or `timeout` is a muted `(limit 5)`. Server-provided titles are not used on this line. Argument previews are bounded; expanding the tool shows labelled arguments, including explicit `false` values and nested objects/arrays. Expanded previews recursively redact obvious secret-named and `writeOnly` fields. Values behind schema references/compositions are conservatively shown as `[schema-protected]`, not expanded. Previews are not a guarantee of secret detection. This is display-only: wire names, model-visible arguments/results, Pi's result preview, images, errors, and result expansion are unchanged. **Known Pi 0.87.1 limitation:** after `/reload`, historical dynamic-tool calls can fall back to Pi's generic renderer, showing hashed names and raw arguments without these preview redactions. New calls use the custom renderer; do not treat display redaction as a security boundary. See the [reload QA finding](../../docs/mcp-ax-ux/QA.md#known-pi-reload-limitation--not-fixed-here).
 
 The model also gets:
 
-- **`mcp_status`** — server names, versions, capabilities, server metadata/guidance, subscriptions and health details.
-- **`mcp_search_tools`** — search catalogs and activate matching native Pi tools. Reports titles, annotations and icon descriptors without fetching icon URLs.
+- **`mcp_status`** — explicit connection state, active/catalogued tool counts, catalog freshness, rejected definitions, versions, capabilities, server metadata/guidance, subscriptions and health details. Server guidance is labelled as untrusted reference data.
+- **`mcp_search_tools`** — search catalogs and activate returned native Pi tools. Exact names and titles rank above incidental description matches. Reports activation changes, total matches, `nextOffset`, and catalog health alongside titles, annotations and icon descriptors (without fetching icon URLs). Use an empty query with a `server` to browse; `offset` pages through matches. Empty results distinguish missing matches, unavailable servers, rejected definitions and discovery failures.
 - **`mcp_tasks`** — list locally recorded handles, inspect, wait for, or cancel a negotiated 2026 task. Never repeat the original tool call to resume one.
 - **`mcp_resources`** — list resources, list URI templates, or read an exact URI. Listings expose opaque pagination cursors. Links are never fetched automatically.
 - **`mcp_complete`** — prompt-argument and resource-template-variable completion, including already supplied argument context.
 
-### Failure-only footer status
+### Execution feedback and diagnostics
 
-Uses Pi's native extension status slot; it does not replace the footer. Healthy servers, normal startup, disabled servers, and an empty configuration show nothing—not even an extra row when no other extension statuses are present.
+Running server tool calls show an `awaiting result` update after two seconds, then elapsed-time updates every two seconds until completion. Correlated progress retains a bounded, terminal-safe server message labelled `server progress`. These are tool updates, not additional footer rows; they do not imply that a silent server is stalled or that its side effects can be cancelled.
+
+Local argument validation reports the schema constraint and field path without echoing submitted values. It explicitly says the call was rejected before execution. Request failures after entering the call path conservatively report an unknown execution outcome and warn against blindly retrying side-effecting calls; the original bounded server/transport diagnostic remains available as untrusted output. No automatic tool-call replay is introduced.
+
+Configuration diagnostics identify the source file and invalid field paths without quoting configuration values. Administrative command errors identify the action and a safe error category or local usage hint; arbitrary server error messages and credentials are not copied into these notifications. Rejected tool definitions are counted in status with a reason for each exclusion.
+
+### Quiet health status and delayed activity
+
+Uses Pi's native extension status slots; it does not replace the footer. The health slot remains failure-only: healthy servers, disabled servers, and an empty configuration show nothing—not even an extra row when no other extension statuses are present. A separate **transient activity slot** appears only after two seconds for connection setup, catalog refresh, prompt fetching, or an explicit refresh waiting for the agent to finish. It shows the oldest waiting operation, elapsed seconds and a `(+N)` count for concurrent waits. Completion, failure and shutdown clear this slot without clearing health warnings or other extensions' statuses. Fast startup stays silent; TUI and RPC receive the same status updates.
 
 - Yellow: `⚠ MCP · playwright unavailable` when only some servers fail.
-- Yellow: `⚠ MCP · playwright needs attention` for connected servers with discovery/subscription failures.
+- Yellow: `⚠ MCP · playwright needs attention` for connected servers with discovery/subscription failures or rejected tool definitions.
 - Red: `× MCP · unavailable` when all enabled servers have failed.
 - Red: `× MCP · invalid configuration` when configuration cannot be loaded.
 
-Multiple issues are summarized with a bounded server name and `(+N)` count. Colours follow the current Pi theme. Details are available through `/mcp status` or `mcp_status`; normal tool-operation errors do not affect connection health. Status reflects observed failures, not background health polling. Recovery clears the indicator silently; shutdown removes only this extension's status. `/mcp refresh` retries tool discovery on connected servers; use `/reload` to reconnect failed servers or reload configuration. No new settings or dependencies are required.
+Multiple issues are summarized with a bounded server name and `(+N)` count. Colours follow the current Pi theme. A concise per-server summary is available through `/mcp status`; `/mcp status details` and `mcp_status` expose capabilities and metadata. Catalog `stale` means discovery will be refreshed before use, not that the connection is broken. Details include safe diagnostics and next actions; normal tool-operation errors do not affect connection health. Status reflects observed failures, not background health polling. Recovery clears the indicator silently; shutdown removes only this extension's status. `/mcp refresh` retries tool discovery on connected servers; use `/reload` to reconnect failed servers or reload configuration. No new settings or dependencies are required.
 
 User commands:
 
 ```text
 /mcp status
+/mcp status details
 /mcp refresh
 /mcp sampling
 /mcp login remote
 /mcp logout remote
 /mcp prompts local
+/mcp prompt
+/mcp prompt local
+/mcp subscribe local
+/mcp unsubscribe local
 /mcp prompt {"server":"local","name":"review","arguments":{"language":"typescript"}}
 /mcp subscribe {"server":"local","uri":"file:///project/notes.txt"}
 /mcp unsubscribe {"server":"local","uri":"file:///project/notes.txt"}
@@ -123,9 +136,11 @@ User commands:
 
 Administrative status, prompt catalogs, and sampling reports display immediately as native **non-context entries**; they never queue a model message.
 
+`/mcp prompt` guides server/prompt selection and argument entry; `/mcp prompt SERVER` skips server selection. Optional arguments can be skipped, and a review requires **Add reference** before fetching the prompt. `/mcp subscribe [SERVER]` asks for an exact URI and confirmation; `/mcp unsubscribe [SERVER]` lets you choose a recorded subscription and confirm removal. Escape cancels without queuing a reference or changing subscriptions. These flows share the MCP dialog queue, use native dialogs in TUI/RPC, and require a UI; the JSON command forms remain available for scripting and advanced cases. Catalog network requests do not hold the dialog queue.
+
 Prompts are user-selected reference context for your **next message**. Server-supplied user/assistant roles are preserved as data; they do not impersonate Pi's user or alter its system prompt. Prompt selection does not start a model turn.
 
-`/mcp refresh` refreshes connected servers' tool catalogs after the agent is idle. Tool-list notifications mark discovery dirty. Modern TTL hints are honored before agent turns (missing/zero TTL means stale); catalogs never cross connection/client-identity boundaries. Unchanged definitions are not re-registered. Prompt/resource-list notifications notify the UI without reading or injecting content. Removed tools are disabled and cannot execute through stale registrations. Pi does not expose an unregister-tool API, so disabled definitions can remain visible in its complete registry until reload.
+`/mcp refresh` refreshes connected servers' tool catalogs after the agent is idle and displays a per-server outcome: refreshed/changed, failed, or unavailable (requiring `/reload`). A failure on one server does not prevent refresh of the others. Subscription retries are requests, not confirmation that a stream has been acknowledged. Tool-list notifications mark discovery dirty. Modern TTL hints are honored before agent turns (missing/zero TTL means stale); catalogs never cross connection/client-identity boundaries. Unchanged definitions are not re-registered. Prompt/resource-list notifications notify the UI without reading or injecting content. Removed tools are disabled and cannot execute through stale registrations. Pi does not expose an unregister-tool API, so disabled definitions can remain visible in its complete registry until reload.
 
 `/mcp sampling` shows sampling usage recorded on the current session branch, including generations whose release was declined. Usage is stored in non-context custom entries and is **separate from Pi's footer totals**: legacy server-initiated requests cannot always be attributed to one of several concurrent Pi tool calls without guessing. No prompt text, generated reasoning or credentials are stored in those usage entries.
 
@@ -183,6 +198,8 @@ npm run format:check
 npm test
 npm pack --dry-run
 ```
+
+For an offline manual TUI demo, run `./scripts/tui-demo.sh` from this package (requires the `pi` executable). It uses a temporary agent directory, a deterministic local provider and fixture server—not personal MCP servers or a billed model. Type `slow`, `form` or `fail`; use `/mcp prompt`, `/mcp subscribe` and `/mcp status` to try the guided commands. Add `--tui-mode fullscreen` for fullscreen mode. See [tmux QA notes](../../docs/mcp-ax-ux/QA.md) for the tested scenarios and reproduction commands. The demo script is a repository development fixture, not included in the published package.
 
 Tests use real child processes for each version; official SDK v1 legacy HTTP/SSE and SDK v2 2026 stdio/HTTP servers; a real Pi SDK session/reload without a model call; local OAuth/PKCE fixtures; bounded transport/error probes; and mocked sampling/UI APIs. No live model calls or external server credentials are required. They are interoperability/regression tests, not an official MCP conformance certification.
 
