@@ -101,6 +101,36 @@ test('argument previews are bounded, expand with Pi, and fit narrow terminals', 
   assert.doesNotMatch(lines(updated, 80).join('\n'), /\b5\b/);
 });
 
+test('expanded calls label false values and recursively redact nested arguments', () => {
+  const render = renderMcpCall('remote', {
+    name: 'update',
+    inputSchema: {
+      properties: {
+        entries: { type: 'array', items: { properties: { opaque: { writeOnly: true } } } },
+        hidden: { $ref: '#/$defs/secret' },
+      },
+    },
+  });
+  const args = {
+    enabled: false,
+    entries: [{ name: 'kept', opaque: 'nested-secret', token: 'named-secret' }],
+    hidden: 'ref-secret',
+  };
+  const text = lines(render(args, theme, context({ expanded: true })), 500).join('\n');
+  assert.match(text, /enabled: false/);
+  assert.match(text, /entries:.*kept/);
+  assert.match(text, /hidden:.*schema-protected/);
+  assert.doesNotMatch(text, /nested-secret|named-secret|ref-secret/);
+  assert.equal(args.entries[0].opaque, 'nested-secret');
+  const protectedRoot = renderMcpCall('remote', { name: 'update', inputSchema: { allOf: [{}] } });
+  for (const expanded of [false, true]) {
+    assert.doesNotMatch(
+      lines(protectedRoot({ opaque: 'root-secret' }, theme, context({ expanded }))).join('\n'),
+      /root-secret/,
+    );
+  }
+});
+
 test('built-in MCP calls omit the extension name unless a server is the thing', () => {
   assert.equal(lines(renderServerStatus()({}, theme, context()))[0], 'server status');
   assert.equal(

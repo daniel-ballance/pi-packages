@@ -1,0 +1,24 @@
+ Offline fixture finished. No paid model or
+ external service was used.
+
+
+ form
+
+
+
+ demo • ask form
+
+
+────────────────────────────────────────────────
+
+ MCP demo · 1/4
+ Number of previews (count, required)
+ integer, minimum 1, maximum 3 (60s)
+
+>
+
+ enter submit  escape/ctrl+c cancel
+
+────────────────────────────────────────────────
+~/Code/pi-packages-mcp-ax-ux (experiment/mcp-...
+3.9%/32k (auto)                          offline

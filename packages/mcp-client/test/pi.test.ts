@@ -15,6 +15,8 @@ function harness(cwd: string, trusted = true) {
     tools = new Map<string, any>(),
     commands = new Map<string, any>();
   let active = ['read', 'bash'];
+  const entries: { type: string; data: any }[] = [];
+  const notifications: string[] = [];
   const pi: any = {
     on: (name: string, handler: Function) => handlers.set(name, handler),
     registerTool: (tool: any) => {
@@ -28,7 +30,7 @@ function harness(cwd: string, trusted = true) {
       active = names;
     },
     sendMessage() {},
-    appendEntry() {},
+    appendEntry: (type: string, data: any) => entries.push({ type, data }),
     registerEntryRenderer() {},
   };
   const statuses = new Map<string, string>();
@@ -37,7 +39,7 @@ function harness(cwd: string, trusted = true) {
     hasUI: false,
     isProjectTrusted: () => trusted,
     ui: {
-      notify() {},
+      notify: (text: string) => notifications.push(text),
       theme: { fg: (level: string, text: string) => `${level}:${text}` },
       setStatus: (key: string, text?: string) => {
         if (text === undefined) statuses.delete(key);
@@ -48,7 +50,7 @@ function harness(cwd: string, trusted = true) {
     sessionManager: { getBranch: () => [] },
   };
   extension(pi);
-  return { pi, ctx, handlers, tools, commands, statuses };
+  return { pi, ctx, handlers, tools, commands, statuses, entries, notifications };
 }
 
 test('Pi factory opens no connections; session discovers tools and shutdown closes them', async () => {
@@ -216,8 +218,21 @@ test('native status tracks discovery recovery and disconnects, but not ordinary 
     await writeFile(modePath, 'healthy');
     await h.commands.get('mcp').handler('refresh', h.ctx);
     assert.equal(h.statuses.has('mcp-client'), false);
+    await writeFile(modePath, 'rejected');
+    await h.commands.get('mcp').handler('refresh', h.ctx);
+    const rejected = JSON.parse((await h.tools.get('mcp_status').execute()).content[0].text)
+      .servers[0];
+    assert.equal(rejected.catalog, 'partial');
+    assert.equal(rejected.rejectedTools[0].name, 'invalid');
+    assert.match(rejected.rejectedTools[0].reason, /input schema cannot be compiled/);
+    assert.match(h.statuses.get('mcp-client')!, /needs attention/);
+    await h.commands.get('mcp').handler('status', h.ctx);
+    assert.match(h.entries.at(-1)!.data.text, /Excluded invalid: input schema/);
     await writeFile(modePath, 'disconnect');
-    await assert.rejects(echo.execute('2', {}, undefined, undefined, h.ctx));
+    await assert.rejects(
+      echo.execute('2', {}, undefined, undefined, h.ctx),
+      /outcome is unknown.*No automatic retry/,
+    );
     assert.equal(h.statuses.get('mcp-client'), 'error:× MCP · unavailable');
     await h.handlers.get('session_shutdown')!();
     assert.equal(h.statuses.has('mcp-client'), false);
@@ -244,6 +259,14 @@ test('configuration and startup failures persist in native status and expose det
       (await h.tools.get('mcp_status').execute()).content[0].text,
       /configuration invalid/,
     );
+    await assert.rejects(
+      h.tools
+        .get('mcp_search_tools')
+        .execute('invalid', { query: '' }, undefined, undefined, h.ctx),
+      /Invalid JSON.*mcp.json/,
+    );
+    await h.commands.get('mcp').handler('refresh', h.ctx);
+    assert.match(h.notifications.at(-1)!, /Invalid JSON.*mcp.json/);
     await h.handlers.get('session_shutdown')!();
     await writeFile(
       join(cwd, 'mcp.json'),
@@ -265,6 +288,140 @@ test('configuration and startup failures persist in native status and expose det
     await writeFile(join(cwd, 'mcp.json'), '{"servers":{}}');
     await h.handlers.get('session_start')!({}, h.ctx);
     assert.equal(h.statuses.has('mcp-client'), false);
+  } finally {
+    await h.handlers.get('session_shutdown')!();
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('AX/UX: discovery activation, empty-result guidance, status and command feedback', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'mcp-experience-'));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = cwd;
+  const h = harness(cwd, false);
+  h.ctx.hasUI = true;
+  try {
+    await writeFile(
+      join(cwd, 'mcp.json'),
+      JSON.stringify({
+        servers: {
+          fixture: {
+            transport: 'stdio',
+            command: process.execPath,
+            protocol: '2026-07-28',
+            toolLoading: 'deferred',
+            args: [fileURLToPath(new URL('./fixtures/server.mjs', import.meta.url)), '2026-07-28'],
+          },
+          missing: { transport: 'stdio', command: join(cwd, 'missing') },
+        },
+      }),
+    );
+    await h.handlers.get('session_start')!({}, h.ctx);
+    const call = async (tool: string, args = {}) =>
+      h.tools.get(tool).execute('test', args, undefined, undefined, h.ctx);
+    const data = (result: any) => JSON.parse(result.content[0].text);
+    let status = data(await call('mcp_status'));
+    assert.equal(status.servers[0].connection, 'connected');
+    assert.equal(status.servers[0].activeTools, 0);
+    const search = data(await call('mcp_search_tools', { query: '', server: 'fixture' }));
+    assert.equal(search.totalMatches, 1);
+    assert.deepEqual(search.activated, [toolName('fixture', 'echo')]);
+    assert.deepEqual(data(await call('mcp_search_tools', { query: 'echo' })).activated, []);
+    assert.match(
+      data(await call('mcp_search_tools', { query: 'no-such-tool' })).note,
+      /No matching/,
+    );
+    assert.match(data(await call('mcp_search_tools', { query: '', offset: 20 })).note, /Offset/);
+    assert.match(
+      data(await call('mcp_search_tools', { query: '', server: 'missing' })).note,
+      /unavailable/,
+    );
+    await assert.rejects(
+      call('mcp_search_tools', { query: '', server: 'typo' }),
+      /Unknown MCP server.*mcp_status/,
+    );
+    status = data(await call('mcp_status'));
+    assert.equal(status.servers[0].activeTools, 1);
+    await assert.rejects(
+      call(toolName('fixture', 'echo'), {}),
+      /Rejected before execution.*\/text: required/,
+    );
+    await h.commands.get('mcp').handler('status', h.ctx);
+    assert.match(h.entries.at(-1)!.data.text, /fixture · connected · 1 tools \(1 active\)/);
+    await h.commands.get('mcp').handler('status details', h.ctx);
+    assert.equal(JSON.parse(h.entries.at(-1)!.data.text).servers[0].connection, 'connected');
+    await h.commands.get('mcp').handler('refresh', h.ctx);
+    assert.match(h.entries.at(-1)!.data.text, /fixture: refreshed.*no definition changes/);
+    assert.match(h.entries.at(-1)!.data.text, /missing: unavailable; \/reload/);
+    await h.commands.get('mcp').handler('prompt {broken-secret-value', h.ctx);
+    assert.match(h.notifications.at(-1)!, /MCP prompt: Invalid JSON/);
+    assert.doesNotMatch(h.notifications.at(-1)!, /broken-secret-value/);
+    await h.commands.get('mcp').handler('unknown', h.ctx);
+    assert.match(h.notifications.at(-1)!, /Unknown \/mcp action/);
+  } finally {
+    await h.handlers.get('session_shutdown')!();
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('guided commands select prompts and subscriptions without starting model turns', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'mcp-guided-'));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = cwd;
+  const h = harness(cwd, false);
+  h.ctx.hasUI = true;
+  const messages: any[] = [];
+  h.pi.sendMessage = (...args: any[]) => messages.push(args);
+  let cancelReview = true;
+  h.ctx.ui.select = async (_title: string, options: string[]) => {
+    if (options.includes('Skip')) return 'Skip';
+    if (options.includes('Add reference') && cancelReview) return undefined;
+    return options[0];
+  };
+  h.ctx.ui.input = async () => 'typescript';
+  try {
+    await writeFile(
+      join(cwd, 'mcp.json'),
+      JSON.stringify({
+        servers: {
+          demo: {
+            transport: 'stdio',
+            command: process.execPath,
+            protocol: '2025-11-25',
+            args: [fileURLToPath(new URL('./fixtures/tui-server.mjs', import.meta.url))],
+          },
+        },
+      }),
+    );
+    await h.handlers.get('session_start')!({}, h.ctx);
+    await h.commands.get('mcp').handler('prompt', h.ctx);
+    assert.equal(messages.length, 0);
+    assert.match(h.notifications.at(-1)!, /cancelled; no reference queued/);
+    cancelReview = false;
+    await h.commands.get('mcp').handler('prompt demo', h.ctx);
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0][0].customType, 'mcp-prompt');
+    assert.equal(messages[0][1].deliverAs, 'nextTurn');
+    assert.match(JSON.stringify(messages[0][0].content), /typescript/);
+    assert.doesNotMatch(JSON.stringify(messages[0][0].content), /focus/);
+    h.ctx.ui.input = async () => 'fixture:notes';
+    await h.commands.get('mcp').handler('subscribe demo', h.ctx);
+    const status = async () =>
+      JSON.parse((await h.tools.get('mcp_status').execute()).content[0].text);
+    assert.deepEqual((await status()).servers[0].subscriptions, ['fixture:notes']);
+    await h.commands.get('mcp').handler('unsubscribe demo', h.ctx);
+    assert.deepEqual((await status()).servers[0].subscriptions, []);
+    h.ctx.ui.select = async () => undefined;
+    await h.commands.get('mcp').handler('subscribe', h.ctx);
+    assert.deepEqual((await status()).servers[0].subscriptions, []);
+    assert.match(h.notifications.at(-1)!, /subscriptions unchanged/);
+    h.ctx.hasUI = false;
+    await h.commands.get('mcp').handler('prompt demo', h.ctx);
+    assert.equal(messages.length, 1);
   } finally {
     await h.handlers.get('session_shutdown')!();
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { DiagnosticError, displayText } from './diagnostics.js';
 
 export const MODERN = '2026-07-28';
 export const LEGACY = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'] as const;
@@ -78,9 +79,27 @@ export async function loadConfig(paths: string[]): Promise<Record<string, Server
       text = await readFile(path, 'utf8');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-      throw error;
+      throw new DiagnosticError(
+        `Cannot read MCP configuration ${displayText(path)}; check file permissions`,
+      );
     }
-    const parsed = ConfigSchema.parse(JSON.parse(text));
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // JSON.parse errors may quote credential values from the source file.
+      throw new DiagnosticError(`Invalid JSON in ${displayText(path)}; fix syntax and /reload`);
+    }
+    const checked = ConfigSchema.safeParse(json);
+    if (!checked.success) {
+      const issues = checked.error.issues
+        .slice(0, 5)
+        .map((issue) => `${displayText(issue.path.join('.') || '(root)', 160)}: ${issue.code}`);
+      throw new DiagnosticError(
+        `Invalid MCP configuration in ${displayText(path)}: ${issues.join('; ')}. Check these fields and /reload`,
+      );
+    }
+    const parsed = checked.data;
     for (const [name, config] of Object.entries(parsed.servers)) {
       servers[name] = config;
     }

@@ -2,11 +2,12 @@
 
 The MCP client uses Pi's native extension status slot rather than replacing the footer.
 
-- Healthy, disabled, unconfigured, or normally connecting: no indicator.
+- Healthy, disabled, unconfigured, or normally connecting: no **health** indicator.
 - Partial failures: one compact warning in the theme's warning colour.
 - Total failure or invalid configuration: one compact error.
 - Recovery: clear silently. No counters when healthy, animations, or recovery toasts.
 - Details remain in `/mcp status`; ordinary tool-operation errors do not imply a broken connection.
+- AX/UX experiment: a separate transient `mcp-activity` native status appears after two seconds for slow connection setup, discovery, prompt fetching or an explicit refresh waiting for idle. It clears on completion/failure/shutdown; quick operations stay silent. This does not change the failure-only health slot. Explicit `/mcp refresh` also writes a per-server outcome to the transcript. See [tmux QA notes](../mcp-ax-ux/QA.md).
 
 The native slot sits below the usage/model line. It adds no row when all extension statuses are absent.
 

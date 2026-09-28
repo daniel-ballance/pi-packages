@@ -1,0 +1,36 @@
+
+ mcp_demo_fail_718f59d1258d887b
+
+ {}
+ Tool execution outcome is unknown; inspect server state before retrying a side-effecting call. No automatic
+ retry was performed.
+ Server/transport diagnostic (untrusted): Fixture failure; no external operation was performed.
+
+
+ Offline fixture finished. No paid model or external service was used.
+
+ Reloaded keybindings, extensions, skills, prompts, themes, and context files
+
+
+ form
+
+
+
+ demo • ask form
+
+
+ Warning: count: maximum constraint failed. Try again (2 attempts left).
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ MCP demo · 1/4
+ Number of previews (count, required)
+ integer, minimum 1, maximum 3 (60s)
+
+>
+
+ enter submit  escape/ctrl+c cancel
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+~/Code/pi-packages-mcp-ax-ux (experiment/mcp-ax-ux)
+4.2%/32k (auto)                                                                                        offline

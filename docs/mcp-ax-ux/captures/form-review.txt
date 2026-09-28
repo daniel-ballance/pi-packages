@@ -1,0 +1,36 @@
+ This project is not trusted. Project .pi resources and packages are ignored. Use /trust to save a trust
+ decision, then restart pi.
+
+demo: refreshed 3 tools; no definition changes
+
+
+ form
+
+
+
+ demo • ask form
+ demo/ask_form · awaiting result · 18s
+
+
+ Warning: count: (root): maximum constraint failed. Try again (2 attempts left).
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ MCP demo: review answers before sending
+ count: 2
+ style: "detailed"
+ enabled: false (60s)
+
+ → Send answers
+   Cancel
+
+ ↑↓ navigate  enter select  escape/ctrl+c cancel
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+~/Code/pi-packages-mcp-ax-ux (experiment/mcp-ax-ux)
+3.7%/32k (auto)                                                                                        offline
+
+
+
+
+
