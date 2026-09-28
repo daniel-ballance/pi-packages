@@ -7,11 +7,39 @@ import { test } from "node:test";
 import { SubagentManager, type AgentRecord } from "../src/manager.js";
 import { SubagentPolicy } from "../src/policy.js";
 import { Workflows } from "../src/workflows.js";
-import { managerWorkflowHost } from "../src/workflow-host.js";
+import { managerWorkflowHost, type AgentJob } from "../src/workflow-host.js";
 import type { WorkflowDefinition } from "../src/workflow-definition.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/workflow-provider.mjs", import.meta.url));
 const guard = fileURLToPath(new URL("../src/child-guard.ts", import.meta.url));
+
+test("real workflow host leaves a halted worker process alive for human supervision", { timeout: 30000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "workflow-halt-rpc-")), agentDir = join(root, "agent"); mkdirSync(agentDir);
+  const previous = { PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR, PI_OFFLINE: process.env.PI_OFFLINE };
+  process.env.PI_CODING_AGENT_DIR = agentDir; process.env.PI_OFFLINE = "1";
+  writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "workflow-test/stub:off" }], tools: ["read"], extensions: [provider] }));
+  const policy = new SubagentPolicy({ cwd: root, agentDir, projectTrusted: true, guardPath: guard,
+    models: () => [{ provider: "workflow-test", id: "stub", input: ["text"], contextWindow: 32000, maxTokens: 1000, cost: {}, thinkingLevels: ["off"] }], tools: () => ["read"] });
+  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, 4, (config: AgentRecord["config"]) => ({ ...policy.compile(config.cwd, config.selection!),
+    executable: process.env.PEER_TEST_EXECUTABLE ?? process.execPath, executableArgs: process.env.PEER_TEST_EXECUTABLE ? [] : [cli] }));
+  let intervention: Promise<unknown> | undefined, childId = "", pid: number | undefined;
+  const job: AgentJob = { step: "halted", workflow: "workflow-halt", cwd: root, worker: { model: "workflow-test/stub:off", tools: ["read"], extensions: [provider] },
+    instructions: "fixture:plain", candidate: root, inputs: {}, onActivity() {},
+    onChild(id) { childId = id; pid = manager.get(id).pid; intervention = manager.intervene(id, "halt"); } };
+  try {
+    await assert.rejects(managerWorkflowHost(manager, () => policy).agents([job], [], new AbortController().signal), /held for intervention/);
+    await intervention;
+    const record = manager.get(childId);
+    assert.ok(pid); assert.equal(record.pid, pid, "halt retains the live process despite host cleanup");
+    assert.equal(record.hold?.kind, "halt"); assert.equal(record.hold?.outcome, "confirmed");
+    assert.equal(record.status, "idle");
+    assert.equal(manager.list().filter(a => a.pid).length, 1);
+  } finally {
+    await manager.shutdown();
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("real Pi workflows: DAG, repair, improvement, reviewer, scoped peer group and cleanup", { timeout: 60000 }, async () => {
   const root = mkdtempSync(join(tmpdir(), "workflows-rpc-")), agentDir = join(root, "agent"); mkdirSync(agentDir);

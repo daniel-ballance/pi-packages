@@ -6,7 +6,7 @@ import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-wor
 import { formatFooterStats, reportedCost } from "./usage.js";
 
 type Data = Record<string, unknown>;
-type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow" | "workflow-start" | "workflow-inspect" | "workflow-control";
+type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "release-hold" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow" | "workflow-start" | "workflow-inspect" | "workflow-control";
 type Color = Parameters<Theme["fg"]>[0];
 export type NameLookup = (kind: "child" | "workflow", id: string) => string | undefined;
 const workflowAction = (action: Action) => action === "workflow" || action.startsWith("workflow-");
@@ -43,10 +43,12 @@ function childLines(child: Data, theme: Theme): string[] {
   const failed = status === "failed" || !!child.error;
   const waiting = status === "waiting_input";
   const active = status === "working" || status === "starting";
-  const color: Color = failed ? "error" : waiting || child.aborted === true ? "warning" : active ? "accent" : status === "idle" ? "success" : "dim";
-  const label = child.aborted === true && !failed ? "cancelled" : waiting ? "needs input" : status;
-  const icon = failed ? "✗" : waiting ? "?" : active ? "●" : status === "idle" ? "✓" : "○";
-  const lines = [theme.fg(color, `${icon} ${label}`) + "  " + theme.bold(inline(child.name) || inline(child.id) || "Subagent") +
+  const hold = object(child.hold), assignment = object(child.assignment);
+  const completed = assignment?.status === "completed";
+  const color: Color = hold ? "warning" : failed ? "error" : waiting || child.aborted === true ? "warning" : active ? "accent" : "dim";
+  const label = hold ? `held by user (${inline(hold.kind)})` : child.aborted === true && !failed ? "cancelled" : waiting ? "needs input" : status;
+  const icon = hold ? "◇" : failed ? "✗" : waiting ? "?" : active ? "●" : "○";
+  const lines = [theme.fg(color, `${icon} ${label}`) + "  " + theme.bold(child.name ? inline(child.name).toLowerCase() : inline(child.id) || "subagent") +
     (child.name && child.id ? theme.fg("dim", `  ${inline(child.id)}`) : "")];
   const usage = object(child.usage);
   const turns = count(usage?.assistantMessages);
@@ -59,7 +61,9 @@ function childLines(child: Data, theme: Theme): string[] {
     const stats = formatFooterStats(usage) || (cost === undefined ? "" : `$${cost.toFixed(3)}`);
     lines.push(theme.fg("muted", `${stats}${cost === undefined ? `${stats ? " · " : ""}cost unknown` : ""}`));
   }
+  if (assignment) lines.push(theme.fg(completed ? "muted" : "dim", `assignment: ${inline(assignment.status)} · ${inline(assignment.task)}`));
   if (child.error) lines.push(theme.fg("error", inline(child.error)));
+  for (const warning of array(child.coordinationWarnings).slice(0, 3)) lines.push(theme.fg("warning", `work-area overlap: ${inline(object(warning)?.path) || inline(object(warning)?.requestedPath)} · ${(inline(object(warning)?.name) || inline(object(warning)?.ownerName)).toLowerCase()}`));
   if (count(child.unread)) lines.push(theme.fg("accent", `${child.unread} unread report(s)`));
   const requests = array(child.uiRequests);
   if (requests.length) lines.push(theme.fg("warning", `${requests.length} pending input request(s)`));
@@ -70,12 +74,12 @@ function catalogLines(data: Data, theme: Theme): string[] {
   const models = array(data.models);
   const tools = array(data.tools);
   const enabled = data.spawnEnabled === true;
-  const lines = [theme.fg(enabled ? "success" : "warning", enabled ? "✓ Ready to spawn" : "○ Spawning disabled") +
+  const lines = [theme.fg(enabled ? "success" : "warning", enabled ? "✓ ready to spawn" : "○ spawning disabled") +
     theme.fg("muted", ` · ${models.length} model options · ${tools.length} tools${count(data.maxChildren) !== undefined ? ` · max ${data.maxChildren} children` : ""}`)];
   if (data.error) lines.push(theme.fg("error", inline(data.error)));
   for (const model of models.slice(0, 5)) lines.push(theme.fg("accent", `  ${inline(object(model)?.id)}`));
   if (models.length > 5) lines.push(theme.fg("dim", `  … ${models.length - 5} more model options`));
-  if (tools.length) lines.push(theme.fg("dim", `Tools: ${tools.slice(0, 8).map(inline).join(", ")}${tools.length > 8 ? ", …" : ""}`));
+  if (tools.length) lines.push(theme.fg("dim", `tools: ${tools.slice(0, 8).map(inline).join(", ")}${tools.length > 8 ? ", …" : ""}`));
   if (count(data.omittedEntries)) lines.push(theme.fg("warning", `${data.omittedEntries} unavailable option(s) · /subagents diagnostics`));
   return lines;
 }
@@ -83,8 +87,11 @@ function catalogLines(data: Data, theme: Theme): string[] {
 function groupLines(data: Data, theme: Theme): string[] {
   const children = array(data.agents).map(object).filter((child): child is Data => !!child);
   const lines: string[] = [];
-  if (data.needsInput === true) lines.push(theme.fg("warning", "Input required · waiting stopped"));
-  if (data.timedOut === true) lines.push(theme.fg("warning", "Wait timed out · children may still be working"));
+  if (data.needsInput === true) lines.push(theme.fg("warning", "input required · waiting stopped"));
+  if (data.needsHold === true) lines.push(theme.fg("warning", "human hold · discuss before releasing work"));
+  if (array(data.reports).length) lines.push(theme.fg("accent", `${array(data.reports).length} report page(s) collected`));
+  if (data.hasMoreReports === true) lines.push(theme.fg("warning", "more reports remain · read deferred children"));
+  if (data.timedOut === true) lines.push(theme.fg("warning", "wait timed out · children may still be working"));
   const totals = object(data.totals);
   if (totals) {
     const totalCost = reportedCost({ cost: totals.reportedCost });
@@ -92,7 +99,7 @@ function groupLines(data: Data, theme: Theme): string[] {
       ` · ${totalCost === undefined ? "cost unknown" : `$${totalCost.toFixed(3)}`}` +
       (count(totals.missingCost) ? ` · ${totals.missingCost} cost unknown` : "")));
   }
-  if (!children.length) lines.push(theme.fg("dim", "No subagents tracked."));
+  if (!children.length) lines.push(theme.fg("dim", "no subagents tracked."));
   for (const child of children.slice(0, 4)) lines.push(...childLines(child, theme));
   if (children.length > 4) {
     const hidden = children.slice(4);
@@ -106,7 +113,7 @@ function workflowLines(data: Data, theme: Theme): string[] {
   const runs = data.id ? [data] : array(data.runs).map(object).filter((r): r is Data => !!r);
   const lines: string[] = [];
   for (const run of runs.slice(0, 4)) {
-    lines.push(theme.fg(run.status === "succeeded" ? "success" : run.status === "running" ? "accent" : "warning", `${inline(run.name)} · ${inline(run.status)} · ${inline(run.id)}`));
+    lines.push(theme.fg(run.status === "succeeded" ? "success" : run.status === "running" ? "accent" : "warning", `${inline(run.name).toLowerCase()} · ${inline(run.status)} · ${inline(run.id)}`));
     const limits = object(run.limits);
     lines.push(theme.fg("muted", `${count(run.usedAttempts) ?? 0}/${count(limits?.maxAttempts) ?? "?"} attempts · ${count(run.remainingSeconds) ?? "?"}s remaining`));
     if (run.reason) lines.push(theme.fg("dim", inline(run.reason)));
@@ -115,7 +122,7 @@ function workflowLines(data: Data, theme: Theme): string[] {
     }
   }
   if (runs.length > 4) lines.push(theme.fg("dim", `… ${runs.length - 4} more workflows`));
-  return lines.length ? lines : [theme.fg("dim", "No workflows tracked.")];
+  return lines.length ? lines : [theme.fg("dim", "no workflows tracked.")];
 }
 
 function peerLines(data: Data, theme: Theme): string[] {
@@ -130,15 +137,15 @@ function peerLines(data: Data, theme: Theme): string[] {
   if (data.sender) lines.push(theme.fg("success", `${inline(data.sender)} → ${inline(data.recipient)} · generation ${count(data.generation) ?? "?"} · ${count(data.remaining) ?? "?"} remaining`));
   const messages = array(data.messages).map(object).filter((m): m is Data => !!m);
   for (const m of messages) lines.push(theme.fg("muted", `${inline(m.sender)} → ${inline(m.recipient)} · ${inline(m.status)} · ${inline(m.id)}`));
-  if (data.gap) lines.push(theme.fg("warning", "History gap · older exchanges no longer retained"));
-  if (data.hasMore) lines.push(theme.fg("warning", `More exchanges · continue from cursor ${count(data.nextCursor) ?? "?"}`));
-  return lines.length ? lines : [theme.fg("dim", "No peer links or exchanges.")];
+  if (data.gap) lines.push(theme.fg("warning", "history gap · older exchanges no longer retained"));
+  if (data.hasMore) lines.push(theme.fg("warning", `more exchanges · continue from cursor ${count(data.nextCursor) ?? "?"}`));
+  return lines.length ? lines : [theme.fg("dim", "no peer links or exchanges.")];
 }
 
 function readLines(data: Data, width: number, theme: Theme): string[] {
   const lines = childLines(data, theme);
-  if (data.gap === true) lines.push(theme.fg("warning", "History gap · some older updates are no longer retained"));
-  if (data.hasMore === true) lines.push(theme.fg("warning", "More unread updates available · read again"));
+  if (data.gap === true) lines.push(theme.fg("warning", "history gap · some older updates are no longer retained"));
+  if (data.hasMore === true) lines.push(theme.fg("warning", "more unread updates available · read again"));
   const updates = array(data.updates).map(object).filter((update): update is Data => !!update);
   const errors = updates.filter(update => ["error", "extension_error", "failure"].includes(String(update.kind)));
   if (errors.length) lines.push(...preview(inline(errors.at(-1)?.kind) + ": " + plain(errors.at(-1)?.text), width, theme, "error", 2));
@@ -147,7 +154,7 @@ function readLines(data: Data, width: number, theme: Theme): string[] {
   else {
     const report = updates.findLast(update => ["aborted", "completed", "input_requested"].includes(String(update.kind)));
     if (report) lines.push(...preview(plain(report.text), width, theme, "muted", 2));
-    else if (!errors.length) lines.push(theme.fg("dim", updates.length ? "No new assistant reply." : "No new updates."));
+    else if (!errors.length) lines.push(theme.fg("dim", updates.length ? "no new assistant reply." : "no new updates."));
   }
   if (updates.length > 1) lines.push(theme.fg("dim", `${updates.length} updates · latest reply shown when available`));
   return lines;
@@ -163,7 +170,8 @@ function clip(value: string, limit = 80): string {
 function named(kind: "child" | "workflow", value: unknown, names?: NameLookup): string {
   const raw = inline(value);
   if (!raw) return "";
-  return clip(names?.(kind, raw) || raw, 120);
+  const name = names?.(kind, raw);
+  return clip(name ? name.toLowerCase() : raw, 120);
 }
 function command(theme: Theme, action: string, thing?: string): string {
   return theme.fg("toolTitle", theme.bold(thing ? `${thing} • ${action}` : action));
@@ -203,7 +211,7 @@ function formatCall(action: Action, data: Data, theme: Theme, complete: boolean,
       return command(theme, "list") + (data.includeRejected === true ? output("rejected") : "");
     case "spawn": {
       if (bad(data.name)) return command(theme, "spawn") + invalid;
-      const name = inline(data.name);
+      const name = inline(data.name).toLowerCase();
       let text = command(theme, "spawn", name || undefined);
       if (!name && !complete) text += pending;
       if (bad(data.task)) text += invalid;
@@ -232,6 +240,11 @@ function formatCall(action: Action, data: Data, theme: Theme, complete: boolean,
       return childCall("abort", "id");
     case "close":
       return childCall("close", "id");
+    case "release-hold": {
+      const raw = inline(data.id);
+      const name = names?.("child", raw) ?? names?.("workflow", raw);
+      return command(theme, "release hold", name ? clip(name.toLowerCase(), 120) : raw);
+    }
     case "respond": {
       if (bad(data.id)) return command(theme, "respond") + invalid;
       const id = named("child", data.id, names);
@@ -330,22 +343,28 @@ export function subagentRenderers(action: Action, names?: NameLookup): Required<
         const raw = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
         const data = object(result.details);
         let lines: string[];
-        if (context?.isError) lines = preview(raw || "Tool failed", width, theme, "error");
-        else if (isPartial) lines = [theme.fg("warning", "Updating…")];
+        if (context?.isError) lines = preview(raw || "tool failed", width, theme, "error");
+        else if (isPartial) lines = [theme.fg("warning", "updating…")];
         else if (typeof data?.fullResult === "string") {
-          lines = [theme.fg("warning", "Result truncated · full output saved to file"), ...preview(data.fullResult, width, theme, "dim", 3)];
-        } else if (!data) lines = preview(raw || "No result data.", width, theme);
+          lines = [theme.fg("warning", "result truncated · full output saved to file"), ...preview(data.fullResult, width, theme, "dim", 3)];
+        } else if (!data) lines = preview(raw || "no result data.", width, theme);
         else if (action === "catalog") lines = catalogLines(data, theme);
         else if (workflowAction(action)) lines = workflowLines(data, theme);
-        else if (action === "list" || action === "wait") lines = groupLines(data, theme);
+        else if (action === "list" || action === "wait") {
+          lines = groupLines(data, theme);
+          for (const report of array(data.reports).map(object).filter((r): r is Data => !!r).slice(0, 2)) {
+            const reply = array(report.updates).map(object).findLast(update => update?.kind === "assistant");
+            if (reply) lines.push(...preview(`${inline(report.name).toLowerCase()}: ${plain(reply.text)}`, width, theme, "toolOutput", 2));
+          }
+        }
         else if (action === "read") lines = readLines(data, width, theme);
         else if (["connect", "disconnect", "renew", "peers"].includes(action)) lines = peerLines(data, theme);
         else {
           lines = childLines(data, theme);
-          if (action === "spawn" && data.task) lines.push(theme.fg("dim", `Task: ${inline(data.task)}`));
+          if (action === "spawn" && data.task) lines.push(theme.fg("dim", `task: ${inline(data.task)}`));
         }
         if (expanded && raw) {
-          lines.push("", theme.fg("dim", "Full result"));
+          lines.push("", theme.fg("dim", "full result"));
           lines.push(...wrapTextWithAnsi(plain(raw), width).map(line => theme.fg("dim", line)));
         } else if (!isPartial) {
           const key = keyText("app.tools.expand");

@@ -1,8 +1,11 @@
 # Generated browser snapshots, console logs, and other MCP session output.
 .playwright-mcp/
 
-# Installed dependencies; package lockfiles remain tracked.
-node_modules/
+# Installed or linked dependencies; package lockfiles remain tracked.
+node_modules
+
+# Parallel agent worktrees.
+.pi/worktrees/
 
 # Secrets
 .env

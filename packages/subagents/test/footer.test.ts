@@ -24,7 +24,8 @@ test("summary handles no agents, missing/invalid costs and all active lifecycle 
   assert.equal(formatSubagentSummary([
     { status: "starting" }, { status: "waiting_input", usage: { cost: NaN } },
     { status: "failed", usage: { cost: -1 } }, { status: "stopped", usage: { cost: "unknown" } },
-  ]), "subagents: 2/4 • $0.000");
+  ]), "subagents: 2/4 • $0.000+");
+  assert.equal(formatSubagentSummary([{ status: "idle", usage: { cost: 0 } }, { status: "working" }]), "subagents: 1/2 • $0.000+");
 });
 
 test("right aligns dim lowercase status above the model and preserves stock rows", () => {

@@ -19,9 +19,11 @@ export interface StepState {
 export interface WorkflowRun {
   id: string; definition: WorkflowDefinition; directory: string; created: string; deadline: number;
   status: "running" | "pausing" | "paused" | "blocked" | "succeeded" | "exhausted" | "cancelled";
-  reason?: string; usedAttempts: number; steps: Record<string, StepState>; noticeRevision: number; unread: boolean;
+  reason?: string; interventionHold?: { reason: string; at: string }; interventionChildren?: Record<string, { reason: string; at: string }>;
+  usedAttempts: number; steps: Record<string, StepState>; noticeRevision: number; unread: boolean;
 }
 class Exhausted extends Error {}
+class Held extends Error {}
 const terminal = new Set(["succeeded", "exhausted", "cancelled"]);
 function enforcePrivatePath(path: string, mode: number, directory: boolean) {
   const stat = lstatSync(path);
@@ -47,7 +49,7 @@ export function parseVerdict(text: string): Verdict {
 /** One active run per parent. A small DAG scheduler, not a second child manager. */
 export class Workflows {
   private runs = new Map<string, WorkflowRun>();
-  private execution?: { id: string; controller: AbortController; active: Map<string, Promise<void>>; timer: NodeJS.Timeout };
+  private execution?: { id: string; controller: AbortController; active: Map<string, Promise<void>>; timer: NodeJS.Timeout; intervened: boolean };
   private closed = false;
   constructor(readonly directory: string, private host: WorkflowHost, private changed: () => void = () => {}) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -60,7 +62,9 @@ export class Workflows {
       const run = JSON.parse(readFileSync(path, "utf8")) as WorkflowRun;
       run.definition = parseWorkflow(run.definition);
       if (["running", "pausing"].includes(run.status)) {
-        run.status = "paused"; run.reason = "Parent stopped. Interrupted work requires explicit retry; nothing was replayed.";
+        run.status = "paused"; run.reason = run.interventionHold
+          ? `Intervention hold: ${run.interventionHold.reason}; interrupted work requires explicit retry`
+          : "Parent stopped. Interrupted work requires explicit retry; nothing was replayed.";
         for (const state of Object.values(run.steps)) {
           if (state.status === "running") state.status = "interrupted";
           for (const a of state.attempts) if (a.status === "running") a.status = "interrupted";
@@ -80,6 +84,39 @@ export class Workflows {
   /** Presentation-only enumeration: unlike inspect(id), does not acknowledge notices. */
   list(): readonly WorkflowRun[] { return [...this.runs.values()]; }
   get(id: string) { const run = this.runs.get(id); if (!run) throw new Error(`Unknown workflow: ${id}`); return run; }
+  /** Called by manager.intervene's synchronous hook, before its asynchronous cancellation. */
+  holdForIntervention(childIdOrRunId: string, reason: string, runId?: string): string | undefined {
+    const owner = this.runs.get(childIdOrRunId) ?? [...this.runs.values()].find(r =>
+      Object.values(r.steps).some(s => s.attempts.some(a => a.children.includes(childIdOrRunId))));
+    const run = runId ? this.get(runId) : owner;
+    if (owner && run && owner !== run) throw new Error(`Child ${childIdOrRunId} belongs to another workflow`);
+    if (!run) return undefined;
+    if (!reason.trim()) throw new Error("Intervention hold requires a reason");
+    const at = new Date().toISOString();
+    if (!run.interventionHold) run.interventionHold = { reason, at };
+    if (childIdOrRunId !== run.id) (run.interventionChildren ??= {})[childIdOrRunId] ??= { reason, at };
+    if (run.status === "running") run.status = "pausing";
+    if (this.execution?.id === run.id) this.execution.intervened = true;
+    if (!terminal.has(run.status)) run.reason = `Intervention hold: ${run.interventionHold.reason}; release after discussion, then resume explicitly`;
+    this.save(run);
+    if (this.execution?.id === run.id) this.schedule(run);
+    else if (!terminal.has(run.status)) this.notify(run);
+    return run.id;
+  }
+  /** Clearing the barrier does not resume, retry, launch, or extend the deadline. */
+  releaseIntervention(childIdOrRunId: string): void {
+    const run = this.runs.get(childIdOrRunId) ?? [...this.runs.values()].find(r => r.interventionChildren?.[childIdOrRunId]);
+    if (!run) throw new Error(`Unknown workflow intervention hold: ${childIdOrRunId}`);
+    if (childIdOrRunId !== run.id) {
+      delete run.interventionChildren![childIdOrRunId];
+    } else {
+      if (!run.interventionHold) throw new Error("Workflow has no intervention hold");
+      if (Object.keys(run.interventionChildren ?? {}).length) throw new Error("Release all held workflow children before releasing the workflow barrier");
+      delete run.interventionHold;
+      if (run.status === "pausing" || run.status === "paused") run.reason = "Intervention released; resume explicitly after inspecting attempts";
+    }
+    this.save(run);
+  }
   private notify(run: WorkflowRun) { run.unread = true; run.noticeRevision++; this.save(run); }
   pendingNotices(): Notice[] {
     return [...this.runs.values()].filter(r => r.unread).map(r => ({ id: r.id, name: `Workflow: ${r.definition.name}`, kind: r.status,
@@ -89,20 +126,21 @@ export class Workflows {
   markNoticesDelivered(keys: string[]) {
     for (const notice of this.pendingNotices()) if (keys.includes(notice.key)) { const r = this.get(notice.id); r.unread = false; this.save(r); }
   }
-  inspect(id?: string, step?: string) {
-    const summary = (r: WorkflowRun) => ({ id: r.id, name: r.definition.name, status: r.status, reason: r.reason, usedAttempts: r.usedAttempts,
+  inspect(id?: string, step?: string, acknowledge = true) {
+    const summary = (r: WorkflowRun) => ({ id: r.id, name: r.definition.name, status: r.status, reason: r.reason, interventionHold: r.interventionHold, interventionChildren: r.interventionChildren, usedAttempts: r.usedAttempts,
       limits: r.definition.limits, remainingSeconds: Math.max(0, Math.ceil((r.deadline - Date.now()) / 1000)), directory: r.directory,
       steps: Object.entries(r.steps).map(([id, s]) => ({ id, status: s.status, activity: s.status === "running" ? s.activity : undefined, iteration: s.iteration, attempts: s.attempts.length,
         children: s.attempts.flatMap(a => a.children), output: s.output, best: s.baseline, latestVerdict: s.attempts.findLast(a => a.verdict)?.verdict, latestError: s.attempts.findLast(a => a.error)?.error })) });
     if (!id) return { runs: [...this.runs.values()].map(summary) };
     const run = this.get(id);
     if (step && !run.steps[step]) throw new Error(`Unknown workflow step: ${step}`);
-    run.unread = false; this.save(run);
+    if (acknowledge) { run.unread = false; this.save(run); }
     return step ? { ...summary(run), step, detail: run.steps[step] } : summary(run);
   }
   start(value: unknown) {
     if (this.closed) throw new Error("Workflow runtime is shutting down");
     if (this.execution) throw new Error("Another workflow is running; pause/cancel it first");
+    if ([...this.runs.values()].some(r => r.interventionHold)) throw new Error("A workflow is held for intervention; release its child holds and workflow barrier before starting another workflow");
     const definition = parseWorkflow(value); this.host.authorize(definition);
     const id = `workflow-${randomUUID().slice(0, 8)}`, directory = join(this.directory, id);
     mkdirSync(directory, { mode: 0o700 });
@@ -118,7 +156,7 @@ export class Workflows {
     const timer = setTimeout(() => {
       run.status = "exhausted"; run.reason = "Run deadline reached"; controller.abort(); this.save(run); this.schedule(run);
     }, Math.max(1, run.deadline - Date.now()));
-    this.execution = { id: run.id, controller, active: new Map(), timer };
+    this.execution = { id: run.id, controller, active: new Map(), timer, intervened: false };
     this.schedule(run);
   }
   private schedule(run: WorkflowRun) {
@@ -133,7 +171,7 @@ export class Workflows {
         unit.forEach(id => { run.steps[id].status = "running"; }); this.save(run);
         const key = unit.join(",");
         const promise = Promise.resolve().then(() => this.runUnit(run, unit, execution.controller.signal)).catch(error => {
-          const interrupted = execution.controller.signal.aborted;
+          const interrupted = execution.controller.signal.aborted || execution.intervened || error instanceof Held;
           for (const id of unit) {
             const state = run.steps[id];
             if (state.status === "running") state.status = interrupted ? "interrupted" : error instanceof Exhausted ? "exhausted" : "blocked";
@@ -150,7 +188,9 @@ export class Workflows {
       if (Object.values(run.steps).every(s => s.status === "passed")) { run.status = "succeeded"; run.reason = "All required steps completed"; }
       else { run.status = "blocked"; run.reason ??= "No runnable steps; inspect validation results"; }
     }
-    if (run.status === "pausing") { run.status = "paused"; run.reason = "Paused at a step/iteration boundary"; }
+    if (run.status === "pausing") { run.status = "paused"; run.reason = run.interventionHold
+      ? `Intervention hold: ${run.interventionHold.reason}; release after discussion, then resume explicitly`
+      : "Paused at a step/iteration boundary"; }
     clearTimeout(execution.timer); this.execution = undefined; this.notify(run);
   }
   private allocate(run: WorkflowRun, step: string, kind: Attempt["kind"]): Attempt {
@@ -169,11 +209,17 @@ export class Workflows {
   }
   private job(run: WorkflowRun, step: string, worker: AgentJob["worker"], instructions: string, attempt: Attempt, candidate: string, inputs: Record<string, Artifact>, feedback?: string): AgentJob {
     return { workflow: run.id, step, cwd: run.definition.cwd, worker, instructions, candidate, inputs, feedback,
+      isHeld: () => this.interventionBarrier(run),
       onChild: id => { attempt.children.push(id); this.save(run); },
       onActivity: text => { run.steps[step].activity = text; this.save(run); } };
   }
+  private interventionBarrier(run: WorkflowRun) {
+    return !!run.interventionHold || (this.execution?.id === run.id && this.execution.intervened);
+  }
   private async runUnit(run: WorkflowRun, ids: string[], signal: AbortSignal) {
-    signal.throwIfAborted(); this.host.authorize(run.definition);
+    signal.throwIfAborted();
+    if (this.interventionBarrier(run)) throw new Held("Intervention hold before dispatch");
+    this.host.authorize(run.definition);
     const steps = ids.map(id => run.definition.steps.find(s => s.id === id)!);
     if (steps.every(s => s.kind === "task")) {
       if (run.usedAttempts + steps.length > run.definition.limits.maxAttempts) throw new Exhausted("Not enough attempts for the task group");
@@ -205,7 +251,9 @@ export class Workflows {
     run.status = "blocked"; run.reason = reason; this.execution?.controller.abort(); this.save(run);
   }
   private async evaluate(run: WorkflowRun, step: string, validator: Validator, artifact: Artifact, signal: AbortSignal): Promise<Verdict | undefined> {
-    signal.throwIfAborted(); verifyArtifact(artifact);
+    signal.throwIfAborted();
+    if (this.interventionBarrier(run)) throw new Held("Intervention hold before check dispatch");
+    verifyArtifact(artifact);
     const attempt = this.allocate(run, step, "check"); attempt.artifact = artifact; this.save(run);
     if (validator.kind === "human") {
       attempt.status = "waiting"; run.steps[step].status = "approval";
@@ -239,7 +287,7 @@ export class Workflows {
       (step.direction === "min" ? state.baselineVerdict.score <= step.target : state.baselineVerdict.score >= step.target);
     while (state.iteration < step.maxIterations && !targetReached()) {
       signal.throwIfAborted();
-      if (run.status === "pausing") { state.status = "pending"; return; }
+      if (run.status === "pausing" || this.interventionBarrier(run)) { state.status = "pending"; return; }
       state.iteration++; this.save(run);
       const attempt = this.allocate(run, step.id, "task");
       const seed = step.mode === "improve" ? state.baseline : state.latest ?? (step.seed ? inputs[step.seed] : undefined);
@@ -251,6 +299,7 @@ export class Workflows {
       Object.values(inputs).forEach(verifyArtifact); if (seed) verifyArtifact(seed);
       const artifact = snapshot(candidate, join(attempt.directory, "artifact"), reply);
       attempt.artifact = artifact; attempt.status = "completed"; state.latest = artifact; this.save(run);
+      if (this.interventionBarrier(run)) throw new Held("Intervention hold before candidate check; retry explicitly");
       const verdict = (await this.evaluate(run, step.id, step.validator, artifact, signal))!;
       state.feedback = JSON.stringify(verdict);
       if (verdict.verdict === "blocked") { state.status = "blocked"; this.block(run, `${step.id}: ${verdict.findings ?? "validator blocked"}`); return; }
@@ -271,6 +320,7 @@ export class Workflows {
   async control(id: string, action: "pause" | "resume" | "cancel", retry: string[] = []) {
     const run = this.get(id);
     if (action === "resume") {
+      if (run.interventionHold) throw new Error(`Workflow held for intervention: ${run.interventionHold.reason}; release after discussion before resuming`);
       if (this.closed || this.execution) throw new Error("Runtime busy or shutting down");
       if (!["paused", "blocked"].includes(run.status)) throw new Error("Only paused/blocked runs can resume");
       this.host.authorize(run.definition);
@@ -303,13 +353,16 @@ export class Workflows {
     attempt.verdict = { verdict: decision, findings: "Human decision via /workflows" }; attempt.status = "completed";
     state.status = decision === "pass" ? "passed" : "failed";
     if (decision === "pass") state.output = attempt.artifact;
-    run.reason = `Human ${decision} for ${step}; resume explicitly`; this.save(run); return this.inspect(id);
+    run.reason = `Human ${decision} for ${step}; ${run.interventionHold ? `intervention hold (${run.interventionHold.reason}) must be released, then resume explicitly` : "resume explicitly"}`;
+    this.save(run); return this.inspect(id);
   }
   async shutdown() {
     this.closed = true;
     if (!this.execution) return;
     const execution = this.execution, run = this.get(execution.id);
-    run.status = "paused"; run.reason = "Parent stopped; explicitly retry interrupted steps before continuing";
+    run.status = "paused"; run.reason = run.interventionHold
+      ? `Intervention hold: ${run.interventionHold.reason}; explicitly retry interrupted steps before continuing`
+      : "Parent stopped; explicitly retry interrupted steps before continuing";
     execution.controller.abort(); this.save(run);
     await Promise.all(execution.active.values());
     if (this.execution) this.schedule(run);

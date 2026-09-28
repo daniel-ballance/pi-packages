@@ -31,6 +31,7 @@ export class RpcChild {
   private sequence = 0;
   private ended = false;
   private stopping?: Promise<void>;
+  private killing?: Promise<void>;
   private failure?: Error;
   constructor(options: {
     executable: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv;
@@ -92,7 +93,7 @@ export class RpcChild {
     this.pending.clear();
   }
   request(command: Packet, timeoutMs = 30000): Promise<any> {
-    if (this.ended || this.stopping) return Promise.reject(new Error("Child is stopped or stopping"));
+    if (this.ended || this.stopping || this.killing) return Promise.reject(new Error("Child is stopped or stopping"));
     const id = `request-${++this.sequence}`;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -109,22 +110,41 @@ export class RpcChild {
   }
   /** UI responses have no protocol acknowledgement; this resolves only when transport accepts the write. */
   respond(packet: Packet): Promise<void> {
-    if (this.ended || this.stopping) return Promise.reject(new Error("Child is stopped or stopping"));
+    if (this.ended || this.stopping || this.killing) return Promise.reject(new Error("Child is stopped or stopping"));
     return new Promise((resolve, reject) => {
       this.child.stdin.write(JSON.stringify(packet) + "\n", error => error ? reject(error) : resolve());
     });
   }
-  private signal(signal: NodeJS.Signals) {
+  private signal(signal: NodeJS.Signals, strict = false): Error | undefined {
     if (this.ended) return;
     try {
       if (process.platform !== "win32" && this.child.pid) process.kill(-this.child.pid, signal);
-      else this.child.kill(signal);
+      else if (!this.child.kill(signal) && strict) return new Error(`${signal} was not sent to the child`);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ESRCH") this.failure = error as Error;
+      if (strict) return error as Error;
     }
+  }
+  /** Human kill is immediate, bounded and only confirmed after observed process close. */
+  kill(timeoutMs = 2000): Promise<void> {
+    if (this.ended) return Promise.resolve();
+    if (this.killing) return this.killing;
+    const failure = this.signal("SIGKILL", true);
+    if (failure) return Promise.reject(failure);
+    let timer: NodeJS.Timeout;
+    const bounded = new Promise<void>((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`SIGKILL sent but process close was not confirmed within ${timeoutMs}ms`)), timeoutMs);
+      void this.closed.then(resolve, reject);
+    });
+    this.killing = bounded.finally(() => {
+      clearTimeout(timer);
+      this.killing = undefined; // A failed/unconfirmed kill can be retried.
+    });
+    return this.killing;
   }
   stop(): Promise<void> {
     if (this.stopping) return this.stopping;
+    if (this.killing) return this.killing;
     if (this.ended) return Promise.resolve();
     this.stopping = (async () => {
       // Pi's SIGTERM handler runs session_shutdown; bound that grace period.

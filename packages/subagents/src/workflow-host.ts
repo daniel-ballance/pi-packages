@@ -11,6 +11,8 @@ export interface AgentJob {
   step: string; workflow: string; cwd: string; worker: Worker; instructions: string;
   candidate: string; inputs: Record<string, Artifact>; feedback?: string;
   onChild: (id: string) => void; onActivity: (text: string) => void;
+  /** Synchronous workflow dispatch barrier, checked across async manager setup. */
+  isHeld?: () => boolean;
 }
 export interface WorkflowHost {
   authorize(definition: WorkflowDefinition): void;
@@ -24,21 +26,34 @@ export function managerWorkflowHost(manager: SubagentManager, policy: () => Suba
     authorize: def => authorizeWorkflow(def, policy()),
     async agents(jobs, links, signal) {
       const ids = new Map<string, string>();
+      const preserved = new Set<string>();
       let reservation: SlotReservation | undefined;
+      const dispatchable = () => {
+        signal.throwIfAborted();
+        if (jobs.some(job => job.isHeld?.())) throw new Error("Workflow held/pausing; worker dispatch stopped");
+      };
+      const childReady = (id: string) => {
+        if (manager.get(id).hold) { preserved.add(id); throw new Error(`Workflow child ${id} held for intervention`); }
+      };
       try {
+        dispatchable();
         // Atomically reserve the entire group before starting any member. Manual
         // spawns then see those permits as occupied throughout sequential setup.
         jobs.forEach(job => job.onActivity("Waiting for enough live-child slots"));
-        while (!(reservation = manager.reserveSlots(jobs.length))) { signal.throwIfAborted(); await sleep(100); }
+        while (!(reservation = manager.reserveSlots(jobs.length))) { dispatchable(); await sleep(100); }
+        dispatchable();
         for (const job of jobs) {
-          signal.throwIfAborted(); job.onActivity("Starting worker");
+          dispatchable(); job.onActivity("Starting worker");
           const child = await manager.spawn({ name: `${job.workflow}/${job.step}`.slice(0, 120), task: job.instructions,
             ...policy().compile(job.cwd, job.worker), workflow: job.workflow, deferTask: true }, reservation);
           ids.set(job.step, child.id); job.onChild(child.id);
+          dispatchable(); childReady(child.id);
         }
+        dispatchable();
         for (const link of links) manager.peers.connect(ids.get(link.a)!, ids.get(link.b)!, link.limit);
+        dispatchable();
         await Promise.all(jobs.map(job => {
-          signal.throwIfAborted(); job.onActivity(links.length ? "Working with peer group" : "Working");
+          dispatchable(); childReady(ids.get(job.step)!); job.onActivity(links.length ? "Working with peer group" : "Working");
           Object.values(job.inputs).forEach(verifyArtifact);
           const inputs = Object.fromEntries(Object.entries(job.inputs).map(([id, a]) => [id, { path: a.path, digest: a.digest, summary: a.summary.slice(0, 1000) }]));
           const peers = links.filter(l => l.a === job.step || l.b === job.step).map(l => ({ step: l.a === job.step ? l.b : l.a, id: ids.get(l.a === job.step ? l.b : l.a), limit: l.limit }));
@@ -46,12 +61,15 @@ export function managerWorkflowHost(manager: SubagentManager, policy: () => Suba
         }));
         while (true) {
           signal.throwIfAborted();
+          for (const id of ids.values()) childReady(id);
           const result = await manager.wait([...ids.values()], "all", 1000, signal);
+          for (const id of ids.values()) childReady(id);
           if (result.needsInput) throw new Error("Worker requested extension/human input; attempt blocked. Inspect its child log and arrange a new explicit attempt.");
           if (!result.timedOut) break;
         }
         return jobs.map(job => {
           const record = manager.get(ids.get(job.step)!);
+          if (record.hold) throw new Error(`Workflow child ${record.id} held for intervention`);
           if (record.status !== "idle" || record.aborted || record.error) throw new Error(`Worker ${job.step} did not complete: ${record.error ?? record.status}`);
           const reply = record.updates.findLast(u => u.kind === "assistant")?.text;
           if (!reply) throw new Error(`Worker ${job.step} returned no final text`);
@@ -65,7 +83,10 @@ export function managerWorkflowHost(manager: SubagentManager, policy: () => Suba
             try { manager.peers.disconnect(ids.get(link.a)!, ids.get(link.b)!); } catch { /* Setup may have failed before connecting. */ }
           }
         }
-        await Promise.all([...ids.values()].map(id => manager.close(id)));
+        // Human intervention transfers supervision to the parent. In particular,
+        // halt must retain the live Pi process and its conversation for discussion.
+        // Kill is held too: preserve its stopped record and intervention notices.
+        await Promise.all([...ids.values()].filter(id => !preserved.has(id) && !manager.get(id).hold).map(id => manager.close(id)));
       }
     },
     async command(command, cwd, env, logDirectory, signal) {

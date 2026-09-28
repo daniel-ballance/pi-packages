@@ -18,7 +18,9 @@ export function demoSource(now = Date.now()): InspectorSource {
     updates: Array.from({ length: 6 }, (_, i) => ({ cursor: i + 1, kind: "assistant", time: new Date(now - 60000 + i * 8000).toISOString(),
       text: `Observation ${i + 1}: the cached entry includes a timestamp and a TTL.\nComparing this with the documented refresh behaviour.\nEvidence: docs/cache.md, lines ${10 + i * 5}–${15 + i * 5}.` })),
   });
-  const agents = [makeAgent("cache", "Investigate caching", "working"), makeAgent("history", "Review dependencies", "idle"),
+  const reviewed = makeAgent("history", "Review dependencies", "idle");
+  reviewed.readCursor = reviewed.cursor;
+  const agents = [makeAgent("cache", "Investigate caching", "working"), reviewed,
     makeAgent("security", "Security review", "working", "workflow-demo"), makeAgent("compat", "Compatibility review", "stopped", "workflow-demo")];
   const run: WorkflowRun = {
     id: "workflow-demo", definition: { version: 1, name: "Documentation refresh", cwd: "/demo/project", limits: { concurrency: 2, maxAttempts: 12, timeoutSeconds: 300 },

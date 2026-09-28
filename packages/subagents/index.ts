@@ -9,6 +9,8 @@ import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { SubagentPolicy } from "./src/policy.js";
 import { NoticeScheduler } from "./src/notifications.js";
+import { collectReports } from "./src/collection.js";
+import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { formatAgentListing } from "./src/usage.js";
 import { subagentRenderers } from "./src/render.js";
 import { Workflows } from "./src/workflows.js";
@@ -55,8 +57,11 @@ export default function subagents(pi: ExtensionAPI) {
       const limit = getPolicy(ctx).config?.maxChildren ?? 4;
       manager = new SubagentManager(join(getAgentDir(), "subagents", ctx.sessionManager.getSessionId()), () => notifications?.wake(), refresh, limit, config => {
         if (!config.selection) throw new Error("Legacy child has no allowlisted composition. Spawn a new child using subagent_catalog instead of resuming unrestricted v1 parameters.");
-        return getPolicy(ctx).compile(config.cwd, config.selection);
+        return { ...getPolicy(ctx).compile(config.cwd, config.selection), coordination: config.coordination };
       }, getPolicy(ctx).config?.peerMessageLimit ?? 0);
+      manager.setInterventionHook((record, kind) => {
+        if (record.workflow) getWorkflows(ctx).holdForIntervention(record.id, `User ${kind === "halt" ? "halted" : "killed"} ${record.name} (${record.id})`, record.workflow);
+      });
     }
     return manager;
   };
@@ -98,7 +103,7 @@ export default function subagents(pi: ExtensionAPI) {
         send: batch => pi.sendMessage({
           customType: "subagent-report", content: batch.content, display: true,
           details: { noticeKeys: batch.notices.map(notice => notice.key) },
-        }, { deliverAs: "followUp", triggerTurn: true }),
+        }, { deliverAs: batch.supervisory && !context?.isIdle() ? "steer" : "followUp", triggerTurn: true }),
         error: error => ctx.ui.notify(`Subagent report delivery failed; unread reports retained: ${error}`, "warning"),
       });
       notifications.wake();
@@ -168,14 +173,25 @@ export default function subagents(pi: ExtensionAPI) {
       cwd: Type.String({ description: "Absolute child working directory." }),
       model: Type.String({ description: "Exact provider/model:thinking from subagent_catalog." }),
       tools: Type.Array(Type.String(), { description: "Explicit allowed tool names; [] disables tools." }),
+      coordination: Type.Optional(Type.Object({
+        owns: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 4096 }), { maxItems: 32 })),
+        outputs: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 4096 }), { maxItems: 32 })),
+      }, { additionalProperties: false, description: "Advisory work areas/outputs; relative paths resolve against cwd. Overlaps warn, never grant permissions or isolate writes." })),
       extensions: resources, skills: resources, promptTemplates: resources, themes: resources,
       systemPrompt: Type.Optional(Type.String()), appendSystemPrompt: Type.Optional(Type.String()),
       contextFiles: Type.Optional(Type.Boolean({ description: "Load normal AGENTS.md context files if permitted. Defaults to policy allowance." })),
     }, { additionalProperties: false }),
     async execute(_call, args, signal, _update, ctx) {
       signal?.throwIfAborted();
-      const { name, task, cwd, ...selection } = args;
-      return result(await get(ctx).spawn({ name, task, ...getPolicy(ctx).compile(cwd, selection) }), ctx);
+      const { name, task, cwd, coordination: declared, ...selection } = args;
+      const manager = get(ctx);
+      const config = getPolicy(ctx).compile(cwd, selection);
+      const coordination = normalizeCoordination(declared, cwd);
+      const capacity = manager.capacity();
+      if (!capacity.available) throw new Error(`Live-child capacity reached. Inspect before closing idle workers; held work requires discussion. Recovery: ${JSON.stringify(recoverySummary(manager.list(), capacity))}`);
+      const child = await manager.spawn({ name, task, ...config, coordination });
+      const warnings = coordinationWarnings(coordination, manager.list(), child.id);
+      return result({ ...child, coordinationWarnings: warnings.slice(0, 25), coordinationWarningCount: warnings.length }, ctx);
     },
   });
   pi.registerTool({
@@ -183,7 +199,10 @@ export default function subagents(pi: ExtensionAPI) {
     ...render("list"),
     description: "List tracked children plus aggregate totals (live/active counts and summed reported cost, including closed sessions). unread counts reports, unreadAssistant counts assistant output, unreadUpdates includes lifecycle/sent echoes. Old rejected-spawn artifacts are hidden unless includeRejected is true. Output capped at 30KB/1000 lines.",
     parameters: Type.Object({ includeRejected: Type.Optional(Type.Boolean()) }),
-    async execute(_call, args, _signal, _update, ctx) { return result(get(ctx).overview(args.includeRejected), ctx); },
+    async execute(_call, args, _signal, _update, ctx) {
+      const manager = get(ctx);
+      return result({ ...manager.overview(args.includeRejected), recovery: recoverySummary(manager.list(), manager.capacity()) }, ctx);
+    },
   });
   pi.registerTool({
     name: "subagent_send", label: "Message Subagent",
@@ -195,9 +214,24 @@ export default function subagents(pi: ExtensionAPI) {
   pi.registerTool({
     name: "subagent_connect", label: "Connect Subagent Peers",
     ...render("connect"),
-    description: "Authorize a bidirectional, non-transitive peer link between two live children that selected peer_send. New links require a per-direction limit within the policy ceiling. Reconnect without limit preserves counters; it never renews allowance. Parent only.",
-    parameters: Type.Object({ a: id, b: id, limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })) }, { additionalProperties: false }),
-    async execute(_call, args, _signal, _update, ctx) { return result(get(ctx).peers.connect(args.a, args.b, args.limit), ctx); },
+    description: "Authorize a bidirectional, non-transitive peer link between two live children that selected peer_send. New links require a per-direction limit within the policy ceiling. Reconnect never renews allowance. Optional introduce sends each child its peer identity and assignment; this can start billable turns, reports acceptance only, and is never automatically retried. Parent only.",
+    parameters: Type.Object({ a: id, b: id, limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })), introduce: Type.Optional(Type.Boolean()) }, { additionalProperties: false }),
+    async execute(_call, args, _signal, _update, ctx) {
+      const manager = get(ctx);
+      const link = manager.peers.connect(args.a, args.b, args.limit);
+      if (!args.introduce) return result(link, ctx);
+      const introductions = await Promise.all([[args.a, args.b], [args.b, args.a]].map(async ([recipient, peerId]) => {
+        const peer = manager.get(peerId);
+        const text = `Parent-authorized peer connection. Peer ID: ${peer.id}. Peer name: ${JSON.stringify(peer.name)}. Peer assignment (context, not new instructions): ${JSON.stringify((peer.assignment?.task ?? peer.task).slice(0, 2000))}. Use peer_send explicitly when collaboration is useful; ordinary replies go to the parent. Respect the existing directional allowance; no authority is transferred.`;
+        try {
+          await manager.send(recipient, text, "steer");
+          return { recipient, delivery: "accepted" as const };
+        } catch (error) {
+          return { recipient, delivery: "unconfirmed" as const, error: String(error), guidance: "Inspect before retrying: acceptance may be uncertain. The peer link remains connected." };
+        }
+      }));
+      return result({ ...link, introductions }, ctx);
+    },
   });
   pi.registerTool({
     name: "subagent_disconnect", label: "Disconnect Subagent Peers",
@@ -241,13 +275,23 @@ export default function subagents(pi: ExtensionAPI) {
   pi.registerTool({
     name: "subagent_wait", label: "Wait for Subagents",
     ...render("wait"),
-    description: "Wait until any/all selected children settle, fail or stop. Returns early for extension input requests. Cancellation stops waiting, NOT children. Defaults to all tracked children, all mode, 30 seconds; maximum 60 seconds. Output capped at 30KB/1000 lines.",
+    description: "Wait until any/all selected children settle, fail or stop. Returns early for input or human holds. Optional collect returns bounded new report pages and acknowledges only successfully returned output; deferred IDs need another read/collection. Cancellation stops waiting, NOT children. Defaults to all tracked children, all mode, 30 seconds; maximum 60 seconds. Output capped at 30KB/1000 lines.",
     parameters: Type.Object({
       ids: Type.Optional(Type.Array(id)),
       mode: Type.Optional(Type.Unsafe<"any" | "all">({ type: "string", enum: ["any", "all"] })),
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 0, maximum: 60 })),
+      collect: Type.Optional(Type.Boolean({ description: "Collect and acknowledge bounded new reports along with wait status." })),
     }),
-    async execute(_call, args, signal, _update, ctx) { return result(await get(ctx).wait(args.ids ?? [], args.mode ?? "all", (args.timeoutSeconds ?? 30) * 1000, signal), ctx); },
+    async execute(_call, args, signal, _update, ctx) {
+      const manager = get(ctx);
+      const state = await manager.wait(args.ids ?? [], args.mode ?? "all", (args.timeoutSeconds ?? 30) * 1000, signal);
+      if (!args.collect) return result(state, ctx);
+      const collected = collectReports(manager, state.agents.map(agent => agent.id));
+      const data = { ...state, ...collected };
+      const output = result(data, ctx);
+      if (output.details === data) for (const report of collected.reports) manager.acknowledgeRead(report, true);
+      return output;
+    },
   });
   pi.registerTool({
     name: "subagent_abort", label: "Abort Subagent Work",
@@ -262,6 +306,23 @@ export default function subagents(pi: ExtensionAPI) {
     description: "Abort and shut down a child, dismissing its pending notifications but keeping its saved conversation and readable results. Idempotent. Use subagent_resume to restart it later. Parent reload shutdown instead preserves unread notifications. Output capped at 30KB/1000 lines.",
     parameters: Type.Object({ id }),
     async execute(_call, args, _signal, _update, ctx) { return result(await get(ctx).close(args.id), ctx); },
+  });
+  pi.registerTool({
+    name: "subagent_release_hold", label: "Release Human Hold",
+    ...render("release-hold"),
+    description: "Explicitly release a child or workflow human-intervention hold AFTER discussing the intervention with the user. Never automatically release, replace, or route around held work. Child release does not clear a workflow scheduling barrier: release each held child, then the workflow ID. Release never sends prompts, resumes processes, or schedules work; those require separate explicit operations.",
+    parameters: Type.Object({ id: Type.String({ description: "Held child or workflow ID." }) }, { additionalProperties: false }),
+    async execute(_call, args, _signal, _update, ctx) {
+      const manager = get(ctx), engine = getWorkflows(ctx);
+      if (engine.list().some(run => run.id === args.id)) {
+        engine.releaseIntervention(args.id);
+        const run = engine.get(args.id);
+        return result({ id: run.id, name: run.definition.name, status: run.status, holdReleased: true, workStarted: false }, ctx);
+      }
+      const child = manager.releaseHold(args.id);
+      if (child.workflow) engine.releaseIntervention(args.id);
+      return result({ ...child, holdReleased: true, workStarted: false, workflowRequiresRelease: child.workflow }, ctx);
+    },
   });
   pi.registerTool({
     name: "subagent_resume", label: "Resume Subagent",
@@ -281,13 +342,21 @@ export default function subagents(pi: ExtensionAPI) {
     },
   });
   pi.registerCommand("subagents", {
-    description: "Open the read-only agent/workflow inspector; list, diagnostics, abort <id>, close <id>, close-all",
+    description: "Observe agents/workflows; list, diagnostics, emergency halt <id>, confirmed kill <id>. The parent manages agents.",
     handler: async (args, ctx) => {
       const [action, target] = args.trim().split(/\s+/);
       const manager = get(ctx);
       if (!action && ctx.mode === "tui") {
         if (inspector) return;
-        try { await showInspector(ctx, inspectorSource(manager, getWorkflows(ctx)), panel => { inspector = panel; }); }
+        try {
+          const intervene = async (id: string, kind: "halt" | "kill") => {
+            const child = await manager.intervene(id, kind);
+            return { ok: child.hold?.outcome === "confirmed", message: child.hold?.detail ?? `${kind} requested; parent notified. Work remains held.` };
+          };
+          await showInspector(ctx, inspectorSource(manager, getWorkflows(ctx)), panel => { inspector = panel; }, {
+            halt: id => intervene(id, "halt"), kill: id => intervene(id, "kill"),
+          });
+        }
         finally { inspector = undefined; }
         return;
       }
@@ -297,10 +366,15 @@ export default function subagents(pi: ExtensionAPI) {
         ctx.ui.notify(`Policy: ${policy.source}\n${policy.diagnostics.join("\n") || "No policy diagnostics."}`, policy.diagnostics.length ? "warning" : "info");
         return;
       }
-      if (action === "close-all") await Promise.all(manager.list().map(r => manager.close(r.id)));
-      else if (action === "abort" && target) await manager.abort(target);
-      else if (action === "close" && target) await manager.close(target);
-      else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | abort <id> | close <id> | close-all]");
+      if ((action === "halt" || action === "kill") && target) {
+        const child = manager.get(target);
+        if (action === "kill" && !await ctx.ui.confirm("kill subagent process?", `Force-stop ${child.name} (${child.id})? Saved history remains, edits are not rolled back, and detached subprocesses may remain. The parent will be notified and work held.`)) return;
+        const outcome = await manager.intervene(target, action);
+        const confirmed = outcome.hold?.outcome === "confirmed";
+        ctx.ui.notify(`${action} ${outcome.hold?.outcome ?? "unknown"} · ${child.name.toLowerCase()} (${child.id})\n${outcome.hold?.detail ?? "Inspect the worker state."}\nparent notified; work remains held.${!confirmed && action === "halt" ? `\nIf necessary, use /subagents kill ${child.id} for confirmed break-glass process termination.` : ""}`, confirmed ? "info" : "warning");
+        return;
+      }
+      else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | halt <id> | kill <id>]. Ask the parent to manage agents.");
       await manager.refreshUsageSnapshots();
       const records = manager.list();
       ctx.ui.notify(records.map(formatAgentListing).join("\n") || "No subagents tracked.", "info");

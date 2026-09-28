@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { Workflows, parseVerdict } from "../src/workflows.js";
 import { parseWorkflow, type WorkflowDefinition } from "../src/workflow-definition.js";
 import type { WorkflowHost, AgentJob } from "../src/workflow-host.js";
-import { runCommand } from "../src/workflow-host.js";
+import { managerWorkflowHost, runCommand } from "../src/workflow-host.js";
 
 const worker = { model: "test/stub:off", tools: [] };
 const task = (id: string, dependsOn: string[] = []) => ({ id, kind: "task" as const, worker, instructions: id, dependsOn });
@@ -52,7 +52,11 @@ test("fan-out/fan-in schedules within concurrency and hands off artifact snapsho
     assert.equal(run.status, "succeeded"); assert.equal(peak, 2); assert.equal(run.usedAttempts, 3);
     assert.deepEqual(Object.keys(seen[2].inputs).sort(), ["a", "b"]);
     assert.equal(readFileSync(join(run.steps.a.output!.path, "value.txt"), "utf8"), "a");
-    assert.equal(h.engine.pendingNotices().length, 1); h.engine.inspect(id); assert.equal(h.engine.pendingNotices().length, 0);
+    assert.equal(h.engine.pendingNotices().length, 1);
+    const humanView = h.engine.inspect(id, "a", false);
+    assert.ok("step" in humanView && humanView.step === "a");
+    assert.equal(h.engine.pendingNotices().length, 1, "human inspection does not consume the parent's notice");
+    h.engine.inspect(id); assert.equal(h.engine.pendingNotices().length, 0);
     assert.equal(Object.keys(run.steps).length, 3);
   } finally { await h.close(); }
 });
@@ -159,6 +163,139 @@ test("shutdown/reload does not replay; explicit retry preserves total allowance 
     await restored.control(id, "resume", ["a"]); const run = await settled(restored, id);
     assert.equal(run.status, "succeeded"); assert.equal(run.usedAttempts, 2); assert.equal(run.deadline, deadline);
   } finally { await restored?.shutdown(); await h.close(); }
+});
+
+test("synchronous run hold prevents queued dispatch; release alone never schedules", async () => {
+  const dispatched: string[] = [];
+  const h = setup({ agents: async jobs => { dispatched.push(...jobs.map(j => j.step)); return jobs.map(() => "done"); } });
+  try {
+    const id = idOf(h.engine.start(definition(h.root, [task("first"), task("next", ["first"])])));
+    assert.equal(h.engine.holdForIntervention(id, "Discuss unexpected work"), id);
+    assert.equal(h.engine.get(id).interventionHold?.reason, "Discuss unexpected work");
+    assert.equal((await settled(h.engine, id)).status, "paused");
+    assert.deepEqual(dispatched, []); assert.equal(h.engine.get(id).usedAttempts, 0);
+    assert.throws(() => h.engine.start(definition(h.root, [task("other")])), /held for intervention/);
+    await assert.rejects(h.engine.control(id, "resume", ["first"]), /held for intervention/);
+    h.engine.releaseIntervention(id);
+    await sleep(15); assert.deepEqual(dispatched, []);
+    await h.engine.control(id, "resume", ["first"]);
+    assert.equal((await settled(h.engine, id)).status, "succeeded");
+    assert.deepEqual(dispatched, ["first", "next"]);
+  } finally { await h.close(); }
+});
+
+test("spawn-acceptance race uses explicit owner before attempt child registration", async () => {
+  const h = setup();
+  try {
+    const id = idOf(h.engine.start(definition(h.root, [task("a")])));
+    assert.equal(h.engine.holdForIntervention("unregistered-child", "Emergency halt", id), id);
+    assert.equal(h.engine.holdForIntervention("not-workflow-owned", "No-op"), undefined);
+    assert.equal((await settled(h.engine, id)).status, "paused");
+    assert.equal(h.engine.get(id).usedAttempts, 0);
+    assert.deepEqual(Object.keys(h.engine.get(id).interventionChildren!), ["unregistered-child"]);
+    assert.throws(() => h.engine.releaseIntervention(id), /Release all held workflow children/);
+    h.engine.releaseIntervention("unregistered-child");
+    h.engine.releaseIntervention(id);
+    await h.engine.control(id, "resume", ["a"]);
+    assert.equal((await settled(h.engine, id)).status, "succeeded");
+  } finally { await h.close(); }
+});
+
+test("child holds survive reload; sibling completes, no replacement, retry or resume while held", async () => {
+  let started!: () => void, finish!: () => void;
+  const ready = new Promise<void>(resolve => { started = resolve; });
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  let calls = 0;
+  const h = setup({ agents: async jobs => {
+    for (const j of jobs) { j.onChild(`${j.step}-child-${++calls}`); if (j.step === "a") started(); }
+    await gate;
+    for (const j of jobs) writeFileSync(join(j.candidate, "value.txt"), j.step);
+    if (jobs[0].step === "a" && jobs[0].isHeld?.()) throw new Error("Child held/aborted");
+    return jobs.map(j => j.step);
+  } });
+  let restored: Workflows | undefined;
+  try {
+    const id = idOf(h.engine.start(definition(h.root, [task("a"), task("b"), task("join", ["a", "b"])])));
+    await ready;
+    assert.equal(h.engine.holdForIntervention("a-child-1", "Inspect a"), id);
+    finish();
+    const run = await settled(h.engine, id);
+    assert.equal(run.status, "paused"); assert.equal(run.steps.join.status, "pending");
+    assert.equal(run.usedAttempts, 2);
+    assert.equal(run.steps.a.status, "interrupted"); assert.equal(run.steps.b.status, "passed");
+    assert.equal(h.engine.holdForIntervention("b-child-2", "Inspect b too"), id);
+    await h.engine.shutdown();
+    restored = new Workflows(h.engine.directory, h.host);
+    assert.deepEqual(Object.keys(restored.get(id).interventionChildren!).sort(), ["a-child-1", "b-child-2"]);
+    await assert.rejects(restored.control(id, "resume", ["a", "b"]), /held for intervention/);
+    restored.releaseIntervention("a-child-1");
+    assert.throws(() => restored!.releaseIntervention(id), /Release all held workflow children/);
+    await assert.rejects(restored.control(id, "resume", ["a", "b"]), /held for intervention/);
+    restored.releaseIntervention("b-child-2");
+    await assert.rejects(restored.control(id, "resume", ["a", "b"]), /held for intervention/);
+    restored.releaseIntervention(id);
+    await assert.rejects(restored.control(id, "resume"), /retry step IDs/);
+    await restored.control(id, "resume", ["a"]);
+    assert.equal((await settled(restored, id)).status, "succeeded");
+    assert.equal(restored.get(id).usedAttempts, 4);
+  } finally { finish(); await restored?.shutdown(); await h.close(); }
+});
+
+test("intervention during loop worker completion cannot start its evaluator or next iteration", async () => {
+  let engine: Workflows, id: string, checks = 0, workers = 0;
+  const h = setup({ agents: async jobs => {
+    const j = jobs[0]; j.onChild(`child-${++workers}`);
+    writeFileSync(join(j.candidate, "value.txt"), String(workers));
+    if (workers === 1) engine.holdForIntervention(j.workflow, "Review first candidate");
+    return ["candidate"];
+  }, command: async () => { checks++; return { code: 0, stdout: "pass" }; } });
+  engine = h.engine;
+  try {
+    id = idOf(engine.start(definition(h.root, [{ id: "fix", kind: "loop", mode: "repair", maxIterations: 3, worker,
+      instructions: "fix", validator: { kind: "command", command: "check" } }])));
+    const run = await settled(engine, id);
+    assert.equal(run.status, "paused"); assert.equal(run.steps.fix.status, "interrupted");
+    assert.equal(workers, 1); assert.equal(checks, 0); assert.equal(run.usedAttempts, 1);
+    await assert.rejects(engine.control(id, "resume", ["fix"]), /held for intervention/);
+    engine.releaseIntervention(id);
+    await assert.rejects(engine.control(id, "resume"), /retry step IDs/);
+    await engine.control(id, "resume", ["fix"]);
+    assert.equal((await settled(engine, id)).status, "succeeded");
+    assert.equal(workers, 2); assert.equal(checks, 1);
+  } finally { await h.close(); }
+});
+
+test("human verdict may be recorded while held but cannot resume or schedule", async () => {
+  const h = setup();
+  try {
+    const id = idOf(h.engine.start(definition(h.root, [task("a"), { id: "approval", kind: "check", input: "a", validator: { kind: "human", instructions: "Accept?" } }, task("after", ["approval"])])));
+    await settled(h.engine, id);
+    h.engine.holdForIntervention(id, "Pause for discussion");
+    h.engine.decide(id, "approval", "pass");
+    assert.equal(h.engine.get(id).steps.after.status, "pending");
+    await assert.rejects(h.engine.control(id, "resume"), /held for intervention/);
+    h.engine.releaseIntervention(id);
+    await h.engine.control(id, "resume");
+    assert.equal((await settled(h.engine, id)).status, "succeeded");
+  } finally { await h.close(); }
+});
+
+test("manager host refuses held child at spawn acceptance and while waiting", async () => {
+  for (const phase of ["spawn", "wait"] as const) {
+    let held = phase === "spawn", sends = 0, closes = 0, releases = 0;
+    const fakeManager = {
+      reserveSlots: () => ({ id: Symbol("reservation") }), releaseSlots: () => { releases++; },
+      spawn: async () => ({ id: "early-child" }), get: () => ({ id: "early-child", hold: held ? { kind: "halt" } : undefined }),
+      send: async () => { sends++; }, wait: async () => { held = true; return { timedOut: true }; },
+      close: async () => { closes++; }, peers: { connect() {}, disconnect() {} },
+    } as unknown as Parameters<typeof managerWorkflowHost>[0];
+    const policy = (() => ({ compile: () => ({}) })) as unknown as Parameters<typeof managerWorkflowHost>[1];
+    const job: AgentJob = { step: "a", workflow: "workflow-test", cwd: "/tmp", worker, instructions: "a",
+      candidate: "/tmp", inputs: {}, onChild() {}, onActivity() {} };
+    await assert.rejects(managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), /held for intervention/);
+    assert.equal(sends, phase === "spawn" ? 0 : 1);
+    assert.equal(closes, 0, "held child remains under parent supervision"); assert.equal(releases, 1);
+  }
 });
 
 test("pause is a boundary, cancel and deadline abort execution, and only one run executes", async () => {

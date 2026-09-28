@@ -34,19 +34,18 @@ export function registerWorkflowUI(pi: ExtensionAPI, get: (ctx: ExtensionContext
     async execute(_call, args, _signal, _update, ctx) { return result(await get(ctx).control(args.id, args.action, args.retry), ctx); },
   });
   pi.registerCommand("workflows", {
-    description: "Workflow status; /workflows inspect|pause|resume|cancel <id>; /workflows approve|reject <id> <step>; resume may list explicit retry step IDs",
+    description: "Observe workflow status; /workflows inspect <id> [step]; /workflows approve|reject <id> <step> for human authorization. The parent manages execution.",
     handler: async (args, ctx) => {
       const [action, id, ...steps] = args.trim().split(/\s+/);
       const engine = get(ctx);
       let output: unknown;
       if (!action || action === "list") output = engine.inspect();
-      else if (action === "inspect" && id) output = engine.inspect(id, steps[0]);
-      else if (["pause", "resume", "cancel"].includes(action) && id) output = await engine.control(id, action as "pause" | "resume" | "cancel", steps);
+      else if (action === "inspect" && id) output = engine.inspect(id, steps[0], false);
       else if (["approve", "reject"].includes(action) && id && steps[0]) output = engine.decide(id, steps[0], action === "approve" ? "pass" : "fail");
-      else throw new Error("Usage: /workflows [list | inspect <id> [step] | pause/resume/cancel <id> [retry steps] | approve/reject <id> <step>]");
+      else throw new Error("Usage: /workflows [list | inspect <id> [step] | approve/reject <id> <step>]. Ask the parent to manage execution; use /subagents for emergency worker Halt/Kill.");
       const oneLine = (value: unknown) => JSON.stringify(String(value ?? "")).slice(1, -1);
       const listing = output as { runs?: { id: string; name: string; status: string; usedAttempts: number; limits: { maxAttempts: number }; reason?: string }[] };
-      ctx.ui.notify(listing.runs ? listing.runs.map(r => `${r.id} · ${oneLine(r.name)} · ${r.status} · ${r.usedAttempts}/${r.limits.maxAttempts} attempts${r.reason ? ` · ${oneLine(r.reason)}` : ""}`).join("\n") || "No workflows tracked." : JSON.stringify(output, null, 2).slice(0, 12000), "info");
+      ctx.ui.notify(listing.runs ? listing.runs.map(r => `${r.id} · ${oneLine(r.name).toLowerCase()} · ${r.status} · ${r.usedAttempts}/${r.limits.maxAttempts} attempts${r.reason ? ` · ${oneLine(r.reason)}` : ""}`).join("\n") || "No workflows tracked." : JSON.stringify(output, null, 2).slice(0, 12000), "info");
     },
   });
 }

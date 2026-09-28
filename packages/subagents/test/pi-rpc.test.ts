@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +29,9 @@ for (const task of ["slow-codex", "slow-genuine"]) {
       assert.equal(result.aborted, cancelled);
       assert.equal(result.error, cancelled ? undefined : "429 quota exceeded");
       assert.equal(manager.pendingNotices().at(-1)?.kind, cancelled ? "aborted" : "failure");
-      const events = (await readFile(result.logFile, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+      // Manager log appends run synchronously on this event loop; take a same-turn
+      // snapshot rather than racing an async read's size check with another append.
+      const events = readFileSync(result.logFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
       const message = events.find(e => e.type === "message_end" && e.message?.stopReason === "error")?.message;
       assert.ok(message, "fixture must reproduce the real adapter's error stopReason on the RPC wire");
       assert.equal(message.errorMessage, cancelled ? "The operation was aborted." : "429 quota exceeded");

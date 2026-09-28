@@ -30,7 +30,7 @@ function panel(source = demoSource(), height = 24) {
 test("overview groups owned workers once and keeps completed work in history", () => {
   const source = demoSource();
   const page = inspectorPage(source, { kind: "overview" });
-  assert.deepEqual(page.rows.filter(r => r.target).map(r => r.id), ["workflow:workflow-demo", "workflow:workflow-approval", "agent:cache", "history"]);
+  assert.deepEqual(page.rows.filter(r => r.target).map(r => r.id), ["workflow:workflow-approval", "workflow:workflow-demo", "agent:cache", "history"]);
   assert.ok(page.rows.some(r => r.text.includes("approval needed")));
   assert.ok(!page.rows.some(r => r.id === "agent:security"));
   assert.ok(inspectorPage(source, { kind: "overview", history: true }).rows.some(r => r.id === "agent:history"));
@@ -52,11 +52,12 @@ test("workflow map retains fan-in, implicit input edges, checks and loops", () =
 
 test("keyboard drilldown reaches attempts and the shared worker view; Esc restores selection", () => {
   const p = panel();
-  assert.match(p.render(), /Subagents/);
-  assert.match(p.press("\r"), /WORKFLOW ↓/);
+  assert.match(p.render(), /subagents/);
+  p.press("\x1b[B"); // attention approval -> working workflow
+  assert.match(p.press("\r"), /workflow ↓/);
   p.press("\x1b[B"); // gather -> security
-  assert.match(p.press("\r"), /ATTEMPTS/);
-  assert.match(p.press("\r"), /WORKERS/);
+  assert.match(p.press("\r"), /attempts/);
+  assert.match(p.press("\r"), /workers/);
   assert.match(p.press("\r"), /synthetic demo|simulated streaming/);
   p.press("\x1b"); p.press("\x1b");
   assert.match(p.press("\x1b"), /› ●\s+│\s+security/);
@@ -68,23 +69,23 @@ test("keyboard drilldown reaches attempts and the shared worker view; Esc restor
 
 test("workflow graph switches to compact prerequisites without losing the selected step", () => {
   const p = panel();
-  p.render(); p.press("\r");
+  p.render(); p.press("\x1b[B"); p.press("\r");
   p.press("\x1b[B"); p.press("\x1b[B"); // compatibility
   const wide = p.render(120);
   assert.match(wide, /├─▶╮/);
   assert.match(wide, /› │\s+✓\s+compatibility/);
   const narrow = p.render(45);
-  assert.match(narrow, /PREREQUISITES/);
+  assert.match(narrow, /prerequisites/);
   assert.match(narrow, /› ✓ compatibility/);
   assert.match(narrow, /← security \+ compatibility/);
   assert.match(p.render(120), /› │\s+✓\s+compatibility/);
-  assert.match(p.press("\r"), /Documentation refresh \/ compatibility/);
+  assert.match(p.press("\r"), /documentation refresh \/ compatibility/);
 });
 
 test("workflow status updates change labels, not topology or selection; all widths fit", () => {
   const source = demoSource(), run = source.workflows()[0], p = panel(source);
   const before = inspectorPage(source, { kind: "workflow", id: run.id });
-  p.render(); p.press("\r"); p.press("\x1b[B");
+  p.render(); p.press("\x1b[B"); p.press("\r"); p.press("\x1b[B");
   run.steps.security.status = "failed";
   run.status = "blocked";
   const after = inspectorPage(source, { kind: "workflow", id: run.id });
@@ -103,14 +104,15 @@ test("selection survives new live entries and labels changing", () => {
   p.render(); p.press("\x1b[B"); p.press("\x1b[B"); // standalone
   source.agents()[0].name = "Renamed caching task";
   source.workflows()[0].status = "succeeded"; // preceding item goes into history
-  assert.match(p.render(), /› ● Renamed caching task/);
-  assert.match(p.press("\r"), /Renamed caching task/);
+  assert.match(p.render(), /› ● renamed caching task/);
+  assert.match(p.press("\r"), /renamed caching task/);
 });
 
 test("agent auto-follow pauses while scrolling, anchors through updates, and End resumes", () => {
   const source = demoSource(), p = panel(source, 18);
   p.render(); p.press("\x1b[B"); p.press("\x1b[B"); p.press("\r");
-  assert.match(p.render(), /following/);
+  assert.match(p.render(), /purpose: Investigate/);
+  assert.match(p.press("\x1b[F"), /following/);
   p.press("\x1b[H"); // home
   const before = p.press("\x1b[B");
   assert.match(before, /scroll paused/);
@@ -124,10 +126,211 @@ test("metadata, output, input requests and paths stay accessible", () => {
   const source = demoSource(), agent = source.agents()[0];
   agent.status = "waiting_input"; agent.uiRequests = [{ id: "input", method: "confirm", title: "Approve action?" }];
   const text = inspectorPage(source, { kind: "agent", id: agent.id }).rows.map(r => r.text).join("\n");
-  assert.match(text, /Input requested: Approve action/);
-  assert.match(text, /Saved session:/);
-  assert.match(text, /Task: Investigate/);
-  assert.match(text, /Event log:/);
+  assert.match(text, /input requested: Approve action/);
+  assert.match(text, /purpose: Investigate/);
+  assert.match(text, /latest result/);
+  const details = inspectorPage(source, { kind: "agent-details", id: agent.id }).rows.map(r => r.text).join("\n");
+  assert.match(details, /saved session:/);
+  assert.match(details, /event log:/);
+});
+
+test("unreviewed idle results, holds and assignments remain prominent; peer audit is observational", () => {
+  const source = demoSource(), idle = source.agents().find(a => a.id === "history")!;
+  idle.readCursor = 0;
+  Object.assign(idle, { assignment: { id: "run-1", task: "Review dependencies", status: "completed" }, resultReview: { assignmentId: "run-1", status: "unreviewed" }, hold: { kind: "halt", at: "2025-01-01T00:00:00Z", outcome: "confirmed" } });
+  assert.ok(inspectorPage(source, { kind: "overview" }).rows.some(r => r.id === `agent:${idle.id}`));
+  assert.ok(!inspectorPage(source, { kind: "overview", history: true }).rows.some(r => r.id === `agent:${idle.id}`));
+  const rows = inspectorPage(source, { kind: "agent", id: idle.id }).rows;
+  assert.deepEqual(rows.slice(0, 5).map(r => r.id), ["hold", "purpose", "current", "result", "assignment"]);
+  assert.match(rows.map(r => r.text).join("\n"), /parent review unreviewed/);
+  assert.ok(!rows.some(r => r.text.includes("✓ idle")));
+  let inspections = 0;
+  source.peers = id => { inspections++; assert.equal(id, idle.id); return { policyCeiling: 3, links: [{ a: "history", b: "security", enabled: true,
+    ab: { limit: 3, used: 1, total: 1, generation: 1 }, ba: { limit: 3, used: 2, total: 2, generation: 1 } }],
+    messages: [{ id: "msg", cursor: 1, sender: "history", recipient: "security", senderName: "Review", recipientName: "Security",
+      message: "Need evidence", generation: 1, time: "2025-01-01", status: "unknown" }], nextCursor: 1, hasMore: false, gap: false, retained: 1, cursor: 1 }; };
+  const audit = inspectorPage(source, { kind: "agent-peers", id: idle.id }).rows.map(r => r.text).join("\n");
+  assert.match(audit, /1\/3 remaining/);
+  assert.match(audit, /unknown/);
+  assert.equal(inspections, 1);
+  assert.equal(idle.readCursor, 0);
+  idle.config.coordination = { owns: ["src/cache.ts"], outputs: ["cache-report.md"] };
+  assert.match(inspectorPage(source, { kind: "agent-details", id: idle.id }).rows.map(r => r.text).join("\n"), /owns: src\/cache.ts[\s\S]*outputs: cache-report.md/);
+});
+
+test("worker summary bounds long purpose/result, holds first, and stops elapsed at assignment finish", () => {
+  const source = demoSource(), agent = source.agents()[0];
+  const task = "TaskCase ".repeat(500), result = "ResultCase ".repeat(500);
+  agent.task = task;
+  agent.assignment = { id: "assignment-1", task, status: "completed", at: "2025-01-01T00:00:00Z", finishedAt: "2025-01-01T00:00:30Z", resultCursor: 6 };
+  agent.resultReview = { assignmentId: "assignment-1", status: "reviewed" };
+  agent.hold = { kind: "halt", at: "2025-01-01T00:00:25Z", outcome: "failed", detail: "timed out" };
+  agent.updatedAt = "2025-01-01T00:00:35Z";
+  agent.updates[5].text = result;
+  const now = Date.parse("2025-01-01T00:02:35Z");
+  const rows = inspectorPage(source, { kind: "agent", id: agent.id }, now).rows;
+  assert.deepEqual(rows.slice(0, 5).map(r => r.id), ["hold", "purpose", "current", "result", "assignment"]);
+  assert.ok(rows.find(r => r.id === "purpose")!.text.length < 450);
+  assert.ok(rows.find(r => r.id === "result")!.text.length < 650);
+  assert.match(rows.find(r => r.id === "current")!.text, /elapsed 30s · last observed 2m 0s ago/);
+  assert.match(rows.find(r => r.id === "assignment")!.text, /parent review reviewed/);
+  delete agent.assignment.finishedAt;
+  assert.match(inspectorPage(source, { kind: "agent", id: agent.id }, now).rows.find(r => r.id === "current")!.text, /elapsed 35s \(last observed\)/);
+  assert.doesNotMatch(rows.find(r => r.id === "assignment")!.text, /needed/);
+  const detail = inspectorPage(source, { kind: "agent-details", id: agent.id }).rows;
+  assert.equal(detail.find(r => r.id === "task-full")!.text, `task: ${task}`);
+  assert.ok(rows.some(r => r.id === "update:6" && r.text.includes(result)));
+  const p = panel(source, 18);
+  p.render(); p.press("\x1b[B");
+  assert.match(p.press("\r"), /halt failed/); // The hold remains visible even in the short viewport.
+});
+
+test("held workflows stay in attention, including pausing and terminal runs with a held worker", () => {
+  const source = demoSource(), run = source.workflows()[0];
+  run.status = "succeeded"; run.unread = false;
+  const worker = source.agents().find(a => a.id === "security")!;
+  worker.hold = { kind: "kill", at: "2025-01-01T00:00:00Z", outcome: "pending" };
+  let page = inspectorPage(source, { kind: "overview" });
+  assert.ok(page.rows.some(r => r.id === `workflow:${run.id}` && r.text.includes("intervention hold")));
+  assert.ok(!inspectorPage(source, { kind: "overview", history: true }).rows.some(r => r.id === `workflow:${run.id}`));
+  delete worker.hold;
+  run.interventionHold = { at: "2025-01-01T00:00:00Z", reason: "review needed" };
+  page = inspectorPage(source, { kind: "overview" });
+  assert.ok(page.rows.some(r => r.id === `workflow:${run.id}`));
+  assert.match(inspectorPage(source, { kind: "workflow", id: run.id }).rows[0].text, /intervention hold at .*review needed/);
+  delete run.interventionHold;
+  run.status = "pausing";
+  assert.equal(inspectorPage(source, { kind: "overview" }).rows[0].id, "attention");
+});
+
+test("peer audit defaults to recent exchanges and paginates retained history without acknowledging", () => {
+  const source = demoSource(), agent = source.agents()[0];
+  const requested: (number | undefined)[] = [];
+  source.peers = (_id, since) => {
+    requested.push(since);
+    return { policyCeiling: 4, links: [], messages: [{ id: `m${since ?? "recent"}`, cursor: (since ?? 5) + 1,
+      sender: "cache", recipient: "security", senderName: "Cache", recipientName: "Security", message: "result", generation: 1,
+      time: "2025-01-01", status: "interrupted" }], nextCursor: (since ?? 5) + 1, hasMore: since === 0,
+      gap: false, retained: 10, cursor: 10 };
+  };
+  const recent = inspectorPage(source, { kind: "agent-peers", id: agent.id });
+  assert.match(recent.subtitle, /recent retained/);
+  assert.match(recent.rows.map(r => r.text).join("\n"), /interrupted/);
+  const browse = recent.rows.find(r => r.id === "peer-history")!.target!;
+  const first = inspectorPage(source, browse);
+  assert.match(first.subtitle, /oldest first/);
+  assert.ok(first.rows.find(r => r.id.startsWith("peer-next:"))?.target);
+  assert.deepEqual(requested, [undefined, 0]);
+  assert.equal(agent.readCursor, 0);
+});
+
+test("Halt acts only on explicit worker; Kill requires target confirmation; Esc never kills", async () => {
+  const source = demoSource(), calls: string[] = [];
+  const p = new InspectorPanel(source, theme, keys, () => 24, () => {}, () => {}, {
+    halt: async id => { calls.push(`halt:${id}`); return { ok: false, message: "already stopped" }; },
+    kill: async id => { calls.push(`kill:${id}`); throw new Error("transport failed"); },
+  });
+  const render = () => plain(p.render(100));
+  render(); p.handleInput("h"); p.handleInput("K"); p.handleInput("\r");
+  assert.deepEqual(calls, []);
+  p.handleInput("\x1b[B"); p.handleInput("\x1b[B"); p.handleInput("\x1b[B"); p.handleInput("\r");
+  render(); p.handleInput("K");
+  const warning = render();
+  assert.match(warning, /target: cache · investigate caching/);
+  assert.match(warning, /force-stop the worker process/);
+  assert.match(warning, /edits are not rolled back/);
+  assert.match(warning, /detached subprocesses may survive/);
+  p.handleInput("\x1b"); assert.deepEqual(calls, []);
+  p.handleInput("h"); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ["halt:cache"]); assert.match(render(), /halt failed for cache: already stopped/);
+  p.handleInput("K"); render(); p.handleInput("\r"); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ["halt:cache", "kill:cache"]); assert.match(render(), /kill failed for cache: Error: transport failed/);
+});
+
+test("kill confirmation respects remapped select keys and doesn't accept Enter when rebound", async () => {
+  const source = demoSource(); let killed = 0;
+  const remapped = { ...keys,
+    matches: (data: string, action: string) => action === "tui.select.confirm" ? data === "x" : action === "tui.select.cancel" ? data === "q" : keys.matches(data, action as Parameters<typeof keys.matches>[1]),
+    getKeys: (action: string) => action === "tui.select.confirm" ? ["x"] : action === "tui.select.cancel" ? ["q"] : keys.getKeys(action as Parameters<typeof keys.getKeys>[0]),
+  } as Pick<KeybindingsManager, "matches" | "getKeys">;
+  const p = new InspectorPanel(source, theme, remapped, () => 24, () => {}, () => {}, { kill: async () => { killed++; return { ok: true, message: "done" }; } });
+  p.render(100); p.handleInput("\x1b[B"); p.handleInput("\x1b[B"); p.handleInput("x"); p.render(100);
+  p.handleInput("K"); assert.match(plain(p.render(100)), /x confirms this target/);
+  p.handleInput("\r"); assert.equal(killed, 0);
+  p.handleInput("K"); p.handleInput("q"); assert.equal(killed, 0);
+  p.handleInput("K");
+  assert.match(plain(p.render(40)), /resize to read/);
+  p.handleInput("x"); assert.equal(killed, 0); // Narrow viewport cannot hide the danger and still confirm.
+  assert.match(plain(p.render(100)), /detached subprocesses may survive/);
+  p.handleInput("x"); assert.equal(killed, 1);
+});
+
+test("pending halt never blocks confirmed kill escalation on the same held worker", async () => {
+  const source = demoSource(), calls: string[] = [];
+  let releaseHalt!: (result: { ok: boolean; message: string }) => void;
+  const halt = new Promise<{ ok: boolean; message: string }>(resolve => { releaseHalt = resolve; });
+  const p = new InspectorPanel(source, theme, keys, () => 24, () => {}, () => {}, {
+    halt: async id => { calls.push(`halt:${id}`); return halt; },
+    kill: async id => { calls.push(`kill:${id}`); return { ok: true, message: "terminated" }; },
+  });
+  p.render(100);
+  for (let i = 0; i < 2; i++) p.handleInput("\x1b[B");
+  p.handleInput("\r"); p.render(100);
+  p.handleInput("h");
+  assert.deepEqual(calls, ["halt:cache"]);
+  Object.assign(source.agents().find(a => a.id === "cache")!, { hold: { kind: "halt", at: new Date().toISOString(), outcome: "pending" } });
+  p.handleInput("K");
+  assert.match(plain(p.render(100)), /target: cache · investigate caching/);
+  p.handleInput("\r"); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ["halt:cache", "kill:cache"]);
+  releaseHalt({ ok: false, message: "no response" }); await new Promise(resolve => setImmediate(resolve));
+  assert.match(plain(p.render(100)), /halt failed.*kill result/);
+});
+
+test("action feedback and pending operations stay scoped to the selected worker", async () => {
+  const template = demoSource().agents()[0];
+  const agents = ["alpha", "beta"].map(id => ({ ...structuredClone(template), id, name: id }));
+  const source: InspectorSource = { agents: () => agents, workflows: () => [], activity: () => ({ tools: [], text: "" }) };
+  const calls: string[] = [];
+  const finish = new Map<string, (result: { ok: boolean; message: string }) => void>();
+  const p = new InspectorPanel(source, theme, keys, () => 24, () => {}, () => {}, {
+    halt: id => { calls.push(id); return new Promise(resolve => finish.set(id, resolve)); },
+    kill: async () => ({ ok: true, message: "killed" }),
+  });
+  const render = () => plain(p.render(180));
+  const press = (key: string) => { p.handleInput(key); return render(); };
+  render(); press("\r"); press("h");
+  assert.match(render(), /halt requested for alpha/);
+  assert.doesNotMatch(press("\x1b"), /halt requested for alpha/);
+  press("\x1b[B"); press("\r");
+  assert.doesNotMatch(render(), /halt requested for alpha/);
+  press("h");
+  assert.deepEqual(calls, ["alpha", "beta"], "one worker's pending halt must not block another's");
+  finish.get("alpha")!({ ok: true, message: "ALPHA_RESULT" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.doesNotMatch(render(), /ALPHA_RESULT|for alpha/);
+  assert.match(render(), /halt requested for beta/);
+  finish.get("beta")!({ ok: true, message: "BETA_RESULT" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(render(), /halt result for beta: BETA_RESULT/);
+  press("K"); render();
+  assert.doesNotMatch(render(), /ALPHA_RESULT/);
+  press("\x1b"); // Cancel beta's kill confirmation, without navigating.
+  assert.match(render(), /kill cancelled/);
+  press("\x1b"); press("\x1b[A"); press("\r");
+  assert.match(render(), /halt result for alpha: ALPHA_RESULT/);
+  assert.doesNotMatch(render(), /BETA_RESULT|kill cancelled/);
+});
+
+test("oversized saved-output placeholder uses lowercase chrome without changing report content", () => {
+  const source = demoSource(), agent = source.agents()[0];
+  const report = "UPPERCASE output ".repeat(1500);
+  agent.updates = [{ cursor: 100, kind: "assistant", text: report, time: new Date(Date.now() + 1000).toISOString() }];
+  source.activity = () => ({ tools: [], text: "" });
+  const p = panel(source, 20);
+  p.render(); p.press("\x1b[B"); p.press("\x1b[B"); p.press("\r");
+  assert.match(p.press("\x1b[F"), /\[more in saved logs\]/);
+  assert.equal(agent.updates[0].text, report);
 });
 
 test("all views fit narrow and wide terminals, resize and sanitize untrusted escape sequences", () => {
@@ -148,7 +351,7 @@ test("all views fit narrow and wide terminals, resize and sanitize untrusted esc
 
 test("empty/missing records, theme changes and remapped keys remain usable", () => {
   const source: InspectorSource = { agents: () => [], workflows: () => [], activity: () => ({ tools: [], text: "" }) };
-  assert.match(panel(source).render(), /No current background work/);
+  assert.match(panel(source).render(), /no current background work/);
   assert.match(inspectorPage(source, { kind: "agent", id: "gone" }).title, /unavailable/);
   let shade = 240, closed = 0;
   const p = new InspectorPanel(source, { fg: (_tone: string, text: string) => `\x1b[38;5;${shade}m${text}\x1b[39m` } as Theme,

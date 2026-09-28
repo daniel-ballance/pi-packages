@@ -101,7 +101,7 @@ export function formatAgentListing(record: { id: string; name: string; status: s
   const tail = stats
     ? cost === undefined ? `${stats} · cost unknown` : stats
     : cost === undefined ? "cost unknown" : `$${cost.toFixed(3)}`;
-  return `${record.id} · ${record.name} · ${record.status} · ${model} · ${turnLabel} · ${tail}`;
+  return `${record.id} · ${record.name.toLowerCase()} · ${record.status} · ${model} · ${turnLabel} · ${tail}`;
 }
 
 /** Each entry contains its child's latest cumulative session snapshot. */

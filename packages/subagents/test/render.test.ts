@@ -23,7 +23,7 @@ function render(action: Action, details: unknown, expanded = false, width = 120)
 test("all subagent tools register call/result renderers without changing execution schemas", () => {
   const tools: ToolDefinition[] = [];
   subagents({ on() {}, registerCommand() {}, registerTool(tool: ToolDefinition) { tools.push(tool); } } as unknown as ExtensionAPI);
-  assert.equal(tools.length, 17);
+  assert.equal(tools.length, 18);
   for (const tool of tools) {
     assert.equal(typeof tool.renderCall, "function", tool.name);
     assert.equal(typeof tool.renderResult, "function", tool.name);
@@ -36,7 +36,7 @@ test("peer renderers show directional budgets and receipt state with bounded wid
     messages: [{ sender: "A", recipient: "B", status: "received", id: "peer-123", message: "private body" }], gap: true, hasMore: true, nextCursor: 5 };
   const text = render("peers", data);
   assert.match(text, /A ↔ B · connected/); assert.match(text, /→ 1\/2 used · ← 0\/2 used/);
-  assert.match(text, /received/); assert.match(text, /History gap/); assert.match(text, /cursor 5/);
+  assert.match(text, /received/); assert.match(text, /history gap/); assert.match(text, /cursor 5/);
   assert.doesNotMatch(text, /private body/);
   assert.match(render("peers", data, true), /private body/);
   assert.match(render("renew", { sender: "A", recipient: "B", generation: 2, remaining: 3 }), /generation 2 · 3 remaining/);
@@ -48,7 +48,7 @@ test("spawn shows a compact identity, status, model, usage and task instead of r
   assert.match(rendered, /● working  footer-smoke-test  subagent-12345678/);
   assert.match(rendered, /gpt-5.6-luna:high · 1 turn/);
   assert.match(rendered, /↑484 ↓9 \$0.125 0.2%\/272k \(auto\)/);
-  assert.match(rendered, /Task: Return a short answer/);
+  assert.match(rendered, /task: Return a short answer/);
   assert.doesNotMatch(rendered, /sessionFile|\/private|"usage"/);
   assert.ok(rendered.split("\n").length <= 5);
   assert.match(rendered, /expand for details/);
@@ -59,7 +59,7 @@ test("expanded output retains full raw diagnostics and does not mutate the tool 
   const before = JSON.stringify(data);
   const renderer = subagentRenderers("spawn");
   const expanded = renderer.renderResult(data, { expanded: true, isPartial: false }, theme, context()).render(120).join("\n");
-  assert.match(expanded, /Full result/);
+  assert.match(expanded, /full result/);
   assert.match(expanded, /"sessionFile": "\/private\/session.jsonl"/);
   assert.match(expanded, /"logFile": "\/private\/events.jsonl"/);
   assert.equal(JSON.stringify(data), before);
@@ -75,7 +75,7 @@ test("read foregrounds the latest assistant reply, not lifecycle and sent echoes
   assert.match(collapsed, /Ready for footer inspection\./);
   assert.doesNotMatch(collapsed, /internal metadata|Return a short answer|sessionFile/);
   assert.match(render("read", details, true), /internal metadata/);
-  assert.match(render("read", { ...details, updates: [] }), /No new updates/);
+  assert.match(render("read", { ...details, updates: [] }), /no new updates/);
 });
 
 test("read keeps failures, pending dialogs, history gaps and pagination visible", () => {
@@ -83,7 +83,7 @@ test("read keeps failures, pending dialogs, history gaps and pagination visible"
     uiRequests: [{ id: "ui-1", method: "confirm", title: "Approve?" }],
     updates: [{ kind: "error", text: "Provider quota exceeded" }, { kind: "assistant", text: "Partial reply" }],
   });
-  for (const value of ["needs input", "pending input", "History gap", "More unread", "Provider quota exceeded", "Partial reply"]) assert.ok(text.includes(value), value);
+  for (const value of ["needs input", "pending input", "history gap", "more unread", "Provider quota exceeded", "Partial reply"]) assert.ok(text.includes(value), value);
   const failed = render("abort", { ...child, status: "failed", aborted: true, error: "Unrelated provider failure" });
   assert.match(failed, /✗ failed/);
   assert.doesNotMatch(failed, /cancelled/);
@@ -93,20 +93,20 @@ test("read keeps failures, pending dialogs, history gaps and pagination visible"
 test("catalog summarizes capabilities without dumping policy guidance", () => {
   const catalog = { spawnEnabled: true, models: [{ id: "test/model:high", description: "Long model guidance hidden until expansion" }], tools: ["read", "bash"], maxChildren: 4, source: "/private/policy.json", omittedEntries: 2 };
   const text = render("catalog", catalog);
-  assert.match(text, /Ready to spawn · 1 model options · 2 tools · max 4 children/);
+  assert.match(text, /ready to spawn · 1 model options · 2 tools · max 4 children/);
   assert.match(text, /test\/model:high/);
-  assert.match(text, /Tools: read, bash/);
+  assert.match(text, /tools: read, bash/);
   assert.match(text, /2 unavailable option/);
   assert.doesNotMatch(text, /Long model guidance|\/private/);
   assert.match(render("catalog", catalog, true), /Long model guidance/);
-  assert.match(render("catalog", { spawnEnabled: false, error: "Invalid policy" }), /Spawning disabled[\s\S]*Invalid policy/);
+  assert.match(render("catalog", { spawnEnabled: false, error: "Invalid policy" }), /spawning disabled[\s\S]*Invalid policy/);
 });
 
 test("wait and list distinguish timeouts, input needs and missing aggregate costs", () => {
-  assert.match(render("wait", { timedOut: true, agents: [{ ...child, status: "working" }] }), /Wait timed out[\s\S]*working/);
-  assert.match(render("wait", { timedOut: false, needsInput: true, agents: [{ ...child, status: "waiting_input" }] }), /Input required[\s\S]*needs input/);
+  assert.match(render("wait", { timedOut: true, agents: [{ ...child, status: "working" }] }), /wait timed out[\s\S]*working/);
+  assert.match(render("wait", { timedOut: false, needsInput: true, agents: [{ ...child, status: "waiting_input" }] }), /input required[\s\S]*needs input/);
   assert.match(render("list", { totals: { active: 1, tracked: 2, reportedCost: 0.125, missingCost: 1 }, agents: [child] }), /1 active \/ 2 tracked · \$0.125 · 1 cost unknown/);
-  assert.match(render("list", { agents: [] }), /No subagents tracked/);
+  assert.match(render("list", { agents: [] }), /no subagents tracked/);
   const agents = [...Array.from({ length: 4 }, () => child), { ...child, status: "failed" }];
   assert.match(render("list", { agents }), /1 more children \(1 need attention\)/);
 });
@@ -117,11 +117,11 @@ test("plain errors, partial results and spilled results remain intelligible", ()
   const text = renderer.renderResult(error, { expanded: false, isPartial: false }, theme, context(true)).render(80).join("\n");
   assert.match(text, /Live-child limit reached/);
   const partial = renderer.renderResult(result(child), { expanded: false, isPartial: true }, theme, context()).render(80).join("\n");
-  assert.equal(partial, "Updating…");
+  assert.equal(partial, "updating…");
   const spilled = render("read", { fullResult: "/private/overflow.json" });
-  assert.match(spilled, /Result truncated/);
+  assert.match(spilled, /result truncated/);
   assert.match(spilled, /\/private\/overflow.json/);
-  assert.doesNotMatch(spilled, /No new updates/);
+  assert.doesNotMatch(spilled, /no new updates/);
   assert.match(render("read", null), /null/);
 });
 
@@ -158,6 +158,29 @@ test("call rows identify the package, then the thing, action and parameters", ()
   assert.equal(line("read", { id: "missing" }), "subagents • missing • read");
 });
 
+test("chrome and display names are lowercase without altering payloads, identifiers or task case", () => {
+  const data = { ...child, name: "AX Helpers", task: "Check README.md and MyAPI", id: "Agent-ABC" };
+  const call = subagentRenderers("spawn").renderCall(data, theme, context()).render(160).join("\n");
+  assert.match(call, /subagents • ax helpers • spawn Check README.md and MyAPI/);
+  assert.match(render("spawn", data), /ax helpers  Agent-ABC/);
+  assert.match(render("spawn", data), /task: Check README.md and MyAPI/);
+  assert.match(render("spawn", data, true), /"name": "AX Helpers"/);
+  const unknown = subagentRenderers("read").renderCall({ id: "Agent-ABC" }, theme, context()).render(100).join("\n");
+  assert.match(unknown, /Agent-ABC/);
+  assert.doesNotMatch(render("read", child), /✓ idle/);
+  assert.match(render("read", { ...child, hold: { kind: "halt" } }), /held by user \(halt\)/);
+});
+
+test("overlap warning owner names are lowercase while paths and expanded payloads retain case", () => {
+  const data = { ...child, coordinationWarnings: [{ id: "Agent-ABC", name: "Halt Smoke", path: "/Project/OutputCase.md" }] };
+  const before = JSON.stringify(data);
+  const text = render("spawn", data);
+  assert.match(text, /work-area overlap: \/Project\/OutputCase.md · halt smoke/);
+  assert.doesNotMatch(text, /Halt Smoke/);
+  assert.match(render("spawn", data, true), /"name": "Halt Smoke"/);
+  assert.equal(JSON.stringify(data), before);
+});
+
 test("collapsed previews are bounded in physical rows and strip child terminal controls", () => {
   const hostile = { ...child, name: "审查🙂\x1b[2J\x1b]0;fake-title\x07\nspoof", updates: [{ kind: "assistant", text: ("Wide 界🙂 output\t\x1b[31m\x00\n").repeat(200) }] };
   const data = result(hostile);
@@ -189,7 +212,7 @@ test("Pi's tool execution shell uses the custom views and expands the original p
   assert.doesNotMatch(collapsed, /sessionFile/);
   tool.setExpanded(true);
   const expanded = tool.render(80).map(stripVTControlCharacters).join("\n");
-  assert.match(expanded, /Full result/);
+  assert.match(expanded, /full result/);
   assert.match(expanded, /sessionFile/);
   tool.setExpanded(false);
   tool.updateResult({ content: [{ type: "text", text: "Spawn rejected" }], isError: true });

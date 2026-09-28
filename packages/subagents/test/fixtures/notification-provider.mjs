@@ -13,15 +13,16 @@ export default function (pi) {
         const spawned = toolResults.find(m => m.toolName === "subagent_spawn");
         const waited = toolResults.some(m => m.toolName === "subagent_wait");
         const read = toolResults.some(m => m.toolName === "subagent_read");
-        const reported = context.messages.some(m => m.role === "user" && JSON.stringify(m.content).includes("SUBAGENT REPORTS"));
+        const reported = context.messages.some(m => m.role === "user" && /SUBAGENT REPORTS|HUMAN SUPERVISION/.test(JSON.stringify(m.content)));
         let tool;
         if (reported) content = [{ type: "text", text: "REPORT RECEIVED" }];
         else if (!spawned) tool = { name: "subagent_spawn", arguments: {
           name: "worker", task: "Return worker result.", cwd: process.cwd(),
           model: "notification-test/stub:off", tools: [], extensions: [fileURLToPath(import.meta.url)],
+          coordination: { owns: ["src"], outputs: ["report.md"] },
         } };
-        else if (!waited) tool = { name: "subagent_wait", arguments: { ids: [JSON.parse(spawned.content.find(c => c.type === "text").text).id], timeoutSeconds: 5 } };
-        else if (!read && process.env.NOTICE_TEST_MODE === "read") tool = { name: "subagent_read", arguments: { id: JSON.parse(spawned.content.find(c => c.type === "text").text).id } };
+        else if (!waited) tool = { name: "subagent_wait", arguments: { ids: [JSON.parse(spawned.content.find(c => c.type === "text").text).id], timeoutSeconds: 5, collect: process.env.NOTICE_TEST_MODE === "collect" } };
+        else if (!read && !["unread", "collect"].includes(process.env.NOTICE_TEST_MODE)) tool = { name: "subagent_read", arguments: { id: JSON.parse(spawned.content.find(c => c.type === "text").text).id } };
         else content = [{ type: "text", text: "PARENT FINISHED" }];
         if (tool) { stopReason = "toolUse"; content = [{ type: "toolCall", id: `call-${toolResults.length}`, ...tool }]; }
       }

@@ -5,7 +5,7 @@ import { summarizeAgents } from "./usage.js";
 export function formatSubagentSummary(records: readonly { status: string; usage?: unknown }[]): string {
   if (!records.length) return "";
   const totals = summarizeAgents(records);
-  return `subagents: ${totals.active}/${totals.tracked} • $${totals.reportedCost.toFixed(3)}`;
+  return `subagents: ${totals.active}/${totals.tracked} • $${totals.reportedCost.toFixed(3)}${totals.missingCost ? "+" : ""}`;
 }
 
 /** Decorate, don't recreate, Pi's first footer row. Remaining rows are untouched. */
