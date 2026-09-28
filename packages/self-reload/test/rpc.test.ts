@@ -22,7 +22,7 @@ export default function(pi) {
       const message = {
         role: "assistant", api: model.api, provider: model.provider, model: model.id,
         content: resumed ? [{ type: "text", text: "continued-${version}" }] : [
-          { type: "toolCall", id: "reload-1", name: "self_reload", arguments: { continuation: "Verify the new version." } }
+          { type: "toolCall", id: "reload-1", name: "self_reload", arguments: { continuation: "Verify the new version.", reason: "Activate provider v2", expectedTools: ["self_reload"] } }
         ],
         stopReason: resumed ? "stop" : "toolUse", timestamp: Date.now(),
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
@@ -91,6 +91,11 @@ test("real RPC agent requests reload and automatically continues using edited co
     const completions = events.filter(e => e.type === "message_end" && e.message?.customType === "self-reload");
     assert.equal(completions.length, 1);
     assert.match(completions[0].message.content, /Verify the new version/);
+    assert.match(completions[0].message.content, /Expected tools are active/);
+    assert.equal(completions[0].message.details.status, "reloaded");
+    assert.deepEqual(completions[0].message.details.missingTools, []);
+    assert.ok(events.some(e => e.type === "extension_ui_request" && e.method === "notify" && e.message.includes("Activate provider v2")));
+    assert.ok(events.some(e => e.type === "extension_ui_request" && e.method === "setStatus" && e.statusText === "Reloading Pi resources…"));
     assert.ok(events.some(e => e.type === "tool_execution_end" && e.toolName === "self_reload" && !e.isError));
     assert.equal(events.filter(e => e.type === "extension_error").length, 0, JSON.stringify(events));
     // Reload again to catch leaked completion listeners / duplicate continuations.
