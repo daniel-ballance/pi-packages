@@ -322,7 +322,8 @@ function workflowControl(data: Data, theme: Theme, complete: boolean, names?: Na
 export function subagentRenderers(action: Action, names?: NameLookup): Required<Pick<ToolDefinition, "renderCall" | "renderResult">> {
   return {
     renderCall(args, theme, context) {
-      return component(() => [formatCall(action, object(args) ?? {}, theme, context?.argsComplete === true, names)]);
+      return component(() => [command(theme, "subagents") + theme.fg("toolTitle", " • ") +
+        formatCall(action, object(args) ?? {}, theme, context?.argsComplete === true, names)]);
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
       return component(width => {

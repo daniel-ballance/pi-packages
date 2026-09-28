@@ -200,7 +200,7 @@ This does **not** prevent a child with unrestricted bash from invoking Pi itself
 
 ## Reports and UI
 
-Tool calls use compact, themed TUI summaries instead of raw JSON by default:
+Tool calls use compact, themed TUI summaries instead of raw JSON by default. Call rows start with `subagents •` to identify their source (`subagents • catalog`, `subagents • list`); child and workflow actions also retain their target name and parameters.
 
 - **Catalog:** availability, model options, tool names and child limit.
 - **Spawn/send/resume/abort/close/respond:** child name, status, ID, model, turns and footer-style usage when available.
