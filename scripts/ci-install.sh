@@ -8,9 +8,14 @@ case "$PI_VERSION" in
   *) printf 'Unsupported Pi version: %s\n' "$PI_VERSION" >&2; exit 2 ;;
 esac
 
-# The root workspace lockfile is authoritative for collection installs. Keep
-# nested trees, matching standalone packages and their RPC test executable paths.
-npm --prefix "$ROOT" ci --ignore-scripts --no-audit --no-fund
+source "$ROOT/scripts/package-manager.sh"
+
+# Each manager uses its own committed root workspace lockfile.
+if [[ "$PACKAGE_MANAGER" == pnpm ]]; then
+  pnpm --dir "$ROOT" install --frozen-lockfile --ignore-scripts
+else
+  npm --prefix "$ROOT" ci --ignore-scripts --no-audit --no-fund
+fi
 
 shopt -s nullglob
 package_jsons=("$ROOT"/packages/*/package.json)
@@ -32,7 +37,27 @@ for package_json in "${package_jsons[@]}"; do
   # Child lockfiles remain available for isolated standalone-package installs.
 done
 
-if [[ "$PI_VERSION" == "0.87.1" ]]; then
+if [[ "$PI_VERSION" == "0.87.1" && "$PACKAGE_MANAGER" == pnpm ]]; then
+  # Temporary workspace overrides exercise the current runtime without changing
+  # committed manifests or either lockfile. Restore even when installation fails.
+  workspace_backup="$(mktemp)"
+  cp "$ROOT/pnpm-workspace.yaml" "$workspace_backup"
+  trap 'cp "$workspace_backup" "$ROOT/pnpm-workspace.yaml"; rm -f "$workspace_backup"' EXIT
+  node --input-type=module - "$ROOT" "$PI_VERSION" <<'NODE'
+import { appendFileSync, readFileSync, readdirSync } from "node:fs";
+const [root, version] = process.argv.slice(2);
+const names = new Set();
+for (const dir of readdirSync(`${root}/packages`)) {
+  const manifest = JSON.parse(readFileSync(`${root}/packages/${dir}/package.json`, "utf8"));
+  for (const name of Object.keys(manifest.peerDependencies ?? {})) {
+    if (name.startsWith("@earendil-works/pi-")) names.add(name);
+  }
+}
+appendFileSync(`${root}/pnpm-workspace.yaml`, "\noverrides:\n" +
+  [...names].sort().map(name => `  '${name}': '${version}'\n`).join(""));
+NODE
+  pnpm --dir "$ROOT" install --no-frozen-lockfile --lockfile=false --ignore-scripts
+elif [[ "$PI_VERSION" == "0.87.1" ]]; then
   for package_json in "${package_jsons[@]}"; do
     package_dir="${package_json%/package.json}"
     mapfile -t pi_dependencies < <(

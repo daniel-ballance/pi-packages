@@ -60,7 +60,8 @@ test("Pi Git installation resolves every extension without development dependenc
       "commit", "--quiet", "-m", "Package fixture");
     // Exercise Pi's actual URL -> clone -> production npm install path. Git's
     // process-local URL rewrite targets our fixture, and npm uses only the cache
-    // primed by root npm ci. No personal settings or external service is used.
+    // primed by root npm ci. pnpm CI explicitly permits registry downloads since
+    // its store is separate from npm's cache. No personal settings are used.
     const output = execFileSync(process.execPath, ["--input-type=module", "-e", `
       import { DefaultPackageManager, SettingsManager } from ${JSON.stringify(import.meta.resolve("@earendil-works/pi-coding-agent"))};
       const source = "https://pi-packages.invalid/fixtures/repo.git";
@@ -73,7 +74,7 @@ test("Pi Git installation resolves every extension without development dependenc
       env: { ...process.env, GIT_CONFIG_COUNT: "1",
         GIT_CONFIG_KEY_0: `url.${pathToFileURL(temp + "/").href}.insteadOf`,
         GIT_CONFIG_VALUE_0: "https://pi-packages.invalid/fixtures/",
-        npm_config_offline: "true", npm_config_ignore_scripts: "true",
+        npm_config_offline: process.env.PI_PACKAGING_NPM_OFFLINE ?? "true", npm_config_ignore_scripts: "true",
         npm_config_audit: "false", npm_config_fund: "false" },
     });
     const installed: string = JSON.parse(output.trim().split(/\r?\n/).at(-1)!);
@@ -86,6 +87,33 @@ test("Pi Git installation resolves every extension without development dependenc
         [`packages/${name}/extensions/${name}/index.ts`]);
     }
     await assert.rejects(readFile(join(installed, "node_modules/@earendil-works/pi-coding-agent/package.json")));
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("pnpm production workspace resolves every extension without development dependencies", {
+  skip: process.env.PACKAGE_MANAGER !== "pnpm" ? "covered by pnpm CI jobs" : false,
+}, async () => {
+  const temp = await mkdtemp(join(tmpdir(), "pi-pnpm-production-"));
+  try {
+    for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "packages"]) {
+      await cp(join(root, name), join(temp, name), {
+        recursive: true,
+        filter: path => !["node_modules", "vendor", ".git"].includes(basename(path)),
+      });
+    }
+    execFileSync("pnpm", ["install", "--prod", "--frozen-lockfile", "--ignore-scripts"], {
+      cwd: temp, encoding: "utf8", stdio: "pipe",
+    });
+    const result = await load(temp, temp);
+    assert.deepEqual(result.extensions, expectedPaths);
+    assert.deepEqual(result.skills, expectedSkills);
+    for (const name of extensionNames) {
+      await assert.rejects(readFile(join(temp, "packages", name, "node_modules/@earendil-works/pi-coding-agent/package.json")));
+      assert.deepEqual((await load(join(temp, "packages", name), temp)).extensions,
+        [`packages/${name}/extensions/${name}/index.ts`]);
+    }
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
