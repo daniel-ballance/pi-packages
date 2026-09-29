@@ -511,9 +511,6 @@ export class SubagentManager {
         }
         if (message?.role === "assistant") record.usage = noteAssistantCacheHit(record.usage, message);
         if (message?.role === "assistant" || message?.role === "toolResult") void this.refreshUsage(record);
-        if (message?.customType === "child-policy-check" && Array.isArray(message.details?.tools)) {
-          this.verifiedTools.set(record.id, message.details.tools);
-        }
         if (message?.role !== "assistant") break;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
         if (text) this.update(record, "assistant", text);
@@ -531,6 +528,13 @@ export class SubagentManager {
           if (record.assignment?.status === "running") record.assignment.status = "failed";
           record.error = message.errorMessage || "Assistant request failed";
           this.update(record, "error", record.error!);
+        }
+        break;
+      }
+      case "entry_appended": {
+        const entry = packet.entry;
+        if (entry?.customType === "child-policy-check" && Array.isArray(entry.data?.tools)) {
+          this.verifiedTools.set(record.id, entry.data.tools);
         }
         break;
       }

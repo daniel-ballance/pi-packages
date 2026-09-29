@@ -84,7 +84,7 @@ test("real Pi workflows: DAG, repair, improvement, reviewer, scoped peer group a
     for (const child of manager.list()) {
       assert.ok(child.workflow); assert.equal(child.status, "stopped");
       const events = readFileSync(child.logFile, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
-      const tools = events.find(e => e.message?.customType === "child-policy-check").message.details.tools as string[];
+      const tools = events.find(e => e.entry?.customType === "child-policy-check").entry.data.tools as string[];
       assert.ok(tools.every(name => !name.startsWith("subagent_")));
       assert.equal(events.some(e => e.type === "extension_error"), false);
     }

@@ -66,7 +66,7 @@ test("real child peer tools: idle prompt, busy steering, limits, graph, resume a
     assert.equal(manager.peers.state.messages.at(-1)!.status, "received");
 
     const checkEvents = readFileSync(manager.get(b.id).logFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
-    const tools = checkEvents.find(e => e.message?.customType === "child-policy-check").message.details.tools as string[];
+    const tools = checkEvents.find(e => e.entry?.customType === "child-policy-check").entry.data.tools as string[];
     assert.ok(tools.includes("peer_send")); assert.ok(tools.every(name => !name.startsWith("subagent_")));
     assert.ok(checkEvents.some(e => e.type === "tool_execution_end" && e.toolName === "peer_send" && !e.isError));
     // A peer must not bypass or answer a pending human/extension dialog.

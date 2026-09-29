@@ -58,7 +58,9 @@ export default function childGuard(pi: ExtensionAPI) {
     description: "Report effective child tools to the parent manager (no model call)",
     handler: async () => {
       apply();
-      pi.sendMessage({ customType: "child-policy-check", content: "Child tool policy checked.", display: false, details: { tools: pi.getActiveTools() } });
+      // Custom session entry (not a custom message): persists and emits `entry_appended`
+      // without entering model context, so external drivers' checkpointing stays intact.
+      pi.appendEntry("child-policy-check", { tools: pi.getActiveTools() });
     },
   });
 }
