@@ -4,6 +4,7 @@ set -euo pipefail
 # Canonical repository gate; it is also exposed as the root `npm run check` script.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+source "$ROOT/scripts/package-manager.sh"
 
 # Keep the root gate reproducible and independent of a caller's Pi session or
 # an optional installed Pi executable. Package tests use their local fixtures
@@ -44,12 +45,12 @@ for package_json in "${package_jsons[@]}"; do
   package_dir="${package_json%/package.json}"
   package_name="$(basename "$package_dir")"
   printf '\n== %s: check ==\n' "$package_name"
-  npm --prefix "$package_dir" run check
+  "$PACKAGE_MANAGER" --prefix "$package_dir" run check
   printf '\n== %s: test ==\n' "$package_name"
-  npm --prefix "$package_dir" test
+  "$PACKAGE_MANAGER" --prefix "$package_dir" run test
   if [[ "$package_name" == "mcp-client" ]]; then
     printf '\n== %s: format:check ==\n' "$package_name"
-    npm --prefix "$package_dir" run format:check
+    "$PACKAGE_MANAGER" --prefix "$package_dir" run format:check
   fi
 done
 

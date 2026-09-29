@@ -22,6 +22,8 @@ For a local checkout, install dependencies first; Pi references local paths but
 
 ```sh
 npm ci --ignore-scripts
+# Or, with pnpm 12.6.0:
+# pnpm install --frozen-lockfile --ignore-scripts
 pi install "$PWD"
 # Or select one package:
 pi install "$PWD/packages/mcp-client"
@@ -51,9 +53,20 @@ Unused directories contain only `.gitkeep`. Package manifests declare their own
 resources; the root manifest exposes the collection. Only public `index.ts`
 entry points are extensions, not supporting modules such as the child guard.
 
-The root is an npm workspace. `npm ci --ignore-scripts` installs all packages from
-one root lockfile. `.npmrc` selects nested dependency trees so each package owns
-its dependencies just as it does when installed alone. Runtime imports belong in
+The root supports both npm and pnpm workspaces. Use `npm ci --ignore-scripts`
+with `package-lock.json`, or `pnpm install --frozen-lockfile --ignore-scripts`
+with `pnpm-workspace.yaml` and `pnpm-lock.yaml` (verified with pnpm 12.6.0).
+No single-manager `packageManager` pin is imposed. `.npmrc` selects nested npm
+trees; pnpm uses its isolated, symlinked dependency layout. Both keep package
+runtime dependencies resolvable from their extension entry points.
+
+Choose one manager per checkout. Before switching, remove only the root and
+`packages/*/node_modules` directories, then reinstall with the chosen manager;
+do not delete either committed lockfile. pnpm disables automatic peer installs
+and dependency lifecycle scripts. Script execution does not implicitly reinstall
+dependencies, so CI's runtime overrides remain intact.
+
+Runtime imports belong in
 that package's `dependencies`; Pi-provided APIs remain `peerDependencies`, with
 pinned development copies for checks. Never commit `node_modules` or rely on a
 global npm install. Pi's Git installation runs `npm install --omit=dev` at the
@@ -66,10 +79,15 @@ repository root:
 ```sh
 npm --prefix packages/<name> install --package-lock-only --ignore-scripts --workspaces=false
 npm install --package-lock-only --ignore-scripts
+pnpm import
 ```
 
-The root lockfile governs collection installs; child lockfiles govern isolated
-development, not workspace resolution.
+`pnpm import` refreshes the pnpm lockfile from the updated npm lockfile. Commit
+both root lockfiles together and verify both managers. Use a separate checkout
+for each manager when checking dependency changes.
+
+Each manager's root lockfile governs collection installs; child npm lockfiles
+govern isolated npm development, not workspace resolution.
 
 ## Clean clone and runtime
 
@@ -85,7 +103,8 @@ npm --version
 ```
 
 Use Node.js 22.19.0 or newer for the full supported CI matrix, then run
-`npm ci --ignore-scripts` from the root. The CI-equivalent installer is
+`npm ci --ignore-scripts` or `pnpm install --frozen-lockfile --ignore-scripts`
+from the root. The CI-equivalent installer is
 [`scripts/ci-install.sh`](scripts/ci-install.sh).
 
 Launch Pi from this repository root when the project settings in `.pi/settings.json` or project-local skills should apply:
@@ -112,7 +131,9 @@ The canonical root check is:
 ./scripts/check.sh
 ```
 
-`npm run check` is the equivalent package-manager wrapper. The check validates
+`npm run check` and `pnpm run check` are equivalent package-manager wrappers.
+The gate detects pnpm from the invoking manager or installed layout; set
+`PACKAGE_MANAGER=npm` or `PACKAGE_MANAGER=pnpm` to select explicitly. The check validates
 tracked repository configuration JSON while leaving example/proposal fixture data
 alone, runs the `subagents` package's `parsePolicy` through its local `tsx` when
 `.pi/subagents.json` is present, then delegates to every package's `check` and
@@ -122,9 +143,12 @@ the root check only invokes those package scripts.
 
 Packaging regressions exercise Pi's real loader for the root and individual
 packages, inspect npm tarball contents, and exercise Pi's actual Git URL install
-against a temporary local Git fixture. That clean production install uses npm's
-offline cache primed by the initial install; it cannot silently depend on
-development modules or a globally installed Pi.
+against a temporary local Git fixture. The npm jobs use npm's
+offline cache primed by the initial install. pnpm jobs additionally test a fresh
+production pnpm install and allow registry downloads for packaging fixtures
+(`PI_PACKAGING_NPM_OFFLINE=false` for Pi's npm installer, whose cache is separate
+from pnpm's store). Neither layout may silently depend on development modules
+or a globally installed Pi.
 
 The package scripts are the source of truth for package-specific test details.
 The root gate runs deterministic local tests: it does not use a globally installed
@@ -132,19 +156,20 @@ Pi executable, credentials, or live web-search results.
 
 ## CI support and limits
 
-CI runs the complete root check on Node.js 22.19.0 against two explicit Pi
-runtime points:
+CI runs the complete root check with both npm and pnpm 12.6.0 on Node.js
+22.19.0 against two explicit Pi runtime points:
 
 - **Pi 0.85.1** — the supported minimum and the version pinned by committed
   package lockfiles.
 - **Pi 0.87.1** — the current runtime, installed into an isolated CI job after
-  the baseline `npm ci --ignore-scripts`; the override uses no committed manifest
-  or lockfile change.
+  the selected manager's baseline install; the override leaves committed
+  manifests, workspace configuration, and lockfiles unchanged.
 
 The matrix is evidence for those two versions, not every intervening Pi release
 or older Node.js runtime. Tests use local deterministic providers and fixtures;
-external services and optional installed-Pi executable overrides are outside the
-root gate.
+live search/MCP services and optional installed-Pi executable overrides are
+outside the root gate. Packaging fixtures may download registry dependencies as
+noted above.
 
 ## Refreshing subagent model recommendations
 

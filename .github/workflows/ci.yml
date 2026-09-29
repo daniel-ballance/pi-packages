@@ -10,13 +10,18 @@ permissions:
 
 jobs:
   check:
-    name: check (Pi ${{ matrix.pi-version }})
+    name: check (${{ matrix.package-manager }}, Pi ${{ matrix.pi-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         pi-version: ["0.85.1", "0.87.1"]
+        package-manager: [npm, pnpm]
+    env:
+      PACKAGE_MANAGER: ${{ matrix.package-manager }}
+      # pnpm's store does not prime npm's cache for Pi's Git installer test.
+      PI_PACKAGING_NPM_OFFLINE: ${{ matrix.package-manager == 'npm' && 'true' || 'false' }}
 
     steps:
       - name: Check out repository
@@ -30,8 +35,14 @@ jobs:
         with:
           node-version: 22.19.0
 
+      - name: Set up pnpm
+        if: matrix.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
       - name: Show runtime
-        run: node --version && npm --version
+        run: node --version && npm --version && "$PACKAGE_MANAGER" --version
 
       - name: Install package dependencies
         run: ./scripts/ci-install.sh "${{ matrix.pi-version }}"
