@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { connect } from '../src/connection.js';
-import { ServerSchema, MODERN, LEGACY } from '../src/config.js';
-import { Peer, RpcError } from '../src/peer.js';
-import { ModernHttp } from '../src/http.js';
+import { connect } from '../extensions/mcp-client/src/connection.js';
+import { ServerSchema, MODERN, LEGACY } from '../extensions/mcp-client/src/config.js';
+import { Peer, RpcError } from '../extensions/mcp-client/src/peer.js';
+import { ModernHttp } from '../extensions/mcp-client/src/http.js';
 
 for (const version of [MODERN, ...LEGACY])
   test(`real stdio negotiates ${version}`, async () => {

@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { SubagentManager, type AgentRecord } from "../src/manager.js";
-import { SubagentPolicy } from "../src/policy.js";
+import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
+import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 const cli = process.env.PEER_TEST_CLI ?? fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/peer-provider.mjs", import.meta.url));
-const guard = fileURLToPath(new URL("../src/child-guard.ts", import.meta.url));
+const guard = fileURLToPath(new URL("../extensions/subagents/src/child-guard.ts", import.meta.url));
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 test("real child peer tools: idle prompt, busy steering, limits, graph, resume and cleanup", { timeout: 60000 }, async () => {

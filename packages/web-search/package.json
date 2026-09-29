@@ -4,8 +4,13 @@
   "description": "Zero-configuration DuckDuckGo web search for Pi",
   "type": "module",
   "keywords": ["pi-package", "web-search", "duckduckgo"],
-  "files": ["index.ts", "src", "README.md"],
-  "pi": { "extensions": ["./index.ts"] },
+  "files": ["extensions", "skills", "prompts", "themes", "README.md"],
+  "pi": {
+    "extensions": ["./extensions/web-search/index.ts"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
+  },
   "engines": { "node": ">=22" },
   "scripts": {
     "check": "tsc --noEmit",

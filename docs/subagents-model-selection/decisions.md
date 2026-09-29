@@ -28,13 +28,13 @@ Priority practical comparisons: Luna max versus Sol high; Sol max versus Astra h
 
 ### Refresh workflow
 
-Invoke `/skill:refresh-subagent-models` from the trusted repository root after loading/reloading project skills. The skill ends with a proposal and artifact locations. Changing `.pi/subagents.json`, the personal policy or shipped `packages/subagents/src/policy.ts` requires a separate instruction.
+Invoke `/skill:refresh-subagent-models` from the trusted repository root after loading/reloading project skills. The skill ends with a proposal and artifact locations. Changing `.pi/subagents.json`, the personal policy or shipped `packages/subagents/extensions/subagents/src/policy.ts` requires a separate instruction.
 
 For each later approved decision, append: date, target path, private evidence run reference, changes and reasons, contrary practical evidence, confidence/limitations and revisit triggers. Record the approval explicitly; a generated proposal is not approval.
 
 ## 2026-09-27 — approved shipped defaults and removal of project override
 
-The user explicitly approved updating `packages/subagents/src/policy.ts` and deleting `.pi/subagents.json`. Applied the seven-option, two-pool menu above with provisional task guidance, capacity-conservation advice and evidence/testing requirements. Built-in tools, resources, prompt permissions, child cap and peer messaging settings are unchanged; Astra remains reserved for the parent.
+The user explicitly approved updating `packages/subagents/extensions/subagents/src/policy.ts` and deleting `.pi/subagents.json`. Applied the seven-option, two-pool menu above with provisional task guidance, capacity-conservation advice and evidence/testing requirements. Built-in tools, resources, prompt permissions, child cap and peer messaging settings are unchanged; Astra remains reserved for the parent.
 
 The project override was removed. The existing personal `~/.pi/agent/subagents.json` was left untouched and takes precedence on reload, retaining its read/search-only permissions and previous model menu. Activating the shipped defaults on this workstation requires a separate decision about that global override. No automatic reload or inference trial was performed.
 

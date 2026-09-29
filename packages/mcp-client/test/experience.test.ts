@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig } from '../src/config.js';
-import { failureReason } from '../src/diagnostics.js';
-import { validator, validationIssue } from '../src/validation.js';
-import { searchScore } from '../src/search.js';
-import { withProgress } from '../src/progress.js';
-import { RpcError } from '../src/peer.js';
+import { loadConfig } from '../extensions/mcp-client/src/config.js';
+import { failureReason } from '../extensions/mcp-client/src/diagnostics.js';
+import { validator, validationIssue } from '../extensions/mcp-client/src/validation.js';
+import { searchScore } from '../extensions/mcp-client/src/search.js';
+import { withProgress } from '../extensions/mcp-client/src/progress.js';
+import { RpcError } from '../extensions/mcp-client/src/peer.js';
 
 test('configuration diagnostics identify the file and field without quoting secret values', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mcp-diagnostics-'));
@@ -23,11 +23,11 @@ test('configuration diagnostics identify the file and field without quoting secr
     await writeFile(
       path,
       JSON.stringify({
-        servers: { example: { transport: 'stdio', command: 'test', timeout: 'do-not-leak' } },
+        mcpServers: { example: { command: 'test', timeout: 'do-not-leak' } },
       }),
     );
     await assert.rejects(loadConfig([path]), (error) => {
-      assert.match(failureReason(error), /servers.example.timeout: invalid_type/);
+      assert.match(failureReason(error), /mcpServers.example.timeout: invalid_type/);
       assert.doesNotMatch(failureReason(error), /do-not-leak/);
       return true;
     });

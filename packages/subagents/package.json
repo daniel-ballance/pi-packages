@@ -8,9 +8,10 @@
     "subagents"
   ],
   "files": [
-    "index.ts",
-    "src",
+    "extensions",
     "skills",
+    "prompts",
+    "themes",
     "README.md",
     "ROADMAP.md",
     "PEER-MESSAGING.md",
@@ -18,11 +19,13 @@
   ],
   "pi": {
     "extensions": [
-      "./index.ts"
+      "./extensions/subagents/index.ts"
     ],
     "skills": [
       "./skills"
-    ]
+    ],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
   },
   "engines": {
     "node": ">=22"

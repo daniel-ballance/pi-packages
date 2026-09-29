@@ -9,7 +9,7 @@ import {
   renderSearchTools,
   renderServerStatus,
   renderTasks,
-} from '../src/render.js';
+} from '../extensions/mcp-client/src/render.js';
 
 type ToolRenderContext = Parameters<ReturnType<typeof renderMcpCall>>[2];
 

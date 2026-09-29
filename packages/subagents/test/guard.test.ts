@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
-import childGuard from "../src/child-guard.js";
-import subagents from "../index.js";
+import childGuard from "../extensions/subagents/src/child-guard.js";
+import subagents from "../extensions/subagents/index.js";
 
 test("child guard hides recursive and unselected tools and blocks later reactivation", () => {
   const old = process.env.PI_SUBAGENT_ALLOWED_TOOLS;

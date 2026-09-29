@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_POLICY, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../src/policy.js";
+import { DEFAULT_POLICY, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
 
 test("built-in model menu covers independent subscription pools without changing permissions", () => {
   const policy = parsePolicy(DEFAULT_POLICY);

@@ -4,11 +4,11 @@ import { mkdtemp, mkdir, readFile, rm, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import extension from '../index.js';
-import { toolName } from '../src/index.js';
-import { present } from '../src/content.js';
-import { ServerSchema } from '../src/config.js';
-import { inputHandler } from '../src/input.js';
+import extension from '../extensions/mcp-client/index.js';
+import { toolName } from '../extensions/mcp-client/src/index.js';
+import { present } from '../extensions/mcp-client/src/content.js';
+import { ServerSchema } from '../extensions/mcp-client/src/config.js';
+import { inputHandler } from '../extensions/mcp-client/src/input.js';
 
 function harness(cwd: string, trusted = true) {
   const handlers = new Map<string, Function>(),
@@ -63,9 +63,8 @@ test('Pi factory opens no connections; session discovers tools and shutdown clos
     await writeFile(
       join(cwd, '.pi', 'mcp.json'),
       JSON.stringify({
-        servers: {
+        mcpServers: {
           fixture: {
-            transport: 'stdio',
             command: process.execPath,
             args: [fileURLToPath(new URL('./fixtures/server.mjs', import.meta.url)), '2026-07-28'],
           },
@@ -189,9 +188,9 @@ test('native status tracks discovery recovery and disconnects, but not ordinary 
     await writeFile(
       join(cwd, 'mcp.json'),
       JSON.stringify({
-        servers: {
+        mcpServers: {
           fixture: {
-            transport: 'stdio',
+            type: 'stdio',
             command: process.execPath,
             protocol: '2026-07-28',
             args: [
@@ -199,7 +198,7 @@ test('native status tracks discovery recovery and disconnects, but not ordinary 
               modePath,
             ],
           },
-          disabled: { transport: 'stdio', command: '/nonexistent', disabled: true },
+          disabled: { command: '/nonexistent', disabled: true },
         },
       }),
     );
@@ -271,10 +270,10 @@ test('configuration and startup failures persist in native status and expose det
     await writeFile(
       join(cwd, 'mcp.json'),
       JSON.stringify({
-        servers: {
-          missing: { transport: 'stdio', command: join(cwd, 'nonexistent') },
+        mcpServers: {
+          missing: { command: join(cwd, 'nonexistent') },
           working: {
-            transport: 'stdio',
+            type: 'stdio',
             command: process.execPath,
             protocol: '2026-07-28',
             args: [fileURLToPath(new URL('./fixtures/server.mjs', import.meta.url)), '2026-07-28'],
@@ -285,7 +284,7 @@ test('configuration and startup failures persist in native status and expose det
     await h.handlers.get('session_start')!({}, h.ctx);
     assert.equal(h.statuses.get('mcp-client'), 'warning:⚠ MCP · missing unavailable');
     await h.handlers.get('session_shutdown')!();
-    await writeFile(join(cwd, 'mcp.json'), '{"servers":{}}');
+    await writeFile(join(cwd, 'mcp.json'), '{"mcpServers":{}}');
     await h.handlers.get('session_start')!({}, h.ctx);
     assert.equal(h.statuses.has('mcp-client'), false);
   } finally {
@@ -306,15 +305,14 @@ test('AX/UX: discovery activation, empty-result guidance, status and command fee
     await writeFile(
       join(cwd, 'mcp.json'),
       JSON.stringify({
-        servers: {
+        mcpServers: {
           fixture: {
-            transport: 'stdio',
             command: process.execPath,
             protocol: '2026-07-28',
             toolLoading: 'deferred',
             args: [fileURLToPath(new URL('./fixtures/server.mjs', import.meta.url)), '2026-07-28'],
           },
-          missing: { transport: 'stdio', command: join(cwd, 'missing') },
+          missing: { command: join(cwd, 'missing') },
         },
       }),
     );
@@ -387,9 +385,9 @@ test('guided commands select prompts and subscriptions without starting model tu
     await writeFile(
       join(cwd, 'mcp.json'),
       JSON.stringify({
-        servers: {
+        mcpServers: {
           demo: {
-            transport: 'stdio',
+            type: 'stdio',
             command: process.execPath,
             protocol: '2025-11-25',
             args: [fileURLToPath(new URL('./fixtures/tui-server.mjs', import.meta.url))],

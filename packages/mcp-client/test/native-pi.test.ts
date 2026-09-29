@@ -13,8 +13,8 @@ import {
   SettingsManager,
   type ExtensionAPI,
 } from '@earendil-works/pi-coding-agent';
-import extension, { toolName } from '../src/index.js';
-import { MODERN } from '../src/config.js';
+import extension, { toolName } from '../extensions/mcp-client/src/index.js';
+import { MODERN } from '../extensions/mcp-client/src/config.js';
 
 /** Real Pi lifecycle, session persistence and native deferred loading, without model requests. */
 test('native Pi: schemas, deferred tools, commands, TTL freshness, and subscription reload', async () => {
@@ -114,15 +114,15 @@ test('native Pi: schemas, deferred tools, commands, TTL freshness, and subscript
     await writeFile(
       join(cwd, 'mcp.json'),
       JSON.stringify({
-        servers: {
+        mcpServers: {
           old: {
-            transport: 'http',
+            type: 'http',
             protocol: '2024-11-05',
             url: `http://127.0.0.1:${(server.address() as any).port}/mcp`,
             timeout: 1000,
           },
           fixture: {
-            transport: 'http',
+            type: 'http',
             protocol: MODERN,
             url: `http://127.0.0.1:${(server.address() as any).port}/mcp`,
             toolLoading: 'deferred',

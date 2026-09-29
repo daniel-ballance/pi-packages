@@ -4,8 +4,13 @@
   "description": "Agent-requested Pi runtime reload with automatic continuation",
   "type": "module",
   "keywords": ["pi-package", "reload"],
-  "files": ["index.ts", "README.md"],
-  "pi": { "extensions": ["./index.ts"] },
+  "files": ["extensions", "skills", "prompts", "themes", "README.md"],
+  "pi": {
+    "extensions": ["./extensions/self-reload/index.ts"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
+  },
   "engines": { "node": ">=22" },
   "scripts": {
     "check": "tsc --noEmit",

@@ -7,12 +7,12 @@ import { stripVTControlCharacters } from "node:util";
 import { test } from "node:test";
 import type { KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { matchesKey, visibleWidth } from "@earendil-works/pi-tui";
-import { ActivityFeed } from "../src/activity.js";
-import { InspectorPanel } from "../src/inspector.js";
-import { cleanText, inspectorPage, inspectorSource, type InspectorSource } from "../src/inspector-data.js";
-import { workflowMap } from "../src/workflow-map.js";
-import { SubagentManager } from "../src/manager.js";
-import { Workflows } from "../src/workflows.js";
+import { ActivityFeed } from "../extensions/subagents/src/activity.js";
+import { InspectorPanel } from "../extensions/subagents/src/inspector.js";
+import { cleanText, inspectorPage, inspectorSource, type InspectorSource } from "../extensions/subagents/src/inspector-data.js";
+import { workflowMap } from "../extensions/subagents/src/workflow-map.js";
+import { SubagentManager } from "../extensions/subagents/src/manager.js";
+import { Workflows } from "../extensions/subagents/src/workflows.js";
 import { demoSource } from "./fixtures/inspector-demo.js";
 
 const plain = (lines: string[]) => lines.map(stripVTControlCharacters).join("\n");

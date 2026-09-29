@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { workflowMap, type WorkflowMap } from "../src/workflow-map.js";
-import { dependencies, type WorkflowStep } from "../src/workflow-definition.js";
+import { workflowMap, type WorkflowMap } from "../extensions/subagents/src/workflow-map.js";
+import { dependencies, type WorkflowStep } from "../extensions/subagents/src/workflow-definition.js";
 
 const task = (id: string, dependsOn: string[] = []): WorkflowStep => ({ id, kind: "task", dependsOn, worker: { model: "test/stub:off", tools: [] }, instructions: id });
 const expectedEdges = (steps: readonly WorkflowStep[]) => steps.flatMap(step => dependencies(step).map(parent => `${parent}->${step.id}`)).sort();

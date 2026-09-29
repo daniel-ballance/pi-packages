@@ -73,7 +73,7 @@ node "$SCRIPTS/model-frontier.mjs" \
   --out "$RUN/analysis"
 ```
 
-Add `--policy "$RUN/policy.json"` if you froze a JSON policy target. This option reads `models` solely to compare current choices with alternatives; it does not validate or rewrite the full policy. Use the package's `parsePolicy` when validating an actual policy proposal. For shipped TypeScript defaults, provide a reviewed models-only JSON export from `src/policy.ts` rather than the effective project policy. Do not execute arbitrary policy source to extract it.
+Add `--policy "$RUN/policy.json"` if you froze a JSON policy target. This option reads `models` solely to compare current choices with alternatives; it does not validate or rewrite the full policy. Use the package's `parsePolicy` when validating an actual policy proposal. For shipped TypeScript defaults, provide a reviewed models-only JSON export from `extensions/subagents/src/policy.ts` rather than the effective project policy. Do not execute arbitrary policy source to extract it.
 
 Add `--previous /absolute/previous-run/analysis/report.json` to report added/removed combinations, changed evidence and frontier membership. Methodology or preference changes are labelled rather than interpreted as model improvements. Reports include input hashes. Preserve the frozen inputs alongside the report; hashes alone do not preserve evidence.
 

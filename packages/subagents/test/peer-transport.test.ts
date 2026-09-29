@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer, connect, type Socket } from "node:net";
 import { test } from "node:test";
-import { PeerClient, servePeer } from "../src/peer-transport.js";
-import { RpcChild, type Packet } from "../src/rpc.js";
+import { PeerClient, servePeer } from "../extensions/subagents/src/peer-transport.js";
+import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 
 async function pair() {
   const server = createServer(); server.listen(0, "127.0.0.1"); await once(server, "listening");

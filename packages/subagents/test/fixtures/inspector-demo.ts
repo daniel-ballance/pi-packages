@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord } from "../../src/manager.js";
-import type { InspectorSource } from "../../src/inspector-data.js";
-import type { WorkflowRun } from "../../src/workflows.js";
-import { showInspector } from "../../src/inspector.js";
+import type { AgentRecord } from "../../extensions/subagents/src/manager.js";
+import type { InspectorSource } from "../../extensions/subagents/src/inspector-data.js";
+import type { WorkflowRun } from "../../extensions/subagents/src/workflows.js";
+import { showInspector } from "../../extensions/subagents/src/inspector.js";
 
 /** Synthetic presentation fixtures only: no processes, model calls, files, or acknowledgements. */
 export function demoSource(now = Date.now()): InspectorSource {

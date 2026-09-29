@@ -21,11 +21,14 @@ The active MCP configuration is:
   -> /home/danballance/Work/omarchy-customizations/pi/mcp.json
 ```
 
-The Playwright server is currently configured with:
+The observed Playwright settings, expressed in the current format as an entry
+under `mcpServers`, are below. Older configuration files need `servers` renamed
+to `mcpServers` and `transport` renamed to `type`; these notes do not migrate the
+personal configuration file.
 
 ```json
 {
-  "transport": "stdio",
+  "type": "stdio",
   "command": "npx",
   "args": [
     "-y",
@@ -225,6 +228,6 @@ For the exact currently-running desktop Chromium instance, the Playwright Extens
 - Playwright browser extension README: <https://github.com/microsoft/playwright/blob/main/packages/extension/README.md>
 - Playwright `connectOverCDP` API: <https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp>
 - Chrome remote-debugging security changes: <https://developer.chrome.com/blog/remote-debugging-port>
-- Local MCP client configuration: `packages/mcp-client/src/config.ts`
-- Local MCP stdio transport: `packages/mcp-client/src/stdio.ts`
-- Local MCP extension entry point: `packages/mcp-client/src/index.ts`
+- Local MCP client configuration: `packages/mcp-client/extensions/mcp-client/src/config.ts`
+- Local MCP stdio transport: `packages/mcp-client/extensions/mcp-client/src/stdio.ts`
+- Local MCP extension entry point: `packages/mcp-client/extensions/mcp-client/index.ts`

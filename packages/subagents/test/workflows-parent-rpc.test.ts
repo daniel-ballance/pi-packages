@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { RpcChild, type Packet } from "../src/rpc.js";
+import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const parentFixture = fileURLToPath(new URL("./fixtures/workflow-parent-provider.mjs", import.meta.url));
 const childFixture = fileURLToPath(new URL("./fixtures/workflow-provider.mjs", import.meta.url));
-const extension = fileURLToPath(new URL("../index.ts", import.meta.url));
+const extension = fileURLToPath(new URL("../extensions/subagents/index.ts", import.meta.url));
 
 test("real parent launches autonomous workflow, gets one completion notice, and inspects evidence", { timeout: 45000, skip: process.platform === "win32" }, async () => {
   const root = mkdtempSync(join(tmpdir(), "workflow-parent-")), agentDir = join(root, "agent"), bin = join(root, "bin"); mkdirSync(agentDir); mkdirSync(bin);

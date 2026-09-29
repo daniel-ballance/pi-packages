@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { SubagentManager, type Notice } from "../src/manager.js";
-import { formatAgentListing } from "../src/usage.js";
-import { JsonlDecoder, RpcChild } from "../src/rpc.js";
-import { managerWorkflowHost, type AgentJob } from "../src/workflow-host.js";
-import type { SubagentPolicy } from "../src/policy.js";
+import { SubagentManager, type Notice } from "../extensions/subagents/src/manager.js";
+import { formatAgentListing } from "../extensions/subagents/src/usage.js";
+import { JsonlDecoder, RpcChild } from "../extensions/subagents/src/rpc.js";
+import { managerWorkflowHost, type AgentJob } from "../extensions/subagents/src/workflow-host.js";
+import type { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 async function setup(limit = 4) {
   const dir = await mkdtemp(join(tmpdir(), "subagent-test-"));

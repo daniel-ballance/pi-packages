@@ -19,7 +19,7 @@ Read:
 - `../../../docs/subagents-model-selection/experience.md` — practical evidence that may outweigh benchmark guidance.
 - `../../../packages/subagents/skills/subagents/reference/frontier-analysis.md` — commands, artifact schemas and failure handling.
 
-Confirm the intended policy target: project `.pi/subagents.json`, personal policy, or shipped `packages/subagents/src/policy.ts`. Read that target. The files replace rather than merge; never infer shipped defaults from the effective project policy.
+Confirm the intended policy target: project `.pi/subagents.json`, personal policy, or shipped `packages/subagents/extensions/subagents/src/policy.ts`. Read that target. The files replace rather than merge; never infer shipped defaults from the effective project policy.
 
 Check that the configured pool providers really are hosted subscription routes and that parent-only exclusions/model ladders still reflect the user's intent. Pools are not necessarily providers: several routes may share a pool. The numeric budgets/tolerances are sensitivity probes, not spending authorization or statistical confidence.
 

@@ -10,9 +10,13 @@ import {
   localhostOriginValidation,
 } from '@modelcontextprotocol/node';
 import { factory } from './fixtures/sdk2-server.js';
-import { connect } from '../src/connection.js';
-import { ServerSchema, MODERN } from '../src/config.js';
-import { headerBindings, parameterHeaders, type ObjectValue } from '../src/headers.js';
+import { connect } from '../extensions/mcp-client/src/connection.js';
+import { ServerSchema, MODERN } from '../extensions/mcp-client/src/config.js';
+import {
+  headerBindings,
+  parameterHeaders,
+  type ObjectValue,
+} from '../extensions/mcp-client/src/headers.js';
 
 for (const transport of ['stdio', 'http'] as const)
   test(`official SDK 2.0.0: 2026 ${transport}, Unicode headers, MRTR and subscriptions`, async () => {

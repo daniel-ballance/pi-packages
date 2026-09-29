@@ -7,8 +7,8 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { connect } from '../src/connection.js';
-import { ServerSchema } from '../src/config.js';
+import { connect } from '../extensions/mcp-client/src/connection.js';
+import { ServerSchema } from '../extensions/mcp-client/src/config.js';
 
 for (const [kind, protocol] of [
   ['http', '2025-11-25'],

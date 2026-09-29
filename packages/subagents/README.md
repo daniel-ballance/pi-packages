@@ -5,7 +5,9 @@ Persistent Pi RPC children, composed by the parent from a user-controlled allowl
 ## Install
 
 ```bash
-pi install ./subagents
+# From the repository root:
+npm ci --ignore-scripts
+pi install ./packages/subagents
 ```
 
 Reload the parent manually or with `self_reload`. Tested with Pi 0.85.1 (Node 22+) and Pi 0.87.1's bundled runtime on Linux. TUI and RPC parents are supported.
@@ -28,7 +30,7 @@ The highest-priority existing configuration wins, as a **whole-file replacement*
 
 1. `<launch cwd>/.pi/subagents.json`, only for a trusted project.
 2. `<Pi agent directory>/subagents.json` (normally `~/.pi/agent/subagents.json`).
-3. Built-in configuration shipped in `src/policy.ts`.
+3. Built-in configuration shipped in `extensions/subagents/src/policy.ts`.
 
 No merging or upward directory search. Reload Pi to pick up configuration edits. Resource/model availability is rechecked on catalog requests, spawn and resume. An invalid selected file disables new spawning/resumption instead of falling back to broader defaults. Listing, reading, aborting and closing tracked children remain available. Untrusted project configuration is ignored with a user-facing diagnostic.
 
@@ -272,7 +274,7 @@ PEER_TEST_EXECUTABLE="$(command -v pi)" node --import tsx --test test/peers-rpc.
 For a no-model-call inspector playground, launch from the repository root:
 
 ```sh
-pi --offline --no-extensions -e ./packages/subagents/index.ts \
+pi --offline --no-extensions -e ./packages/subagents/extensions/subagents/index.ts \
   -e ./packages/subagents/test/fixtures/inspector-demo.ts
 # /subagents shows this session's real background work.
 # /subagents-demo opens synthetic workflow/worker data with simulated streaming.

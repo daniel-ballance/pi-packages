@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "../src/footer.js";
+import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "../extensions/subagents/src/footer.js";
 const dim = (text: string) => `\x1b[38;5;242m${text}\x1b[39m`;
 const label = "subagents: 0/3 • $1.234";
 

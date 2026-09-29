@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig, resolveConfig, ServerSchema } from '../src/config.js';
+import { loadConfig, resolveConfig, ServerSchema } from '../extensions/mcp-client/src/config.js';
 
 test('config merging replaces named servers and validates strictly', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mcp-config-'));
@@ -13,22 +13,22 @@ test('config merging replaces named servers and validates strictly', async () =>
     await writeFile(
       global,
       JSON.stringify({
-        servers: {
-          same: { transport: 'stdio', command: 'global', env: { SECRET: 'not inherited' } },
+        mcpServers: {
+          same: { command: 'global', env: { SECRET: 'not inherited' } },
         },
       }),
     );
     await writeFile(
       project,
       JSON.stringify({
-        servers: { same: { transport: 'stdio', command: 'project', disabled: true } },
+        mcpServers: { same: { type: 'stdio', command: 'project', disabled: true } },
       }),
     );
     const config = await loadConfig([join(dir, 'missing.json'), global, project]);
     assert.equal((config.same as any).command, 'project');
     assert.deepEqual((config.same as any).env, {});
     assert.equal(config.same.disabled, true);
-    await writeFile(project, '{"servers":{},"typo":true}');
+    await writeFile(project, '{"mcpServers":{},"typo":true}');
     await assert.rejects(loadConfig([global, project]));
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sample } from '../src/sampling.js';
-import { ServerSchema } from '../src/config.js';
+import { sample } from '../extensions/mcp-client/src/sampling.js';
+import { ServerSchema } from '../extensions/mcp-client/src/config.js';
 
 const config = ServerSchema.parse({
   transport: 'stdio',

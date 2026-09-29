@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { Peer } from '../src/peer.js';
+import { Peer } from '../extensions/mcp-client/src/peer.js';
 
 test('2026 subscription notifications require correlation, acknowledgment and requested filters', async () => {
   const transport: Transport = { async start() {}, async close() {}, async send() {} };

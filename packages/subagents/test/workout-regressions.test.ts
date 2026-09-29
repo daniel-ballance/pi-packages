@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { isCancellationError, SubagentManager } from "../src/manager.js";
-import { NoticeScheduler } from "../src/notifications.js";
-import { summarizeAgents } from "../src/usage.js";
+import { isCancellationError, SubagentManager } from "../extensions/subagents/src/manager.js";
+import { NoticeScheduler } from "../extensions/subagents/src/notifications.js";
+import { summarizeAgents } from "../extensions/subagents/src/usage.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

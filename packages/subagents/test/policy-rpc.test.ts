@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { SubagentManager } from "../src/manager.js";
-import { SubagentPolicy } from "../src/policy.js";
+import { SubagentManager } from "../extensions/subagents/src/manager.js";
+import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/provider.mjs", import.meta.url));
-const guard = fileURLToPath(new URL("../src/child-guard.ts", import.meta.url));
+const guard = fileURLToPath(new URL("../extensions/subagents/src/child-guard.ts", import.meta.url));
 
 test("real RPC policy enforcement, mandatory guard, revalidated resume, and cleanup with invalid policy", { timeout: 30000 }, async () => {
   const root = mkdtempSync(join(tmpdir(), "policy-rpc-"));

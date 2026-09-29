@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import selfReload from "../index.js";
+import selfReload from "../extensions/self-reload/index.js";
 
 type Tool = Parameters<ExtensionAPI["registerTool"]>[0];
 type Command = Parameters<ExtensionAPI["registerCommand"]>[1];

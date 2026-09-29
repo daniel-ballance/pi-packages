@@ -14,7 +14,10 @@
     "skills"
   ],
   "files": [
+    "extensions",
     "skills",
+    "prompts",
+    "themes",
     "lib",
     "scripts/lint-skill.mjs",
     "scripts/lint-skill-config.mjs",
@@ -29,9 +32,12 @@
     "test": "node --test test/*.test.mjs && bash scripts/test-sync.sh"
   },
   "pi": {
+    "extensions": ["./extensions/*/index.ts"],
     "skills": [
       "./skills"
-    ]
+    ],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
   },
   "dependencies": {
     "mdast-util-from-markdown": "2.0.3",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatAgentListing, noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras } from "../src/usage.js";
+import { formatAgentListing, noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras } from "../extensions/subagents/src/usage.js";
 
 const record = { id: "subagent-123", name: "reviewer", status: "working", model: "openai-codex/gpt-5.6-luna", thinking: "medium" };
 

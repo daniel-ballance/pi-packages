@@ -25,7 +25,7 @@ if [[ -f "$ROOT/.pi/subagents.json" ]]; then
     cd "$ROOT/packages/subagents"
     POLICY_PATH="$ROOT/.pi/subagents.json" node --import tsx --input-type=module -e '
       import { readFileSync } from "node:fs";
-      import { parsePolicy } from "./src/policy.ts";
+      import { parsePolicy } from "./extensions/subagents/src/policy.ts";
       const path = process.env.POLICY_PATH;
       parsePolicy(JSON.parse(readFileSync(path, "utf8")));
       console.log(`parsePolicy accepted ${path}`);

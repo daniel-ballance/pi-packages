@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { McpActivity } from '../src/activity.js';
+import { McpActivity } from '../extensions/mcp-client/src/activity.js';
 
 function harness() {
   const statuses = new Map<string, string>([

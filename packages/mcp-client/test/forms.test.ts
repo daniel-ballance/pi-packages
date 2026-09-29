@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canGuide, fillFields } from '../src/forms.js';
-import { inputHandler } from '../src/input.js';
-import { ServerSchema } from '../src/config.js';
+import { canGuide, fillFields } from '../extensions/mcp-client/src/forms.js';
+import { inputHandler } from '../extensions/mcp-client/src/input.js';
+import { ServerSchema } from '../extensions/mcp-client/src/config.js';
 
 const schema = {
   type: 'object',

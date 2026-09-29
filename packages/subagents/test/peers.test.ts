@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PeerBroker, peerEnvelope, type PeerState } from "../src/peers.js";
-import { RpcRejectedError } from "../src/rpc.js";
-import { parsePolicy } from "../src/policy.js";
+import { PeerBroker, peerEnvelope, type PeerState } from "../extensions/subagents/src/peers.js";
+import { RpcRejectedError } from "../extensions/subagents/src/rpc.js";
+import { parsePolicy } from "../extensions/subagents/src/policy.js";
 
 function harness(ceiling = 3, state?: PeerState) {
   let saved: PeerState;

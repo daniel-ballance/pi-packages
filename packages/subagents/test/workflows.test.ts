@@ -3,10 +3,10 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { Workflows, parseVerdict } from "../src/workflows.js";
-import { parseWorkflow, type WorkflowDefinition } from "../src/workflow-definition.js";
-import type { WorkflowHost, AgentJob } from "../src/workflow-host.js";
-import { managerWorkflowHost, runCommand } from "../src/workflow-host.js";
+import { Workflows, parseVerdict } from "../extensions/subagents/src/workflows.js";
+import { parseWorkflow, type WorkflowDefinition } from "../extensions/subagents/src/workflow-definition.js";
+import type { WorkflowHost, AgentJob } from "../extensions/subagents/src/workflow-host.js";
+import { managerWorkflowHost, runCommand } from "../extensions/subagents/src/workflow-host.js";
 
 const worker = { model: "test/stub:off", tools: [] };
 const task = (id: string, dependsOn: string[] = []) => ({ id, kind: "task" as const, worker, instructions: id, dependsOn });

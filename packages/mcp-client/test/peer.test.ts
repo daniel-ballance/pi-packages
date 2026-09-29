@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-import { Peer } from '../src/peer.js';
-import { MODERN } from '../src/config.js';
+import { Peer } from '../extensions/mcp-client/src/peer.js';
+import { MODERN } from '../extensions/mcp-client/src/config.js';
 
 class FakeTransport implements Transport {
   onmessage?: Transport['onmessage'];

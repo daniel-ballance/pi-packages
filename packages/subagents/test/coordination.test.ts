@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { normalizeCoordination, coordinationWarnings, recoverySummary } from "../src/coordination.js";
+import { normalizeCoordination, coordinationWarnings, recoverySummary } from "../extensions/subagents/src/coordination.js";
 
 test("coordination normalizes paths, warns about ancestors/outputs and excludes stopped workers", () => {
   const cwd = mkdtempSync(join(tmpdir(), "coordination-"));

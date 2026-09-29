@@ -9,15 +9,15 @@ Requires Node.js 22+; developed and tested against Pi 0.85.1.
 From the repository root:
 
 ```bash
+npm ci --ignore-scripts
 cd packages/web-search
-npm ci
 pi install "$PWD"
 ```
 
 Then run `/reload` in Pi (or start a new Pi process). Local package installs reference this directory without copying it. To try it without changing Pi settings:
 
 ```bash
-pi -e ./index.ts
+pi -e ./extensions/web-search/index.ts
 ```
 
 ## Usage
@@ -72,7 +72,7 @@ From the repository root, after installing this package's dependencies:
 PI_CODING_AGENT_DIR="$(mktemp -d)" PI_TELEMETRY=0 pi \
   --offline --no-extensions --no-skills --no-prompt-templates \
   --no-context-files --no-session --no-approve \
-  -e ./packages/web-search/index.ts \
+  -e ./packages/web-search/extensions/web-search/index.ts \
   -e ./packages/web-search/test/fixtures/tui-demo.mjs \
   --tools web_search --model search-demo/stub --tui-mode fullscreen
 ```
@@ -85,4 +85,4 @@ Only the exact prompt `live` sends a real DuckDuckGo search for `site:typescript
 
 Repeat with `--tui-mode regular` to check scrollback mode. On Pi 0.87.1, native cancellation displays “The operation was aborted” in the tool row and a separate turn-level error; the extension deliberately preserves cancellation semantics rather than disguising it as a successful result.
 
-`src/duckduckgo.ts` contains the provider and parser; `src/index.ts` contains the Pi tool registration. The only third-party runtime dependency beyond Pi's supplied packages is Cheerio for HTML parsing.
+`extensions/web-search/src/duckduckgo.ts` contains the provider and parser; `extensions/web-search/src/index.ts` contains the Pi tool registration. The only third-party runtime dependency beyond Pi's supplied packages is Cheerio for HTML parsing.

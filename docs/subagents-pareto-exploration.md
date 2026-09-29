@@ -126,7 +126,7 @@ Select a suitable pool first using current capacity preferences, then a model wi
 
 ## Package implications
 
-The shipped fallback currently lives in `packages/subagents/src/policy.ts`, not a physical default `subagents.json`; the package README documents the equivalent JSON. Policy model entries accept exact `id` and optional advisory `description`, not benchmark metadata or executable routing rules.
+The shipped fallback currently lives in `packages/subagents/extensions/subagents/src/policy.ts`, not a physical default `subagents.json`; the package README documents the equivalent JSON. Policy model entries accept exact `id` and optional advisory `description`, not benchmark metadata or executable routing rules.
 
 Distinguish a personal frontier (this user's available subscriptions) from portable package defaults (other users may have different providers). A reproducible local report/proposal may eventually complement curated defaults, but runtime AA access is not required to enforce an ordinary allowlist.
 

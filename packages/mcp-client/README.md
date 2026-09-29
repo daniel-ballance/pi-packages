@@ -9,8 +9,8 @@ Supports the original **2024-11-05** specification, the **2025-03-26**, **2025-0
 From this repository:
 
 ```sh
-cd mcp-client
-npm ci
+npm ci --ignore-scripts
+cd packages/mcp-client
 pi install "$PWD"
 ```
 
@@ -19,18 +19,27 @@ Use `pi install -l "$PWD"` for project-local installation instead. Restart Pi or
 For a temporary test after installing dependencies:
 
 ```sh
-pi -e ./index.ts
+pi -e ./extensions/mcp-client/index.ts
 ```
 
 ## Configure
 
-Create `~/.pi/agent/mcp.json` for global servers, or `.pi/mcp.json` in your project:
+Create `~/.pi/agent/mcp.json` for global servers, or `.pi/mcp.json` in your project.
+Use **Claude-style `mcpServers` JSON** (not Codex's native TOML or OpenCode's
+`mcp` schema). See the [source comparison](../../docs/mcp-configuration-comparison.md).
+Pi does not automatically read other clients' configuration files.
+
+**Breaking format change:** rename the old `servers` key to `mcpServers` and
+`transport` to `type`; rename OAuth `redirectPort` to `callbackPort`.
+The old input format is rejected, not maintained as an alias.
+
+Example:
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "local": {
-      "transport": "stdio",
+      "type": "stdio",
       "command": "/absolute/path/to/mcp-server",
       "args": [],
       "protocol": "auto",
@@ -39,13 +48,13 @@ Create `~/.pi/agent/mcp.json` for global servers, or `.pi/mcp.json` in your proj
       "elicitation": true
     },
     "remote": {
-      "transport": "http",
+      "type": "http",
       "url": "https://example.com/mcp",
       "protocol": "2026-07-28",
       "headers": { "Authorization": "Bearer ${MCP_TOKEN}" }
     },
     "old-server": {
-      "transport": "sse",
+      "type": "sse",
       "url": "http://127.0.0.1:3001/sse",
       "protocol": "2024-11-05"
     }
@@ -58,10 +67,12 @@ These are placeholders, not installed servers. A stdio command must already be a
 - Project configuration is read **only when `ctx.isProjectTrusted()` is true**.
 - Project entries replace global entries with the same name; they do not partially merge. Set `"disabled": true` to disable an inherited entry.
 - Missing files are fine; invalid JSON, unknown fields, or invalid configuration reject the configuration before any server starts.
+- `type` defaults to `stdio`; stdio uses a `command` string, optional `args` array and `env` map. Remote entries require `type: "http"` (or its `streamable-http` alias) or `type: "sse"`, plus `url` and optional `headers`. A URL alone does not imply HTTP.
+- Capability controls such as `protocol`, `roots`, `toolLoading`, `sampling` and `tasks` are Pi-specific options, not a promise of full cross-client configuration compatibility.
 - `protocol` defaults to `auto`. Supported pins are the five dates above.
 - `timeout` is a positive deadline in milliseconds, default **60000** (100–3600000). Connection setup (including `initialized` and fallback), catalog pagination, and each MRTR exchange have overall deadlines. MRTR allows at most eight rounds and 32 input requests per round. Cleanup is bounded separately.
 - `cwd` is stdio-only, resolved relative to Pi's session working directory. The default is that directory.
-- `${ENV_VAR}` expands in stdio command/args/env and HTTP URL/headers; missing variables fail that server's connection. No shell expansion, command substitution, or automatic `.env` loading occurs.
+- `${ENV_VAR}` and `${ENV_VAR:-default}` expand in stdio command/args/env and HTTP URL/headers; missing variables without a default fail that server's connection. No shell expansion, command substitution, or automatic `.env` loading occurs.
 - Child processes inherit the MCP SDK's minimal safe environment plus explicit `env`, **not the complete Pi environment**. Child stderr is discarded so it cannot corrupt the TUI or RPC output.
 - `roots` is opt-in. Paths resolve against Pi's session working directory and are sent as file URIs. Omit it to advertise no roots capability; `[]` advertises an empty roots list. **Roots are informational, not a filesystem sandbox.**
 - `elicitation` defaults to false. When enabled, form elicitation is advertised only in Pi's TUI/RPC modes. Simple scalar forms offer **Fill in fields**: strings/numbers use native inputs, enums/booleans use selections, optional fields can be skipped, and a review requires **Send answers** before release. Field errors do not echo entered values; three invalid attempts cancel the form. The complete original schema is still validated. Complex/reference-based schemas retain **Provide JSON**; guided forms are limited to 16 fields and 40 enum choices and do not offer credential-named/password/write-only fields. Decline and cancellation remain available. Never enter secrets into form elicitation.
@@ -70,15 +81,49 @@ These are placeholders, not installed servers. A stdio command must already be a
 - `samplingTools` additionally allows server-supplied tool definitions and balanced tool-use/result transcripts in sampling. Pi returns **proposals for the server to execute**; it never executes them or runs another agent loop. Proposed arguments are validated and require release approval. `required` is checked on the generated response; a model that does not provide tool use fails rather than silently violating the request.
 - `toolLoading` defaults to `eager` for compatibility. Set `deferred` on large catalogs: tools remain registered but inactive until `mcp_search_tools` activates matches through Pi's native deferred-loading API. There is no search agent or provider-specific loader.
 - `tasks` enables the **2026 Tasks extension**. Task handles are persisted in branch-local entries; `mcp_tasks` can inspect, wait, or cancel. Waiting is bounded and uses the same approval handlers for task input. Reload does not resume work automatically. Aborting a wait leaves server work running; use explicit cancellation.
-- HTTP/SSE servers may configure `oauth: {}` (optional `clientId`, `scope`, `redirectPort`, default port **36678**). Use `/mcp login SERVER`, then authorize in the browser. Discovery, dynamic registration or a pre-registered public client, PKCE, loopback state validation, and proactive token refresh use the official SDK. Requires HTTPS except on loopback. Do not combine OAuth with an `Authorization` header. Credentials are stored separately under Pi's agent directory in `mcp-auth/` with private files, never in session entries. `/mcp logout SERVER` removes local credentials; it does not revoke them at the authorization server. These commands reload the extension after success.
+- HTTP/SSE servers may configure `oauth: {}` (optional `clientId`, `scope`, `callbackPort`, default port **36678**). Use `/mcp login SERVER`, then authorize in the browser. Discovery, dynamic registration or a pre-registered public client, PKCE, loopback state validation, and proactive token refresh use the official SDK. Requires HTTPS except on loopback. Do not combine OAuth with an `Authorization` header. Credentials are stored separately under Pi's agent directory in `mcp-auth/` with private files, never in session entries. `/mcp logout SERVER` removes local credentials; it does not revoke them at the authorization server. These commands reload the extension after success.
 - Optional `logLevel`: `debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert`, or `emergency`. Logs are bounded UI notifications, not model instructions. Enabling logs may display sensitive server data.
 - Pi's configured agent directory and branded project configuration directory are respected; the paths above are the defaults.
+
+### Context7 over HTTPS
+
+[Context7's remote setup](https://github.com/upstash/context7#installation) uses
+Streamable HTTP, not a local command or the legacy SSE transport:
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": { "Authorization": "Bearer ${CONTEXT7_API_KEY}" },
+      "toolLoading": "deferred"
+    }
+  }
+}
+```
+
+Set `CONTEXT7_API_KEY` in the environment **before starting Pi**. For unauthenticated
+access, omit `headers` entirely rather than sending an empty key; Context7 recommends
+an API key for higher rate limits. No `protocol` pin is required. With deferred
+loading, search for the Context7 tools using `mcp_search_tools` to activate them.
+
+For browser OAuth instead, use `https://mcp.context7.com/mcp/oauth` with `oauth: {}`
+and no Authorization header, then run `/mcp login context7`. See
+[Context7's OAuth documentation](https://github.com/upstash/context7/blob/master/docs/howto/oauth.mdx).
+OAuth requires user interaction; it is not exercised by the anonymous HTTPS smoke test.
+
+Verification: a live anonymous HTTPS probe discovered `resolve-library-id` and
+`query-docs` and completed a real `resolve-library-id` call, negotiating `2026-07-28`.
+The deterministic suite separately verifies that the configured API-key header is
+forwarded on discovery, listing and tool calls; it uses a fake key and no network.
+Live availability and anonymous rate limits are service-dependent, not a CI guarantee.
 
 ### Version and transport selection
 
 `auto` probes `server/discover` using the 2026 per-request metadata. For stdio, an old-style error or probe timeout triggers a fresh process and legacy initialization. Recognized modern protocol errors never trigger a legacy downgrade. The probe deadline is at most five seconds.
 
-For HTTP, eligible legacy errors/statuses trigger initialization over the legacy Streamable HTTP transport. Authentication, network and modern protocol errors do not trigger fallback. Explicitly select `transport: "sse"` for original HTTP+SSE servers: the client does **not** guess a separate SSE endpoint. If a legacy server reports an ambiguous HTTP method-not-found error, pin its legacy protocol version.
+For HTTP, eligible legacy errors/statuses trigger initialization over the legacy Streamable HTTP transport. Authentication, network and modern protocol errors do not trigger fallback. Explicitly select `type: "sse"` for original HTTP+SSE servers: the client does **not** guess a separate SSE endpoint. If a legacy server reports an ambiguous HTTP method-not-found error, pin its legacy protocol version.
 
 The official SDK supplies legacy Streamable HTTP, HTTP+SSE, and OAuth mechanics. A small byte-bounded stdio transport handles the 2025-03-26 batch requirement; the package also implements the distinct 2026 stateless HTTP transport. Legacy HTTP session expiry triggers fresh initialization for **future operations**, never replay of the failed call. Shutdown attempts session DELETE before closing.
 

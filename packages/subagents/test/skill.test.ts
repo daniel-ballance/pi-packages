@@ -4,8 +4,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
-import { parsePolicy } from "../src/policy.js";
-import { parseWorkflow } from "../src/workflow-definition.js";
+import { parsePolicy } from "../extensions/subagents/src/policy.js";
+import { parseWorkflow } from "../extensions/subagents/src/workflow-definition.js";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const skill = join(root, "skills/subagents");

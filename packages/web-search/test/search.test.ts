@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MAX_RESPONSE_BYTES, parseResults, searchDuckDuckGo } from '../src/duckduckgo.js';
-import extension from '../index.js';
+import { MAX_RESPONSE_BYTES, parseResults, searchDuckDuckGo } from '../extensions/web-search/src/duckduckgo.js';
+import extension from '../extensions/web-search/index.js';
 import type { ExtensionAPI, Theme, ToolDefinition } from '@earendil-works/pi-coding-agent';
 
 // Representative HTML fixtures: tests never contact DuckDuckGo.

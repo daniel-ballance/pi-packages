@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeHeader, headerBindings, parameterHeaders } from '../src/headers.js';
+import {
+  encodeHeader,
+  headerBindings,
+  parameterHeaders,
+} from '../extensions/mcp-client/src/headers.js';
 
 test('header values preserve Unicode, whitespace, controls and sentinel literals', () => {
   assert.equal(encodeHeader('us-west1'), 'us-west1');

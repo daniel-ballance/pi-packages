@@ -31,6 +31,7 @@ const common = {
     .enum(['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'])
     .optional(),
 };
+// Normalized runtime configuration; file input uses type, never transport.
 export const ServerSchema = z.discriminatedUnion('transport', [
   z
     .object({
@@ -49,7 +50,7 @@ export const ServerSchema = z.discriminatedUnion('transport', [
       url: z
         .string()
         .min(1)
-        .refine((s) => /\$\{[A-Za-z_][A-Za-z0-9_]*\}/.test(s) || httpUrl(s)),
+        .refine((s) => /\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}/.test(s) || httpUrl(s)),
       headers: z.record(z.string(), z.string()).default({}),
       oauth: z
         .object({
@@ -63,10 +64,38 @@ export const ServerSchema = z.discriminatedUnion('transport', [
     .strict(),
 ]);
 export type ServerConfig = z.infer<typeof ServerSchema>;
-const ConfigSchema = z.object({ servers: z.record(z.string().min(1), ServerSchema) }).strict();
+// Translate the public Claude-style shape once, then validate all transport and
+// Pi-specific fields with the runtime schema. Unknown fields still fail closed.
+const FileServerSchema = z
+  .object({
+    type: z.enum(['stdio', 'http', 'streamable-http', 'sse']).default('stdio'),
+    transport: z.never().optional(),
+    oauth: z
+      .object({
+        clientId: z.string().min(1).optional(),
+        callbackPort: z.number().int().min(1024).max(65535).optional(),
+        scope: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .passthrough()
+  .transform(({ type, oauth, ...server }): unknown => ({
+    ...server,
+    transport: type === 'streamable-http' ? 'http' : type,
+    ...(oauth === undefined
+      ? {}
+      : {
+          oauth: { clientId: oauth.clientId, redirectPort: oauth.callbackPort, scope: oauth.scope },
+        }),
+  }))
+  .pipe(ServerSchema);
+const ConfigSchema = z
+  .object({ mcpServers: z.record(z.string().min(1), FileServerSchema) })
+  .strict();
 export function expand(value: string): string {
-  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name) => {
-    const value = process.env[name];
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (_, name, fallback) => {
+    const value = process.env[name] ?? fallback;
     if (value === undefined) throw new Error(`Missing environment variable: ${name}`);
     return value;
   });
@@ -100,7 +129,7 @@ export async function loadConfig(paths: string[]): Promise<Record<string, Server
       );
     }
     const parsed = checked.data;
-    for (const [name, config] of Object.entries(parsed.servers)) {
+    for (const [name, config] of Object.entries(parsed.mcpServers)) {
       servers[name] = config;
     }
   }

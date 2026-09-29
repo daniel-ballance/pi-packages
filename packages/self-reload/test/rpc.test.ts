@@ -47,7 +47,7 @@ test("real RPC agent requests reload and automatically continues using edited co
   await mkdir(agentDir);
   await writeFile(fixture, provider("v1"));
   const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
-  const extension = fileURLToPath(new URL("../index.ts", import.meta.url));
+  const extension = fileURLToPath(new URL("../extensions/self-reload/index.ts", import.meta.url));
   const child = spawn(process.execPath, [cli, "--mode", "rpc", "--no-session", "--no-extensions",
     "--no-skills", "--no-prompt-templates", "--no-context-files", "-e", extension, "-e", fixture,
     "--provider", "reload-test", "--model", "fake"], {

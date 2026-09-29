@@ -8,6 +8,10 @@ case "$PI_VERSION" in
   *) printf 'Unsupported Pi version: %s\n' "$PI_VERSION" >&2; exit 2 ;;
 esac
 
+# The root workspace lockfile is authoritative for collection installs. Keep
+# nested trees, matching standalone packages and their RPC test executable paths.
+npm --prefix "$ROOT" ci --ignore-scripts --no-audit --no-fund
+
 shopt -s nullglob
 package_jsons=("$ROOT"/packages/*/package.json)
 for package_json in "${package_jsons[@]}"; do
@@ -25,8 +29,7 @@ for package_json in "${package_jsons[@]}"; do
     ' "$package_json"
     continue
   fi
-  printf '\n== installing %s (%s) ==\n' "$(basename "$package_dir")" "$PI_VERSION"
-  npm --prefix "$package_dir" ci --ignore-scripts --no-audit --no-fund
+  # Child lockfiles remain available for isolated standalone-package installs.
 done
 
 if [[ "$PI_VERSION" == "0.87.1" ]]; then

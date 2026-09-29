@@ -6,8 +6,8 @@ import { mkdtemp, readdir, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { McpOAuth } from '../src/oauth.js';
-import { ServerSchema, resolveConfig } from '../src/config.js';
+import { McpOAuth } from '../extensions/mcp-client/src/oauth.js';
+import { ServerSchema, resolveConfig } from '../extensions/mcp-client/src/config.js';
 
 async function freePort() {
   const server = createServer();

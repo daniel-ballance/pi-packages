@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { healthStatus } from '../src/status.js';
+import { healthStatus } from '../extensions/mcp-client/src/status.js';
 
 test('healthy, absent, and pending servers have no status', () => {
   assert.equal(healthStatus([]), undefined);

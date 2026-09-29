@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { SubagentManager, type AgentRecord } from "../src/manager.js";
-import { SubagentPolicy } from "../src/policy.js";
-import { Workflows } from "../src/workflows.js";
-import { managerWorkflowHost, type AgentJob } from "../src/workflow-host.js";
-import type { WorkflowDefinition } from "../src/workflow-definition.js";
+import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
+import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
+import { Workflows } from "../extensions/subagents/src/workflows.js";
+import { managerWorkflowHost, type AgentJob } from "../extensions/subagents/src/workflow-host.js";
+import type { WorkflowDefinition } from "../extensions/subagents/src/workflow-definition.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/workflow-provider.mjs", import.meta.url));
-const guard = fileURLToPath(new URL("../src/child-guard.ts", import.meta.url));
+const guard = fileURLToPath(new URL("../extensions/subagents/src/child-guard.ts", import.meta.url));
 
 test("real workflow host leaves a halted worker process alive for human supervision", { timeout: 30000 }, async () => {
   const root = mkdtempSync(join(tmpdir(), "workflow-halt-rpc-")), agentDir = join(root, "agent"); mkdirSync(agentDir);

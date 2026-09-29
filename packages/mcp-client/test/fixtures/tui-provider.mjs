@@ -1,7 +1,7 @@
 // Deterministic UI driver, loaded by Pi (which supplies the pi-ai import).
 // No network calls, credentials, or model reasoning; only fixture MCP calls.
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
-import { toolName } from '../../src/index.ts';
+import { toolName } from '../../extensions/mcp-client/src/index.ts';
 
 export default function (pi) {
   pi.registerProvider('mcp-ui-fixture', {

@@ -8,22 +8,27 @@
     "mcp"
   ],
   "files": [
-    "index.ts",
-    "src",
+    "extensions",
+    "skills",
+    "prompts",
+    "themes",
     "README.md",
     "CONFORMANCE.md"
   ],
   "pi": {
     "extensions": [
-      "./index.ts"
-    ]
+      "./extensions/mcp-client/index.ts"
+    ],
+    "skills": ["./skills"],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
   },
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "format:check": "prettier --check src test index.ts README.md CONFORMANCE.md",
+    "format:check": "prettier --check extensions test README.md CONFORMANCE.md",
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {

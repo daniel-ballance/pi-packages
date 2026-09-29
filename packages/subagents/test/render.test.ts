@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { initTheme, ToolExecutionComponent, type ExtensionAPI, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { visibleWidth, type TUI } from "@earendil-works/pi-tui";
-import subagents from "../index.js";
-import { subagentRenderers } from "../src/render.js";
+import subagents from "../extensions/subagents/index.js";
+import { subagentRenderers } from "../extensions/subagents/src/render.js";
 
 type Action = Parameters<typeof subagentRenderers>[0];
 type RenderContext = Parameters<ReturnType<typeof subagentRenderers>["renderResult"]>[3];
@@ -156,6 +156,26 @@ test("call rows identify the package, then the thing, action and parameters", ()
   assert.equal(line("workflow-inspect", { id: "workflow-1", step: "build" }), "subagents • autonomous repair • inspect build");
   assert.equal(line("workflow-control", { id: "workflow-1", action: "resume", retry: ["build", "test"] }), "subagents • autonomous repair • resume build test");
   assert.equal(line("read", { id: "missing" }), "subagents • missing • read");
+});
+
+test("call-header separators use the same glyph, color and font weight", () => {
+  const styledTheme = {
+    fg: (color: string, text: string) => color === "toolTitle" ? `\x1b[36m${text}\x1b[39m` : text,
+    bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
+  } as Theme;
+  for (const [action, args, expected] of [
+    ["read", { id: "child-1" }, "subagents • final-packaging-review • read"],
+    ["workflow-inspect", { id: "workflow-1" }, "subagents • final-packaging-review • inspect"],
+    ["catalog", {}, "subagents • catalog"],
+  ] as const) {
+    const line = subagentRenderers(action, () => "final-packaging-review")
+      .renderCall(args, styledTheme, context()).render(160)[0];
+    assert.equal(stripVTControlCharacters(line), expected);
+    const titleSpans = [...line.matchAll(/\x1b\[36m\x1b\[1m([^\x1b]*)\x1b\[22m\x1b\[39m/g)]
+      .map(match => match[1]).join("");
+    assert.equal(titleSpans.split("•").length, expected.split("•").length,
+      `${action}: every header separator must have the same bold toolTitle style`);
+  }
 });
 
 test("chrome and display names are lowercase without altering payloads, identifiers or task case", () => {

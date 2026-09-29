@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { collectReports } from "../src/collection.js";
-import type { AgentRecord } from "../src/manager.js";
-import { SubagentManager } from "../src/manager.js";
+import { collectReports } from "../extensions/subagents/src/collection.js";
+import type { AgentRecord } from "../extensions/subagents/src/manager.js";
+import { SubagentManager } from "../extensions/subagents/src/manager.js";
 
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "collect-reports-"));

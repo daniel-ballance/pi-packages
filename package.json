@@ -2,7 +2,21 @@
   "name": "pi-packages-repo",
   "private": true,
   "version": "0.0.0",
-  "description": "Repository tooling for the Pi packages collection",
+  "description": "Pi extensions and skills collection",
+  "keywords": ["pi-package"],
+  "engines": { "node": ">=22.19.0" },
+  "workspaces": ["packages/*"],
+  "pi": {
+    "extensions": [
+      "./packages/mcp-client/extensions/mcp-client/index.ts",
+      "./packages/self-reload/extensions/self-reload/index.ts",
+      "./packages/subagents/extensions/subagents/index.ts",
+      "./packages/web-search/extensions/web-search/index.ts"
+    ],
+    "skills": ["./packages/agent-skills/skills", "./packages/subagents/skills"],
+    "prompts": ["./packages/*/prompts/**/*.md"],
+    "themes": ["./packages/*/themes/**/*.json"]
+  },
   "scripts": {
     "check": "bash scripts/check.sh"
   }

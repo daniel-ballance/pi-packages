@@ -6,17 +6,17 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile, rm } from 'node:fs/promises';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { Peer } from '../src/peer.js';
+import { Peer } from '../extensions/mcp-client/src/peer.js';
 import { serializeConversation } from '@earendil-works/pi-coding-agent';
-import { connect } from '../src/connection.js';
-import { ServerSchema, MODERN } from '../src/config.js';
-import { present, boundedError } from '../src/content.js';
-import { inputHandler } from '../src/input.js';
-import { validator } from '../src/validation.js';
-import { boundedFetch } from '../src/limits.js';
-import { TASKS, waitForTask, type SavedTask } from '../src/tasks.js';
-import { ModernHttp } from '../src/http.js';
-import { encodeHeader } from '../src/headers.js';
+import { connect } from '../extensions/mcp-client/src/connection.js';
+import { ServerSchema, MODERN } from '../extensions/mcp-client/src/config.js';
+import { present, boundedError } from '../extensions/mcp-client/src/content.js';
+import { inputHandler } from '../extensions/mcp-client/src/input.js';
+import { validator } from '../extensions/mcp-client/src/validation.js';
+import { boundedFetch } from '../extensions/mcp-client/src/limits.js';
+import { TASKS, waitForTask, type SavedTask } from '../extensions/mcp-client/src/tasks.js';
+import { ModernHttp } from '../extensions/mcp-client/src/http.js';
+import { encodeHeader } from '../extensions/mcp-client/src/headers.js';
 
 async function serve(
   handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
