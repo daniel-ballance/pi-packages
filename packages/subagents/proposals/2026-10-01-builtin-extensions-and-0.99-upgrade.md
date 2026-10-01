@@ -2,11 +2,11 @@
 
 ## Scope
 
-Use Pi's built-in codemode, tool-search and MCP implementations. Do not extend or remove `packages/mcp-client` in this change. No personal policy edits, paid providers, real credentials, or pushes. Child policies are capability controls inside cooperative Pi processes, **not a sandbox**.
+Use Pi's built-in codemode, tool-search and MCP implementations. Do not extend or remove `packages/mcp-client` in this change. No personal policy edits, paid providers or real credentials. Initially pushes were excluded; the user subsequently authorized completion, verification, push, merge to main and local cleanup. Child policies are capability controls inside cooperative Pi processes, **not a sandbox**.
 
 ## Phase 0 evidence
 
-Inspected the installed 0.99.2 documentation and npm-distributed implementation. Local, offline RPC probes used a deterministic chat provider, a classifier reporting synthetic $0.25 usage, a nested tool reporting synthetic $0.50 usage, and a tiny stdio MCP fixture. Original probe artifacts are private worktree files in `.pi/probes/`. The core experiments are now reproducible in `test/builtins-probe-rpc.test.ts` with `test/fixtures/builtin-probe-{provider,mcp}.mjs`; run with `PEER_TEST_EXECUTABLE="$(command -v pi)"`. These characterization tests intentionally require an explicit executable override while the baseline dependencies remain on the previous runtime.
+Inspected the installed 0.99.2 documentation and npm-distributed implementation. Local, offline RPC probes used a deterministic chat provider, a classifier reporting synthetic $0.25 usage, a nested tool reporting synthetic $0.50 usage, and a tiny stdio MCP fixture. Original probe artifacts are private worktree files in `.pi/probes/`. The core experiments are now reproducible in `test/builtins-probe-rpc.test.ts` with `test/fixtures/builtin-probe-{provider,mcp}.mjs`; run with `PEER_TEST_EXECUTABLE="$(command -v pi)"`. The characterization tests now run against the pinned 0.99.2 Node CLI by default and support the installed executable override.
 
 1. **Explicit built-ins alongside `--no-extensions`: confirmed.** `getAllTools()` reports `builtin:codemode` and `builtin:tool-search` sources. Ambient extensions remain disabled. A mandatory separately loaded guard runs.
 2. **Nested guard interception: confirmed.** Even registered deferred tools omitted from active declarations reach `tool_call` through codemode, with `parentToolCallId`. The guard blocks both unselected `forbidden` and `subagent_forbidden`; exceptions reach the script.
@@ -33,7 +33,7 @@ Keep version 1, whole-file replacement and all old defaults/grants. Add optional
 
 ## Enforcement design
 
-Use public built-in factories from the always-loaded guard for configurable codemode/MCP, and Pi's literal built-in tool-search entry. This deliberately avoids importing unsupported `dist/` modules. File extensions remain trusted executable code.
+Use public built-in factories from the always-loaded guard. Implementation refinement: tool-search also uses its exported factory so its registry view can be filtered, avoiding misleading forbidden-tool activation. This deliberately avoids importing unsupported `dist/` modules. File extensions remain trusted executable code.
 
 For codemode, disable `models`, filter the API's tool inventory to the selected grant, and preserve Pi's native nested execution path. For MCP, read only explicitly eligible existing configuration entries and have Pi validate registrations. The native factory gets no ambient config and sees only the approved registered servers. Do not implement transports, OAuth, a second tool executor or a second client. Suppress the native configuration-mutating command in managed children.
 
@@ -50,12 +50,20 @@ Manager receives a secret-free compiled child policy, revalidated on resume. It 
 - Broad generic settings/environment overrides: adds an escape hatch with unclear persistence.
 - Supporting virtual routing or classifier allowlists speculatively: no verified public interception contract.
 
-## Implementation checkpoint
+## Initial implementation checkpoint (superseded below)
 
 Committed separately after this design: reproducible built-in characterization tests; handled/queued/started/unknown submission reporting; consumed-input rollback without phantom assignments; peer disposition retention without refunds; workflow rejection and attempt recording for consumed inputs; authoritative cost refresh for standalone usage/summary entries.
 
 Checks at this checkpoint: package `npm run check` passed; package tests against the installed Pi executable passed (219 passed, 1 skipped); canonical root `./scripts/check.sh` passed. No dependency/version bump or production built-in grants have been implemented yet. The schema above remains a proposal and must **not** be copied into a live policy.
 
-## Remaining proof before release
+## Implemented contract and verification
 
-Complete production grant enforcement and verify normalized-name collisions, project override rejection, registered-server filtering, credential consent, missing provider resources, warming suppression, tool-source mismatches, input dispositions through peers/workflows, and usage ordering. Run package check/test, root check, and installed executable RPC tests. Update compatibility docs, locks, version and changelog. Existing successful baseline tests do not waive these requirements.
+Version 0.3.0 pins Pi 0.99.2 development dependencies. The schema above is implemented; the current [built-in reference](../skills/subagents/reference/builtins.md) is the operational contract. Existing policies gain no implicit tools, MCP servers or credential consent. Unsupported classifier and virtual-model grants remain denied.
+
+`child-policy.test.ts` covers strict optional fields, forbidden built-ins, raw-name patterns, namespace collisions, provider/tool resource linkage and virtual-model omission. `guard.test.ts` covers runtime provenance replacement and model mismatch. `managed-builtins-rpc.test.ts` exercises both runtimes with real native factories: filtered tool-search, classifier namespace removal, nested metered usage, direct-call denial, raw MCP tool-name collisions, direct/deferred exposure, global/project trust and consent, startup/later registered-server suppression, missing consent, forbidden project provider auth, file immutability and close/resume. Native timed warming fixtures confirm global-only inheritance, per-child suppression and idle cumulative-cost updates without a paid request. Earlier disposition regressions cover consumed child/peer/workflow submissions.
+
+The wrapper must retain Pi's non-enumerable tool-context capabilities: copying context with object spread dropped `executeTool`. A proxy preserves the actual context and only filters `tools`. MCP names are authorized from the native adapter's original `server/tool` label, never reconstructed from sanitized names; this is a pinned-runtime compatibility assumption. Factories are the only executors/clients; no transport or OAuth implementation was added.
+
+Local npm checks passed for both locked dependencies and an all-packages Pi 0.99.2 override. The latter required a test-only self-reload context typing update for Pi's richer tool context. The legacy MCP package remains unchanged. Separate pnpm/final installed-executable verification is recorded in the final evidence section after running it.
+
+Residual limits: trusted code can invoke providers, change models or perform side effects outside tool hooks; startup identity checks are not a general model-call firewall. No OS isolation or exact billing guarantees. MCP requires explicit ambient credential inheritance consent; credential-free store isolation, extension-registered server grants and resources/prompts remain unsupported. Only selected config entries are loaded; network availability still belongs to Pi's client and is not guaranteed by a grant.

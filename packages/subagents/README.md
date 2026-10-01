@@ -10,7 +10,7 @@ npm ci --ignore-scripts
 pi install ./packages/subagents
 ```
 
-Reload the parent manually or with `self_reload`. Tested with Pi 0.85.1 (Node 22+) and Pi 0.87.1's bundled runtime on Linux. TUI and RPC parents are supported.
+Reload the parent manually or with `self_reload`. Requires Pi 0.99.2 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). TUI and RPC parents are supported.
 
 ## Bundled setup and model-selection skill
 
@@ -108,6 +108,12 @@ This is benchmark-informed guidance, not demonstrated Pi task performance. Requi
 Unavailable entries are omitted, never silently substituted. Their names/reasons are shown to the **user** through `/subagents diagnostics`; the model-facing catalog contains only an omitted-entry count. If no model is usable, spawning is disabled until configuration/availability is fixed.
 
 Configured credentials do not guarantee a successful request: expired authentication, provider outages, remote entitlement problems, and resource load errors can still surface at launch/use. Custom provider models must also be configured in the child environment or supplied by an explicitly selected extension. The child must resolve the exact requested model/thinking selection; fallback is rejected before sending the task.
+
+## Managed built-in extensions
+
+Pi 0.99.2 supplies the client and executors: this package adds policy checks, not another MCP client. Select exact `builtin:codemode`, `builtin:tool-search`, or `builtin:mcp` identifiers from the catalog. Existing policies gain nothing implicitly; unknown built-ins and `builtin:llama.cpp` are rejected. Codemode classifiers and virtual model selection are not supported.
+
+See [built-in grants and settings](skills/subagents/reference/builtins.md) for the exact fields, credential consent, configuration eligibility, limitations and minimal migration snippets. The legacy `mcp-client` package remains unchanged and is not needed for this integration.
 
 ## Tools
 
@@ -280,7 +286,7 @@ pi --offline --no-extensions -e ./packages/subagents/extensions/subagents/index.
   -e ./packages/subagents/test/fixtures/inspector-demo.ts
 # /subagents shows this session's real background work.
 # /subagents-demo opens synthetic workflow/worker data with simulated streaming.
-# Add --tui-mode fullscreen to try the other layout (Pi 0.87.1).
+# Add --tui-mode fullscreen to try the other layout.
 ```
 
 The demo is a development-only fixture, not a shipped command. It launches no children and does not modify state. The workflow view uses a compact lane graph with one selectable step per row, not a two-dimensional box navigator. Artifact/log paths are displayed, not opened. Inspector tests exercise navigation, grouping, responsive graph/list switching, scroll following, theme/keybinding changes, bounded activity and non-acknowledging inspection. Graph tests walk the rendered wires of 300 deterministic DAGs to check that every real edge—and no invented edge—connects its intended nodes.

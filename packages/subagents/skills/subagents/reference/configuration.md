@@ -23,12 +23,16 @@ A project override must restate every capability it needs from the global config
 | `version` | Required, currently `1`. |
 | `models` | Required array of `{ "id": "provider/model:thinking", "description": "optional guidance" }`. Exact identities, no aliases/fallbacks. |
 | `tools` | Allowed tool names; omitted means none. Spawn still chooses an explicit subset. Recursive `subagent_*` tools are always forbidden. |
-| `extensions`, `skills`, `promptTemplates`, `themes` | Allowed explicit resource **files**; omitted means none. Not packages, globs, or directories. |
+| `extensions`, `skills`, `promptTemplates`, `themes` | Allowed explicit resource **files**; omitted means none. Extensions also accept the three [managed built-in identifiers](builtins.md). Not packages, globs, or directories. |
 | `systemPrompt`, `appendSystemPrompt` | Allow replacing/appending system-prompt text; omitted means false. Omit both spawn arguments to keep Pi's normal prompt behavior. |
 | `contextFiles` | Permit normal AGENTS.md/CLAUDE.md discovery; omitted means false. Children may opt out. This is distinct from the system prompt. |
 | `workingDirectories` | Allowed roots and descendants; default `["."]`. Real paths are checked. |
 | `maxChildren` | Live-process cap, including idle children; integer 1–64, default 4. Not a cost, token or tool-execution limit. |
 | `peerMessageLimit` | Integer 0–1000; default 0 disables peer messaging. Positive value caps each directional allowance. Also allowlist `peer_send` and explicitly select it in both participating children. Parent must then connect the pair; no implicit links. |
+
+| `providerExtensions` | Optional provider ID → explicit allowlisted extension file; composition must also select that file. |
+| `childSettings` | Optional codemode mode/budget overrides and cache-warming suppression; see [built-ins](builtins.md). |
+| `mcp` | Optional native MCP server/raw-tool grants and explicit credential inheritance consent; see [built-ins](builtins.md). |
 
 Unknown policy fields fail validation. There are no `profiles`, per-model tool permissions, routing rules, cost ceilings, benchmark-score fields or automatic escalation settings. Peer-message counts bound exchanges, not token/cost usage; parent-only renewal can grant further exchanges. Keep research evidence outside the policy; summarize recommendations in `description`.
 
