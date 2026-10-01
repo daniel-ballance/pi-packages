@@ -6,7 +6,7 @@ Use Pi's built-in codemode, tool-search and MCP implementations. Do not extend o
 
 ## Phase 0 evidence
 
-Inspected the installed 0.99.2 documentation and npm-distributed implementation. Local, offline RPC probes used a deterministic chat provider, a classifier reporting synthetic $0.25 usage, a nested tool reporting synthetic $0.50 usage, and a tiny stdio MCP fixture. Probe artifacts are currently private worktree files in `.pi/probes/`; these are experiments, not yet regression tests.
+Inspected the installed 0.99.2 documentation and npm-distributed implementation. Local, offline RPC probes used a deterministic chat provider, a classifier reporting synthetic $0.25 usage, a nested tool reporting synthetic $0.50 usage, and a tiny stdio MCP fixture. Original probe artifacts are private worktree files in `.pi/probes/`. The core experiments are now reproducible in `test/builtins-probe-rpc.test.ts` with `test/fixtures/builtin-probe-{provider,mcp}.mjs`; run with `PEER_TEST_EXECUTABLE="$(command -v pi)"`. These characterization tests intentionally require an explicit executable override while the baseline dependencies remain on the previous runtime.
 
 1. **Explicit built-ins alongside `--no-extensions`: confirmed.** `getAllTools()` reports `builtin:codemode` and `builtin:tool-search` sources. Ambient extensions remain disabled. A mandatory separately loaded guard runs.
 2. **Nested guard interception: confirmed.** Even registered deferred tools omitted from active declarations reach `tool_call` through codemode, with `parentToolCallId`. The guard blocks both unselected `forbidden` and `subagent_forbidden`; exceptions reach the script.
@@ -50,6 +50,12 @@ Manager receives a secret-free compiled child policy, revalidated on resume. It 
 - Broad generic settings/environment overrides: adds an escape hatch with unclear persistence.
 - Supporting virtual routing or classifier allowlists speculatively: no verified public interception contract.
 
+## Implementation checkpoint
+
+Committed separately after this design: reproducible built-in characterization tests; handled/queued/started/unknown submission reporting; consumed-input rollback without phantom assignments; peer disposition retention without refunds; workflow rejection and attempt recording for consumed inputs; authoritative cost refresh for standalone usage/summary entries.
+
+Checks at this checkpoint: package `npm run check` passed; package tests against the installed Pi executable passed (219 passed, 1 skipped); canonical root `./scripts/check.sh` passed. No dependency/version bump or production built-in grants have been implemented yet. The schema above remains a proposal and must **not** be copied into a live policy.
+
 ## Remaining proof before release
 
-Promote probes into deterministic tests; verify normalized-name collisions, project override rejection, registered-server filtering, credential consent, missing provider resources, warming suppression, tool-source mismatches, input dispositions through peers/workflows, and usage ordering. Run package check/test, root check, and installed executable RPC tests. Update compatibility docs, locks, version and changelog. Existing successful baseline tests do not waive these requirements.
+Complete production grant enforcement and verify normalized-name collisions, project override rejection, registered-server filtering, credential consent, missing provider resources, warming suppression, tool-source mismatches, input dispositions through peers/workflows, and usage ordering. Run package check/test, root check, and installed executable RPC tests. Update compatibility docs, locks, version and changelog. Existing successful baseline tests do not waive these requirements.
