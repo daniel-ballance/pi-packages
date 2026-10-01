@@ -20,7 +20,7 @@ import { inspectorSource } from "./src/inspector-data.js";
 import { showInspector, type InspectorPanel } from "./src/inspector.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
-const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path from subagent_catalog." })));
+const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path or built-in extension identifier from subagent_catalog." })));
 const message = Type.String({ minLength: 1, maxLength: 30000 });
 const noticeKeys = (details: unknown): string[] => {
   if (!details || typeof details !== "object" || !("noticeKeys" in details) || !Array.isArray(details.noticeKeys)) return [];
@@ -39,6 +39,7 @@ export default function subagents(pi: ExtensionAPI) {
     cwd: ctx.cwd, agentDir: getAgentDir(), projectTrusted: ctx.isProjectTrusted(),
     guardPath: fileURLToPath(new URL("./src/child-guard.ts", import.meta.url)),
     models: () => ctx.modelRegistry.getAvailable().map(model => ({ ...model, thinkingLevels: getSupportedThinkingLevels(model) })),
+    toolSources: () => Object.fromEntries(pi.getAllTools().filter(tool => tool.sourceInfo?.path).map(tool => [tool.name, tool.sourceInfo!.path])),
     tools: () => [...new Set(["read", "bash", "edit", "write", "grep", "find", "ls", ...(process.platform === "win32" ? ["powershell"] : []), ...pi.getAllTools().map(tool => tool.name)])],
   });
   let context: ExtensionContext | undefined;
@@ -178,6 +179,7 @@ export default function subagents(pi: ExtensionAPI) {
         outputs: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 4096 }), { maxItems: 32 })),
       }, { additionalProperties: false, description: "Advisory work areas/outputs; relative paths resolve against cwd. Overlaps warn, never grant permissions or isolate writes." })),
       extensions: resources, skills: resources, promptTemplates: resources, themes: resources,
+      mcpServers: Type.Optional(Type.Array(Type.String(), { description: "Explicit MCP server names from the policy catalog; requires builtin:mcp and a discovery tool." })),
       systemPrompt: Type.Optional(Type.String()), appendSystemPrompt: Type.Optional(Type.String()),
       contextFiles: Type.Optional(Type.Boolean({ description: "Load normal AGENTS.md context files if permitted. Defaults to policy allowance." })),
     }, { additionalProperties: false }),

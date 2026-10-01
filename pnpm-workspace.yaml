@@ -11,5 +11,17 @@ allowBuilds:
   esbuild: false
   protobufjs: false
 
+# Explicitly requested/verified Pi release. Keep pnpm's age quarantine for every
+# other version/package; no wildcard exclusions and no global age-check bypass.
+minimumReleaseAgeExclude:
+  - '@earendil-works/chord@0.99.2'
+  - '@earendil-works/pi-agent-core@0.99.2'
+  - '@earendil-works/pi-ai@0.99.2'
+  - '@earendil-works/pi-codemode@0.99.2'
+  - '@earendil-works/pi-coding-agent@0.99.2'
+  - '@earendil-works/pi-mcp@0.99.2'
+  - '@earendil-works/pi-telemetry@0.99.2'
+  - '@earendil-works/pi-tui@0.99.2'
+
 # Checks must not reinstall dependencies (including CI's temporary Pi override).
 verifyDepsBeforeRun: false

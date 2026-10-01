@@ -63,7 +63,10 @@ runtime dependencies resolvable from their extension entry points.
 Choose one manager per checkout. Before switching, remove only the root and
 `packages/*/node_modules` directories, then reinstall with the chosen manager;
 do not delete either committed lockfile. pnpm disables automatic peer installs
-and dependency lifecycle scripts. Script execution does not implicitly reinstall
+and dependency lifecycle scripts. The workspace's release-age exceptions name
+only the eight explicitly requested Pi 0.99.2 packages; all other versions and
+packages retain pnpm's normal quarantine. Cold-cache CI verifies that policy.
+Script execution does not implicitly reinstall
 dependencies, so CI's runtime overrides remain intact.
 
 Runtime imports belong in
@@ -157,16 +160,16 @@ Pi executable, credentials, or live web-search results.
 ## CI support and limits
 
 CI runs the complete root check with both npm and pnpm 12.6.0 on Node.js
-22.19.0 against two explicit Pi runtime points:
+22.19.0 against two explicit dependency layouts:
 
-- **Pi 0.85.1** — the supported minimum and the version pinned by committed
-  package lockfiles.
-- **Pi 0.87.1** — the current runtime, installed into an isolated CI job after
-  the selected manager's baseline install; the override leaves committed
-  manifests, workspace configuration, and lockfiles unchanged.
+- **locked** — committed package lockfiles: subagents pins Pi **0.99.2**;
+  the other packages retain their existing development pins.
+- **Pi 0.99.2** — Pi dependencies across all packages are overridden in an
+  isolated CI job after baseline installation; committed manifests, workspace
+  configuration, and lockfiles remain unchanged.
 
-The matrix is evidence for those two versions, not every intervening Pi release
-or older Node.js runtime. Tests use local deterministic providers and fixtures;
+The collection now requires Pi 0.99.2 for subagents. The matrix is not evidence
+for every intervening Pi release or older Node.js runtime. Tests use local deterministic providers and fixtures;
 live search/MCP services and optional installed-Pi executable overrides are
 outside the root gate. Packaging fixtures may download registry dependencies as
 noted above.

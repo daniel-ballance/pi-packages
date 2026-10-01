@@ -2,11 +2,13 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { SpawnOptions } from "./manager.js";
+import { BUILTINS, parseChildSettings, parseMcpPolicy, type Builtin, type ChildSettings, type McpPolicy } from "./child-policy.js";
 
 export interface Composition {
   model: string; tools: string[];
   extensions?: string[]; skills?: string[]; promptTemplates?: string[]; themes?: string[];
   systemPrompt?: string; appendSystemPrompt?: string; contextFiles?: boolean;
+  mcpServers?: string[];
 }
 export interface PolicyConfig {
   version: 1;
@@ -16,10 +18,13 @@ export interface PolicyConfig {
   systemPrompt: boolean; appendSystemPrompt: boolean; contextFiles: boolean;
   maxChildren: number; workingDirectories: string[];
   peerMessageLimit: number;
+  providerExtensions?: Record<string, string>;
+  childSettings?: ChildSettings;
+  mcp?: McpPolicy;
 }
 export interface LocalModel {
   provider: string; id: string; input: readonly string[]; contextWindow: number; maxTokens: number;
-  cost: unknown; thinkingLevels: readonly string[];
+  cost: unknown; thinkingLevels: readonly string[]; api?: string; type?: string;
 }
 export const DEFAULT_POLICY: PolicyConfig = {
   version: 1,
@@ -38,7 +43,7 @@ export const DEFAULT_POLICY: PolicyConfig = {
   maxChildren: 4, workingDirectories: ["."], peerMessageLimit: 0,
 };
 const RESOURCES = ["extensions", "skills", "promptTemplates", "themes"] as const;
-const KNOWN = new Set(Object.keys(DEFAULT_POLICY));
+const KNOWN = new Set([...Object.keys(DEFAULT_POLICY), "providerExtensions", "childSettings", "mcp"]);
 export function splitModel(value: string) {
   const slash = value.indexOf("/");
   const colon = value.lastIndexOf(":");
@@ -70,9 +75,18 @@ export function parsePolicy(value: unknown): PolicyConfig {
   if (typeof maxChildren !== "number" || !Number.isInteger(maxChildren) || maxChildren < 1 || maxChildren > 64) throw new Error("maxChildren must be an integer from 1 to 64");
   const peerMessageLimit = v.peerMessageLimit === undefined ? 0 : v.peerMessageLimit;
   if (typeof peerMessageLimit !== "number" || !Number.isInteger(peerMessageLimit) || peerMessageLimit < 0 || peerMessageLimit > 1000) throw new Error("peerMessageLimit must be an integer from 0 to 1000");
+  const extensions = strings(v.extensions ?? [], "extensions");
+  for (const extension of extensions) if (extension.startsWith("builtin:") && !BUILTINS.includes(extension as Builtin)) throw new Error(`Forbidden or unknown built-in extension: ${extension}`);
+  let providerExtensions: Record<string, string> = {};
+  if (v.providerExtensions !== undefined) {
+    if (!v.providerExtensions || typeof v.providerExtensions !== "object" || Array.isArray(v.providerExtensions)) throw new Error("providerExtensions must map provider IDs to resource files");
+    for (const [provider, file] of Object.entries(v.providerExtensions)) if (!provider.trim() || typeof file !== "string" || !file.trim() || file.startsWith("builtin:")) throw new Error("providerExtensions requires explicit extension files");
+    providerExtensions = v.providerExtensions as Record<string, string>;
+  }
   return {
     version: 1, models, tools: strings(v.tools ?? [], "tools"),
-    extensions: strings(v.extensions ?? [], "extensions"), skills: strings(v.skills ?? [], "skills"),
+    extensions, skills: strings(v.skills ?? [], "skills"),
+    providerExtensions, childSettings: parseChildSettings(v.childSettings), mcp: parseMcpPolicy(v.mcp),
     promptTemplates: strings(v.promptTemplates ?? [], "promptTemplates"), themes: strings(v.themes ?? [], "themes"),
     systemPrompt: flags.systemPrompt, appendSystemPrompt: flags.appendSystemPrompt, contextFiles: flags.contextFiles,
     maxChildren, workingDirectories: strings(v.workingDirectories ?? ["."], "workingDirectories"), peerMessageLimit,
@@ -81,6 +95,7 @@ export function parsePolicy(value: unknown): PolicyConfig {
 export interface PolicyEnvironment {
   cwd: string; agentDir: string; projectTrusted: boolean; guardPath: string;
   models: () => LocalModel[]; tools: () => string[];
+  toolSources?: () => Record<string, string>;
 }
 export class SubagentPolicy {
   readonly source: string;
@@ -112,12 +127,26 @@ export class SubagentPolicy {
     const models = config.models.flatMap(entry => {
       const requested = splitModel(entry.id);
       const model = available.find(m => m.provider === requested.provider && m.id === requested.id);
+      if (model?.api === "pi-virtual" || (model?.type && model.type !== "chat")) {
+        this.diagnostics.push(`Virtual/non-chat model not permitted: ${entry.id}`); return [];
+      }
+      const providerFile = config.providerExtensions?.[requested.provider];
+      if (providerFile) {
+        try {
+          const path = this.path(providerFile);
+          if (!statSync(path).isFile() || !config.extensions.some(e => {
+            try { return !e.startsWith("builtin:") && this.path(e) === path; } catch { return false; }
+          })) throw new Error("provider extension is not allowlisted");
+        } catch { this.diagnostics.push(`Unavailable provider extension for ${entry.id}`); return []; }
+      }
       if (!model || !model.thinkingLevels.includes(requested.thinking)) {
         this.diagnostics.push(`Unavailable model/authentication/thinking level: ${entry.id}`); return [];
       }
       return [{ ...entry, input: model.input, contextWindow: model.contextWindow, maxTokens: model.maxTokens, cost: model.cost }];
     });
     const knownTools = new Set(this.environment.tools());
+    if (config.extensions.includes("builtin:codemode")) knownTools.add("codemode");
+    if (config.extensions.includes("builtin:tool-search")) knownTools.add("tool_search");
     const tools = config.tools.filter(tool => {
       if (tool === "peer_send") {
         if (config.peerMessageLimit > 0) return true;
@@ -129,6 +158,7 @@ export class SubagentPolicy {
     });
     const resources = Object.fromEntries(RESOURCES.map(key => [key, config[key].flatMap(value => {
       try {
+        if (key === "extensions" && BUILTINS.includes(value as Builtin)) return [value];
         const path = this.path(value);
         // Exact files, not packages/globs/directories that can expand permissions.
         if (!statSync(path).isFile()) throw new Error("must be an explicit resource file");
@@ -148,6 +178,12 @@ export class SubagentPolicy {
       systemPrompt: config.systemPrompt, appendSystemPrompt: config.appendSystemPrompt,
       contextFiles: config.contextFiles, maxChildren: config.maxChildren, peerMessageLimit: config.peerMessageLimit,
       omittedEntries: this.diagnostics.length,
+      providerExtensions: config.providerExtensions, childSettings: config.childSettings,
+      mcp: config.mcp,
+      notes: ["Built-ins require explicit extension and tool selections; classifiers and virtual models are denied.",
+        config.childSettings?.cacheWarming === "off" ? "Child cache warming suppressed by decision hook." : "Cache warming inherits GLOBAL Pi settings (may cost money); project off is insufficient.",
+        "Unspecified codemode mode/budget inherit Pi settings; mcp.autoEnableCodemode never grants tools.",
+        "MCP connections require explicit credential inheritance consent; this is not credential isolation."],
     };
   }
   private checkedDirectory(cwd: string, roots: string[]) {
@@ -175,8 +211,10 @@ export class SubagentPolicy {
     for (const key of RESOURCES) {
       const flag = { extensions: "-e", skills: "--skill", promptTemplates: "--prompt-template", themes: "--theme" }[key];
       for (const resource of selection[key] ?? []) {
-        if (!catalog[key].includes(resource) || this.path(resource) !== resource) throw new Error(`Resource not allowed or changed: ${key}: ${resource}`);
-        cliArgs.push(flag, resource);
+        const builtin = key === "extensions" && BUILTINS.includes(resource as Builtin);
+        if (!catalog[key].includes(resource) || (!builtin && this.path(resource) !== resource)) throw new Error(`Resource not allowed or changed: ${key}: ${resource}`);
+        // Factories are installed by the guard, not ambient unconfigured built-ins.
+        if (!builtin) cliArgs.push(flag, resource);
       }
     }
     for (const [key, flag] of [["systemPrompt", "--system-prompt"], ["appendSystemPrompt", "--append-system-prompt"]] as const) {
@@ -188,7 +226,35 @@ export class SubagentPolicy {
     const contextFiles = selection.contextFiles ?? catalog.contextFiles;
     if (contextFiles && !catalog.contextFiles) throw new Error("Context-file loading is not permitted");
     if (!contextFiles) cliArgs.push("--no-context-files");
+    const builtins = (selection.extensions ?? []).filter(e => BUILTINS.includes(e as Builtin)) as Builtin[];
+    const toolSources: Record<string, string> = {};
+    const parentSources = this.environment.toolSources?.() ?? {};
+    for (const tool of selection.tools) {
+      const builtin = ({ codemode: "builtin:codemode", tool_search: "builtin:tool-search" } as Record<string, Builtin>)[tool];
+      let source = builtin && builtins.includes(builtin) ? this.environment.guardPath : parentSources[tool];
+      if (source && source !== this.environment.guardPath && !source.startsWith("builtin:")) source = this.path(source);
+      if (builtin && this.config!.extensions.includes(builtin) && !builtins.includes(builtin)) throw new Error(`${tool} requires selecting ${builtin}`);
+      if (source && source !== this.environment.guardPath) {
+        if (source.startsWith("builtin:")) {
+          if (!["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"].includes(tool) || source !== `builtin:${tool}`) throw new Error(`Tool ${tool} requires its managed built-in selection`);
+        } else if (!(selection.extensions ?? []).includes(source)) throw new Error(`Tool ${tool} requires selecting provider extension ${source}`);
+      }
+      if (source) toolSources[tool] = source;
+    }
+    const providerFile = this.config!.providerExtensions?.[splitModel(selection.model).provider];
+    if (providerFile && !(selection.extensions ?? []).includes(this.path(providerFile))) throw new Error("Model requires selecting its provider extension");
+    const mcpPolicy = this.config!.mcp ?? { servers: [], inheritCredentials: false };
+    const servers = [...new Set(selection.mcpServers ?? [])].map(name => {
+      const grant = mcpPolicy.servers.find(s => s.name === name);
+      if (!grant) throw new Error(`MCP server not allowed: ${name}`);
+      return grant;
+    });
+    if (servers.length && (!builtins.includes("builtin:mcp") || !mcpPolicy.inheritCredentials)) throw new Error("MCP requires builtin:mcp and explicit mcp.inheritCredentials consent");
+    if (servers.length && !selection.tools.some(t => t === "codemode" || t === "tool_search")) throw new Error("MCP requires selecting codemode or tool_search");
     cliArgs.push("-e", this.environment.guardPath);
-    return { cwd: directory, model: selection.model, tools: selection.tools, inheritExtensions: false, cliArgs, selection: { ...selection, contextFiles } };
+    return { cwd: directory, model: selection.model, tools: selection.tools, inheritExtensions: false, cliArgs, selection: { ...selection, contextFiles },
+      childPolicy: { version: 1, builtins, toolSources, model: selection.model, settings: this.config!.childSettings ?? {},
+        mcp: { servers, inheritCredentials: mcpPolicy.inheritCredentials }, agentDir: this.environment.agentDir,
+        projectTrusted: this.environment.projectTrusted && withinProject } };
   }
 }

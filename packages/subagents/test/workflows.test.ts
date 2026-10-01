@@ -286,7 +286,7 @@ test("manager host refuses held child at spawn acceptance and while waiting", as
     const fakeManager = {
       reserveSlots: () => ({ id: Symbol("reservation") }), releaseSlots: () => { releases++; },
       spawn: async () => ({ id: "early-child" }), get: () => ({ id: "early-child", hold: held ? { kind: "halt" } : undefined }),
-      send: async () => { sends++; }, wait: async () => { held = true; return { timedOut: true }; },
+      send: async () => { sends++; return { id: "early-child", disposition: "started" }; }, wait: async () => { held = true; return { timedOut: true }; },
       close: async () => { closes++; }, peers: { connect() {}, disconnect() {} },
     } as unknown as Parameters<typeof managerWorkflowHost>[0];
     const policy = (() => ({ compile: () => ({}) })) as unknown as Parameters<typeof managerWorkflowHost>[1];
@@ -296,6 +296,23 @@ test("manager host refuses held child at spawn acceptance and while waiting", as
     assert.equal(sends, phase === "spawn" ? 0 : 1);
     assert.equal(closes, 0, "held child remains under parent supervision"); assert.equal(releases, 1);
   }
+});
+
+test("manager host records consumed submission and rejects the attempt before waiting", async () => {
+  let closed = false, submitted: unknown;
+  const fakeManager = {
+    reserveSlots: () => ({ id: Symbol("reservation") }), releaseSlots() {},
+    spawn: async () => ({ id: "consumed-child" }), get: () => ({ id: "consumed-child" }),
+    send: async () => ({ id: "consumed-child", disposition: "handled" }),
+    wait: async () => assert.fail("Consumed input must not wait for a nonexistent run"),
+    close: async () => { closed = true; }, peers: {},
+  } as unknown as Parameters<typeof managerWorkflowHost>[0];
+  const policy = (() => ({ compile: () => ({}) })) as unknown as Parameters<typeof managerWorkflowHost>[1];
+  const job: AgentJob = { step: "a", workflow: "workflow-test", cwd: "/tmp", worker, instructions: "a",
+    candidate: "/tmp", inputs: {}, onChild() {}, onActivity() {}, onSubmission: (id, disposition) => { submitted = { id, disposition }; } };
+  await assert.rejects(managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), /input was handled/);
+  assert.deepEqual(submitted, { id: "consumed-child", disposition: "handled" });
+  assert.equal(closed, true);
 });
 
 test("pause is a boundary, cancel and deadline abort execution, and only one run executes", async () => {

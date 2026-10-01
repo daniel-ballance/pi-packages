@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pi-version: ["0.85.1", "0.87.1"]
+        pi-version: ["locked", "0.99.2"]
         package-manager: [npm, pnpm]
     env:
       PACKAGE_MANAGER: ${{ matrix.package-manager }}

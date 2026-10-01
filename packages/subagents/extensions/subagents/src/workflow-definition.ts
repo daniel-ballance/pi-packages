@@ -8,7 +8,7 @@ const strings = Type.Optional(Type.Array(Type.String()));
 export const WorkerSchema = Type.Object({
   model: Type.String(), tools: Type.Array(Type.String()), extensions: strings, skills: strings,
   promptTemplates: strings, themes: strings, systemPrompt: Type.Optional(Type.String()),
-  appendSystemPrompt: Type.Optional(Type.String()), contextFiles: Type.Optional(Type.Boolean()),
+  appendSystemPrompt: Type.Optional(Type.String()), contextFiles: Type.Optional(Type.Boolean()), mcpServers: strings,
 }, { additionalProperties: false });
 const agent = { worker: WorkerSchema, instructions: text };
 export const ValidatorSchema = Type.Union([

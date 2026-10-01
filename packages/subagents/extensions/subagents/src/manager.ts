@@ -4,9 +4,11 @@ import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import { ActivityFeed, type LiveActivity } from "./activity.js";
 import type { Composition } from "./policy.js";
+import type { ChildPolicy } from "./child-policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
 
+export type InputDisposition = "started" | "queued" | "handled" | "unknown";
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
 export interface SpawnOptions {
   name: string; task: string; cwd: string;
@@ -14,6 +16,7 @@ export interface SpawnOptions {
   executable?: string; executableArgs?: string[]; cliArgs?: string[];
   inheritExtensions?: boolean; env?: Record<string, string>;
   selection?: Composition;
+  childPolicy?: ChildPolicy;
   /** Internal workflow ownership; not exposed by subagent_spawn. */
   workflow?: string; deferTask?: boolean;
   coordination?: { owns?: string[]; outputs?: string[] };
@@ -32,6 +35,7 @@ export interface AgentRecord {
   model?: string; thinking?: string; activity?: string; error?: string; lastError?: string;
   rejected?: boolean; startedAt?: string;
   usage?: unknown; updates: Update[]; cursor: number; readCursor: number;
+  lastSubmission?: { disposition: InputDisposition; at: string };
   uiRequests: Packet[]; hadEnvOverrides: boolean;
   runStartCursor?: number; aborted?: boolean; runRevision?: number;
   observedCursors?: number[];
@@ -374,15 +378,21 @@ export class SubagentManager {
     if (!config.inheritExtensions) args.push("--no-extensions");
     if (config.model) args.push("--model", config.model);
     if (config.thinking) args.push("--thinking", config.thinking);
-    if (config.tools?.length) args.push("--tools", config.tools.join(","));
-    else if (config.tools) args.push("--no-tools");
+    // A CLI name allowlist cannot include not-yet-discovered MCP tools. Managed
+    // children use the mandatory guard for both activation and execution instead.
+    if (!config.childPolicy) {
+      if (config.tools?.length) args.push("--tools", config.tools.join(","));
+      else if (config.tools) args.push("--no-tools");
+    }
     args.push(...extra, "--mode", "rpc", "--session", record.sessionFile);
     const env: NodeJS.ProcessEnv = { ...process.env, PI_SUBAGENT: "1" };
     for (const key of ["PI_SESSION_ID", "PI_SESSION_FILE", "PI_PROVIDER", "PI_MODEL", "PI_REASONING_LEVEL"]) delete env[key];
     if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
     Object.assign(env, overrides);
     env.PI_SUBAGENT = "1";
+    delete env.PI_SUBAGENT_POLICY;
     if (config.selection) env.PI_SUBAGENT_ALLOWED_TOOLS = JSON.stringify(config.tools ?? []);
+    if (config.childPolicy) env.PI_SUBAGENT_POLICY = JSON.stringify(config.childPolicy);
     this.verifiedTools.delete(record.id);
     this.abortIntents.delete(record.id);
     this.activeRuns.delete(record.id);
@@ -533,9 +543,11 @@ export class SubagentManager {
       }
       case "entry_appended": {
         const entry = packet.entry;
-        if (entry?.customType === "child-policy-check" && Array.isArray(entry.data?.tools)) {
+        if (entry?.customType === "child-policy-check" && Array.isArray(entry.data?.tools) && !entry.data?.errors?.length) {
           this.verifiedTools.set(record.id, entry.data.tools);
         }
+        // Classifiers and idle cache warming can persist usage without an assistant message.
+        if (["usage", "compaction", "branch_summary"].includes(entry?.type)) void this.refreshUsage(record);
         break;
       }
       case "turn_end":
@@ -606,21 +618,31 @@ export class SubagentManager {
     else if (!message.startsWith("/") && (!record.assignment || record.assignment.status !== "running")) this.beginAssignment(record, message);
     this.persist();
     this.submitting.set(id, (this.submitting.get(id) ?? 0) + 1);
+    let disposition: InputDisposition = "unknown";
     try {
       try {
-        await child.request({ type: "prompt", message, ...(behavior ? { streamingBehavior: behavior } : {}) });
+        const response = await child.request({ type: "prompt", message, ...(behavior ? { streamingBehavior: behavior } : {}) });
+        if (["started", "queued", "handled"].includes(response?.disposition)) disposition = response.disposition;
+        record.lastSubmission = { disposition, at: new Date().toISOString() };
         // A human hold installed while prompt acceptance was pending owns all later state.
         if (record.hold) {
           // Acceptance after the first clear_queue/abort can enqueue a fresh run.
           if (record.hold.kind === "halt" && this.children.get(id) === child && !this.aborting.has(id)) await this.abort(id).catch(() => {});
           throw new Error(`${id} was held while prompt acceptance was pending`);
         }
-        // Slash commands can complete without ever starting an agent run.
-        if (message.startsWith("/") && record.runRevision === revision) {
+        // An input hook can consume ordinary text too: acceptance need not schedule work.
+        if (disposition === "handled") {
+          if (queued) record.queuedAssignments = record.queuedAssignments?.filter(item => item !== queued);
+          else if (record.runRevision === revision && record.assignment !== priorAssignment) {
+            record.assignment = priorAssignment; record.resultReview = priorReview;
+          }
+        }
+        if ((disposition === "handled" || message.startsWith("/")) && record.runRevision === revision) {
           const state = await child.request({ type: "get_state" });
           if (record.runRevision === revision && !record.hold) {
             record.usage = noteAutoCompaction(record.usage, state.autoCompactionEnabled);
-            record.status = state.isStreaming ? "working" : "idle";
+            record.status = record.uiRequests.length ? "waiting_input" : state.isStreaming ? "working" : "idle";
+            if (record.status === "idle") record.activity = disposition === "handled" ? "Input handled; no task run scheduled" : "Waiting for instructions";
           }
         }
       } catch (error) {
@@ -647,7 +669,7 @@ export class SubagentManager {
       }
       if (record.hold) throw new Error(`${id} was held while prompt acceptance was pending`);
       this.update(record, "sent", message);
-      return this.summary(id);
+      return { ...this.summary(id), disposition };
     } finally {
       const remaining = (this.submitting.get(id) ?? 1) - 1;
       if (remaining) this.submitting.set(id, remaining);

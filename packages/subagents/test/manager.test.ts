@@ -96,6 +96,44 @@ test("parallel children, incremental read, follow-up and usage", async () => {
   } finally { await s.cleanup(); }
 });
 
+test("consumed input restores assignment state and does not leave phantom work", async () => {
+  const s = await setup();
+  try {
+    const a = await s.spawn("CONSUME");
+    assert.equal(a.lastSubmission?.disposition, "handled");
+    assert.equal(a.assignment, undefined);
+    assert.equal(a.status, "idle");
+    assert.equal((await s.manager.wait([a.id], "all", 0)).timedOut, false);
+    await s.manager.send(a.id, "complete");
+    await s.manager.wait([a.id], "all", 2000);
+    const assignment = structuredClone(s.manager.get(a.id).assignment);
+    assert.equal((await s.manager.send(a.id, "CONSUME")).disposition, "handled");
+    assert.deepEqual(s.manager.get(a.id).assignment, assignment);
+    await s.manager.send(a.id, "slow-native");
+    const running = structuredClone(s.manager.get(a.id).assignment);
+    for (const behavior of ["steer", "followUp"] as const) {
+      assert.equal((await s.manager.send(a.id, "CONSUME", behavior)).disposition, "handled");
+      assert.deepEqual(s.manager.get(a.id).assignment, running);
+      assert.deepEqual(s.manager.get(a.id).queuedAssignments ?? [], []);
+      assert.equal(s.manager.get(a.id).status, "working");
+    }
+  } finally { await s.cleanup(); }
+});
+
+test("idle usage entries refresh authoritative costs without an assistant event", async () => {
+  const s = await setup();
+  try {
+    const a = await s.spawn("CONSUME");
+    await s.manager.send(a.id, "IDLE USAGE");
+    const deadline = Date.now() + 2000;
+    while ((s.manager.get(a.id).usage as { cost?: number })?.cost !== 0.25 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(s.manager.get(a.id).status, "idle");
+    assert.equal((s.manager.get(a.id).usage as { cost: number }).cost, 0.25);
+    assert.equal(s.manager.overview().totals.reportedCost, 0.25);
+    assert.equal(s.manager.read(a.id).updates.some(update => update.kind === "assistant"), false);
+  } finally { await s.cleanup(); }
+});
+
 test("listing keeps footer cache-hit and auto-compaction across usage refresh", async () => {
   const s = await setup();
   try {

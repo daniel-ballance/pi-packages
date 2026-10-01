@@ -14,6 +14,12 @@ See the [README](README.md) for the current behavior and policy contract.
 - Notifications should represent unread, actionable work rather than duplicate reports or routine chatter.
 - Tool allowlists and working-directory restrictions must not be described as an OS-level sandbox. Unrestricted bash can bypass process-level conventions.
 
+## Pi 0.99 built-ins
+
+Implemented: explicit native codemode/tool-search/MCP grants, raw MCP tool matching, project-config and credential consent, provider/resource linkage, source-aware child checks, classifier disabling, virtual-model refusal, codemode settings and optional cache-warming suppression. Pi remains the only MCP transport/OAuth client.
+
+Deferred: credential-free HTTP/OAuth store isolation, MCP resources/prompts, extension-registered MCP servers, classifier allowlists and virtual routing. These require verified public interception APIs, not source scanning or a second client. See the [built-in contract](skills/subagents/reference/builtins.md).
+
 ## 1. Inter-subagent communication
 
 **Goal:** let cooperating children exchange questions, findings and handoffs without making the parent manually relay every message.

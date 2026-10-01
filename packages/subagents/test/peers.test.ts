@@ -105,6 +105,20 @@ test("receipt beats late acceptance/timeout; stopped recipients and invalid bodi
   assert.equal(restored.state.messages[0].status, "received");
 });
 
+test("consumed peer inputs keep allowance and disposition without claiming receipt", async () => {
+  const h = harness(); h.broker.connect("A", "B", 2);
+  h.setDelivery(async () => ({ disposition: "handled" }));
+  const result = await h.broker.send("A", "B", "consumed");
+  assert.equal(result.status, "handled");
+  assert.equal(result.disposition, "handled");
+  assert.equal(result.remaining, 1);
+  h.broker.interrupt("B");
+  assert.equal(h.broker.state.messages[0].status, "handled");
+  const restored = harness(3, h.saved());
+  assert.equal(restored.broker.state.messages[0].status, "handled");
+  assert.equal(restored.broker.state.messages[0].disposition, "handled");
+});
+
 test("bounded history has stable cursors, pagination and gaps, without losing counters", async () => {
   const h = harness(1000); h.broker.connect("A", "B", 300);
   for (let i = 0; i < 210; i++) await h.broker.send("A", "B", String(i));

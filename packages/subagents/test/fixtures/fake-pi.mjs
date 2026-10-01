@@ -6,6 +6,7 @@ let timer;
 let working = false;
 let pendingUI = false;
 let assistantMessages = history.length;
+let extraCost = 0;
 const emit = data => {
   if (data.type === 'message_end' && data.message?.role === 'assistant') assistantMessages++;
   process.stdout.write(JSON.stringify(data) + '\n');
@@ -26,13 +27,21 @@ process.stdin.on('data', chunk => {
     if (cmd.type === 'get_state') respond(cmd, { sessionFile: file, sessionId: 'fake-session', model: { provider: 'test', id: 'fake' }, thinkingLevel: 'medium', isStreaming: working, autoCompactionEnabled: true });
     else if (cmd.type === 'get_session_stats') respond(cmd, {
       userMessages: history.length, assistantMessages,
-      cost: history.includes('live-usage') ? assistantMessages * 0.125 : Number(process.env.TEST_COST ?? 0),
+      cost: extraCost + (history.includes('live-usage') ? assistantMessages * 0.125 : Number(process.env.TEST_COST ?? 0)),
       ...(history.includes('footer-stats') ? {
         tokens: { input: 1200, output: 340, cacheRead: 12000, cacheWrite: 800, total: 14340 },
         contextUsage: { tokens: 33728, contextWindow: 272000, percent: 12.4 },
       } : {}),
     });
     else if (cmd.type === 'prompt') {
+      if (cmd.message === 'CONSUME' || cmd.message === 'IDLE USAGE') {
+        respond(cmd, { disposition: 'handled' });
+        if (cmd.message === 'IDLE USAGE') setTimeout(() => {
+          extraCost += 0.25;
+          emit({ type: 'entry_appended', entry: { type: 'usage', usage: { cost: { total: 0.25 } } } });
+        }, 30);
+        continue;
+      }
       if (working && !cmd.streamingBehavior) { emit({ type: 'response', id: cmd.id, success: false, error: 'Already working' }); continue; }
       history.push(cmd.message); writeFileSync(file, JSON.stringify(history));
       if (cmd.message === 'crash') process.exit(2);

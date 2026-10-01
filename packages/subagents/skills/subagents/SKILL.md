@@ -10,6 +10,7 @@ Use this skill in the **parent** Pi session. This package manages persistent chi
 Resolve file links relative to this skill directory, not the working directory. Read only the references relevant to the task:
 
 - **Set up or change policy:** [configuration reference](reference/configuration.md), including complete global, project and local-provider examples.
+- **Grant codemode, tool-search or native MCP:** [built-in policy reference](reference/builtins.md), including credential consent and per-child settings. Use Pi 0.99.2+; select both the resource and its tool. The codemode `models` namespace is disabled in managed children.
 - **Choose models or improve their guidance:** [model research process](reference/model-research.md). Triangulate Artificial Analysis, Datacurve's DeepSWE and CursorBench, then test the actual deployment.
 - **Retrieve evidence reproducibly:** [research scripts](scripts/README.md) provide a credential-safe Pi inventory and dated public-source snapshots. Use them instead of rewriting retrieval code; they do not choose models or compare scores automatically.
 - **Full implementation contract:** [package README](../../README.md). If behavior has changed, inspect the installed package rather than inventing policy keys.
@@ -33,6 +34,7 @@ Inspect before editing. Do not overwrite a policy, change provider settings, ins
 
 - Consult `subagent_catalog` before composing a child. Select an exact advertised model/thinking entry, absolute allowed cwd, and explicit tool list. `tools: []` disables tools.
 - State the task, evidence expected, boundaries, acceptance tests, and what requires asking the parent. Select only needed resources; ordinary resource discovery is disabled in children. Model quality does not justify extra permissions. Optional `coordination.owns` and `coordination.outputs` declare paths for overlap warnings, not access controls. Resolve warnings before delegating overlapping edits.
+- Inspect `lastSubmission.disposition` (and send `disposition`): `handled` means an extension consumed the input, not a completed task; `queued` means pending input; `unknown` must not be silently treated as started. Workflows reject consumed task submissions.
 - `subagent_spawn` returns **acceptance**, not completion. Follow with `subagent_wait` and `subagent_read`, or `subagent_wait({collect:true})` to collect bounded report pages. Ordinary list/wait do not acknowledge findings; reads and successfully formatted collected pages do. Follow `deferred` IDs for remaining output.
 - The human supervises the parent; the parent manages children. A `human_intervention` report means the user halted or killed a worker. Acknowledge it and discuss next steps. Keep held work stopped: do not automatically resume, retry, replace the worker, or route around the intervention. After discussion, use `subagent_release_hold` for each held child, then its workflow barrier if present. Release never starts work; resumption/retry remains explicit.
 - Distinguish process status from `assignment.status` and `resultReview`: idle is not proof of successful work. Completion means the assignment settled, not independently validated correctness.
