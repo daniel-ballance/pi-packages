@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PI_VERSION="${1:?usage: scripts/ci-install.sh <0.85.1|0.87.1>}"
+PI_VERSION="${1:?usage: scripts/ci-install.sh <locked|0.99.2>}"
 case "$PI_VERSION" in
-  0.85.1|0.87.1) ;;
+  locked|0.99.2) ;;
   *) printf 'Unsupported Pi version: %s\n' "$PI_VERSION" >&2; exit 2 ;;
 esac
 
@@ -37,7 +37,7 @@ for package_json in "${package_jsons[@]}"; do
   # Child lockfiles remain available for isolated standalone-package installs.
 done
 
-if [[ "$PI_VERSION" == "0.87.1" && "$PACKAGE_MANAGER" == pnpm ]]; then
+if [[ "$PI_VERSION" == "0.99.2" && "$PACKAGE_MANAGER" == pnpm ]]; then
   # Temporary workspace overrides exercise the current runtime without changing
   # committed manifests or either lockfile. Restore even when installation fails.
   workspace_backup="$(mktemp)"
@@ -57,7 +57,7 @@ appendFileSync(`${root}/pnpm-workspace.yaml`, "\noverrides:\n" +
   [...names].sort().map(name => `  '${name}': '${version}'\n`).join(""));
 NODE
   pnpm --dir "$ROOT" install --no-frozen-lockfile --lockfile=false --ignore-scripts
-elif [[ "$PI_VERSION" == "0.87.1" ]]; then
+elif [[ "$PI_VERSION" == "0.99.2" ]]; then
   for package_json in "${package_jsons[@]}"; do
     package_dir="${package_json%/package.json}"
     mapfile -t pi_dependencies < <(

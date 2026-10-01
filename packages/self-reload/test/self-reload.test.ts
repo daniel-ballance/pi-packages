@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
 import selfReload from "../extensions/self-reload/index.js";
 
 type Tool = Parameters<ExtensionAPI["registerTool"]>[0];
+type ToolContext = Parameters<Tool["execute"]>[4];
 type Command = Parameters<ExtensionAPI["registerCommand"]>[1];
 
 function runtime(sessionId = "session-1", activeTools = ["self_reload"]) {
@@ -24,10 +25,10 @@ function runtime(sessionId = "session-1", activeTools = ["self_reload"]) {
     sendMessage: (...args: unknown[]) => { check(); messages.push(args); },
     sendUserMessage: (...args: unknown[]) => { check(); userMessages.push(args); },
   } as unknown as ExtensionAPI;
-  const ctx = { mode: "rpc", sessionManager: { getSessionId: () => sessionId }, ui: {
+  const ctx = { mode: "rpc", tools: [], executeTool: async () => { throw new Error("No nested tools in this fixture"); }, sessionManager: { getSessionId: () => sessionId }, ui: {
     setStatus: (...args: unknown[]) => { check(); statuses.push(args); },
     notify: (...args: unknown[]) => { check(); notices.push(args); },
-  } } as unknown as ExtensionContext;
+  } } as unknown as ToolContext;
   selfReload(pi);
   hooks.get("session_start")!({ reason: "startup" }, ctx);
   return {
@@ -37,7 +38,7 @@ function runtime(sessionId = "session-1", activeTools = ["self_reload"]) {
 }
 
 async function invoke(r: ReturnType<typeof runtime>, continuation = "Check the updated tool.", mode = "rpc") {
-  return r.tools.get("self_reload")!.execute("call-1", { continuation }, undefined, undefined, { ...r.ctx, mode } as ExtensionContext);
+  return r.tools.get("self_reload")!.execute("call-1", { continuation }, undefined, undefined, { ...r.ctx, mode } as ToolContext);
 }
 
 test("tool dispatches command explicitly, returns queued and ends the run", async () => {
