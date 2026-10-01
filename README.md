@@ -63,7 +63,10 @@ runtime dependencies resolvable from their extension entry points.
 Choose one manager per checkout. Before switching, remove only the root and
 `packages/*/node_modules` directories, then reinstall with the chosen manager;
 do not delete either committed lockfile. pnpm disables automatic peer installs
-and dependency lifecycle scripts. Script execution does not implicitly reinstall
+and dependency lifecycle scripts. The workspace's release-age exceptions name
+only the eight explicitly requested Pi 0.99.2 packages; all other versions and
+packages retain pnpm's normal quarantine. Cold-cache CI verifies that policy.
+Script execution does not implicitly reinstall
 dependencies, so CI's runtime overrides remain intact.
 
 Runtime imports belong in
