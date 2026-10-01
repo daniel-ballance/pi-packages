@@ -53,6 +53,33 @@ test("peer send call row names the recipient and previews the message", () => {
   }
 });
 
+test("managed source checks reject replacement tools and suppress inherited warming", () => {
+  const saved = { policy: process.env.PI_SUBAGENT_POLICY, tools: process.env.PI_SUBAGENT_ALLOWED_TOOLS };
+  process.env.PI_SUBAGENT_ALLOWED_TOOLS = JSON.stringify(["read"]);
+  process.env.PI_SUBAGENT_POLICY = JSON.stringify({ version: 1, builtins: [], toolSources: { read: "builtin:read" },
+    model: "test/stub:off", settings: { cacheWarming: "off" }, mcp: { servers: [], inheritCredentials: false }, agentDir: "/unused", projectTrusted: false });
+  const hooks = new Map<string, Function>();
+  let source = "builtin:read";
+  try {
+    childGuard({
+      on: (name: string, fn: Function) => hooks.set(name, fn), registerCommand() {},
+      getActiveTools: () => ["read"], setActiveTools() {},
+      getAllTools: () => [{ name: "read", exposure: "direct", sourceInfo: { path: source } }],
+    } as unknown as ExtensionAPI);
+    assert.deepEqual(hooks.get("cache_warming_decision")!({ action: "warm" }), { action: "stop" });
+    const ctx = { model: { provider: "test", id: "stub", api: "test" } };
+    assert.equal(hooks.get("tool_call")!({ toolName: "read" }, ctx), undefined);
+    source = "/unselected/override.ts";
+    assert.equal(hooks.get("tool_call")!({ toolName: "read" }, ctx).block, true);
+    source = "builtin:read";
+    assert.equal(hooks.get("tool_call")!({ toolName: "read" }, { model: { ...ctx.model, api: "pi-virtual" } }).block, true);
+    assert.equal(hooks.get("tool_call")!({ toolName: "read" }, { model: { ...ctx.model, id: "different" } }).block, true);
+  } finally {
+    if (saved.policy === undefined) delete process.env.PI_SUBAGENT_POLICY; else process.env.PI_SUBAGENT_POLICY = saved.policy;
+    if (saved.tools === undefined) delete process.env.PI_SUBAGENT_ALLOWED_TOOLS; else process.env.PI_SUBAGENT_ALLOWED_TOOLS = saved.tools;
+  }
+});
+
 test("management extension registers nothing inside a marked child", () => {
   const old = process.env.PI_SUBAGENT;
   process.env.PI_SUBAGENT = "1";

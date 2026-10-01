@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 
-// These characterize 0.99.2, not production support for built-in policy grants.
-// Baseline package development dependencies still target the previous runtime.
-const executable = process.env.PEER_TEST_EXECUTABLE;
+// Characterization of Pi itself, separate from the managed-policy regressions.
+const executable = process.env.PEER_TEST_EXECUTABLE ?? process.execPath;
+const cliArgs = process.env.PEER_TEST_EXECUTABLE ? [] : [fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url))];
 const fixture = fileURLToPath(new URL("./fixtures/builtin-probe-provider.mjs", import.meta.url));
 const server = fileURLToPath(new URL("./fixtures/builtin-probe-mcp.mjs", import.meta.url));
 const guard = fileURLToPath(new URL("../extensions/subagents/src/child-guard.ts", import.meta.url));
@@ -16,7 +16,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 for (const wrapped of [false, true]) {
   test(`Pi 0.99 built-in characterization: ${wrapped ? "configured factories" : "stock built-ins"}`, {
-    skip: !executable, timeout: 30000,
+    timeout: 30000,
   }, async () => {
     const root = mkdtempSync(join(tmpdir(), "builtin-probe-")), agentDir = join(root, "agent");
     mkdirSync(agentDir); mkdirSync(join(root, ".pi"));
@@ -27,7 +27,7 @@ for (const wrapped of [false, true]) {
     writeFileSync(join(root, ".pi/mcp.json"), JSON.stringify({ mcpServers: { project: { command: process.execPath, args: [server, projectMarker] } } }));
     const events: Packet[] = []; let stderr = "";
     const child = new RpcChild({ executable: executable!, cwd: root,
-      args: ["--offline", "--mode", "rpc", "--session", join(root, "session.jsonl"), "--no-extensions", "--no-skills", "--no-themes", "--no-prompt-templates", "--no-context-files", "--approve",
+      args: [...cliArgs, "--offline", "--mode", "rpc", "--session", join(root, "session.jsonl"), "--no-extensions", "--no-skills", "--no-themes", "--no-prompt-templates", "--no-context-files", "--approve",
         "--model", "builtin-probe/stub:off", "--tools", "codemode,tool_search,metered,forbidden,subagent_forbidden",
         "-e", "builtin:codemode", "-e", "builtin:tool-search", "-e", "builtin:mcp", "-e", fixture, "-e", guard],
       // Do not forward the developer's provider credentials or real agent directory.

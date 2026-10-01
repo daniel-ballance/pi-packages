@@ -4,6 +4,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import { ActivityFeed, type LiveActivity } from "./activity.js";
 import type { Composition } from "./policy.js";
+import type { ChildPolicy } from "./child-policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
 
@@ -15,6 +16,7 @@ export interface SpawnOptions {
   executable?: string; executableArgs?: string[]; cliArgs?: string[];
   inheritExtensions?: boolean; env?: Record<string, string>;
   selection?: Composition;
+  childPolicy?: ChildPolicy;
   /** Internal workflow ownership; not exposed by subagent_spawn. */
   workflow?: string; deferTask?: boolean;
   coordination?: { owns?: string[]; outputs?: string[] };
@@ -376,15 +378,21 @@ export class SubagentManager {
     if (!config.inheritExtensions) args.push("--no-extensions");
     if (config.model) args.push("--model", config.model);
     if (config.thinking) args.push("--thinking", config.thinking);
-    if (config.tools?.length) args.push("--tools", config.tools.join(","));
-    else if (config.tools) args.push("--no-tools");
+    // A CLI name allowlist cannot include not-yet-discovered MCP tools. Managed
+    // children use the mandatory guard for both activation and execution instead.
+    if (!config.childPolicy) {
+      if (config.tools?.length) args.push("--tools", config.tools.join(","));
+      else if (config.tools) args.push("--no-tools");
+    }
     args.push(...extra, "--mode", "rpc", "--session", record.sessionFile);
     const env: NodeJS.ProcessEnv = { ...process.env, PI_SUBAGENT: "1" };
     for (const key of ["PI_SESSION_ID", "PI_SESSION_FILE", "PI_PROVIDER", "PI_MODEL", "PI_REASONING_LEVEL"]) delete env[key];
     if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
     Object.assign(env, overrides);
     env.PI_SUBAGENT = "1";
+    delete env.PI_SUBAGENT_POLICY;
     if (config.selection) env.PI_SUBAGENT_ALLOWED_TOOLS = JSON.stringify(config.tools ?? []);
+    if (config.childPolicy) env.PI_SUBAGENT_POLICY = JSON.stringify(config.childPolicy);
     this.verifiedTools.delete(record.id);
     this.abortIntents.delete(record.id);
     this.activeRuns.delete(record.id);
@@ -535,7 +543,7 @@ export class SubagentManager {
       }
       case "entry_appended": {
         const entry = packet.entry;
-        if (entry?.customType === "child-policy-check" && Array.isArray(entry.data?.tools)) {
+        if (entry?.customType === "child-policy-check" && Array.isArray(entry.data?.tools) && !entry.data?.errors?.length) {
           this.verifiedTools.set(record.id, entry.data.tools);
         }
         // Classifiers and idle cache warming can persist usage without an assistant message.

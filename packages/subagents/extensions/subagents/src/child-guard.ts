@@ -1,8 +1,11 @@
 import { stripVTControlCharacters } from "node:util";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { PeerClient } from "./peer-transport.js";
+import { BUILTINS, parseChildSettings, parseMcpPolicy, type ChildPolicy } from "./child-policy.js";
+import { installManagedBuiltins } from "./managed-builtins.js";
 
 function callText(value: unknown, limit = 80): string {
   const text = typeof value === "string"
@@ -16,6 +19,27 @@ export default function childGuard(pi: ExtensionAPI) {
   const configured: unknown = JSON.parse(process.env.PI_SUBAGENT_ALLOWED_TOOLS ?? "[]");
   if (!Array.isArray(configured) || configured.some(v => typeof v !== "string")) throw new Error("Invalid child tool policy");
   const allowed = new Set<string>(configured.filter(name => !name.startsWith("subagent_")));
+  const policy: ChildPolicy | undefined = process.env.PI_SUBAGENT_POLICY ? JSON.parse(process.env.PI_SUBAGENT_POLICY) : undefined;
+  if (policy) {
+    if (policy.version !== 1 || !Array.isArray(policy.builtins) || policy.builtins.some(b => !BUILTINS.includes(b)) || !policy.toolSources || typeof policy.model !== "string") throw new Error("Invalid managed child policy");
+    policy.settings = parseChildSettings(policy.settings); policy.mcp = parseMcpPolicy(policy.mcp);
+  }
+  const ownPath = fileURLToPath(import.meta.url);
+  let managed: ReturnType<typeof installManagedBuiltins> | undefined;
+  const permits = (name: string) => {
+    if (name.startsWith("subagent_")) return false;
+    const nativeMcp = managed?.mcpTools.get(name);
+    if (nativeMcp === false || (nativeMcp === undefined && !allowed.has(name))) return false;
+    const source = nativeMcp ? ownPath : policy?.toolSources[name];
+    return !source || pi.getAllTools().find(t => t.name === name)?.sourceInfo?.path === source;
+  };
+  if (policy) {
+    // Claim MCP integration even when unselected: extension registrations must not
+    // trigger Pi's automatic ambient built-in client.
+    if (!policy.builtins.includes("builtin:mcp")) pi.on("mcp_servers_change", () => {});
+    managed = installManagedBuiltins(pi, policy, permits);
+  }
+  if (policy?.settings.cacheWarming === "off") pi.on("cache_warming_decision", () => ({ action: "stop" }));
   let peer: PeerClient | undefined;
   if (allowed.has("peer_send") && process.env.PI_SUBAGENT_PEER_FD === "3") {
     pi.registerTool({
@@ -43,24 +67,34 @@ export default function childGuard(pi: ExtensionAPI) {
     });
   }
   pi.on("session_shutdown", () => { peer?.close(); peer = undefined; });
-  const apply = () => pi.setActiveTools(pi.getActiveTools().filter(name => allowed.has(name) && !name.startsWith("subagent_")));
-  pi.on("session_start", apply);
+  const apply = () => pi.setActiveTools(pi.getActiveTools().filter(permits));
+  pi.on("session_start", () => {
+    // No CLI name ceiling for dynamic MCP tools. The guard owns the active set.
+    if (policy) pi.setActiveTools([...allowed].filter(name => permits(name) && pi.getAllTools().some(t => t.name === name && t.exposure !== "hidden")));
+    else apply();
+  });
   pi.on("before_agent_start", apply);
   pi.on("context", apply);
   pi.on("tool_result", apply);
   // A resource can dynamically reactivate a tool; still block execution.
-  pi.on("tool_call", event => {
-    if (event.toolName.startsWith("subagent_") || !allowed.has(event.toolName)) {
+  pi.on("tool_call", (event, ctx) => {
+    const model = ctx?.model;
+    if ((policy && model && (`${model.provider}/${model.id}` !== policy.model.slice(0, policy.model.lastIndexOf(":")) || model.api === "pi-virtual")) || managed?.errors.length || !permits(event.toolName)) {
       return { block: true, reason: "Tool excluded by managed child policy; recursive subagents are disabled." };
     }
   });
   pi.registerCommand("_child-policy-check", {
     description: "Report effective child tools to the parent manager (no model call)",
-    handler: async () => {
+    handler: async (_args, ctx) => {
       apply();
       // Custom session entry (not a custom message): persists and emits `entry_appended`
       // without entering model context, so external drivers' checkpointing stays intact.
-      pi.appendEntry("child-policy-check", { tools: pi.getActiveTools() });
+      const all = pi.getAllTools();
+      const errors = [...(managed?.errors ?? [])];
+      if (ctx.model?.api === "pi-virtual") errors.push("Virtual models are not permitted");
+      pi.appendEntry("child-policy-check", { tools: all.filter(t => permits(t.name) && t.exposure !== "hidden").map(t => t.name),
+        active: pi.getActiveTools(), inventory: all.map(({ name, exposure, sourceInfo }) => ({ name, exposure, sourceInfo })), errors,
+        settings: { effective: { codemode: pi.getSettings().codemode, cacheWarming: pi.getSettings().cacheWarming }, enforced: policy?.settings, classifiers: policy?.builtins.includes("builtin:codemode") ? "disabled" : "not-managed" } });
     },
   });
 }
