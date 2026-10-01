@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { RpcRejectedError } from "./rpc.js";
+import type { InputDisposition } from "./manager.js";
 
 export interface Allowance { limit: number; used: number; total: number; generation: number }
 export interface PeerLink { a: string; b: string; enabled: boolean; ab: Allowance; ba: Allowance }
 export interface PeerMessage {
   cursor: number; id: string; sender: string; recipient: string; senderName: string; recipientName: string;
   message: string; generation: number; time: string;
-  status: "submitting" | "accepted" | "received" | "rejected" | "unknown" | "interrupted";
+  status: "submitting" | "accepted" | "received" | "handled" | "rejected" | "unknown" | "interrupted";
+  disposition?: InputDisposition;
   error?: string;
 }
 export interface PeerState { version: 1; links: PeerLink[]; messages: PeerMessage[]; cursor: number }
@@ -35,7 +37,7 @@ export class PeerBroker {
     }
     for (const m of state.messages) {
       if (!m || typeof m.id !== "string" || typeof m.message !== "string" || m.message.length > 4000 || !count(m.cursor) || m.cursor > state.cursor ||
-          !["submitting", "accepted", "received", "rejected", "unknown", "interrupted"].includes(m.status)) throw new Error("Invalid peer message");
+          !["submitting", "accepted", "received", "handled", "rejected", "unknown", "interrupted"].includes(m.status)) throw new Error("Invalid peer message");
       if (["submitting", "accepted", "unknown"].includes(m.status)) { m.status = "interrupted"; m.error = "Manager restarted; receipt unconfirmed. No automatic replay; allowance retained."; }
     }
     this.state = state;
@@ -119,8 +121,9 @@ export class PeerBroker {
     this.state.messages.push(entry); this.inFlight.add(entry.id);
     try {
       this.options.persist(); // Reserve before any asynchronous submission.
-      await this.options.deliver(recipient, peerEnvelope(entry));
-      if (entry.status === "submitting") entry.status = "accepted";
+      const result = await this.options.deliver(recipient, peerEnvelope(entry)) as { disposition?: InputDisposition } | undefined;
+      if (result?.disposition) entry.disposition = result.disposition;
+      if (entry.status === "submitting") entry.status = entry.disposition === "handled" ? "handled" : "accepted";
     } catch (error) {
       if (entry.status !== "received") {
         if (error instanceof RpcRejectedError) {
@@ -131,7 +134,7 @@ export class PeerBroker {
     } finally {
       this.inFlight.delete(entry.id); this.options.persist();
     }
-    return { id: entry.id, sender, recipient, status: entry.status, remaining: Math.max(0, effective - allowance.used), generation: allowance.generation, error: entry.error };
+    return { id: entry.id, sender, recipient, status: entry.status, disposition: entry.disposition, remaining: Math.max(0, effective - allowance.used), generation: allowance.generation, error: entry.error };
   }
   received(recipient: string, text: string) {
     if (!text.startsWith("Peer message peer-")) return;
