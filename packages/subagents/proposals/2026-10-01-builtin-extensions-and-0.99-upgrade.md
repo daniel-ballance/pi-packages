@@ -6,16 +6,16 @@ Use Pi's built-in codemode, tool-search and MCP implementations. Do not extend o
 
 ## Phase 0 evidence
 
-Inspected the installed 0.99.2 documentation and npm-distributed implementation. Local, offline RPC probes used a deterministic chat provider, a classifier reporting synthetic $0.25 usage, a nested tool reporting synthetic $0.50 usage, and a tiny stdio MCP fixture. Original probe artifacts are private worktree files in `.pi/probes/`. The core experiments are now reproducible in `test/builtins-probe-rpc.test.ts` with `test/fixtures/builtin-probe-{provider,mcp}.mjs`; run with `PEER_TEST_EXECUTABLE="$(command -v pi)"`. The characterization tests now run against the pinned 0.99.2 Node CLI by default and support the installed executable override.
+Inspected the installed 0.99.2 documentation and npm-distributed implementation. Local, offline RPC probes used a deterministic chat provider, a classifier reporting synthetic $0.25 usage, a nested tool reporting synthetic $0.50 usage, and a tiny stdio MCP fixture. Initial raw probe artifacts were temporary worktree files in `.pi/probes/`; the fixtures below preserve reproducible evidence after worktree cleanup. The core experiments are now reproducible in `test/builtins-probe-rpc.test.ts` with `test/fixtures/builtin-probe-{provider,mcp}.mjs`; run with `PEER_TEST_EXECUTABLE="$(command -v pi)"`. The characterization tests now run against the pinned 0.99.2 Node CLI by default and support the installed executable override.
 
 1. **Explicit built-ins alongside `--no-extensions`: confirmed.** `getAllTools()` reports `builtin:codemode` and `builtin:tool-search` sources. Ambient extensions remain disabled. A mandatory separately loaded guard runs.
 2. **Nested guard interception: confirmed.** Even registered deferred tools omitted from active declarations reach `tool_call` through codemode, with `parentToolCallId`. The guard blocks both unselected `forbidden` and `subagent_forbidden`; exceptions reach the script.
 3. **Search is discovery, not permission: confirmed.** With broad CLI visibility, `tool_search` says it loaded `forbidden`; the existing guard removes it again. Prefer a filtered registry view plus call-time enforcement, not an activation feedback loop.
 4. **Classifier calls bypass tool hooks: confirmed.** Stock codemode calls the deterministic classifier without another `tool_call`. `createCodemodeExtension({models:false})` removes the namespace; cumulative RPC stats distinguish $0.75 stock from $0.50 with models disabled. Reject classifier grants rather than promise model-level interception.
 5. **MCP connects before tool use: confirmed.** Both global and trusted project fixture processes start under stock MCP. `createMcpExtension({loadConfig:()=>({servers:[],errors:[]})})` starts neither. Source inspection additionally shows extension-registered servers are merged separately; filtering only `loadConfig` is insufficient. Server and credential filtering must precede the built-in client's connection setup. Filter extension registrations too.
-6. **Virtual models: metadata confirmed.** The fixture virtual model has `api: "pi-virtual"`; exact provider/model selection alone cannot fence its routing. Reject virtual selections for now. Provider-extension linkage and missing-extension refusal need dedicated regression tests.
-7. **Settings: project override is insufficient.** The RPC probe reports effective project `cacheWarming: "off"` while source `SettingsManager.getCacheWarmingMode()` reads global settings. Codemode factory options override ambient mode/budget without writes. The public `cache_warming_decision` hook can return `{action:"stop"}`; a timed no-network warming regression remains needed. There is no documented general-purpose CLI per-process settings override. `autoEnableCodemode` belongs to `mcp.json`, not settings.
-8. **Usage: cumulative stats confirmed for classifier and nested tools.** $0.75 and $0.50 respectively, counted once. Cache warming persists a session `usage` entry (source evidence); refresh on entry events as well as messages and turns. Do not reconstruct cumulative costs by summing nested events.
+6. **Virtual models: metadata confirmed.** The fixture virtual model has `api: "pi-virtual"`; exact provider/model selection alone cannot fence its routing. Reject virtual selections for now. Provider-extension linkage and missing-selection refusal are now covered by `child-policy.test.ts`.
+7. **Settings: project override is insufficient.** The RPC probe reports effective project `cacheWarming: "off"` while source `SettingsManager.getCacheWarmingMode()` reads global settings. Codemode factory options override ambient mode/budget without writes. The public `cache_warming_decision` hook can return `{action:"stop"}`; a timed no-network warming regression now verifies suppression against both executable forms. There is no documented general-purpose CLI per-process settings override. `autoEnableCodemode` belongs to `mcp.json`, not settings.
+8. **Usage: cumulative stats confirmed for classifier and nested tools.** $0.75 and $0.50 respectively, counted once. Cache warming persists a session `usage` entry (source and timed-runtime evidence); refresh on entry events as well as messages and turns. Do not reconstruct cumulative costs by summing nested events.
 9. **RPC dispositions: confirmed.** The probe returns `{disposition:"started"}` for ordinary prompt, `{disposition:"handled"}` for input consumed by an extension (prompt, steer, follow_up), and `{disposition:"queued"}` for steer/follow_up. Acknowledgement is not task completion; handled input must not leave a phantom running assignment or successful workflow artifact.
 
 Baseline against installed executable: package tests 213 passed, 1 skipped, 0 failed. This is compatibility evidence for existing behavior, not proof of the new policy design.
@@ -64,6 +64,23 @@ Version 0.3.0 pins Pi 0.99.2 development dependencies. The schema above is imple
 
 The wrapper must retain Pi's non-enumerable tool-context capabilities: copying context with object spread dropped `executeTool`. A proxy preserves the actual context and only filters `tools`. MCP names are authorized from the native adapter's original `server/tool` label, never reconstructed from sanitized names; this is a pinned-runtime compatibility assumption. Factories are the only executors/clients; no transport or OAuth implementation was added.
 
-Local npm checks passed for both locked dependencies and an all-packages Pi 0.99.2 override. The latter required a test-only self-reload context typing update for Pi's richer tool context. The legacy MCP package remains unchanged. Separate pnpm/final installed-executable verification is recorded in the final evidence section after running it.
+Local npm checks passed for both locked dependencies and an all-packages Pi 0.99.2 override. The latter required a test-only self-reload context typing update for Pi's richer tool context. The legacy MCP package remains unchanged. The full verification matrix below also passed.
 
 Residual limits: trusted code can invoke providers, change models or perform side effects outside tool hooks; startup identity checks are not a general model-call firewall. No OS isolation or exact billing guarantees. MCP requires explicit ambient credential inheritance consent; credential-free store isolation, extension-registered server grants and resources/prompts remain unsupported. Only selected config entries are loaded; network availability still belongs to Pi's client and is not guaranteed by a grant.
+
+## Final local evidence
+
+Host: Node 26.9.0, npm 11.19.1, pnpm 12.6.0, installed `pi --version` 0.99.2. CI retains Node 22.19.0; that Node version was not the local test host.
+
+| Layout/runtime | Gate | Result |
+| --- | --- | --- |
+| npm, clean frozen locked install | `./scripts/check.sh` | Passed |
+| npm, all-package Pi 0.99.2 override via `scripts/ci-install.sh` | `./scripts/check.sh` | Passed |
+| pnpm, separate clean worktree / frozen locked install | `PACKAGE_MANAGER=pnpm ./scripts/check.sh` | Passed |
+| pnpm, all-package Pi 0.99.2 override | `PACKAGE_MANAGER=pnpm ./scripts/check.sh` | Passed |
+| Subagents, pinned Node CLI | `npm run check`, `npm test` | Passed |
+| Subagents, installed executable | `PEER_TEST_EXECUTABLE="$(command -v pi)" npm test` | 230 passed, 1 intentional skip, 0 failures |
+
+The npm skip is the pnpm-only production-workspace packaging regression. It ran in both pnpm root gates (231 subagent tests passed, no skips). Root gates additionally check all other packages, generated skills, config, packaging/install fixtures and legacy MCP formatting. Lockfile inspection confirms every npm lock entry changed belongs to `packages/subagents`; other packages' committed dependency pins remain unchanged. No tests used paid providers or real MCP credentials. User policy was not edited.
+
+Logical implementation commits before final evidence: `c6937d4` (runtime/locks/CI), `de1e5e0` (child enforcement and native regressions), `cf1f32a` (contract/migration docs), following the design/probe/disposition commits recorded in branch history.
