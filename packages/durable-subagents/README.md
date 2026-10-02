@@ -10,9 +10,10 @@ This is a Pi-loadable package with `extensions/durable-subagents/index.ts` decla
 
 Verified host versions: **Pi 0.99.2 and 1.0.0**, Node **>=22.19.0**. The entry point accepts Pi 0.99.2 and 1.0.x and rejects other versions explicitly. The declared peer is `*` because Pi provides the extension API; the entry point enforces the tested version boundary. Global Pi 0.85.1 is unsupported. Use a supported local/isolated Pi executable rather than changing global settings.
 
-From the repository root:
+From the repository root, install the locked dependencies first (also after pulling a dependency change):
 
 ```sh
+npm ci --ignore-scripts
 npm run build --workspace @daniel-ballance/durable-subagents
 npm pack ./packages/durable-subagents --pack-destination /tmp
 ```
@@ -25,7 +26,7 @@ For an isolated installation, run `npm install /tmp/daniel-ballance-durable-suba
 
 Launch the supported Pi executable with `PI_CODING_AGENT_DIR=/absolute/path/to/isolated/agent pi --offline --no-builtin-tools`. This is the packed install/settings route exercised by the real Pi integration tests on both hosts. `--no-tools` disables extension tools too. `--offline` prevents catalog/telemetry network work; provider inference still uses the configured provider when you assign a child work. The automated fixtures register a finite scripted provider and never use real auth.
 
-For normal use, `pi install /absolute/path/to/packages/durable-subagents` followed by `/reload` uses the same manifest-discovery route. The tests exercise the real `pi install` command against the packed local installation on both supported hosts. The repository's root collection continues to load its existing extensions; this new package is an explicit opt-in local package. It can coexist with `subagents` because its public tools and command have distinct names. This task did not install it in personal settings.
+For normal use, `pi install /absolute/path/to/packages/durable-subagents` followed by `/reload` uses the same manifest-discovery route. The tests exercise the real `pi install` command against the packed local installation on both supported hosts. The repository's root collection continues to load its existing extensions; this new package is an explicit opt-in local package. It can coexist with `subagents` because its public tools and command have distinct names. A local-directory `pi install` registers the resource path; it does not install that directory's npm dependencies. `git pull` and the `pie` alias's `pi update --all` are not substitutes for `npm ci --ignore-scripts` in this repository. A missing `@durable-subagents/typebox` import means the native dependencies are absent, not that the supported Pi version must be upgraded. Restart Pi after installing missing dependencies. This task did not install it in personal settings.
 
 Create an explicit policy at the isolated agent directory's `durable-subagents.json`, or at `.pi/durable-subagents.json` in a project already trusted by Pi:
 

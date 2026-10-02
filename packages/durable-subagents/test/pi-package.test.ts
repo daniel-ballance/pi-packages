@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, cp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -61,3 +61,17 @@ test(`installed production tarball discovers tools and delivers native child res
 });
 
 }
+
+
+test('source checkout without runtime dependencies reports the required installation step', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'durable-missing-deps-'));
+  try {
+    const source = join(root, 'source');
+    await cp(packageRoot, source, { recursive: true, filter: path => !path.split('/').includes('node_modules') });
+    const loader = new DefaultResourceLoader({ cwd: root, agentDir: join(root, 'agent'), settingsManager: SettingsManager.inMemory({ packages: [source] }) });
+    await loader.reload();
+    assert.equal(loader.getExtensions().errors.length, 1);
+    assert.match(loader.getExtensions().errors[0].error, /runtime dependencies are missing/);
+    assert.match(loader.getExtensions().errors[0].error, /npm ci --ignore-scripts/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
