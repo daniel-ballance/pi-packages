@@ -83,6 +83,8 @@ export function registerDurableSubagents(pi, agentDirectory) {
                 if (receipts.length)
                     await opened.acknowledgeReports(Math.max(...receipts));
                 queuedThrough = (await opened.state()).readThrough;
+                if (generation !== epoch)
+                    throw new Error('Session changed during Durable history reconciliation');
                 // Recovery policy vetoes and history reconciliation must succeed before publication.
                 opened.harness.resume();
                 host = opened;

@@ -70,6 +70,7 @@ export function registerDurableSubagents(pi: ExtensionAPI, agentDirectory: () =>
         const receipts = ctx.sessionManager.getEntries().flatMap(entry => entry.type === 'custom_message' && entry.customType === NOTICE ? [receipt(entry.details)] : []).filter((n): n is number => n !== undefined);
         if (receipts.length) await opened.acknowledgeReports(Math.max(...receipts));
         queuedThrough = (await opened.state()).readThrough;
+        if (generation !== epoch) throw new Error('Session changed during Durable history reconciliation');
         // Recovery policy vetoes and history reconciliation must succeed before publication.
         opened.harness.resume();
         host = opened;

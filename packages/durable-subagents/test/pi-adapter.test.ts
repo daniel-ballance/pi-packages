@@ -177,3 +177,21 @@ test('readonly child rejects traversal/outside symlinks and never follows a swap
     })()]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('shutdown during awaited history reconciliation cannot publish the old session host', async () => {
+  const a = await adapter();
+  let shutdown: Promise<void> | undefined, first = true;
+  try {
+    a.ctx.sessionManager.getEntries = () => {
+      if (first) { first = false; shutdown = a.stop(); }
+      return [];
+    };
+    await a.start(); await shutdown;
+    assert.ok(!(await readdir(join(a.agent, 'durable-subagents'))).some(f => f.endsWith('.lock')), 'old opening is closed instead of published');
+    a.ctx.sessionManager.getSessionId = () => 'next-parent';
+    await a.start(); await a.spawn();
+    assert.equal((await a.run('list')).details.agents.length, 1);
+    await a.stop();
+    assert.ok(!(await readdir(join(a.agent, 'durable-subagents'))).some(f => f.endsWith('.lock')));
+  } finally { await a.cleanup(); }
+});
