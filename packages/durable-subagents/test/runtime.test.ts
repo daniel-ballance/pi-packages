@@ -211,7 +211,7 @@ test('SQLite database and sidecars are private even in an existing shared-readab
 });
 
 test('native parent tools are usable but human supervision and management never leak to children', { timeout: 10000 }, async () => {
-  const { fauxAssistantMessage, fauxToolCall } = await import('@earendil-works/pi-ai');
+  const { fauxAssistantMessage, fauxToolCall } = await import('@durable-subagents/pi-ai');
   const f = await setup(); const host = f.host;
   try {
     await host.root.configure({ model: { provider: 'faux', modelId: 'faux-1' }, thinkingLevel: 'off' }, C);

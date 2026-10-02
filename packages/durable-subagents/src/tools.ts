@@ -1,4 +1,4 @@
-import { Type } from '@earendil-works/pi-ai';
+import { Type } from '@durable-subagents/pi-ai';
 import { defineTool, type ToolRegistration } from '@earendil-works/pi-durable';
 import type { DurableSubagents } from './runtime.js';
 import type { DurableModelSelection } from './policy.js';

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Type, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
+import { Type, fauxAssistantMessage, fauxToolCall } from '@durable-subagents/pi-ai';
 import { defineTool } from '@earendil-works/pi-durable';
 import { setup, answer } from './helpers.js';
 

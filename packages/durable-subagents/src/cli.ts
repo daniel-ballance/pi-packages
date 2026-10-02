@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createModels, fauxProvider, fauxAssistantMessage } from '@earendil-works/pi-ai';
+import { createModels, fauxProvider, fauxAssistantMessage } from '@durable-subagents/pi-ai';
 import { openSqliteSubagents } from './sqlite.js';
 
 const command = process.argv[2] ?? '--help';

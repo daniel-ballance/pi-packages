@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { Type, createModels, fauxProvider, fauxAssistantMessage } from '@earendil-works/pi-ai';
+import { Type, createModels, fauxProvider, fauxAssistantMessage } from '@durable-subagents/pi-ai';
 import { defineTool, type TaskId } from '@earendil-works/pi-durable';
 import { openSqliteSubagents } from '../src/sqlite.js';
 import type { DeliveryResult } from '../src/runtime.js';

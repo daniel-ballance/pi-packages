@@ -1,10 +1,62 @@
 # durable-subagents
 
-Experimental standalone TypeScript library and host for persistent named collaborators on **Pi Durable 1.0.0**. Children execute as native Durable conversations and tasks, not `pi --mode rpc` subprocesses. The original [`subagents`](../subagents/README.md) package is unchanged.
+Experimental Pi extension and native host for persistent named collaborators on **Pi Durable 1.0.0**. Children execute as native Durable conversations and tasks, not `pi --mode rpc` subprocesses. The original [`subagents`](../subagents/README.md) package is unchanged.
 
 The workspace package is `@daniel-ballance/durable-subagents` at `packages/durable-subagents`. Persisted workflow task and document identifiers keep their pre-rename namespace so existing prototype SQLite databases remain compatible.
 
-This is a separate, deliberately smaller implementation. It is **not a stable Pi extension**: `pi install` and `/reload` do not expose this host, and existing Pi extensions, `subagents.json`, sessions, credentials, workflow definitions, and TUI features are not imported. The package is private and exports TypeScript source; the workspace uses `tsx` to run it.
+This is a Pi-loadable package with `extensions/durable-subagents/index.ts` declared in `pi.extensions`, compiled native runtime code in `dist`, and ordinary resource directories. It remains a separate, smaller implementation: existing `subagents.json`, sessions, workflows and TUI inspectors are not imported. The package stays private; no npm publication is required for local installation.
+
+## Install and use in Pi
+
+Verified host versions: **Pi 0.99.2 and 1.0.0**, Node **>=22.19.0**. The entry point accepts Pi 0.99.2 and 1.0.x and rejects other versions explicitly. The declared peer is `*` because Pi provides the extension API; the entry point enforces the tested version boundary. Global Pi 0.85.1 is unsupported. Use a supported local/isolated Pi executable rather than changing global settings.
+
+From the repository root:
+
+```sh
+npm run build --workspace @daniel-ballance/durable-subagents
+npm pack ./packages/durable-subagents --pack-destination /tmp
+```
+
+For an isolated installation, run `npm install /tmp/daniel-ballance-durable-subagents-0.1.0.tgz --omit=dev --omit=peer --ignore-scripts` in a disposable directory, and set that directory's isolated agent `settings.json` to:
+
+```json
+{"packages":["/absolute/path/to/disposable/node_modules/@daniel-ballance/durable-subagents"]}
+```
+
+Launch the supported Pi executable with `PI_CODING_AGENT_DIR=/absolute/path/to/isolated/agent pi --offline --no-builtin-tools`. This is the packed install/settings route exercised by the real Pi integration tests on both hosts. `--no-tools` disables extension tools too. `--offline` prevents catalog/telemetry network work; provider inference still uses the configured provider when you assign a child work. The automated fixtures register a finite scripted provider and never use real auth.
+
+For normal use, `pi install /absolute/path/to/packages/durable-subagents` followed by `/reload` uses the same manifest-discovery route. The tests exercise the real `pi install` command against the packed local installation on both supported hosts. The repository's root collection continues to load its existing extensions; this new package is an explicit opt-in local package. It can coexist with `subagents` because its public tools and command have distinct names. This task did not install it in personal settings.
+
+Create an explicit policy at the isolated agent directory's `durable-subagents.json`, or at `.pi/durable-subagents.json` in a project already trusted by Pi:
+
+```json
+{
+  "allowedModels": ["your-provider/exact-model:off"],
+  "allowedTools": ["read", "peer_send"],
+  "allowedRoots": ["."],
+  "maxAgents": 4,
+  "maxActiveAssignments": 8,
+  "maxPeerMessages": 3
+}
+```
+
+Replace the model with an exact configured parent registry selection. Relative roots resolve against Pi's startup cwd. Project policy takes precedence and is rejected when project trust is absent. Missing/empty policy grants nothing; malformed policy never falls back to broader grants. On recovery, incompatible stored children acquire human holds before native scheduling resumes.
+
+Ask Pi to inspect `durable_subagent_catalog`, create an idle child with `durable_subagent_spawn`, then assign with `durable_subagent_send`. Specify exact `name`, `cwd`, `{provider, model, thinking}`, selected `tools` and a stable logical `operationId`. Send returns durable admission immediately; inference proceeds in native background tasks. Results automatically enter parent history as `durable-subagents-report` and trigger a follow-up parent turn. `durable_subagent_list` inspects status and `durable_subagent_read` consumes a bounded report page. `connect`, `disconnect` and `renew` suffix tools manage explicit peer budgets. No unselected tools or parent extensions/MCP servers are inherited.
+
+Only the human command `/durable-subagents halt NAME [reason]` can set a human hold, and `/durable-subagents release NAME` can clear a confirmed hold. Release starts no work. `/durable-subagents status` shows current controls. Holds block child admission, peer participation, tool execution and recovery; they are cooperative cancellation, not a process kill or rollback.
+
+The adapter supplies only `read` (regular UTF-8 file, at most 64000 bytes, within the child's canonical cwd) and `peer_send` (explicit linked/budgeted recipients). No shell, writes, arbitrary stable extension tools or nested management are granted. Directory checks are composition controls, not a filesystem sandbox; use trusted working directories and filesystem owners.
+
+State lives at `<agentDir>/durable-subagents/<sha256(parentSessionId)>.sqlite`. Quit/reload/session replacement suspends and closes the owned host; reopening the same Pi session retains child identity and native work. A new/forked session gets a distinct database and no copied team. Late results/receipts from the old parent are fenced. Abrupt process death leaves a fail-closed `.lock` directory: verify that the owner is gone before manual lock removal; there is no automatic stale-lock takeover.
+
+The notification pump reads the native report document, not a second work queue. Enqueue never acknowledges. Observation in Pi `message_end` acknowledges the contiguous page, and persisted parent-history receipts repair a crash/reload between observation and acknowledgment. A queued page can be repeated after abrupt restart before history records it; report sequence IDs expose that boundary. Manual read acknowledgment and notification delivery may overlap, so consumers should use sequence IDs for deduplication.
+
+Models stream through the supported parent `ctx.modelRegistry.streamSimple` API, preserving Pi's request-time auth and provider configuration. The adapter does not read/copy tokens, auth files or credentials and does not log in. Deferred provider responses are rejected; retries and compaction remain disabled by the host. Tested offline streaming is not evidence for every live provider or task quality.
+
+## Build boundary
+
+Pi aliases the host AI API while loading extensions. The small TypeScript entry point loads `native-loader.cjs`, whose native ESM import opens the compiled adapter without those aliases. The pinned native AI and TypeBox dependencies use npm aliases (`@durable-subagents/pi-ai` and `@durable-subagents/typebox`); stable Pi remains a host peer. Compiled `dist` files are tracked and packed so production Git/tarball installs with lifecycle scripts disabled are loadable. After changing runtime source, run `npm run build --workspace @daniel-ballance/durable-subagents` and commit the generated output.
 
 ## Requirements and local checks
 
@@ -33,7 +85,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createModels, fauxProvider, fauxAssistantMessage,
-} from '@earendil-works/pi-ai';
+} from '@durable-subagents/pi-ai';
 import { openSqliteSubagents } from '@daniel-ballance/durable-subagents';
 
 const directory = await mkdtemp(join(tmpdir(), 'durable-subagents-'));
@@ -75,7 +127,7 @@ try {
 
 To reopen, keep the database and use `openSqliteSubagents` again with compatible task code and the explicit current provider/tool/policy configuration. The host revalidates stored children before permitting recovery. Automatic compaction and provider retries are disabled in this first host; interrupted native execution can still recover. Long-context and production retry settings remain a future host integration step. `close()` suspends work; it does not record a human halt.
 
-A real provider is a separate host integration step. Supply a deliberately configured `Models` registry and any credentials through the provider's own supported setup. This package does not discover providers, read Pi authentication files, log in, or make that setup on the user's behalf.
+The Pi extension delegates configured provider requests through Pi's own registry. Standalone embeddings still supply an explicit `Models` registry through the provider's supported setup. Neither mode copies Pi authentication files or performs login.
 
 ## Host API
 
@@ -105,7 +157,7 @@ The `harness`, `root`, and `workflows` properties exist for **trusted host integ
 
 - Names are unique within the session: 1–64 letters/digits/`_`/`-`, starting with a letter; reserved object-property names are rejected
 - Use a stable logical `operationId` for spawn, send, peer sends, renewal, and halt. Reuse it only for the same operation and payload. Reuse with changed content is rejected; use a new ID for intentionally new work
-- Ordinary operation IDs use 1–160 simple identifier characters. Peer IDs are internally namespaced, so keep the supplied peer ID short enough for the resulting ID to fit
+- Ordinary operation IDs use 1–160 simple identifier characters. Peer IDs retain the full 160-character public budget and are compactly namespaced internally
 - A send receipt means durable admission, not completion or human review. `wait` settles the particular delivery; `list` reporting `idle` does not prove an assignment succeeded
 - `followUp` queues behind busy work; `steer` enters at a native turn/tool-round boundary, not halfway through arbitrary tool execution
 - Repeated sends reuse the same conversation and its transcript. Spawn does not copy the parent's transcript

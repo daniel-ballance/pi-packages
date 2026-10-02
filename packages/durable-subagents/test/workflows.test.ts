@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { BACKGROUND_CONTEXT as C, awaitWithContext } from '@earendil-works/chord/context';
-import { createModels } from '@earendil-works/pi-ai/models';
+import { createModels } from '@durable-subagents/pi-ai/models';
 import { createRegistry, defineDoc, defineExtension, defineTask, Harness, type Conversation, type TaskId } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { createWorkflowTask, parseWorkflow, type WorkflowDefinition, type WorkflowDeliveryResult, type WorkflowSendRequest } from '../src/workflows.js';

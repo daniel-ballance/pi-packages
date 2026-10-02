@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createModels, fauxProvider, fauxAssistantMessage, type FauxResponseStep } from '@earendil-works/pi-ai';
+import { createModels, fauxProvider, fauxAssistantMessage, type FauxResponseStep } from '@durable-subagents/pi-ai';
 import { openSqliteSubagents } from '../src/sqlite.js';
 import type { HostOptions } from '../src/runtime.js';
 import type { DurablePolicy } from '../src/policy.js';

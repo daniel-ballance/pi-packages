@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Context } from '@earendil-works/chord';
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
-import { getSupportedThinkingLevels, type Models } from '@earendil-works/pi-ai/models';
+import { getSupportedThinkingLevels, type Models } from '@durable-subagents/pi-ai/models';
 import {
   AssistantEntry, Harness, LiveDoc, UsageDoc, configure, createRegistry, defineExtension, defineTask,
   type Conversation, type ConversationId, type Cursor, type Extension, type HarnessOptions,
@@ -382,6 +382,15 @@ export class DurableSubagents {
       const reports = state.reports.filter(r => r.sequence > after).slice(0, limit).map(r => ({ ...r }));
       if (options.acknowledge !== false && options.after === undefined && reports.length) state.readThrough = reports.at(-1)!.sequence;
       return { reports, gap: state.reports.length > 0 && after < state.reports[0]!.sequence - 1, next: reports.at(-1)?.sequence ?? after };
+    }, context);
+  }
+  /** Stable parent history has observed this contiguous report prefix. Never acknowledge enqueue alone. */
+  async acknowledgeReports(through: number, context: Context = C) {
+    if (!Number.isSafeInteger(through) || through < 0) throw new Error('Invalid report receipt');
+    await this.root.commit(async tx => {
+      const state = await tx.doc(TeamDoc, this.root.id);
+      if (through >= state.nextSequence) throw new Error('Report receipt exceeds committed reports');
+      state.readThrough = Math.max(state.readThrough, through);
     }, context);
   }
   async close(context: Context = C) { await this.harness.close(context); }

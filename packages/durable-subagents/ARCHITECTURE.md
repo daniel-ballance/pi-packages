@@ -1,6 +1,6 @@
 # Native Durable architecture
 
-This package is a new implementation on the pinned **Pi Durable / pi-ai / Chord 1.0.0** stack. It is a standalone host, not a wrapper around the existing RPC children and not a stable Pi extension. [`packages/subagents`](../subagents/README.md) remains intact. The native package is experimental and intentionally lacks parts of the original product surface.
+This package is a new implementation on the pinned **Pi Durable / pi-ai / Chord 1.0.0** stack. Its host is exposed through a stable Pi extension adapter, without wrapping the existing RPC children. [`packages/subagents`](../subagents/README.md) remains intact. The native package is experimental and intentionally lacks parts of the original product surface.
 
 ## Runtime ownership
 
@@ -139,3 +139,13 @@ The implementation is based on Pi Durable release commit [`a13d35a`](https://git
 - [Native tool replay implementation](https://github.com/earendil-works/pi/blob/a13d35a742c6ef8462812a28fbe1d8c8b7431c32/packages/durable/src/harness/tool.ts)
 - [Node SQLite adapter](https://github.com/earendil-works/pi/blob/a13d35a742c6ef8462812a28fbe1d8c8b7431c32/packages/durable/src/storage/sqlite/node.ts)
 - [Experimental Durable TUI boundary](https://github.com/earendil-works/pi/blob/a13d35a742c6ef8462812a28fbe1d8c8b7431c32/packages/coding-agent/src/experimental/durable/README.md)
+
+## Stable Pi package adapter
+
+The declared extension entry loads a tracked compiled native ESM adapter across a tiny CJS native-import boundary. This keeps Pi loader aliases from replacing pinned native AI modules. Pi 0.99.2 and 1.0.0 are exercised from an installed production tarball; other versions outside the entry point's narrow range are rejected. Stable coding-agent is a host peer, not bundled runtime code.
+
+The adapter keys owned SQLite state by parent Pi session ID, closes on session shutdown/replacement/reload, reconciles immutable parent message receipts, and resumes only after native recovery policy vetoes. A session epoch fences in-flight opens and notification reads. A distinct parent session/fork gets a distinct team.
+
+The bridge forwards DTO events into native EventStream instances and delegates streaming to the parent model registry. No credentials are transferred. A 250ms transient notification pump reads native committed reports, queues one bounded page, and acknowledges only observed parent history; it is not a work scheduler or durable queue. Parent result messages trigger follow-up turns. Human hold release is absent from model tools.
+
+The extension grants no ambient tool inheritance: only bounded readonly files and explicit peer messages are available. Filesystem composition checks do not establish a sandbox. There is no full legacy TUI/DAG integration, write/shell tooling, hard kill, old-session migration, or blanket live-provider compatibility claim.

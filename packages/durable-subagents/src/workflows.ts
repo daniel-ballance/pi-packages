@@ -5,8 +5,8 @@ import {
   defineDoc, defineTask, type Conversation, type DocumentObserver, type Harness,
   type TaskId, type TaskOutcome, type TaskRecord, type Tx,
 } from "@earendil-works/pi-durable";
-import { Type, type Static } from "typebox";
-import { Check } from "typebox/value";
+import { Type, type Static } from "@durable-subagents/typebox";
+import { Check } from "@durable-subagents/typebox/value";
 
 const identifier = Type.String({ pattern: "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$" });
 const base = { id: identifier, dependsOn: Type.Optional(Type.Array(identifier, { uniqueItems: true })) };

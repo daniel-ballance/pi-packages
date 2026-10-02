@@ -1,6 +1,6 @@
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Type, createModels, fauxProvider, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
+import { Type, createModels, fauxProvider, fauxAssistantMessage, fauxToolCall } from '@durable-subagents/pi-ai';
 import { defineTool } from '@earendil-works/pi-durable';
 import { openSqliteSubagents } from '../../src/sqlite.js';
 const directory = process.argv[2]!;

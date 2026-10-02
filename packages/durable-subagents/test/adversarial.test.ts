@@ -128,7 +128,7 @@ test('cancelled observer leaves background delivery owned and able to complete',
 });
 
 test('native faux model peer tool routes identity and produces both assignment reports', { timeout: 10000 }, async () => {
-  const { fauxAssistantMessage, fauxToolCall } = await import('@earendil-works/pi-ai');
+  const { fauxAssistantMessage, fauxToolCall } = await import('@durable-subagents/pi-ai');
   const f = await setup({}, { allowedTools: ['peer_send'] });
   try {
     await f.spawn('alice', ['peer_send']); await f.spawn('bob', ['peer_send']); await f.host.connect('alice', 'bob', 1);
@@ -200,7 +200,7 @@ test('held sender, held recipient and disconnected peer reject new sends without
 });
 
 test('a selected tool cannot dynamically expand child tools', { timeout: 10000 }, async () => {
-  const { Type, fauxAssistantMessage, fauxToolCall } = await import('@earendil-works/pi-ai');
+  const { Type, fauxAssistantMessage, fauxToolCall } = await import('@durable-subagents/pi-ai');
   const { defineTool } = await import('@earendil-works/pi-durable');
   let effects = 0;
   const expand = defineTool({ name: 'expand', description: 'Synthetic expansion attempt', parameters: Type.Object({}), replay: 'safe',
