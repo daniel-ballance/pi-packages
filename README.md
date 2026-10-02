@@ -4,6 +4,7 @@ A collection of Pi packages that extend the harness with capabilities it does no
 ship. Each package lives under [`packages/`](packages/).
 
 - [subagents](packages/subagents/README.md) — persistent RPC child agents with composable `subagents.json` allowlists, peer messaging, bounded workflows, supervision, and saved-session recovery.
+- [subagents-durable](packages/subagents-durable/README.md) — experimental standalone native Pi Durable host with persistent collaborators, scoped peer messaging, human holds, and a conservative task DAG. It is not a stable Pi extension; its resource arrays are empty and the original subagents package remains unchanged.
 - [self-reload](packages/self-reload/README.md) — agent-requested runtime reload with automatic continuation, for rapid extension development.
 - [web-search](packages/web-search/README.md) — zero-configuration DuckDuckGo web search with titles, URLs, and snippets; no API key required.
 - [mcp-client](packages/mcp-client/README.md) — native Pi integration for legacy MCP and the 2026-07-28 protocol, including tools, resources, prompts, completions, subscriptions, and opt-in elicitation/sampling.
@@ -64,7 +65,8 @@ Choose one manager per checkout. Before switching, remove only the root and
 `packages/*/node_modules` directories, then reinstall with the chosen manager;
 do not delete either committed lockfile. pnpm disables automatic peer installs
 and dependency lifecycle scripts. The workspace's release-age exceptions name
-only the eight explicitly requested Pi 0.99.2 packages; all other versions and
+only the eight explicitly requested Pi 0.99.2 packages and four pinned native
+Durable 1.0.0 packages; all other versions and
 packages retain pnpm's normal quarantine. Cold-cache CI verifies that policy.
 Script execution does not implicitly reinstall
 dependencies, so CI's runtime overrides remain intact.
@@ -163,10 +165,12 @@ CI runs the complete root check with both npm and pnpm 12.6.0 on Node.js
 22.19.0 against two explicit dependency layouts:
 
 - **locked** — committed package lockfiles: subagents pins Pi **0.99.2**;
-  the other packages retain their existing development pins.
-- **Pi 0.99.2** — Pi dependencies across all packages are overridden in an
+  the other stable extension packages retain their existing development pins.
+  The standalone `subagents-durable` package independently pins Durable 1.0.0.
+- **Pi 0.99.2** — Stable Pi dependencies below 1.0 are overridden in an
   isolated CI job after baseline installation; committed manifests, workspace
-  configuration, and lockfiles remain unchanged.
+  configuration, and lockfiles remain unchanged. The native Durable 1.0 stack is
+  kept separate from these stable Pi overrides.
 
 The collection now requires Pi 0.99.2 for subagents. The matrix is not evidence
 for every intervening Pi release or older Node.js runtime. Tests use local deterministic providers and fixtures;

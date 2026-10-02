@@ -46,6 +46,7 @@ if [[ "$PI_VERSION" == "0.99.2" && "$PACKAGE_MANAGER" == pnpm ]]; then
   node --input-type=module - "$ROOT" "$PI_VERSION" <<'NODE'
 import { appendFileSync, readFileSync, readdirSync } from "node:fs";
 const [root, version] = process.argv.slice(2);
+// Stable Pi matrix overrides must not downgrade the separate pinned Durable 1.x stack.
 const names = new Set();
 for (const dir of readdirSync(`${root}/packages`)) {
   const manifest = JSON.parse(readFileSync(`${root}/packages/${dir}/package.json`, "utf8"));
@@ -54,7 +55,7 @@ for (const dir of readdirSync(`${root}/packages`)) {
   }
 }
 appendFileSync(`${root}/pnpm-workspace.yaml`, "\noverrides:\n" +
-  [...names].sort().map(name => `  '${name}': '${version}'\n`).join(""));
+  [...names].sort().map(name => `  '${name}@<1.0.0': '${version}'\n`).join(""));
 NODE
   pnpm --dir "$ROOT" install --no-frozen-lockfile --lockfile=false --ignore-scripts
 elif [[ "$PI_VERSION" == "0.99.2" ]]; then

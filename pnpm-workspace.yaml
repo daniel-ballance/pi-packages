@@ -22,6 +22,11 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-mcp@0.99.2'
   - '@earendil-works/pi-telemetry@0.99.2'
   - '@earendil-works/pi-tui@0.99.2'
+  # Separate native Durable stack, pinned to the audited experimental release.
+  - '@earendil-works/chord@1.0.0'
+  - '@earendil-works/pi-ai@1.0.0'
+  - '@earendil-works/pi-durable@1.0.0'
+  - '@earendil-works/pi-telemetry@1.0.0'
 
 # Checks must not reinstall dependencies (including CI's temporary Pi override).
 verifyDepsBeforeRun: false

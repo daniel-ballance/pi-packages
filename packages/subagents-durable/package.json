@@ -1,0 +1,40 @@
+{
+  "name": "@daniel-ballance/pi-subagents-durable",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Experimental native Pi Durable subagents host; not a stable Pi extension",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "ARCHITECTURE.md"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "smoke": "node --import tsx src/cli.ts smoke"
+  },
+  "dependencies": {
+    "@earendil-works/pi-durable": "1.0.0",
+    "@earendil-works/chord": "1.0.0",
+    "@earendil-works/pi-ai": "1.0.0",
+    "typebox": "1.3.27"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "pi": {
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": []
+  }
+}
