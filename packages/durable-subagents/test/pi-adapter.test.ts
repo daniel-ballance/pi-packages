@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
+import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
+import { childRead } from '../src/pi/read-tool.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readdir, rm, symlink, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createModels, fauxProvider, fauxAssistantMessage } from '@durable-subagents/pi-ai';
@@ -117,4 +120,60 @@ test('session replacement fences late results and old receipts; reopening is ide
     assert.equal((await a.run('list')).details.agents.length, 1);
     assert.equal(a.faux.state.callCount, calls, 'same logical request does not replay inference');
   } finally { await a.cleanup(); }
+});
+
+test('unobserved asynchronous notification enqueue is recoverable without erasing reports', async () => {
+  const a = await adapter();
+  try {
+    await a.start(); await a.spawn();
+    a.faux.setResponses([fauxAssistantMessage('first result'), fauxAssistantMessage('second result')]);
+    await a.run('send', { name: 'worker', operationId: 'first', message: 'One' });
+    await until(async () => a.sent.length === 1); // Pi accepted a void enqueue, then dropped it asynchronously.
+    await a.run('send', { name: 'worker', operationId: 'second', message: 'Two' });
+    await until(async () => (await a.run('list')).details.unreadReports === 2);
+    assert.equal(a.sent.length, 1);
+    await a.commands.get('durable-subagents').handler('retry-reports', a.ctx);
+    assert.equal(a.sent.length, 2);
+    assert.match(a.sent[1].message.content, /first result/); assert.match(a.sent[1].message.content, /second result/);
+    await a.handlers.get('message_end')({ message: a.sent[1].message });
+    assert.equal((await a.run('list')).details.unreadReports, 0);
+  } finally { await a.cleanup(); }
+});
+
+test('out-of-range persisted receipt fails startup cleanly; fixing history permits reopen', async () => {
+  const a = await adapter();
+  try {
+    const session = createHash('sha256').update('parent-one').digest('hex');
+    a.entries.push({ type: 'custom_message', customType: 'durable-subagents-report', details: { session, through: 9000 } });
+    await a.start();
+    assert.ok(!(await readdir(join(a.agent, 'durable-subagents'))).some(f => f.endsWith('.lock')));
+    await assert.rejects(a.spawn(), /exceeds committed reports/);
+    assert.ok(!(await readdir(join(a.agent, 'durable-subagents'))).some(f => f.endsWith('.lock')));
+    a.entries.length = 0; await a.start(); await a.spawn(); assert.equal((await a.run('list')).details.agents.length, 1);
+  } finally { await a.cleanup(); }
+});
+
+test('readonly child rejects traversal/outside symlinks and never follows a swapped final leaf', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'durable-read-race-'));
+  const cwd = join(root, 'child'); await mkdir(cwd);
+  const outside = join(root, 'outside.txt'); await writeFile(outside, 'OUTSIDE PRIVATE');
+  const target = join(cwd, 'target.txt'); await writeFile(target, 'safe content');
+  const tool = childRead(() => ({ assertToolAllowed: async () => ({ cwd }) }) as any);
+  const read = (path: string) => tool.execute({ path }, { conversationId: 1 } as any, BACKGROUND_CONTEXT);
+  try {
+    await assert.rejects(read('../outside.txt'), /outside child cwd/);
+    await symlink(outside, join(cwd, 'escape')); await assert.rejects(read('escape'), /outside child cwd/);
+    const swap = async () => {
+      for (let i = 0; i < 60; i++) {
+        const link = join(cwd, 'new-link'); await symlink(outside, link); await rename(link, target);
+        const safe = join(cwd, 'new-file'); await writeFile(safe, 'safe content'); await rename(safe, target);
+      }
+    };
+    await Promise.all([swap(), (async () => {
+      for (let i = 0; i < 60; i++) {
+        try { const result = await read('target.txt'); assert.doesNotMatch(JSON.stringify(result), /OUTSIDE PRIVATE/); }
+        catch (error) { if (error instanceof assert.AssertionError) throw error; }
+      }
+    })()]);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

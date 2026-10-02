@@ -1,4 +1,5 @@
-import { open, realpath } from 'node:fs/promises';
+import { lstat, open, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { Type } from '@durable-subagents/pi-ai';
 import { defineTool } from '@earendil-works/pi-durable';
@@ -12,9 +13,14 @@ export function childRead(get) {
             const part = relative(child.cwd, path);
             if (isAbsolute(part) || part === '..' || part.startsWith(`..${sep}`))
                 throw new Error('Read path is outside child cwd');
-            const file = await open(path, 'r');
+            const before = await lstat(path);
+            if (!before.isFile())
+                throw new Error('Read requires a regular file');
+            const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
             try {
                 const info = await file.stat();
+                if (info.dev !== before.dev || info.ino !== before.ino || await realpath(path) !== path)
+                    throw new Error('Read file changed during admission');
                 if (!info.isFile() || info.size > 64000)
                     throw new Error('Read requires a regular file of at most 64000 bytes');
                 const buffer = Buffer.alloc(64001);

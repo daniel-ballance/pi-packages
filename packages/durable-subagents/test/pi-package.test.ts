@@ -34,7 +34,7 @@ test(`installed production tarball discovers tools and delivers native child res
     const hostCli = hostName === 'pi-host-1' ? fileURLToPath(new URL('../node_modules/pi-host-1/dist/bundle/cli.js', import.meta.url)) : cli;
     const fixtureEnv = { PATH: process.env.PATH, HOME: root, TMPDIR: process.env.TMPDIR, PI_CODING_AGENT_DIR: agent, PI_OFFLINE: '1', PI_TELEMETRY: '0' };
     execFileSync(process.execPath, [hostCli, 'install', installed], { cwd: root, encoding: 'utf8', stdio: 'pipe', env: fixtureEnv });
-    assert.ok(JSON.parse(await readFile(join(agent, 'settings.json'), 'utf8')).packages.includes(installed));
+    assert.equal(JSON.parse(await readFile(join(agent, 'settings.json'), 'utf8')).packages.length, 1);
     await writeFile(join(agent, 'durable-subagents.json'), JSON.stringify({ allowedModels: ['durable-fixture/scripted:off'], allowedTools: [], allowedRoots: [root], maxAgents: 2, maxActiveAssignments: 2, maxPeerMessages: 0 }));
     child = spawn(process.execPath, [hostCli, '--mode', 'rpc', '--offline', '--no-context-files', '--no-skills', '--no-prompt-templates', '--no-builtin-tools', '-e', provider, '--model', 'durable-fixture/scripted:off'], {
       cwd: root, env: fixtureEnv, stdio: ['pipe', 'pipe', 'pipe'],

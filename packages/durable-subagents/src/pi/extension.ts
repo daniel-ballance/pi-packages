@@ -26,6 +26,8 @@ export function registerDurableSubagents(pi: ExtensionAPI, agentDirectory: () =>
   let timer: ReturnType<typeof setInterval> | undefined;
   let polling = false;
   let queuedThrough = 0;
+  let queuedAt = 0;
+  let delayedShown = false;
   let failureShown = false;
   const receipt = (details: unknown): number | undefined => {
     if (!details || typeof details !== 'object') return;
@@ -64,13 +66,15 @@ export function registerDurableSubagents(pi: ExtensionAPI, agentDirectory: () =>
         onReport: () => notify('Durable runtime reported an error; inspect durable_subagent_list and durable_subagent_read.'),
       });
       if (generation !== epoch) { await opened.close(); throw new Error('Session changed while opening Durable host'); }
-      host = opened;
-      const receipts = ctx.sessionManager.getEntries().flatMap(entry => entry.type === 'custom_message' && entry.customType === NOTICE ? [receipt(entry.details)] : []).filter((n): n is number => n !== undefined);
-      if (receipts.length) await host.acknowledgeReports(Math.max(...receipts));
-      queuedThrough = (await host.state()).readThrough;
-      // Recovery policy vetoes were applied by openSqliteSubagents before resume.
-      host.harness.resume();
-      return host;
+      try {
+        const receipts = ctx.sessionManager.getEntries().flatMap(entry => entry.type === 'custom_message' && entry.customType === NOTICE ? [receipt(entry.details)] : []).filter((n): n is number => n !== undefined);
+        if (receipts.length) await opened.acknowledgeReports(Math.max(...receipts));
+        queuedThrough = (await opened.state()).readThrough;
+        // Recovery policy vetoes and history reconciliation must succeed before publication.
+        opened.harness.resume();
+        host = opened;
+        return opened;
+      } catch (error) { await opened.close(); throw error; }
     })();
     try { return await opening; } finally { opening = undefined; }
   };
@@ -80,7 +84,15 @@ export function registerDurableSubagents(pi: ExtensionAPI, agentDirectory: () =>
     const current = host, ctx = context, generation = epoch;
     try {
       const state = await current.state();
-      if (queuedThrough > state.readThrough) return; // One unobserved batch; no duplicate enqueue.
+      if (queuedThrough > state.readThrough) {
+        // Pi's void sendMessage cannot expose asynchronous enqueue errors. Preserve the
+        // unread page and provide an explicit retry rather than silently acknowledging it.
+        if (!delayedShown && Date.now() - queuedAt > 30000) {
+          notify('Durable reports await parent observation. If delivery failed, use /durable-subagents retry-reports; unread results are retained.');
+          delayedShown = true;
+        }
+        return;
+      }
       const page = await current.readReports({ acknowledge: false });
       if (!page.reports.length || generation !== epoch) return;
       const through = page.next;
@@ -89,6 +101,7 @@ export function registerDurableSubagents(pi: ExtensionAPI, agentDirectory: () =>
         display: true, details: { session: key, through },
       }, { deliverAs: 'followUp', triggerTurn: true });
       queuedThrough = through;
+      queuedAt = Date.now(); delayedShown = false;
       if (ctx.hasUI) ctx.ui.setStatus('durable-subagents', `${page.reports.length} durable report(s)`);
     } catch { notify('Durable report delivery failed; unread reports retained. Use durable_subagent_read.'); }
     finally { polling = false; }
@@ -128,14 +141,15 @@ export function registerDurableSubagents(pi: ExtensionAPI, agentDirectory: () =>
   tool('disconnect', 'Disable future peer sends; already admitted work may finish.', object({ a: name, b: name }), async (args, h) => { await h.disconnect(args.a, args.b); return { disconnected: true }; });
   tool('renew', 'Explicitly reset one peer direction using a stable logical operationId.', object({ from: name, to: name, allowance: Type.Integer({ minimum: 0 }), operationId }), async (args, h) => { await h.renew(args.from, args.to, args.allowance, args.operationId); return { renewed: true }; });
   pi.registerCommand('durable-subagents', {
-    description: 'Human controls: status | halt NAME [reason] | release NAME. Release never starts work.',
+    description: 'Human controls: status | halt NAME [reason] | release NAME | retry-reports. Release never starts work.',
     handler: async (args, ctx) => {
       const [action = 'status', target, ...reason] = args.trim().split(/\s+/);
       try {
         const h = await get(ctx);
         if (action === 'halt' && target) await h.halt(target, `human:${randomUUID()}`, reason.join(' ') || 'Human Pi command');
         else if (action === 'release' && target) await h.release(target);
-        else if (action !== 'status') throw new Error('Usage: /durable-subagents status | halt NAME [reason] | release NAME');
+        else if (action === 'retry-reports') { queuedThrough = (await h.state()).readThrough; delayedShown = false; }
+        else if (action !== 'status') throw new Error('Usage: /durable-subagents status | halt NAME [reason] | release NAME | retry-reports');
         if (ctx.hasUI) ctx.ui.notify(JSON.stringify(await h.list()), 'info');
         await poll();
       } catch (error) { if (ctx.hasUI) ctx.ui.notify(String(error), 'error'); else throw error; }
