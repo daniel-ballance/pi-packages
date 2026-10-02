@@ -6,7 +6,7 @@ import { openSqliteSubagents } from '../../src/sqlite.js';
 const directory = process.argv[2]!;
 const model = { provider: 'faux', model: 'faux-1', thinking: 'off' as const };
 const models = createModels(), faux = fauxProvider(); models.setProvider(faux.provider);
-const effect = defineTool({ name: 'effect', description: 'Crash fixture local effect', parameters: Type.Object({}), replay: 'unsafe',
+const effect = defineTool({ name: 'effect', description: 'Crash fixture local effect', parameters: Type.Object({}), replay: process.argv[3] === 'safe' ? 'safe' : 'unsafe',
   execute: async () => {
     appendFileSync(join(directory, 'effects.txt'), 'effect\n', { flush: true });
     // Intentionally bypass every close/cancel handler after effect, before its outcome commit.

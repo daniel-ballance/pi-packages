@@ -243,7 +243,13 @@ export class DurableSubagents {
   async peerSend(caller: ConversationId, input: { recipient: string; message: string; operationId: string }, context: Context = C) {
     const from = await this.assertToolAllowed(caller, 'peer_send', context);
     if (from.name === input.recipient) throw new Error('Self peer links are forbidden');
-    return this.enqueue({ name: input.recipient, message: input.message, operationId: `peer:${from.name}:${input.operationId}`, mode: 'steer', peerFrom: from.name }, context);
+    checkedOperationId(input.operationId);
+    // Public IDs retain their full 160-character budget regardless of sender name.
+    // Reuse receipts written by the original namespace on an existing database.
+    const legacy = `peer:${from.name}:${input.operationId}`;
+    const prior = legacy.length <= 160 && await this.harness.snapshot(OperationDoc, this.root.id, legacy, context);
+    const operationId = prior ? legacy : `peer-v2:${from.name}:${fingerprint(input.operationId)}`;
+    return this.enqueue({ name: input.recipient, message: input.message, operationId, mode: 'steer', peerFrom: from.name }, context);
   }
   async connect(a: string, b: string, limit: number, context: Context = C) {
     if (a === b) throw new Error('Self peer links are forbidden');

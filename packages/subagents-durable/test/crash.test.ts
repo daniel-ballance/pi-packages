@@ -14,7 +14,7 @@ test('abrupt process exit after unsafe effect recovers native intent without rep
   const directory = await mkdtemp(join(tmpdir(), 'native-subagents-crash-'));
   const fixture = fileURLToPath(new URL('./fixtures/crash-worker.ts', import.meta.url));
   try {
-    const child = spawn(process.execPath, ['--import', 'tsx', fixture, directory], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(process.execPath, ['--import', 'tsx', fixture, directory], { stdio: ['ignore', 'ignore', 'pipe'], timeout: 5000, killSignal: 'SIGKILL' });
     let errors = ''; child.stderr.setEncoding('utf8'); child.stderr.on('data', chunk => { errors += chunk; });
     const code = await new Promise<number | null>((resolve, reject) => { child.once('exit', resolve); child.once('error', reject); });
     assert.equal(code, 73, errors);
