@@ -75,6 +75,7 @@ export type WorkflowControlState = {
   approvals: Record<string, boolean>; retries: Record<string, number>;
 };
 /** Application intent only. Native task records remain the execution/outcome source of truth. */
+// Keep pre-rename storage/task identifiers stable for existing SQLite databases.
 export const WorkflowControl = defineDoc<WorkflowControlState>({
   kind: "subagents-durable.workflow-control", version: 1, scope: "task",
   initial: () => ({ held: false, resumeRequired: false, revision: 0, reason: "", approvals: {}, retries: {} }),

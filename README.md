@@ -4,7 +4,7 @@ A collection of Pi packages that extend the harness with capabilities it does no
 ship. Each package lives under [`packages/`](packages/).
 
 - [subagents](packages/subagents/README.md) — persistent RPC child agents with composable `subagents.json` allowlists, peer messaging, bounded workflows, supervision, and saved-session recovery.
-- [subagents-durable](packages/subagents-durable/README.md) — experimental standalone native Pi Durable host with persistent collaborators, scoped peer messaging, human holds, and a conservative task DAG. It is not a stable Pi extension; its resource arrays are empty and the original subagents package remains unchanged.
+- [durable-subagents](packages/durable-subagents/README.md) — experimental standalone native Pi Durable host with persistent collaborators, scoped peer messaging, human holds, and a conservative task DAG. It is not a stable Pi extension; its resource arrays are empty and the original subagents package remains unchanged.
 - [self-reload](packages/self-reload/README.md) — agent-requested runtime reload with automatic continuation, for rapid extension development.
 - [web-search](packages/web-search/README.md) — zero-configuration DuckDuckGo web search with titles, URLs, and snippets; no API key required.
 - [mcp-client](packages/mcp-client/README.md) — native Pi integration for legacy MCP and the 2026-07-28 protocol, including tools, resources, prompts, completions, subscriptions, and opt-in elicitation/sampling.
@@ -166,7 +166,7 @@ CI runs the complete root check with both npm and pnpm 12.6.0 on Node.js
 
 - **locked** — committed package lockfiles: subagents pins Pi **0.99.2**;
   the other stable extension packages retain their existing development pins.
-  The standalone `subagents-durable` package independently pins Durable 1.0.0.
+  The standalone `durable-subagents` package independently pins Durable 1.0.0.
 - **Pi 0.99.2** — Stable Pi dependencies below 1.0 are overridden in an
   isolated CI job after baseline installation; committed manifests, workspace
   configuration, and lockfiles remain unchanged. The native Durable 1.0 stack is

@@ -1,5 +1,5 @@
 {
-  "name": "@daniel-ballance/pi-subagents-durable",
+  "name": "@daniel-ballance/durable-subagents",
   "version": "0.1.0",
   "private": true,
   "description": "Experimental native Pi Durable subagents host; not a stable Pi extension",

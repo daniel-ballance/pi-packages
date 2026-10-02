@@ -1,6 +1,8 @@
-# Native Durable subagents
+# durable-subagents
 
 Experimental standalone TypeScript library and host for persistent named collaborators on **Pi Durable 1.0.0**. Children execute as native Durable conversations and tasks, not `pi --mode rpc` subprocesses. The original [`subagents`](../subagents/README.md) package is unchanged.
+
+The workspace package is `@daniel-ballance/durable-subagents` at `packages/durable-subagents`. Persisted workflow task and document identifiers keep their pre-rename namespace so existing prototype SQLite databases remain compatible.
 
 This is a separate, deliberately smaller implementation. It is **not a stable Pi extension**: `pi install` and `/reload` do not expose this host, and existing Pi extensions, `subagents.json`, sessions, credentials, workflow definitions, and TUI features are not imported. The package is private and exports TypeScript source; the workspace uses `tsx` to run it.
 
@@ -14,9 +16,9 @@ This is a separate, deliberately smaller implementation. It is **not a stable Pi
 Use the repository's [clean-clone and installation instructions](../../README.md). From the repository root, the package commands are:
 
 ```sh
-npm run check --workspace @daniel-ballance/pi-subagents-durable
-npm run test --workspace @daniel-ballance/pi-subagents-durable
-npm run smoke --workspace @daniel-ballance/pi-subagents-durable
+npm run check --workspace @daniel-ballance/durable-subagents
+npm run test --workspace @daniel-ballance/durable-subagents
+npm run smoke --workspace @daniel-ballance/durable-subagents
 ```
 
 The smoke path exercises spawn, send, wait, and SQLite reopen with retained identity and exactly one report, using an explicitly registered deterministic **faux provider**. It does not make a live-model request or load credentials. Test/smoke success establishes local behavior of the tested paths, not live-provider compatibility or agent task quality. The canonical repository-wide check remains `./scripts/check.sh`; focused package checks are not a substitute for it.
@@ -32,7 +34,7 @@ import { join } from 'node:path';
 import {
   createModels, fauxProvider, fauxAssistantMessage,
 } from '@earendil-works/pi-ai';
-import { openSqliteSubagents } from '@daniel-ballance/pi-subagents-durable';
+import { openSqliteSubagents } from '@daniel-ballance/durable-subagents';
 
 const directory = await mkdtemp(join(tmpdir(), 'durable-subagents-'));
 const models = createModels();

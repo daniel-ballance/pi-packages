@@ -8,7 +8,7 @@ const command = process.argv[2] ?? '--help';
 if (command === '--help' || command === '-h') {
   console.log('Native Pi Durable subagents (experimental)\n\nUsage: node --import tsx src/cli.ts smoke\n\nsmoke: boot SQLite + native harness, run a local scripted collaborator, reopen and verify persistence.\nNo credentials, network model provider or inference charges. Live providers are injected by a host application.');
 } else if (command === 'smoke') {
-  const directory = await mkdtemp(join(tmpdir(), 'pi-subagents-durable-smoke-'));
+  const directory = await mkdtemp(join(tmpdir(), 'durable-subagents-smoke-'));
   const path = join(directory, 'session.sqlite');
   const model = { provider: 'faux', model: 'faux-1', thinking: 'off' as const };
   const models = createModels(), faux = fauxProvider(); models.setProvider(faux.provider);
