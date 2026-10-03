@@ -6,7 +6,9 @@ import test from 'node:test';
 import { BACKGROUND_CONTEXT as C, awaitWithContext } from '@earendil-works/chord/context';
 import { createModels } from '@durable-subagents/pi-ai/models';
 import { createRegistry, defineDoc, defineExtension, defineTask, Harness, type Conversation, type TaskId } from '@earendil-works/pi-durable';
-import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
+const openSqliteStorage = 'Bun' in globalThis
+  ? (await import('../src/bun-sqlite.js')).openBunSqliteStorage
+  : (await import('@earendil-works/pi-durable/storage/sqlite/node')).openNodeSqliteStorage;
 import { createWorkflowTask, parseWorkflow, type WorkflowDefinition, type WorkflowDeliveryResult, type WorkflowSendRequest } from '../src/workflows.js';
 
 const definition = (steps: WorkflowDefinition['steps'], concurrency = 2, maxAttempts = 20): WorkflowDefinition => ({ version: 1, name: 'Test workflow', limits: { concurrency, maxAttempts }, steps });
@@ -64,7 +66,7 @@ async function fixture(options: { failFirst?: string; interruptAfterAdmission?: 
   const open = async () => {
     const registry = createRegistry();
     registry.install(defineExtension({ name: 'test.workflows', tasks: [...workflows.tasks, Delivery] }));
-    harness = await Harness.open(await openNodeSqliteStorage(join(dir, 'state.sqlite')), { models: createModels(), registry }, C);
+    harness = await Harness.open(await openSqliteStorage(join(dir, 'state.sqlite')), { models: createModels(), registry }, C);
     root = await harness.root(C);
   };
   await open();

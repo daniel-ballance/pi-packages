@@ -21,13 +21,14 @@
     "src",
     "README.md",
     "ARCHITECTURE.md",
-    "dist"
+    "dist",
+    "scripts"
   ],
   "scripts": {
     "check": "npm run build && tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "smoke": "node --import tsx src/cli.ts smoke",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/bundle-native.mjs",
     "prepack": "npm run build"
   },
   "dependencies": {
@@ -41,7 +42,8 @@
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "@earendil-works/pi-coding-agent": "0.99.2",
-    "pi-host-1": "npm:@earendil-works/pi-coding-agent@1.0.0"
+    "pi-host-1": "npm:@earendil-works/pi-coding-agent@1.0.0",
+    "esbuild": "0.28.2"
   },
   "pi": {
     "extensions": [

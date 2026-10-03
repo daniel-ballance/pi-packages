@@ -180,13 +180,16 @@ test('a new halt operation on an already-confirmed hold never repeats cancellati
 });
 
 test('dangling SQLite aliases and hard links fail closed', async () => {
-  const { symlink, link } = await import('node:fs/promises'); const { join } = await import('node:path');
+  const { symlink, link, unlink } = await import('node:fs/promises'); const { join } = await import('node:path');
   const { openSqliteSubagents } = await import('../src/sqlite.js'); const f = await setup();
   try {
     const dangling = join(f.directory, 'dangling.sqlite'); await symlink(join(f.directory, 'not-created.sqlite'), dangling);
     await assert.rejects(() => openSqliteSubagents(dangling, f.options), /Dangling/);
+    await f.host.close(); // Creating hard links to an active WAL database is outside SQLite's supported file contract.
     const hard = join(f.directory, 'hard.sqlite'); await link(f.path, hard);
     await assert.rejects(() => openSqliteSubagents(hard, f.options), /Hard-linked/);
+    await unlink(hard);
+    const reopened = await f.open(); await reopened.close();
   } finally { await f.host.close(); await f.cleanup(); }
 });
 

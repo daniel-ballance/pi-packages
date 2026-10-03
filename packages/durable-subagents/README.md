@@ -8,7 +8,7 @@ This is a Pi-loadable package with `extensions/durable-subagents/index.ts` decla
 
 ## Install and use in Pi
 
-Verified host versions: **Pi 0.99.2 and 1.0.0**, Node **>=22.19.0**. The entry point accepts Pi 0.99.2 and 1.0.x and rejects other versions explicitly. The declared peer is `*` because Pi provides the extension API; the entry point enforces the tested version boundary. Global Pi 0.85.1 is unsupported. Use a supported local/isolated Pi executable rather than changing global settings.
+Verified host versions: **Pi 0.99.2 and 1.0.0** on Node **>=22.19.0**, plus the official **Pi 1.0.0 macOS ARM64 bundled executable**. The Linux bundled executable still needs target-platform verification. The entry point accepts Pi 0.99.2 and 1.0.x and rejects other versions explicitly. The declared peer is `*` because Pi provides the extension API; the entry point enforces the tested version boundary. Global Pi 0.85.1 is unsupported. Use a supported local/isolated Pi executable rather than changing global settings.
 
 From the repository root, install the locked dependencies first (also after pulling a dependency change):
 
@@ -26,7 +26,7 @@ For an isolated installation, run `npm install /tmp/daniel-ballance-durable-suba
 
 Launch the supported Pi executable with `PI_CODING_AGENT_DIR=/absolute/path/to/isolated/agent pi --offline --no-builtin-tools`. This is the packed install/settings route exercised by the real Pi integration tests on both hosts. `--no-tools` disables extension tools too. `--offline` prevents catalog/telemetry network work; provider inference still uses the configured provider when you assign a child work. The automated fixtures register a finite scripted provider and never use real auth.
 
-For normal use, `pi install /absolute/path/to/packages/durable-subagents` followed by `/reload` uses the same manifest-discovery route. The tests exercise the real `pi install` command against the packed local installation on both supported hosts. The repository's root collection continues to load its existing extensions; this new package is an explicit opt-in local package. It can coexist with `subagents` because its public tools and command have distinct names. A local-directory `pi install` registers the resource path; it does not install that directory's npm dependencies. `git pull` and the `pie` alias's `pi update --all` are not substitutes for `npm ci --ignore-scripts` in this repository. A missing `@durable-subagents/typebox` import means the native dependencies are absent, not that the supported Pi version must be upgraded. Restart Pi after installing missing dependencies. This task did not install it in personal settings.
+For normal use, `pi install /absolute/path/to/packages/durable-subagents` followed by `/reload` uses the same manifest-discovery route. The tests exercise the real `pi install` command against the packed local installation on both supported hosts. The repository's root collection continues to load its existing extensions; this new package is an explicit opt-in local package. It can coexist with `subagents` because its public tools and command have distinct names. A local-directory `pi install` registers the resource path; it does not install that directory's npm dependencies. `git pull` and the `pie` alias's `pi update --all` are not substitutes for `npm ci --ignore-scripts` in this repository. The tracked extension bundle includes its native runtime dependencies. Earlier unbundled builds can fail to resolve `@durable-subagents/typebox` inside bundled Pi even after dependencies are installed; use the rebuilt bundle. Dependencies remain required for source builds, tests, and the programmatic API. This task did not install it in personal settings.
 
 Create an explicit policy at the isolated agent directory's `durable-subagents.json`, or at `.pi/durable-subagents.json` in a project already trusted by Pi:
 
@@ -57,11 +57,11 @@ Models stream through the supported parent `ctx.modelRegistry.streamSimple` API,
 
 ## Build boundary
 
-Pi aliases the host AI API while loading extensions. The small TypeScript entry point loads `native-loader.cjs`, whose native ESM import opens the compiled adapter without those aliases. The pinned native AI and TypeBox dependencies use npm aliases (`@durable-subagents/pi-ai` and `@durable-subagents/typebox`); stable Pi remains a host peer. Compiled `dist` files are tracked and packed so production Git/tarball installs with lifecycle scripts disabled are loadable. After changing runtime source, run `npm run build --workspace @daniel-ballance/durable-subagents` and commit the generated output.
+Pi aliases the host AI API while loading extensions. The small TypeScript entry point loads `native-loader.cjs`, whose native import opens the self-contained CommonJS adapter bundle without those aliases or external package resolution. The pinned native AI and TypeBox dependencies use npm aliases (`@durable-subagents/pi-ai` and `@durable-subagents/typebox`); stable Pi remains a host peer. Node uses the upstream Node SQLite adapter; bundled Bun uses Bun SQLite through the upstream portable Durable storage interface, with serialized connection operations and transaction exclusion. Compiled `dist` files are tracked and packed so production Git/tarball installs with lifecycle scripts disabled are loadable. After changing runtime source, run `npm run build --workspace @daniel-ballance/durable-subagents` and commit the generated output.
 
 ## Requirements and local checks
 
-- Node.js **22.19.0 or newer**, including the Node SQLite adapter
+- Node.js **22.19.0 or newer** for builds/tests and the programmatic Node host; bundled Pi uses its embedded Bun runtime and Bun SQLite
 - Exact runtime dependencies: `@earendil-works/pi-durable`, `@earendil-works/pi-ai`, and `@earendil-works/chord`, all **1.0.0**
 - Explicit host-supplied models/providers, tools, policy, base directory, and storage
 - One cooperating process per SQLite database
@@ -73,6 +73,8 @@ npm run check --workspace @daniel-ballance/durable-subagents
 npm run test --workspace @daniel-ballance/durable-subagents
 npm run smoke --workspace @daniel-ballance/durable-subagents
 ```
+
+The production-package fixture also tests an official bundled executable when `DURABLE_BUNDLED_PI_EXECUTABLE=/absolute/path/to/pi` is set. It verifies installation, native child execution, parent report delivery, session reopen, and graceful ownership cleanup with a scripted provider. Bun 1.3.10 additionally passed 49 storage/runtime/replay/crash/workflow tests; the portable SQL facade test covers rollback, transaction exclusion, expired handles, and ordered/idempotent close on both engines.
 
 The smoke path exercises spawn, send, wait, and SQLite reopen with retained identity and exactly one report, using an explicitly registered deterministic **faux provider**. It does not make a live-model request or load credentials. Test/smoke success establishes local behavior of the tested paths, not live-provider compatibility or agent task quality. The canonical repository-wide check remains `./scripts/check.sh`; focused package checks are not a substitute for it.
 

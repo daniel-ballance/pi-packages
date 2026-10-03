@@ -2,7 +2,6 @@ import { chmod, lstat, mkdir, open, realpath, rmdir, stat, writeFile } from 'nod
 import { basename, dirname, resolve } from 'node:path';
 import { hostname } from 'node:os';
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
-import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { DurableSubagents } from './runtime.js';
 /** Fail-closed process ownership, intentionally no timed stale-lock takeover.
  * A killed owner leaves this directory behind. An operator must verify that no process owns
@@ -61,7 +60,9 @@ export async function openSqliteSubagents(path, options) {
                 throw new Error('SQLite files must be regular, single-link files');
             await chmod(file, 0o600);
         }
-        storage = await openNodeSqliteStorage(canonical);
+        storage = 'Bun' in globalThis
+            ? await (await import('./bun-sqlite.js')).openBunSqliteStorage(canonical)
+            : await (await import('@earendil-works/pi-durable/storage/sqlite/node')).openNodeSqliteStorage(canonical);
         const host = await DurableSubagents.open({ ...options, storage });
         const close = host.close.bind(host);
         let closed = false;

@@ -103,7 +103,7 @@ Not implemented: command/agent checks, artifact snapshot/digest transfer, origin
 
 After a crash, an operator must establish that no previous process still owns the session before removing that exact lock directory. Keep the database and its SQLite state intact. A raw SQLite opener can ignore the advisory lock; this wrapper is not an OS-level prohibition on external clients. Direct `DurableSubagents.open` callers must provide equivalent exclusive ownership themselves.
 
-The upstream Node SQLite adapter uses WAL and `synchronous=NORMAL`. Recovery from an application process interruption is different from surviving power loss: the newest acknowledged writes are not promised to survive sudden host/power failure. The package adds no stronger fsync contract, replication, automatic backup, supervisor, or high-availability takeover.
+Both the upstream Node SQLite adapter and the portable Bun SQLite facade use WAL and `synchronous=NORMAL`. Recovery from an application process interruption is different from surviving power loss: the newest acknowledged writes are not promised to survive sudden host/power failure. The package adds no stronger fsync contract, replication, automatic backup, supervisor, or high-availability takeover.
 
 A harness close is suspension rather than permanent cancellation. Reopen reconciles native checkpoints/inputs after the application's recovery vetoes. Native progress operations such as wait/submit/resume can enable scheduling; merely opening a workflow through `startWorkflow` does not. Embedders must understand these lifecycle edges rather than using the raw harness as a policy-free escape hatch.
 
@@ -142,7 +142,7 @@ The implementation is based on Pi Durable release commit [`a13d35a`](https://git
 
 ## Stable Pi package adapter
 
-The declared extension entry loads a tracked compiled native ESM adapter across a tiny CJS native-import boundary. This keeps Pi loader aliases from replacing pinned native AI modules. Pi 0.99.2 and 1.0.0 are exercised from an installed production tarball; other versions outside the entry point's narrow range are rejected. Stable coding-agent is a host peer, not bundled runtime code.
+The declared extension entry loads a tracked self-contained CommonJS native adapter bundle across a tiny CJS native-import boundary. Bun uses its native SQLite through the upstream portable storage interface; the facade serializes connection operations and excludes concurrent work during transactions. This keeps Pi loader aliases from replacing pinned native AI modules. Pi 0.99.2 and 1.0.0 Node hosts and the official Pi 1.0.0 macOS ARM64 bundled executable are exercised from an installed production tarball; Linux bundled execution remains to be verified; other versions outside the entry point's narrow range are rejected. Stable coding-agent is a host peer, not bundled runtime code.
 
 The adapter keys owned SQLite state by parent Pi session ID, closes on session shutdown/replacement/reload, reconciles immutable parent message receipts, and resumes only after native recovery policy vetoes. A session epoch fences in-flight opens and notification reads. A distinct parent session/fork gets a distinct team.
 

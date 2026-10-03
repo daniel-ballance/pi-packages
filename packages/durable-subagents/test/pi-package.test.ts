@@ -11,7 +11,7 @@ const packageRoot = fileURLToPath(new URL('..', import.meta.url));
 const cli = fileURLToPath(new URL('../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js', import.meta.url));
 const provider = fileURLToPath(new URL('./fixtures/pi-provider.mjs', import.meta.url));
 
-for (const hostName of ['@earendil-works/pi-coding-agent', 'pi-host-1']) {
+for (const hostName of ['@earendil-works/pi-coding-agent', 'pi-host-1', ...(process.env.DURABLE_BUNDLED_PI_EXECUTABLE ? ['bundled-pi'] : [])]) {
 test(`installed production tarball discovers tools and delivers native child results on ${hostName}`,  { timeout: 60000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'durable-pi-package-'));
   const agent = join(root, 'agent'); await mkdir(agent);
@@ -33,10 +33,12 @@ test(`installed production tarball discovers tools and delivers native child res
     await assert.rejects(readFile(join(installed, 'node_modules/@earendil-works/pi-coding-agent/package.json')));
     const hostCli = hostName === 'pi-host-1' ? fileURLToPath(new URL('../node_modules/pi-host-1/dist/bundle/cli.js', import.meta.url)) : cli;
     const fixtureEnv = { PATH: process.env.PATH, HOME: root, TMPDIR: process.env.TMPDIR, PI_CODING_AGENT_DIR: agent, PI_OFFLINE: '1', PI_TELEMETRY: '0' };
-    execFileSync(process.execPath, [hostCli, 'install', installed], { cwd: root, encoding: 'utf8', stdio: 'pipe', env: fixtureEnv });
+    const executable = hostName === 'bundled-pi' ? process.env.DURABLE_BUNDLED_PI_EXECUTABLE! : process.execPath;
+    const prefix = hostName === 'bundled-pi' ? [] : [hostCli];
+    execFileSync(executable, [...prefix, 'install', installed], { cwd: root, encoding: 'utf8', stdio: 'pipe', env: fixtureEnv });
     assert.equal(JSON.parse(await readFile(join(agent, 'settings.json'), 'utf8')).packages.length, 1);
     await writeFile(join(agent, 'durable-subagents.json'), JSON.stringify({ allowedModels: ['durable-fixture/scripted:off'], allowedTools: [], allowedRoots: [root], maxAgents: 2, maxActiveAssignments: 2, maxPeerMessages: 0 }));
-    child = spawn(process.execPath, [hostCli, '--mode', 'rpc', '--offline', '--no-context-files', '--no-skills', '--no-prompt-templates', '--no-builtin-tools', '-e', provider, '--model', 'durable-fixture/scripted:off'], {
+    child = spawn(executable, [...prefix, '--mode', 'rpc', '--offline', '--no-context-files', '--no-skills', '--no-prompt-templates', '--no-builtin-tools', '-e', provider, '--model', 'durable-fixture/scripted:off'], {
       cwd: root, env: fixtureEnv, stdio: ['pipe', 'pipe', 'pipe'],
     });
     const events: any[] = []; let buffer = '', stderr = '';
@@ -57,21 +59,32 @@ test(`installed production tarball discovers tools and delivers native child res
     child.stdin!.write(JSON.stringify({ type: 'prompt', message: '/fixture-exit' }) + '\n');
     await wait(() => child!.exitCode === 0);
     assert.equal((await readdir(join(agent, 'durable-subagents'))).filter(f => f.endsWith('.lock')).length, 0, 'graceful Pi shutdown released host ownership');
+    const sessionFiles = (await readdir(join(agent, 'sessions'), { recursive: true })).filter(path => path.endsWith('.jsonl'));
+    assert.equal(sessionFiles.length, 1);
+    const previousEventCount = events.length;
+    child = spawn(executable, [...prefix, '--mode', 'rpc', '--offline', '--no-context-files', '--no-skills', '--no-prompt-templates', '--no-builtin-tools', '-e', provider, '--model', 'durable-fixture/scripted:off', '--session', join(agent, 'sessions', sessionFiles[0])], { cwd: root, env: fixtureEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+    child.stdout!.on('data', chunk => { buffer += chunk.toString(); let end; while ((end = buffer.indexOf('\n')) >= 0) { const line = buffer.slice(0, end); buffer = buffer.slice(end + 1); try { events.push(JSON.parse(line)); } catch {} } });
+    child.stderr!.on('data', chunk => { stderr += chunk.toString(); });
+    child.stdin!.write(JSON.stringify({ type: 'get_state', id: 'reopened-state' }) + '\n');
+    await wait(() => events.some(e => e.id === 'reopened-state' && e.success));
+    child.stdin!.write(JSON.stringify({ type: 'prompt', message: '/fixture-exit' }) + '\n');
+    await wait(() => child!.exitCode === 0);
+    assert.equal(events.slice(previousEventCount).filter(e => e.type === 'extension_error' || e.message?.customType === 'durable-subagents-report').length, 0);
+    assert.equal((await readdir(join(agent, 'durable-subagents'))).filter(f => f.endsWith('.lock')).length, 0, 'reopened host released ownership');
+
   } finally { child?.kill('SIGKILL'); await rm(root, { recursive: true, force: true }); }
 });
 
 }
 
 
-test('source checkout without runtime dependencies reports the required installation step', async () => {
+test('bundled extension loads without workspace runtime dependencies', async () => {
   const root = await mkdtemp(join(tmpdir(), 'durable-missing-deps-'));
   try {
     const source = join(root, 'source');
     await cp(packageRoot, source, { recursive: true, filter: path => !path.split('/').includes('node_modules') });
     const loader = new DefaultResourceLoader({ cwd: root, agentDir: join(root, 'agent'), settingsManager: SettingsManager.inMemory({ packages: [source] }) });
     await loader.reload();
-    assert.equal(loader.getExtensions().errors.length, 1);
-    assert.match(loader.getExtensions().errors[0].error, /runtime dependencies are missing/);
-    assert.match(loader.getExtensions().errors[0].error, /npm ci --ignore-scripts/);
+    assert.deepEqual(loader.getExtensions().errors, []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

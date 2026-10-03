@@ -2,7 +2,7 @@ import { chmod, lstat, mkdir, open, realpath, rmdir, stat, writeFile } from 'nod
 import { basename, dirname, resolve } from 'node:path';
 import { hostname } from 'node:os';
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
-import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
+import type { Storage } from '@earendil-works/pi-durable';
 import { DurableSubagents, type HostOptions } from './runtime.js';
 
 /** Fail-closed process ownership, intentionally no timed stale-lock takeover.
@@ -33,7 +33,7 @@ export async function openSqliteSubagents(path: string, options: Omit<HostOption
     const { unlink } = await import('node:fs/promises');
     await unlink(ownerFile); await rmdir(lock);
   };
-  let storage: Awaited<ReturnType<typeof openNodeSqliteStorage>> | undefined;
+  let storage: Storage | undefined;
   try {
     // SQLite derives new WAL/SHM modes from the database; set them before it opens.
     try { const file = await open(canonical, 'ax', 0o600); await file.close(); }
@@ -44,7 +44,9 @@ export async function openSqliteSubagents(path: string, options: Omit<HostOption
       if (!info.isFile() || info.nlink !== 1) throw new Error('SQLite files must be regular, single-link files');
       await chmod(file, 0o600);
     }
-    storage = await openNodeSqliteStorage(canonical);
+    storage = 'Bun' in globalThis
+      ? await (await import('./bun-sqlite.js')).openBunSqliteStorage(canonical)
+      : await (await import('@earendil-works/pi-durable/storage/sqlite/node')).openNodeSqliteStorage(canonical);
     const host = await DurableSubagents.open({ ...options, storage });
     const close = host.close.bind(host);
     let closed = false;
