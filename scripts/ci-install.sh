@@ -78,6 +78,8 @@ elif [[ "$PI_VERSION" == "0.99.2" ]]; then
       requested+=("$dependency@$PI_VERSION")
     done
     printf '\n== current Pi runtime in %s ==\n' "$(basename "$package_dir")"
-    npm --prefix "$package_dir" install --ignore-scripts --no-save --package-lock=false --no-audit --no-fund "${requested[@]}"
+    # Read the committed lock while applying unsaved runtime overrides. Ignoring
+    # it re-resolves unrelated Durable 1.x dependencies and breaks pinned aliases.
+    npm --prefix "$package_dir" install --ignore-scripts --no-save --package-lock=true --no-audit --no-fund "${requested[@]}"
   done
 fi
