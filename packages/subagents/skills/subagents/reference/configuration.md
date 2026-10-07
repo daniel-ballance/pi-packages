@@ -34,7 +34,7 @@ A project override must restate every capability it needs from the global config
 | `childSettings` | Optional codemode mode/budget overrides and cache-warming suppression; see [built-ins](builtins.md). |
 | `mcp` | Optional native MCP server/raw-tool grants and explicit credential inheritance consent; see [built-ins](builtins.md). |
 
-Unknown policy fields fail validation. There are no `profiles`, per-model tool permissions, routing rules, cost ceilings, benchmark-score fields or automatic escalation settings. Peer-message counts bound exchanges, not token/cost usage; parent-only renewal can grant further exchanges. Keep research evidence outside the policy; summarize recommendations in `description`.
+Unknown policy fields fail validation. There are no `profiles`, per-model tool permissions, routing rules, cost ceilings, benchmark-score fields or automatic escalation settings. Peer-message counts bound exchanges, not token/cost usage; parent-only renewal can grant further exchanges. Descriptions are optional advisory text, not executable policy.
 
 **Relative paths have two different bases:**
 
@@ -45,7 +45,7 @@ Directories must exist; use exact real absolute paths from the catalog in spawn 
 
 ## Complete example policies
 
-These examples are syntactically/schema-valid templates, **not ready-to-run model registrations**. Every `example-*` provider/model identity is deliberately a placeholder. Replace it with an exact locally registered/authenticated Pi identity and a supported thinking level; `off`, `medium`, and `xhigh` are illustrative, not universally supported. Never copy a benchmark's `max` label into Pi without verifying its mapping.
+These examples are syntactically/schema-valid templates, **not ready-to-run model registrations**. Every `example-*` provider/model identity is deliberately a placeholder. Replace it with an exact locally registered/authenticated Pi identity and a supported thinking level; `off`, `medium`, and `xhigh` are illustrative, not universally supported. Verify the exact supported level in the installed runtime.
 
 Each example is a separate whole policy, not a fragment to merge automatically:
 

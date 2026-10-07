@@ -3,7 +3,7 @@
   "models": [
     {
       "id": "example-local/example-quantized-model:off",
-      "description": "Provisional local exploration candidate. Base-model benchmark results are indirect evidence, not measurements of this quantization/runtime. Validate tool calls, grounding, latency and resource usage before expanding scope or concurrency."
+      "description": "Local-provider example. Replace this placeholder with an exact registered identity and supported thinking level; verify the selected tools before use."
     }
   ],
   "tools": ["read", "grep", "find", "ls"],

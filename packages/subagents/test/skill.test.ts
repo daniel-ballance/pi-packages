@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
-import { parsePolicy } from "../extensions/subagents/src/policy.js";
+import { DEFAULT_POLICY, parsePolicy } from "../extensions/subagents/src/policy.js";
 import { parseWorkflow } from "../extensions/subagents/src/workflow-definition.js";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -18,6 +18,13 @@ test("package explicitly discovers and ships the parent skill without validation
   assert.deepEqual(loaded.diagnostics, []);
   assert.deepEqual(loaded.skills.map(s => s.name).sort(), ["subagents", "workflows"]);
   assert.equal(loaded.skills.find(s => s.name === "subagents")?.filePath, join(skill, "SKILL.md"));
+});
+
+test("documented execution fallback matches the complete shipped policy", () => {
+  const readme = readFileSync(join(root, "README.md"), "utf8");
+  const example = readme.match(/```json\n([\s\S]*?)\n```/);
+  assert.ok(example, "README must document the default policy");
+  assert.deepEqual(parsePolicy(JSON.parse(example[1])), parsePolicy(DEFAULT_POLICY));
 });
 
 test("every shipped example is valid whole-policy JSON with unmistakable placeholder models", () => {
@@ -41,7 +48,7 @@ test("shipped workflow examples are valid definitions, with explicit placeholder
 });
 
 test("skill and reference relative links resolve inside the shipped package", () => {
-  const docs = [join(root, "skills/workflows/SKILL.md"), join(root, "WORKFLOWS.md"), join(skill, "SKILL.md"), ...readdirSync(join(skill, "reference")).filter(n => n.endsWith(".md")).map(n => join(skill, "reference", n))];
+  const docs = [join(root, "README.md"), join(root, "skills/workflows/SKILL.md"), join(root, "WORKFLOWS.md"), join(skill, "SKILL.md"), ...readdirSync(join(skill, "reference")).filter(n => n.endsWith(".md")).map(n => join(skill, "reference", n))];
   for (const doc of docs) {
     for (const match of readFileSync(doc, "utf8").matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
       if (/^https?:/.test(match[1])) continue;

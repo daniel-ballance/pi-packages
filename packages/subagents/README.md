@@ -12,11 +12,11 @@ pi install ./packages/subagents
 
 Reload the parent manually or with `self_reload`. Requires Pi 0.99.2 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). TUI and RPC parents are supported.
 
-## Bundled setup and model-selection skill
+## Bundled setup and execution skill
 
-Installation also exposes `/skill:subagents` (unless skills are filtered out in your Pi package settings). Use it to choose policy scope, configure providers/models/tools/resources, and operate persistent children. The [skill](skills/subagents/SKILL.md) includes [complete example policies](skills/subagents/reference/configuration.md) and a [model-research process](skills/subagents/reference/model-research.md): triangulate Artificial Analysis, Datacurve DeepSWE and CursorBench, then refine the initial hypothesis through trials of the actual deployment. It distinguishes evidence from inference, covers local quantization/runtime differences, and avoids turning incomparable leaderboard scores into a fake universal ranking.
+Installation also exposes `/skill:subagents` (unless skills are filtered out in your Pi package settings). Use it to choose policy scope, configure exact providers/models/tools/resources, diagnose unavailable compositions, and operate persistent children. The [skill](skills/subagents/SKILL.md) includes [complete example policies](skills/subagents/reference/configuration.md).
 
-This is parent-side guidance, not automatic configuration or child resource inheritance. It does not overwrite user policies or grant permissions. Example model IDs are placeholders and must be replaced with exact available Pi identities.
+This is parent-side guidance, not automatic configuration or child resource inheritance. It does not overwrite user policies or grant permissions. Example model IDs are placeholders and must be replaced with exact available Pi identities. Model-selection research and analysis tooling are maintained separately in Pareto; they are not shipped or required by this execution package.
 
 ## Workflows
 
@@ -34,7 +34,7 @@ The highest-priority existing configuration wins, as a **whole-file replacement*
 
 No merging or upward directory search. Reload Pi to pick up configuration edits. Resource/model availability is rechecked on catalog requests, spawn and resume. An invalid selected file disables new spawning/resumption instead of falling back to broader defaults. Listing, reading, aborting and closing tracked children remain available. Untrusted project configuration is ignored with a user-facing diagnostic.
 
-The built-in policy is equivalent to the following (model descriptions abbreviated):
+The built-in policy supplies one exact fallback model, not a ranked menu. It is equivalent to the following:
 
 ```json
 {
@@ -42,31 +42,7 @@ The built-in policy is equivalent to the following (model descriptions abbreviat
   "models": [
     {
       "id": "openai-codex/gpt-6-luna:medium",
-      "description": "Cheap ChatGPT-pool exploration and grounded summaries."
-    },
-    {
-      "id": "openai-codex/gpt-6-luna:max",
-      "description": "Stronger budget reasoning and scoped implementation."
-    },
-    {
-      "id": "openai-codex/gpt-6-sol:high",
-      "description": "Substantive ChatGPT-pool implementation and debugging."
-    },
-    {
-      "id": "openai-codex/gpt-6-sol:max",
-      "description": "Upper ChatGPT-pool subagent escalation."
-    },
-    {
-      "id": "xai/grok-4.6:low",
-      "description": "Economical Grok-pool investigation and second opinions."
-    },
-    {
-      "id": "xai/grok-4.6:high",
-      "description": "Demanding Grok-pool implementation and review."
-    },
-    {
-      "id": "xai/grok-4.7:high",
-      "description": "Upper Grok-pool subagent escalation."
+      "description": "Default execution model; verify availability in subagent_catalog."
     }
   ],
   "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
@@ -101,9 +77,9 @@ No user configuration files are generated or overwritten automatically.
 
 `subagent_catalog` exposes only usable options: allowed exact models with configured authentication and supported thinking levels, their guidance, modalities, context/output limits and registry pricing; locally known tools; existing resource files; prompt permissions; and allowed directories. Descriptions are user guidance, not measured model benchmarks. Registry prices may not reflect subscription billing or your actual provider bill.
 
-Built-in selection guidance offers two provisional menus: **GPT-6 Luna medium → Luna max → Sol high → Sol max** in the ChatGPT pool, and **Grok 4.6 low → 4.6 high → 4.7 high** in the Grok pool. These are starting-tier choices, not mandatory retry chains. Prefer the OpenAI options for benchmark-derived global value when both pools are healthy; choose suitable Grok options when conserving the separate ChatGPT allowance, especially for the parent. No live quota detection or automatic routing is implied. Astra is deliberately absent from the subagent defaults; return persistent blockers to the parent.
+The built-in fallback requires that exact model to be registered, authenticated and available with the requested thinking level. It makes no task-quality, cost or subscription-capacity claim. To permit other exact combinations, supply a complete global or trusted-project policy. Existing policies replace the fallback and are not rewritten by this package.
 
-This is benchmark-informed guidance, not demonstrated Pi task performance. Require grounded evidence, tests and review; refine descriptions from accepted outcomes. Higher thinking is not a correctness guarantee. The catalog includes each entry's guidance directly. Custom policies can supply their own descriptions; detailed evidence stays outside policy.
+Custom policies can supply advisory descriptions, which the catalog passes through without interpreting them as routing rules or additional permissions. Registry metadata and actual child usage remain available for execution supervision; model rankings and research analysis are outside this package.
 
 Unavailable entries are omitted, never silently substituted. Their names/reasons are shown to the **user** through `/subagents diagnostics`; the model-facing catalog contains only an omitted-entry count. If no model is usable, spawning is disabled until configuration/availability is fixed.
 

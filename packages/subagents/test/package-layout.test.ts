@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -34,6 +34,20 @@ async function load(source: string, base = root) {
     await rm(temp, { recursive: true, force: true });
   }
 }
+
+test("extracted research preferences and history are absent; the operational proposal remains", async () => {
+  for (const path of [
+    ".pi/model-selection.json",
+    ".pi/skills/refresh-subagent-models/SKILL.md",
+    "docs/subagents-model-selection",
+    "docs/subagents-pareto-exploration.md",
+    "packages/subagents/proposals/2026-09-20-global-subagents.md",
+    "packages/subagents/proposals/2026-09-20-global-subagents.json",
+  ]) {
+    await assert.rejects(stat(join(root, path)), { code: "ENOENT" }, path);
+  }
+  assert.ok((await stat(join(root, "packages/subagents/proposals/2026-10-01-builtin-extensions-and-0.99-upgrade.md"))).isFile());
+});
 
 test("repository root discovers exactly the public extensions and both skill collections", async () => {
   const result = await load(root);
@@ -147,5 +161,15 @@ test("every package has resource directories and packs its declared extension im
     }
     assert.ok(!files.some((file: string) => file.includes("node_modules/")));
     assert.ok(!files.some((file: string) => file.startsWith("test/")));
+    if (name === "subagents") {
+      assert.ok(files.includes("skills/subagents/SKILL.md"));
+      assert.ok(files.includes("skills/subagents/reference/configuration.md"));
+      assert.ok(files.includes("skills/subagents/reference/builtins.md"));
+      assert.ok(files.includes("skills/workflows/SKILL.md"));
+      assert.ok(!files.some((file: string) => file.startsWith("skills/subagents/scripts/")), "research scripts must not ship");
+      for (const reference of ["model-research.md", "frontier-analysis.md"]) {
+        assert.ok(!files.includes(`skills/subagents/reference/${reference}`), reference);
+      }
+    }
   }
 });
