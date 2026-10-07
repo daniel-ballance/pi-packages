@@ -83,3 +83,7 @@ elif [[ "$PI_VERSION" == "0.99.2" ]]; then
     npm --prefix "$package_dir" install --ignore-scripts --no-save --package-lock=true --no-audit --no-fund "${requested[@]}"
   done
 fi
+
+# npm otherwise honors the SDK's vulnerable published shrinkwrap, even when the
+# outer lock or an override names the patched dependency. No lifecycle hooks run.
+node "$ROOT/scripts/patch-pi-host-security.mts"

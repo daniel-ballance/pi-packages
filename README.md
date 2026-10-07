@@ -26,6 +26,7 @@ For a local checkout, install dependencies first; Pi references local paths but
 npm ci --ignore-scripts
 # Or, with pnpm 12.6.0:
 # pnpm install --frozen-lockfile --ignore-scripts
+node scripts/patch-pi-host-security.mts
 pi install "$PWD"
 # Or select one package:
 pi install "$PWD/packages/mcp-client"
@@ -62,6 +63,18 @@ No single-manager `packageManager` pin is imposed. `.npmrc` selects nested npm
 trees; pnpm uses its isolated, symlinked dependency layout. Both keep package
 runtime dependencies resolvable from their extension entry points.
 
+After a development install, run `node scripts/patch-pi-host-security.mts`
+(or use `./scripts/ci-install.sh locked`, which runs it after installation and
+any CI runtime overrides). The pinned Pi SDKs publish an npm shrinkwrap containing
+vulnerable `brace-expansion` 5.0.9; npm honors it even when our outer lock or an
+override names 5.0.12. This explicit step copies the separately integrity-verified
+5.0.12 development dependency into affected local SDKs and updates only that
+shrinkwrap entry. Already-patched hosts are unchanged. It never runs dependency
+lifecycle scripts, changes Pi versions, repairs dependencies during checks, or
+follows SDK links outside the selected development checkout. The gate checks
+the installed dependency, not just audit/lockfile metadata. Pi's separately
+installed runtime and global configuration are **not** patched by this step.
+
 Choose one manager per checkout. Before switching, remove only the root and
 `packages/*/node_modules` directories, then reinstall with the chosen manager;
 do not delete either committed lockfile. pnpm disables automatic peer installs
@@ -79,8 +92,11 @@ global npm install. Pi's Git installation runs `npm install --omit=dev` at the
 repository root, which installs the workspace runtime dependencies too.
 
 Child lockfiles remain for standalone installs (`npm ci --ignore-scripts` in a
-copied-out package). When changing dependencies, refresh both lockfiles from the
-repository root:
+copied-out package). For standalone development SDKs, run the security step from
+an installed original workspace against the copied package, for example
+`node /path/to/pi-packages/scripts/patch-pi-host-security.mts "$PWD"`.
+Production installs omit these SDK development copies and use Pi's runtime peers.
+When changing dependencies, refresh both lockfiles from the repository root:
 
 ```sh
 npm --prefix packages/<name> install --package-lock-only --ignore-scripts --workspaces=false
@@ -110,8 +126,9 @@ npm --version
 
 Use Node.js 22.19.0 or newer for the full supported CI matrix, then run
 `npm ci --ignore-scripts` or `pnpm install --frozen-lockfile --ignore-scripts`
-from the root. The CI-equivalent installer is
-[`scripts/ci-install.sh`](scripts/ci-install.sh).
+from the root, followed by `node scripts/patch-pi-host-security.mts`.
+The CI-equivalent installer is [`scripts/ci-install.sh`](scripts/ci-install.sh)
+(`./scripts/ci-install.sh locked`).
 
 Launch Pi from this repository root when the project settings in `.pi/settings.json` or project-local skills should apply:
 

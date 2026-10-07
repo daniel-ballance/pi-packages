@@ -4,5 +4,5 @@
     "strict": true, "esModuleInterop": true, "skipLibCheck": true,
     "noEmit": true, "types": ["node"]
   },
-  "include": ["extensions/**/*.ts", "test/**/*.ts"]
+  "include": ["extensions/**/*.ts", "test/**/*.ts", "../../scripts/patch-pi-host-security.mts"]
 }

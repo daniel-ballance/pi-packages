@@ -6,6 +6,7 @@
   "keywords": ["pi-package"],
   "engines": { "node": ">=22.19.0" },
   "workspaces": ["packages/*"],
+  "devDependencies": { "brace-expansion": "5.0.12" },
   "pi": {
     "extensions": [
       "./packages/mcp-client/extensions/mcp-client/index.ts",
