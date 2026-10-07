@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import childGuard from "../extensions/subagents/src/child-guard.js";
 import subagents from "../extensions/subagents/index.js";
+import { nativeTools } from "./native-tools.js";
 
 test("child guard hides recursive and unselected tools and blocks later reactivation", () => {
   const old = process.env.PI_SUBAGENT_ALLOWED_TOOLS;
@@ -88,8 +89,7 @@ test("management extension registers nothing inside a marked child", () => {
 });
 
 test("agent-facing spawn schema has no raw argument, executable or environment escape hatch", () => {
-  const tools: any[] = [];
-  subagents({ on() {}, registerCommand() {}, registerTool(tool: unknown) { tools.push(tool); } } as unknown as ExtensionAPI);
+  const tools: any[] = nativeTools();
   const schema = tools.find(t => t.name === "subagent_spawn").parameters;
   for (const key of ["cliArgs", "executable", "executableArgs", "env", "inheritExtensions", "thinking"]) assert.equal(schema.properties[key], undefined);
   assert.ok(schema.required.includes("model"));

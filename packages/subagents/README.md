@@ -12,6 +12,20 @@ pi install ./packages/subagents
 
 Reload the parent manually or with `self_reload`. Requires Pi 0.99.2 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). TUI and RPC parents are supported.
 
+## Disable native startup for one launch
+
+`--disable-native-subagents` opts out of this package for that Pi launch,
+including reloads. Pi parses extension flags after loading factories, so native
+registration/startup is deferred until `session_start`. With the flag, no
+`subagent_*` tools, `/subagents` or `/workflows` commands, Manager, workflow
+runner, footer decoration or notification scheduler is initialized. Unrelated
+extensions and skill discovery are unchanged. Normal unflagged TUI/RPC launches
+retain the existing behavior; marked native Children still register nothing.
+
+Use this with the separate [t3-subagents](../t3-subagents/README.md) extension
+when T3 owns delegated execution and parent wake-ups. It is an opt-out, not an
+automatic environment-based policy change, and does not edit `subagents.json`.
+
 ## Bundled setup and model-selection skill
 
 Installation also exposes `/skill:subagents` (unless skills are filtered out in your Pi package settings). Use it to choose policy scope, configure providers/models/tools/resources, and operate persistent children. The [skill](skills/subagents/SKILL.md) includes [complete example policies](skills/subagents/reference/configuration.md) and a [model-research process](skills/subagents/reference/model-research.md): triangulate Artificial Analysis, Datacurve DeepSWE and CursorBench, then refine the initial hypothesis through trials of the actual deployment. It distinguishes evidence from inference, covers local quantization/runtime differences, and avoids turning incomparable leaderboard scores into a fake universal ranking.

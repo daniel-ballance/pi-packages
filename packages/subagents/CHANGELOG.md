@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `--disable-native-subagents` for launch-scoped opt-out of all native management, workflow and notification startup. Unflagged TUI/RPC launches and unrelated extensions are unchanged.
+
 ## 0.3.0 — 2026-10-01
 
 - Require Pi 0.99.2; update development dependencies and npm/pnpm locks.

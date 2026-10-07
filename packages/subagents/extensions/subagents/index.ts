@@ -30,6 +30,21 @@ const noticeKeys = (details: unknown): string[] => {
 export default function subagents(pi: ExtensionAPI) {
   // Explicitly loading this package in a child still does not enable recursion.
   if (process.env.PI_SUBAGENT === "1") return;
+  pi.registerFlag("disable-native-subagents", {
+    description: "Disable native subagent tools, managers, workflows and notifications for this launch",
+    type: "boolean", default: false,
+  });
+  // Pi applies parsed CLI flags after factories load. Register nothing else
+  // until session_start, including on reload with the same launch flags.
+  let initialized = false;
+  pi.on("session_start", (_event, ctx) => {
+    if (initialized || pi.getFlag("disable-native-subagents") === true) return;
+    initialized = true;
+    initializeSubagents(pi, ctx);
+  });
+}
+
+function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext) {
   let manager: SubagentManager | undefined;
   let notifications: NoticeScheduler | undefined;
   let policy: SubagentPolicy | undefined;
@@ -82,7 +97,7 @@ export default function subagents(pi: ExtensionAPI) {
     return { content: [{ type: "text" as const, text: `${truncated.content}\n[Truncated. Full result: ${path}]` }], details: { fullResult: path } };
   };
 
-  pi.on("session_start", (_event, ctx) => {
+  const startSession = (ctx: ExtensionContext) => {
     context = ctx;
     restoreFooter?.();
     if (ctx.mode === "tui") {
@@ -113,7 +128,8 @@ export default function subagents(pi: ExtensionAPI) {
       policy.catalog();
       if (policy.diagnostics.length) ctx.ui.notify(`Subagent policy: ${policy.diagnostics.length} diagnostic(s). See /subagents diagnostics.`, "warning");
     }
-  });
+  };
+  pi.on("session_start", (_event, ctx) => startSession(ctx));
   pi.on("agent_start", () => notifications?.busy());
   pi.on("agent_settled", () => notifications?.wake());
   pi.on("message_end", event => {
@@ -382,4 +398,6 @@ export default function subagents(pi: ExtensionAPI) {
       ctx.ui.notify(records.map(formatAgentListing).join("\n") || "No subagents tracked.", "info");
     },
   });
+  // session_start handlers added during dispatch run on the next event only.
+  startSession(initialContext);
 }

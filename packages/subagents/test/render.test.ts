@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { initTheme, ToolExecutionComponent, type ExtensionAPI, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { initTheme, ToolExecutionComponent, type Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth, type TUI } from "@earendil-works/pi-tui";
-import subagents from "../extensions/subagents/index.js";
+import { nativeTools } from "./native-tools.js";
 import { subagentRenderers } from "../extensions/subagents/src/render.js";
 
 type Action = Parameters<typeof subagentRenderers>[0];
@@ -21,8 +21,7 @@ function render(action: Action, details: unknown, expanded = false, width = 120)
 }
 
 test("all subagent tools register call/result renderers without changing execution schemas", () => {
-  const tools: ToolDefinition[] = [];
-  subagents({ on() {}, registerCommand() {}, registerTool(tool: ToolDefinition) { tools.push(tool); } } as unknown as ExtensionAPI);
+  const tools = nativeTools();
   assert.equal(tools.length, 18);
   for (const tool of tools) {
     assert.equal(typeof tool.renderCall, "function", tool.name);

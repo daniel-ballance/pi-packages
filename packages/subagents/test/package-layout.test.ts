@@ -8,8 +8,9 @@ import { execFileSync } from "node:child_process";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
-const extensionNames = ["mcp-client", "self-reload", "subagents", "web-search"];
-const expectedPaths = extensionNames.map(name => `packages/${name}/extensions/${name}/index.ts`);
+const collectionExtensions = ["mcp-client", "self-reload", "subagents", "web-search"];
+const extensionNames = [...collectionExtensions, "t3-subagents"]; // T3 remains opt-in, but packs/discovers independently.
+const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
 const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
 const expectedSkills = [...engineeringSkills, "subagents", "workflows"].sort();
 
