@@ -5,21 +5,11 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_POLICY, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
 
-test("built-in model menu covers independent subscription pools without changing permissions", () => {
+test("built-in fallback is one exact execution model with unchanged non-model permissions", () => {
   const policy = parsePolicy(DEFAULT_POLICY);
-  assert.deepEqual(policy.models.map(m => m.id), [
-    "openai-codex/gpt-6-luna:medium",
-    "openai-codex/gpt-6-luna:max",
-    "openai-codex/gpt-6-sol:high",
-    "openai-codex/gpt-6-sol:max",
-    "xai/grok-4.6:low",
-    "xai/grok-4.6:high",
-    "xai/grok-4.7:high",
+  assert.deepEqual(policy.models, [
+    { id: "openai-codex/gpt-6-luna:medium", description: "Default execution model; verify availability in subagent_catalog." },
   ]);
-  for (const model of policy.models) {
-    assert.match(model.description!, /Provisional/);
-    assert.match(model.description!, /ChatGPT|Grok/);
-  }
   assert.deepEqual(policy.tools, ["read", "bash", "edit", "write", "grep", "find", "ls"]);
   assert.equal(policy.peerMessageLimit, 0);
   assert.equal(policy.maxChildren, 4);
@@ -29,6 +19,12 @@ test("built-in model menu covers independent subscription pools without changing
   assert.equal(policy.appendSystemPrompt, true);
   assert.equal(policy.contextFiles, true);
 });
+
+// Multi-option validation must not depend on the size of the shipped fallback.
+const TEST_MODELS = [
+  { id: "openai-codex/gpt-6-luna:medium", description: "User-supplied guidance." },
+  { id: "openai-codex/gpt-6-luna:max" },
+];
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "subagent-policy-"));
@@ -42,6 +38,33 @@ function fixture() {
   const global = join(agentDir, "subagents.json"), project = join(cwd, ".pi/subagents.json");
   return { root, cwd, environment, global, project, put: (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value)), cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
+
+test("built-in fallback remains usable, denies unlisted levels, and never substitutes an available model", () => {
+  const f = fixture();
+  try {
+    const policy = new SubagentPolicy(f.environment);
+    assert.equal(policy.catalog().spawnEnabled, true);
+    assert.deepEqual(policy.catalog().models.map(m => m.id), [DEFAULT_POLICY.models[0].id]);
+    assert.equal(policy.compile(f.cwd, { model: DEFAULT_POLICY.models[0].id, tools: [] }).model, DEFAULT_POLICY.models[0].id);
+    assert.throws(() => policy.compile(f.cwd, { model: TEST_MODELS[1].id, tools: [] }), /not currently allowed/);
+    const original = f.environment.models;
+    f.environment.models = () => original().map(model => ({ ...model, thinkingLevels: ["max"] }));
+    assert.equal(policy.catalog().spawnEnabled, false);
+    assert.throws(() => policy.compile(f.cwd, { model: DEFAULT_POLICY.models[0].id, tools: [] }), /No spawnable/);
+  } finally { f.cleanup(); }
+});
+
+test("catalog retains runtime metadata and user guidance for all permitted thinking entries", () => {
+  const f = fixture();
+  try {
+    f.put(f.global, { version: 1, models: TEST_MODELS });
+    const policy = new SubagentPolicy(f.environment);
+    const metadata = { input: ["text", "image"], contextWindow: 272000, maxTokens: 128000, cost: { input: 1 } };
+    assert.deepEqual(policy.catalog().models, TEST_MODELS.map(entry => ({ description: undefined, ...entry, ...metadata })));
+    assert.equal(policy.compile(f.cwd, { model: TEST_MODELS[1].id, tools: [] }).model, TEST_MODELS[1].id);
+    assert.throws(() => policy.compile(f.cwd, { model: "openai-codex/gpt-6-luna:high", tools: [] }), /not currently allowed/);
+  } finally { f.cleanup(); }
+});
 
 test("deterministic workflow commands require explicit bash permission and an allowed directory", () => {
   const f = fixture();
@@ -95,7 +118,7 @@ test("malformed selected policy fails closed, never falls through to broader def
 test("catalog removes unavailable entries, recursive tools and missing resources; diagnostics remain user-facing", () => {
   const f = fixture();
   try {
-    f.put(f.global, { ...DEFAULT_POLICY, models: [...DEFAULT_POLICY.models, { id: "anthropic/missing:medium" }, { id: "openai-codex/gpt-6-luna:xhigh" }], tools: ["read", "absent", "subagent_spawn"], extensions: ["missing.ts"] });
+    f.put(f.global, { ...DEFAULT_POLICY, models: [...TEST_MODELS, { id: "anthropic/missing:medium" }, { id: "openai-codex/gpt-6-luna:xhigh" }], tools: ["read", "absent", "subagent_spawn"], extensions: ["missing.ts"] });
     const p = new SubagentPolicy(f.environment);
     const catalog = p.catalog();
     assert.equal(catalog.models.length, 2);
@@ -141,6 +164,7 @@ test("compile enforces exact composition, prompt modes, scoped directories and e
 test("config snapshot changes only after reload, availability is rechecked every time", () => {
   const f = fixture();
   try {
+    f.put(f.global, { version: 1, models: TEST_MODELS });
     const p = new SubagentPolicy(f.environment);
     f.put(f.global, { version: 1, models: [] });
     assert.equal(p.catalog().models.length, 2);

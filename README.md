@@ -124,8 +124,8 @@ Pi project settings and policy do not walk up from a nested package working
 directory, so starting Pi inside `packages/<name>` does not discover the root
 `.pi/` configuration. This repository does not ship a project subagent override;
 the personal global policy takes precedence over package defaults when present.
-On this workstation, the global override uses the new model menu with
-read/search-only permissions; `self-reload` remains project-local. A project
+Personal model choices and permissions belong to that global policy;
+`self-reload` remains project-local. A project
 policy, if added, replaces the global policy as a whole; policies are not a
 filesystem sandbox.
 
@@ -179,11 +179,26 @@ live search/MCP services and optional installed-Pi executable overrides are
 outside the root gate. Packaging fixtures may download registry dependencies as
 noted above.
 
-## Refreshing subagent model recommendations
+## Subagent execution versus model research
 
-From the trusted repository root, `/skill:refresh-subagent-models` runs the maintainer workflow: runtime-aligned subscription inventory, private Artificial Analysis snapshots, deterministic per-pool Pareto analysis, then an evidence/experience-grounded proposal. Reload project skills after adding it to a running session. It does not change policy or run model trials automatically.
+The subagents package owns execution policy, exact runtime model/thinking
+validation, supervision and reported usage. Its bundled skill covers setup and
+operation, not model rankings or benchmark analysis.
 
-Analysis preferences live in [`.pi/model-selection.json`](.pi/model-selection.json), separately from the subagent policy. [Decisions](docs/subagents-model-selection/decisions.md) and [practical experience](docs/subagents-model-selection/experience.md) guide interpretation; [helper documentation](packages/subagents/skills/subagents/reference/frontier-analysis.md) describes private artifacts and reproducible commands. Shipped defaults live in `packages/subagents/extensions/subagents/src/policy.ts`; a personal `subagents.json` or an explicitly added project `.pi/subagents.json` replaces them.
+Model-selection research, snapshot/inventory helpers, analysis preferences and
+the explicit `refresh-subagent-models` workflow now live in the separate **Pareto**
+project (`~/Work/pareto` on this workstation). Use that project's README for its
+Python/Make commands and compatibility notes; the former JavaScript helper paths
+in this repository are no longer supported. Pareto is not a runtime dependency
+and does not apply execution policy automatically. Historical exploration and
+September 20 proposal records are preserved verbatim in Pareto's
+`docs/subagents-model-selection/archive/`; archived policies are evidence, not
+current execution configuration.
+
+Shipped execution defaults remain in
+`packages/subagents/extensions/subagents/src/policy.ts`. A personal
+`subagents.json` or trusted-project `.pi/subagents.json` replaces those defaults
+as a whole. This separation does not modify global Pi settings or policies.
 
 ## Design notes
 
