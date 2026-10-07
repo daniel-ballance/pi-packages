@@ -66,10 +66,15 @@ runtime dependencies resolvable from their extension entry points.
 After a development install, run `node scripts/patch-pi-host-security.mts`
 (or use `./scripts/ci-install.sh locked`, which runs it after installation and
 any CI runtime overrides). The pinned Pi SDKs publish an npm shrinkwrap containing
-vulnerable `brace-expansion` 5.0.9; npm honors it even when our outer lock or an
-override names 5.0.12. This explicit step copies the separately integrity-verified
-5.0.12 development dependency into affected local SDKs and updates only that
-shrinkwrap entry. Already-patched hosts are unchanged. It never runs dependency
+vulnerable `brace-expansion` and `undici`; npm honors it even when our outer
+lock or overrides name patched releases. This explicit step copies the separately
+integrity-verified `brace-expansion` 5.0.12 and `undici` 8.10.2 development
+dependencies into affected local SDKs and updates only their shrinkwrap entries.
+It preflights all seven development hosts, accepts already-patched versions on
+the reviewed 5.x and 8.x lines, and leaves those dependencies unchanged. Each
+SDK's replacements are staged together with one merged shrinkwrap; a failed
+promotion restores that SDK's installed libraries. Successful patches clear
+hidden npm lock caches. It never runs dependency
 lifecycle scripts, changes Pi versions, repairs dependencies during checks, or
 follows SDK links outside the selected development checkout. The gate checks
 the installed dependency, not just audit/lockfile metadata. Pi's separately

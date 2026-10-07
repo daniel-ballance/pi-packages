@@ -44,8 +44,10 @@ if [[ "$PI_VERSION" == "0.99.2" && "$PACKAGE_MANAGER" == pnpm ]]; then
   cp "$ROOT/pnpm-workspace.yaml" "$workspace_backup"
   trap 'cp "$workspace_backup" "$ROOT/pnpm-workspace.yaml"; rm -f "$workspace_backup"' EXIT
   node --input-type=module - "$ROOT" "$PI_VERSION" <<'NODE'
-import { appendFileSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 const [root, version] = process.argv.slice(2);
+const { parse, stringify } = createRequire(`${root}/packages/agent-skills/package.json`)("yaml");
 // Stable Pi matrix overrides must not downgrade the separate pinned Durable 1.x stack.
 const names = new Set();
 for (const dir of readdirSync(`${root}/packages`)) {
@@ -54,8 +56,17 @@ for (const dir of readdirSync(`${root}/packages`)) {
     if (name.startsWith("@earendil-works/pi-")) names.add(name);
   }
 }
-appendFileSync(`${root}/pnpm-workspace.yaml`, "\noverrides:\n" +
-  [...names].sort().map(name => `  '${name}@<1.0.0': '${version}'\n`).join(""));
+const path = `${root}/pnpm-workspace.yaml`;
+const workspace = parse(readFileSync(path, "utf8"));
+if (typeof workspace !== "object" || workspace === null || Array.isArray(workspace)) {
+  throw new Error("Expected a workspace mapping");
+}
+const overrides = workspace.overrides ?? {};
+if (typeof overrides !== "object" || overrides === null || Array.isArray(overrides)) {
+  throw new Error("Expected an overrides mapping");
+}
+for (const name of [...names].sort()) overrides[`${name}@<1.0.0`] = version;
+writeFileSync(path, stringify({ ...workspace, overrides }));
 NODE
   pnpm --dir "$ROOT" install --no-frozen-lockfile --lockfile=false --ignore-scripts
 elif [[ "$PI_VERSION" == "0.99.2" ]]; then

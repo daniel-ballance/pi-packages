@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Explicit development-install step, never a lifecycle hook or a check-time repair.
-// npm honors the Pi SDK's published shrinkwrap ahead of our outer security pin.
+// npm honors the Pi SDK's published shrinkwrap ahead of our outer security pins.
 import { cp, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -8,12 +8,25 @@ import { fileURLToPath } from "node:url";
 
 const sourceRoot = await realpath(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const root = await realpath(resolve(process.argv[2] ?? sourceRoot));
-const floor = "5.0.12";
 const sdkName = "@earendil-works/pi-coding-agent";
 const hosts: readonly { packageName: string; alias: string }[] = [
   ...["durable-subagents", "mcp-client", "self-reload", "subagents", "t3-subagents", "web-search"]
     .map((packageName: string): { packageName: string; alias: string } => ({ packageName, alias: sdkName })),
   { packageName: "durable-subagents", alias: "pi-host-1" },
+];
+
+type Dependency = {
+  name: "brace-expansion" | "undici";
+  floor: string;
+  major: number;
+  minor: number;
+  patch: number;
+  integrity?: string;
+};
+const dependencies: readonly Dependency[] = [
+  { name: "brace-expansion", floor: "5.0.12", major: 5, minor: 0, patch: 12 },
+  { name: "undici", floor: "8.10.2", major: 8, minor: 10, patch: 2,
+    integrity: "sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==" },
 ];
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -36,31 +49,78 @@ function inside(path: string, boundary: string = root): void {
   }
 }
 
-function patched(version: unknown): boolean {
-  if (typeof version !== "string") throw new Error("brace-expansion version must be a string");
-  const parts = /^5\.(\d+)\.(\d+)$/.exec(version);
-  if (parts === null) throw new Error(`Unreviewed brace-expansion version: ${version}`);
-  const minor = Number(parts[1]);
-  const patch = Number(parts[2]);
-  if (![minor, patch].every(Number.isSafeInteger)) throw new Error("Invalid brace-expansion version");
-  return minor > 0 || patch >= 12;
+async function cachePath(directory: string): Promise<string> {
+  const parent = await realpath(directory);
+  inside(parent);
+  return join(parent, ".package-lock.json");
 }
 
+function patched(version: unknown, dependency: Dependency): boolean {
+  if (typeof version !== "string") throw new Error(`${dependency.name} version must be a string`);
+  const parts = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (parts === null || parts[1] !== String(dependency.major)) {
+    throw new Error(`Unreviewed ${dependency.name} version: ${version}`);
+  }
+  const minor = Number(parts[2]);
+  const patch = Number(parts[3]);
+  if (![minor, patch].every(Number.isSafeInteger)) throw new Error(`Invalid ${dependency.name} version`);
+  return minor > dependency.minor || (minor === dependency.minor && patch >= dependency.patch);
+}
+
+function noUndiciDependencies(manifest: Record<string, unknown>): void {
+  if (manifest.dependencies !== undefined &&
+      Object.keys(object(manifest.dependencies, "undici dependencies")).length !== 0) {
+    throw new Error("Unreviewed undici dependency shape");
+  }
+}
+
+function validateSource(manifest: Record<string, unknown>, dependency: Dependency): void {
+  if (manifest.name !== dependency.name || manifest.version !== dependency.floor) {
+    throw new Error(`Install the reviewed ${dependency.name} ${dependency.floor} development dependency first`);
+  }
+  if (dependency.name === "undici") {
+    noUndiciDependencies(manifest);
+    if (object(manifest.engines, "undici source engines").node !== ">=22.19.0") {
+      throw new Error("Unreviewed undici source engines");
+    }
+  }
+}
+
+type Source = {
+  dependency: Dependency;
+  path: string;
+  manifest: Record<string, unknown>;
+  resolution: Record<string, unknown>;
+};
+type Replacement = { target: string; source: Source };
 type Plan = {
-  target: string;
+  sdk: string;
+  replacements: Replacement[];
   shrinkwrapPath: string;
   shrinkwrap: Record<string, unknown>;
   cachePaths: readonly string[];
 };
+type Stage = { replacement: Replacement; path: string; moved: boolean };
 
 // Validate every host before changing any of them. Never follow a link into the
-// global Pi installation. The source is separately installed with npm/pnpm's
+// global Pi installation. Sources are separately installed with npm/pnpm's
 // lockfile-integrity verification; no downloads or package scripts run here.
-const source = await realpath(join(sourceRoot, "node_modules/brace-expansion"));
-inside(source, sourceRoot);
-const sourceManifest = await json(join(source, "package.json"));
-if (sourceManifest.name !== "brace-expansion" || sourceManifest.version !== floor) {
-  throw new Error(`Install the reviewed brace-expansion ${floor} development dependency first`);
+const lock = await json(join(sourceRoot, "package-lock.json"));
+const packages = object(lock.packages, "root lock packages");
+const sources: Source[] = [];
+for (const dependency of dependencies) {
+  const path = await realpath(join(sourceRoot, "node_modules", dependency.name));
+  inside(path, sourceRoot);
+  const manifest = await json(join(path, "package.json"));
+  validateSource(manifest, dependency);
+  const resolution = object(packages[`node_modules/${dependency.name}`], "security source lock entry");
+  if (resolution.version !== dependency.floor ||
+      resolution.resolved !== `https://registry.npmjs.org/${dependency.name}/-/${dependency.name}-${dependency.floor}.tgz` ||
+      typeof resolution.integrity !== "string" || !resolution.integrity.startsWith("sha512-") ||
+      (dependency.integrity !== undefined && resolution.integrity !== dependency.integrity)) {
+    throw new Error("Security source must have the reviewed version, registry URL and SHA-512 integrity");
+  }
+  sources.push({ dependency, path, manifest, resolution });
 }
 const scope = await json(join(root, "package.json"));
 const standaloneNames: Record<string, string> = {
@@ -76,17 +136,12 @@ if (typeof scopeName !== "string" ||
 const selected = scopeName === "pi-packages-repo" ? hosts : hosts.filter(
   (host: { packageName: string; alias: string }): boolean => host.packageName === standaloneNames[scopeName],
 );
-const lock = await json(join(sourceRoot, "package-lock.json"));
-const packages = object(lock.packages, "root lock packages");
-const resolution = object(packages["node_modules/brace-expansion"], "security source lock entry");
-if (resolution.version !== floor ||
-    resolution.resolved !== `https://registry.npmjs.org/brace-expansion/-/brace-expansion-${floor}.tgz` ||
-    typeof resolution.integrity !== "string" || !resolution.integrity.startsWith("sha512-")) {
-  throw new Error("Security source must have the reviewed version, registry URL and SHA-512 integrity");
-}
+const rootCache = await cachePath(join(root, "node_modules"));
 const plans: Plan[] = [];
+const visited = new Set<string>();
 for (const host of selected) {
   const directory = scopeName === "pi-packages-repo" ? join(root, "packages", host.packageName) : root;
+  const hostCache = await cachePath(join(directory, "node_modules"));
   const sdk = await realpath(join(directory, "node_modules", host.alias));
   inside(sdk);
   const manifest = await json(join(sdk, "package.json"));
@@ -95,59 +150,99 @@ for (const host of selected) {
   }
   const entry = await realpath(resolve(sdk, manifest.main));
   inside(entry, sdk);
-  const sdkRequire = createRequire(entry);
-  const matcherRequire = createRequire(sdkRequire.resolve("minimatch"));
-  const target = await realpath(dirname(matcherRequire.resolve("brace-expansion/package.json")));
-  inside(target);
-  const current = await json(join(target, "package.json"));
-  if (current.name !== "brace-expansion") throw new Error("Unexpected matcher dependency");
-  if (patched(current.version)) continue;
-  inside(target, sdk);
-  const dependencies = object(current.dependencies, "old brace dependencies");
-  if (Object.keys(dependencies).length !== 1 || dependencies["balanced-match"] !== "^4.0.2") {
-    throw new Error("Unreviewed brace-expansion dependency shape");
+  // pnpm can link multiple hosts to one SDK. Coalesce their replacements and
+  // metadata into one transaction rather than replaying a stale shrinkwrap.
+  const existing = plans.find((plan: Plan): boolean => plan.sdk === sdk);
+  if (existing !== undefined) {
+    existing.cachePaths = [...existing.cachePaths, hostCache];
   }
-  const shrinkwrapPath = await realpath(join(sdk, "npm-shrinkwrap.json"));
-  inside(shrinkwrapPath, sdk);
-  const shrinkwrap = await json(shrinkwrapPath);
-  const entries = object(shrinkwrap.packages, "Pi shrinkwrap packages");
-  const old = object(entries["node_modules/brace-expansion"], "Pi shrinkwrap brace entry");
-  if (old.version !== current.version) throw new Error("Installed Pi dependency disagrees with its shrinkwrap");
-  entries["node_modules/brace-expansion"] = {
-    ...old, version: floor, resolved: resolution.resolved, integrity: resolution.integrity,
-  };
-  plans.push({
-    target, shrinkwrapPath, shrinkwrap: { ...shrinkwrap, packages: entries },
-    cachePaths: [join(directory, "node_modules/.package-lock.json"), join(sdk, "node_modules/.package-lock.json")],
-  });
+  if (visited.has(sdk)) continue;
+  visited.add(sdk);
+  const sdkRequire = createRequire(entry);
+  let plan: Plan | undefined;
+  for (const source of sources) {
+    const { dependency } = source;
+    const dependencyRequire = dependency.name === "brace-expansion" ?
+      createRequire(sdkRequire.resolve("minimatch")) : sdkRequire;
+    const target = await realpath(dirname(dependencyRequire.resolve(`${dependency.name}/package.json`)));
+    inside(target);
+    const current = await json(join(target, "package.json"));
+    if (current.name !== dependency.name) {
+      throw new Error(dependency.name === "brace-expansion" ? "Unexpected matcher dependency" : "Unexpected undici dependency");
+    }
+    if (dependency.name === "undici") noUndiciDependencies(current);
+    if (patched(current.version, dependency)) continue;
+    inside(target, sdk);
+    if (dependency.name === "brace-expansion") {
+      const oldDependencies = object(current.dependencies, "old brace dependencies");
+      if (Object.keys(oldDependencies).length !== 1 || oldDependencies["balanced-match"] !== "^4.0.2") {
+        throw new Error("Unreviewed brace-expansion dependency shape");
+      }
+    }
+    if (plan === undefined) {
+      const shrinkwrapPath = await realpath(join(sdk, "npm-shrinkwrap.json"));
+      inside(shrinkwrapPath, sdk);
+      const shrinkwrap = await json(shrinkwrapPath);
+      plan = {
+        sdk, replacements: [], shrinkwrapPath,
+        shrinkwrap: { ...shrinkwrap, packages: object(shrinkwrap.packages, "Pi shrinkwrap packages") },
+        cachePaths: [hostCache, await cachePath(join(sdk, "node_modules"))],
+      };
+    }
+    const entries = object(plan.shrinkwrap.packages, "Pi shrinkwrap packages");
+    const key = relative(sdk, target).split(sep).join("/");
+    const old = object(entries[key], `Pi shrinkwrap ${dependency.name} entry`);
+    if (old.version !== current.version) throw new Error("Installed Pi dependency disagrees with its shrinkwrap");
+    if (dependency.name === "undici") noUndiciDependencies(old);
+    entries[key] = {
+      ...old, version: dependency.floor, resolved: source.resolution.resolved, integrity: source.resolution.integrity,
+    };
+    plan.shrinkwrap.packages = entries;
+    plan.replacements.push({ target, source });
+  }
+  if (plan !== undefined) plans.push(plan);
 }
 
 for (const plan of plans) {
-  const stage = await mkdtemp(join(dirname(plan.target), ".brace-security-"));
-  let moved = false;
+  const stages: Stage[] = [];
   let committed = false;
   try {
-    const replacement = join(stage, "replacement");
-    await cp(source, replacement, { recursive: true });
-    const staged = await json(join(replacement, "package.json"));
-    if (staged.version !== floor) throw new Error("Security source changed during staging");
-    // Atomic replacement avoids mutating a package-manager store's hardlink
-    // or following a predictable temporary-file symlink.
-    const metadata = join(stage, "shrinkwrap.json");
+    // Stage both libraries before promoting either, then publish one merged
+    // shrinkwrap. A promotion failure restores every replacement in this SDK.
+    for (const replacement of plan.replacements) {
+      const path = await mkdtemp(join(dirname(replacement.target), `.${replacement.source.dependency.name}-security-`));
+      const stage: Stage = { replacement, path, moved: false };
+      stages.push(stage);
+      await cp(replacement.source.path, join(path, "replacement"), { recursive: true });
+      const staged = await json(join(path, "replacement/package.json"));
+      if (JSON.stringify(staged) !== JSON.stringify(replacement.source.manifest)) {
+        throw new Error("Security source changed during staging");
+      }
+    }
+    const first = stages[0];
+    if (first === undefined) throw new Error("Security plan has no replacements");
+    const metadata = join(first.path, "shrinkwrap.json");
     await writeFile(metadata, `${JSON.stringify(plan.shrinkwrap, null, 2)}\n`);
-    await rename(plan.target, join(stage, "original"));
-    moved = true;
-    await rename(replacement, plan.target);
+    for (const stage of stages) {
+      // Atomic replacement avoids mutating a package-manager store's hardlink
+      // or following a predictable temporary-file symlink.
+      await rename(stage.replacement.target, join(stage.path, "original"));
+      stage.moved = true;
+      await rename(join(stage.path, "replacement"), stage.replacement.target);
+    }
     await rename(metadata, plan.shrinkwrapPath);
     committed = true;
     for (const cache of plan.cachePaths) await rm(cache, { force: true });
   } finally {
-    if (moved && !committed) {
-      await rm(plan.target, { recursive: true, force: true });
-      await rename(join(stage, "original"), plan.target);
+    if (!committed) {
+      for (const stage of [...stages].reverse()) {
+        if (!stage.moved) continue;
+        await rm(stage.replacement.target, { recursive: true, force: true });
+        await rename(join(stage.path, "original"), stage.replacement.target);
+      }
     }
-    await rm(stage, { recursive: true, force: true });
+    for (const stage of stages) await rm(stage.path, { recursive: true, force: true });
   }
 }
-if (plans.length > 0) await rm(join(root, "node_modules/.package-lock.json"), { force: true });
-console.log(`Pi host security: ${selected.length} checked, ${plans.length} patched to brace-expansion ${floor}.`);
+if (plans.length > 0) await rm(rootCache, { force: true });
+console.log(`Pi host security: ${selected.length} checked, ${plans.length} patched to brace-expansion 5.0.12 and undici 8.10.2.`);

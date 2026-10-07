@@ -30,3 +30,8 @@ minimumReleaseAgeExclude:
 
 # Checks must not reinstall dependencies (including CI's temporary Pi override).
 verifyDepsBeforeRun: false
+
+# Published legacy SDK manifests pin an insecure undici version exactly.
+# Replace only vulnerable 8.x releases; retain every Pi/other dependency pin.
+overrides:
+  'undici@>=8.0.0 <8.10.2': '8.10.2'
