@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { Peer } from '../extensions/mcp-client/src/peer.js';
-import { MODERN } from '../extensions/mcp-client/src/config.js';
+import { LEGACY, MODERN } from '../extensions/mcp-client/src/config.js';
 
 class FakeTransport implements Transport {
   onmessage?: Transport['onmessage'];
@@ -109,6 +109,31 @@ test('legacy accepts absent resultType and handles roots and ping', async () => 
   assert.deepEqual(t.sent.at(-1), { jsonrpc: '2.0', id: 123, result: {} });
   await p.close();
 });
+
+for (const version of LEGACY) {
+  test(`${version} never interprets modern MRTR fields as approval requests`, async () => {
+    const transport = new FakeTransport();
+    const peer = new Peer(transport, { elicitation: { form: {} } });
+    peer.version = version;
+    await peer.start();
+    let inputCalls = 0;
+    peer.oninput = async () => {
+      inputCalls++;
+      return { action: 'accept', content: {} };
+    };
+    const result = {
+      content: [{ type: 'text', text: 'ordinary legacy result' }],
+      resultType: 'input_required',
+      requestState: 'untrusted legacy field',
+      inputRequests: { form: { method: 'elicitation/create' } },
+    };
+    transport.handle = (message) => transport.result(message.id, result);
+    assert.deepEqual(await peer.request('tools/call'), result);
+    assert.equal(inputCalls, 0);
+    assert.equal(transport.sent.length, 1);
+    await peer.close();
+  });
+}
 
 test('pagination rejects repeated cursors and follows distinct pages', async () => {
   const t = new FakeTransport(),

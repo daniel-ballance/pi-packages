@@ -46,6 +46,7 @@ export class Peer {
     }
   >();
   private lifetime = new AbortController();
+  private closing?: Promise<void>;
   private incoming = new Map<string | number, AbortController>();
   private subscriptions = new Map<number, { requested: ObjectValue; acknowledged?: ObjectValue }>();
   constructor(
@@ -88,7 +89,8 @@ export class Peer {
           }),
         ),
       );
-      if (replies.length) await reply(replies as unknown as JSONRPCMessage);
+      if (replies.length && !this.lifetime.signal.aborted)
+        await reply(replies as unknown as JSONRPCMessage);
       return;
     }
     if ('method' in message) {
@@ -247,6 +249,14 @@ export class Peer {
         signal.removeEventListener('abort', abort);
       };
       const abort = () => {
+        // Legacy server requests carry no reliable parent-call identity. Retire the
+        // connection on cancellation/timeout of an input-capable operation, rather
+        // than letting its pending or late approval outlive the operation. Modern
+        // MRTR inputs already share the originating request's signal.
+        const retireLegacyConnection =
+          this.version !== MODERN &&
+          !this.lifetime.signal.aborted &&
+          ['tools/call', 'resources/read', 'prompts/get'].includes(method);
         cleanup();
         reject(signal.reason);
         // initialize MUST NOT be cancelled in initialization-based revisions.
@@ -254,6 +264,7 @@ export class Peer {
           void this.transport
             .send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id } })
             .catch(() => {});
+        if (retireLegacyConnection) void this.close().catch(() => {});
       };
       if (method === 'subscriptions/listen')
         this.subscriptions.set(id, { requested: params.notifications ?? {} });
@@ -324,11 +335,9 @@ export class Peer {
     let retry: ObjectValue = {};
     for (let round = 0; round < 8; round++) {
       const result = await this.raw(method, { ...params, ...retry }, { ...options, signal });
-      if (
-        (result.resultType === undefined && this.version !== MODERN) ||
-        result.resultType === 'complete'
-      )
-        return result;
+      // resultType/inputRequests have wire semantics only in Current. Preserve
+      // legacy result fields as data; never turn them into UI requests or retries.
+      if (this.version !== MODERN || result.resultType === 'complete') return result;
       if (
         result.resultType === 'task' &&
         this.version === MODERN &&
@@ -405,8 +414,15 @@ export class Peer {
     }
     throw new Error('MCP pagination limit exceeded');
   }
-  async close() {
-    this.lifetime.abort();
-    await deadline(this.transport.close(), Math.min(this.timeout, 2000));
+  close(): Promise<void> {
+    if (!this.closing) {
+      // Publish the shared cleanup promise before aborting: abort listeners may
+      // synchronously request close again. Invalidate input before yielding.
+      this.closing = Promise.resolve().then(() =>
+        deadline(this.transport.close(), Math.min(this.timeout, 2000)),
+      );
+      this.lifetime.abort();
+    }
+    return this.closing;
   }
 }

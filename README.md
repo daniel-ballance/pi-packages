@@ -225,3 +225,5 @@ as a whole. This separation does not modify global Pi settings or policies.
 ## Design notes
 
 - [Failure-only MCP status](docs/mcp-status/README.md) — rationale, mockup, and visual references.
+- [MCP client alignment](docs/mcp-client-alignment/README.md) — native Pi integration audit, implementation progress, and migration safety gates for the replacement client.
+- [MCP additions](docs/mcp-additions/README.md) — parked native-hook proposal and compatibility research; no installable package.

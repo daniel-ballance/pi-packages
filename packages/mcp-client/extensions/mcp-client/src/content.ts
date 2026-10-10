@@ -7,6 +7,25 @@ import type { ObjectValue } from './headers.js';
 
 type Details = { mcpError: boolean; fullOutput?: string; raw?: ObjectValue };
 
+/** Match native Pi's structured-only result tolerance, without masking invalid fields. */
+export function normalizeToolResult(value: unknown): ObjectValue {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid MCP tools/call result');
+  const result = value as ObjectValue;
+  if (result.content !== undefined && !Array.isArray(result.content))
+    throw new Error('Invalid MCP tools/call content');
+  if (
+    result.structuredContent !== undefined &&
+    (!result.structuredContent ||
+      typeof result.structuredContent !== 'object' ||
+      Array.isArray(result.structuredContent))
+  )
+    throw new Error('Invalid MCP tools/call structuredContent');
+  if (result.isError !== undefined && typeof result.isError !== 'boolean')
+    throw new Error('Invalid MCP tools/call isError');
+  return result.content === undefined ? { ...result, content: [] } : result;
+}
+
 /** Ordered, bounded, recoverable content. Links and unsupported media are never fetched. */
 export async function present(
   result: ObjectValue,
@@ -48,6 +67,13 @@ export async function present(
       content.push({ type: 'image', mimeType: b.mimeType, data: b.data });
     } else if (b.type === 'resource' && typeof b.resource?.text === 'string') {
       text(`${b.resource.uri}\n${b.resource.text}`);
+    } else if (
+      b.type === 'resource' &&
+      typeof b.resource?.blob === 'string' &&
+      typeof b.resource?.mimeType === 'string' &&
+      b.resource.mimeType.startsWith('image/')
+    ) {
+      block({ type: 'image', data: b.resource.blob, mimeType: b.resource.mimeType });
     } else if (b.type === 'resource_link') {
       text(`Resource link (not fetched): ${b.uri}${b.name ? ` — ${b.name}` : ''}`);
     } else {
@@ -118,6 +144,18 @@ export async function present(
       mcpError: payload.isError === true,
       ...(fullOutput ? { fullOutput } : { raw: result }),
     },
+  };
+}
+
+/** Full MCP envelope for native codemode, bounded previews for the transcript. */
+export async function presentNativeResult(result: ObjectValue, source?: string) {
+  const { _meta: _private, ...publicResult } = result;
+  const scriptResult = normalizeToolResult(publicResult);
+  const preview = await present(scriptResult, source);
+  return {
+    ...preview,
+    structuredContent: scriptResult,
+    ...(result.isError === true ? { isError: true } : {}),
   };
 }
 

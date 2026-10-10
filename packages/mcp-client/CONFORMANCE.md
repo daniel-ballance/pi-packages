@@ -20,6 +20,58 @@ This is a tested capability matrix, **not conformance certification**. Optional 
 | Tasks                                        | —                                              | —                      | —                       | Experimental form not advertised | Opt-in standard extension, explicit polling |
 | Apps / remote Skills installation            | Not advertised                                 | Not advertised         | Not advertised          | Not advertised                   | Not advertised                              |
 
+## Native Pi alignment pass
+
+Native Pi **1.1.0** is the host-integration reference; MCP specifications remain
+wire authority. See the [audit](../../docs/mcp-client-alignment/AUDIT.md) and
+[implementation status](../../docs/mcp-client-alignment/README.md). This pass does
+not establish full native exposure/codemode parity or unrestricted conformance.
+
+New regression coverage:
+
+- `approval-lifetime.test.ts`: legacy operation cancellation/deadline retires the
+  connection and late approvals; modern MRTR cancellation stays operation-scoped;
+  collected batches cannot reply after shutdown; repeated close is idempotent.
+- `peer.test.ts`: legacy `resultType` fields remain data, not modern input/retry
+  instructions, across all four accepted legacy revisions.
+- `result-compatibility.test.ts`: structured-only results, malformed-field
+  rejection, ordinary legacy task-like data, output-schema checking, image/error
+  preservation, and real stdio cancellation/deactivation/process exit.
+- `forms.test.ts`: review/edit on both guided and JSON paths, unknown modes,
+  cancellation checks, heuristic secret rejection, and current enum schemas
+  through the reviewed JSON path. Guided titled/multi-enum controls remain absent.
+- `elicitation-version.test.ts`: negotiated-version URL validation and Current
+  MRTR consent without a legacy `elicitationId`, using fake UI/browser opening.
+
+- `native-config.test.ts`: read-only native import, timeout units, enabled flags,
+  partial overrides, exposure preservation, registrations and fail-closed options.
+- `native-host.test.ts`: exposure matching, identities, annotations/namespaces,
+  full script results without top-level metadata, resource images and settings.
+- `computer-use-approval.test.ts`: exact app/operation eligibility, human selection,
+  session-only metadata, malformed/permanent-scope rejection, cancellation and
+  legacy/MRTR forwarding. This is not live server authorization evidence.
+- `form-review.test.ts`: full-value paged review and bounded fail-closed behavior.
+- `lifecycle.test.ts`: startup abort/deadline, bounded cleanup and Linux process
+  group/wrapper/grandchild ownership; macOS/Windows cleanup remains unverified.
+- `scripts/native-rpc-smoke.mjs`: actual Pi **1.0.3 and 1.1.0** passed an isolated
+  synthetic-server RPC scenario: names, hidden rejection, registered servers,
+  session-only fixture approval, resources, errors and codemode image output.
+  Test-driver selection is not a human T3 dialog/rendering test.
+
+Native mode leaves native files unchanged for safer rollback and refuses
+unsupported semantics. Package-mode rollback still requires native-format files.
+The actual T3 synthetic fixture subsequently passed human session-only approval
+and visible image delivery. The existing signed Mac server connected, but two
+Calculator selections initially returned `-10005: cgWindowNotFound`. A
+user-requested retry then delivered live Calculator AX state and a fresh screenshot.
+The subsequent Convert-menu action returned `Computer Use was not approved to
+use Calculator`; the user reported no denial. Inspection found the missing
+client-side session-grant reuse. After that fix, the live Pi/T3 scenario completed:
+**2 + 2 = 4**, fresh AX expression/result plus screenshot, and an approval history
+of **one human acceptance and 11 scoped session reuses** (click, press_key and
+get_app_state). No permanent grant or OS permission change. This proves this
+bounded Calculator scenario, not arbitrary apps or exhaustive conformance.
+
 ## Confirmed audit defects
 
 | Finding                                                       | Resolution / regression coverage                                                                                                                                                   |
@@ -57,7 +109,7 @@ This is a tested capability matrix, **not conformance certification**. Optional 
 
 ## SDK choice and independent tests
 
-Runtime remains on SDK **1.30.0** for legacy transports and OAuth. The narrow batch adapter preserves batch boundaries through its single-message SSE parser without monkey-patching SDK internals. Stdio and 2026 HTTP have explicit, bounded transports. A wholesale SDK migration is not mixed into this repair.
+Runtime remains on SDK **1.32.1** for legacy transports and OAuth. The narrow batch adapter preserves batch boundaries through its single-message SSE parser without monkey-patching SDK internals. Stdio and 2026 HTTP have explicit, bounded transports. A wholesale SDK migration is not mixed into this repair.
 
 Official SDK **2.0.0** server/node packages are **development-only** interoperability fixtures for modern stdio/HTTP, Unicode headers, MRTR and subscriptions. Other tests cover official SDK v1 HTTP/SSE, real Pi session/reload/deferred tools/compaction, loopback OAuth with PKCE/state, and mocked sampling. No billed model completions are needed.
 

@@ -53,6 +53,228 @@ function harness(cwd: string, trusted = true) {
   return { pi, ctx, handlers, tools, commands, statuses, entries, notifications };
 }
 
+test('native registered servers reconcile restrictions and shutdown invalidates queued restarts', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'mcp-native-lifecycle-'));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = join(cwd, 'global');
+  const h = harness(cwd);
+  let reads = 0;
+  let exposure = 'direct';
+  let toolExposure: Record<string, string> | undefined;
+  h.pi.registerTool({ name: 'codemode', sourceInfo: { path: '/some-other-extension.ts' } });
+  h.pi.registerTool({ name: 'tool_search', sourceInfo: { path: 'builtin:tool-search' } });
+  h.pi.setActiveTools(['read', 'bash']);
+  h.pi.getMcpServers = () => {
+    reads++;
+    return [
+      {
+        name: 'fixture',
+        config: {
+          command: process.execPath,
+          args: [fileURLToPath(new URL('./fixtures/server.mjs', import.meta.url)), '2026-07-28'],
+          protocol: '2026-07-28',
+          exposure,
+          toolExposure,
+        },
+      },
+    ];
+  };
+  try {
+    await mkdir(join(cwd, '.pi'));
+    await writeFile(
+      join(cwd, '.pi', 'mcp-client.json'),
+      JSON.stringify({ configurationFormat: 'native' }),
+    );
+    const initial = h.handlers.get('session_start')!({}, h.ctx);
+    const queued = h.handlers.get('mcp_servers_change')!({}, h.ctx);
+    const shutdown = h.handlers.get('session_shutdown')!();
+    await Promise.all([initial, queued, shutdown]);
+    assert.equal(reads, 0, 'Superseded startup must not read or connect registered servers');
+    await h.handlers.get('session_start')!({}, h.ctx);
+    const old = h.tools.get('mcp__fixture__echo');
+    assert.ok(old);
+    assert.equal(
+      (await old.execute('before', { text: 'allowed' }, undefined, undefined, h.ctx))
+        .structuredContent.content[0].text,
+      'allowed',
+    );
+    exposure = 'deferred';
+    await h.handlers.get('mcp_servers_change')!({}, h.ctx);
+    assert.equal(h.pi.getActiveTools().includes('tool_search'), true);
+    assert.equal(h.pi.getActiveTools().includes('codemode'), false);
+    exposure = 'codemode';
+    await h.handlers.get('mcp_servers_change')!({}, h.ctx);
+    assert.equal(
+      h.pi.getActiveTools().includes('codemode'),
+      false,
+      'Must not activate another extension by builtin name',
+    );
+    exposure = 'hidden';
+    await h.handlers.get('mcp_servers_change')!({}, h.ctx);
+    assert.equal(h.tools.get('mcp__fixture__echo').exposure, 'hidden');
+    await assert.rejects(
+      old.execute('after', { text: 'blocked' }, undefined, undefined, h.ctx),
+      /unavailable/,
+    );
+    assert.equal(h.pi.getActiveTools().includes('mcp__fixture__echo'), false);
+    const resources = h.tools.get('list_mcp_resources');
+    await assert.rejects(
+      resources.execute('hidden-resource', { server: 'fixture' }, undefined),
+      /unavailable/,
+    );
+    toolExposure = { echo: 'direct' };
+    await h.handlers.get('mcp_servers_change')!({}, h.ctx);
+    const exception = h.tools.get('mcp__fixture__echo');
+    assert.equal(exception.exposure, 'direct');
+    assert.equal(
+      (await exception.execute('exception', { text: 'explicit' }, undefined, undefined, h.ctx))
+        .structuredContent.content[0].text,
+      'explicit',
+    );
+  } finally {
+    await h.handlers.get('session_shutdown')!();
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('Computer Use consent is reused only on the same live connection and branch', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'mcp-session-consent-'));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = join(cwd, 'global');
+  const h = harness(cwd);
+  let prompts = 0;
+  h.ctx.hasUI = true;
+  h.ctx.ui.select = async () => {
+    prompts++;
+    return 'Allow for this session';
+  };
+  h.pi.getMcpServers = () => [
+    {
+      name: 'fixture',
+      config: {
+        command: process.execPath,
+        args: [fileURLToPath(new URL('./fixtures/native-approval-server.mjs', import.meta.url))],
+        protocol: '2025-11-25',
+        exposure: 'codemode',
+      },
+    },
+  ];
+  const invoke = () =>
+    h.tools.get('mcp__fixture__approve').execute('consent', {}, undefined, undefined, h.ctx);
+  try {
+    await mkdir(join(cwd, '.pi'));
+    await writeFile(
+      join(cwd, '.pi', 'mcp-client.json'),
+      JSON.stringify({
+        configurationFormat: 'native',
+        serverOptions: { fixture: { elicitation: true } },
+        computerUse: {
+          fixture: {
+            apps: ['com.apple.calculator'],
+            operations: ['get_app_state'],
+            persistence: 'session',
+          },
+        },
+      }),
+    );
+    await h.handlers.get('session_start')!({}, h.ctx);
+    await invoke();
+    const reused = await invoke();
+    assert.equal(prompts, 1);
+    assert.equal(reused.structuredContent.structuredContent.source, 'computer-use-persisted-state');
+    const status = await h.tools.get('mcp_status').execute();
+    assert.match(JSON.stringify(status), /approvalEvents/);
+    await h.commands.get('mcp').handler('revoke fixture', h.ctx);
+    await invoke();
+    assert.equal(prompts, 2, 'Explicit revocation must require fresh consent');
+    await h.handlers.get('session_tree')!({}, h.ctx);
+    await invoke();
+    assert.equal(prompts, 3, 'Branch navigation must invalidate consent');
+    await h.handlers.get('mcp_servers_change')!({}, h.ctx);
+    await invoke();
+    assert.equal(prompts, 4, 'New connection must require fresh consent');
+  } finally {
+    await h.handlers.get('session_shutdown')!();
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('branch changes revoke all grants before waiting for another server restoration', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'mcp-multi-consent-'));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = join(cwd, 'global');
+  const h = harness(cwd);
+  const marker = join(cwd, 'unsubscribe-waiting');
+  let prompts = 0;
+  h.ctx.hasUI = true;
+  h.ctx.ui.select = async () => {
+    prompts++;
+    return 'Allow for this session';
+  };
+  h.pi.getMcpServers = () =>
+    ['first', 'second'].map((name) => ({
+      name,
+      config: {
+        command: process.execPath,
+        args: [
+          fileURLToPath(new URL('./fixtures/native-approval-server.mjs', import.meta.url)),
+          ...(name === 'first' ? [marker] : []),
+        ],
+        protocol: '2025-11-25',
+        exposure: 'codemode',
+      },
+    }));
+  const invoke = () =>
+    h.tools.get('mcp__second__approve').execute('consent', {}, undefined, undefined, h.ctx);
+  try {
+    await mkdir(join(cwd, '.pi'));
+    await writeFile(
+      join(cwd, '.pi', 'mcp-client.json'),
+      JSON.stringify({
+        configurationFormat: 'native',
+        serverOptions: { second: { elicitation: true } },
+        computerUse: {
+          second: {
+            apps: ['com.apple.calculator'],
+            operations: ['get_app_state'],
+            persistence: 'session',
+          },
+        },
+      }),
+    );
+    await h.handlers.get('session_start')!({}, h.ctx);
+    await invoke();
+    await invoke();
+    assert.equal(prompts, 1);
+    await h.commands
+      .get('mcp')
+      .handler('subscribe {"server":"first","uri":"fixture://image"}', h.ctx);
+    const branch = h.handlers.get('session_tree')!({}, h.ctx);
+    const deadline = Date.now() + 3000;
+    while (
+      !(await stat(marker).then(
+        () => true,
+        () => false,
+      ))
+    ) {
+      assert.ok(Date.now() < deadline, 'First server must enter delayed restoration');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await invoke();
+    assert.equal(prompts, 2, 'Second-server consent must be revoked while first is stalled');
+    await branch;
+  } finally {
+    await h.handlers.get('session_shutdown')!();
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test('Pi factory opens no connections; session discovers tools and shutdown closes them', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'mcp-pi-test-'));
   const previous = process.env.PI_CODING_AGENT_DIR;
@@ -149,11 +371,12 @@ test('form elicitation validates JSON and refuses headless, URL and disabled cap
     elicitation: true,
     roots: ['.'],
   });
-  let inputs = ['{"count":"wrong"}', '{"count":2}'];
+  const inputs = ['{"count":"wrong"}', '{"count":2}'];
+  const choices = ['Provide JSON', 'Send answers'];
   const ctx: any = {
     cwd: '/tmp',
     hasUI: true,
-    ui: { select: async () => 'Provide JSON', input: async () => inputs.shift(), notify() {} },
+    ui: { select: async () => choices.shift(), input: async () => inputs.shift(), notify() {} },
   };
   const handle = inputHandler('test', config, ctx);
   const params = {

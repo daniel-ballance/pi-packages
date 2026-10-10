@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { DiagnosticError, displayText } from './diagnostics.js';
 
@@ -15,7 +16,18 @@ function httpUrl(value: string): boolean {
     return false;
   }
 }
+export const ExposureSchema = z.enum(['direct', 'codemode', 'deferred', 'hidden']);
+export type Exposure = z.infer<typeof ExposureSchema>;
 const common = {
+  exposure: ExposureSchema.optional(),
+  toolExposure: z
+    .unknown()
+    // Zod drops __proto__ record keys; never silently erase a hidden-tool rule.
+    .refine((value) => !value || typeof value !== 'object' || !Object.hasOwn(value, '__proto__'))
+    .pipe(z.record(z.string(), ExposureSchema))
+    .optional(),
+  description: z.string().optional(),
+  native: z.boolean().default(false),
   protocol: z.enum(['auto', MODERN, ...LEGACY]).default('auto'),
   disabled: z.boolean().default(false),
   timeout: z.number().int().min(100).max(3600000).default(60000),
@@ -70,6 +82,8 @@ const FileServerSchema = z
   .object({
     type: z.enum(['stdio', 'http', 'streamable-http', 'sse']).default('stdio'),
     transport: z.never().optional(),
+    // This is an internal provenance flag, not a package-file mode switch.
+    native: z.never().optional(),
     oauth: z
       .object({
         clientId: z.string().min(1).optional(),
@@ -135,14 +149,27 @@ export async function loadConfig(paths: string[]): Promise<Record<string, Server
   }
   return servers;
 }
+function expandHome(value: string): string {
+  if (value === '~') return homedir();
+  if (value.startsWith('~/') || (process.platform === 'win32' && value.startsWith('~\\')))
+    return join(homedir(), value.slice(2));
+  return value;
+}
 export function resolveConfig(config: ServerConfig, cwd: string): ServerConfig {
+  const pathValue = (value: string) => (config.native ? expandHome(expand(value)) : expand(value));
+  const credentialValue = (value: string) => {
+    const expanded = expand(value);
+    if (config.native && expanded.trimStart().startsWith('!'))
+      throw new Error('Native MCP command-valued credentials are not supported');
+    return expanded;
+  };
   if (config.transport === 'stdio')
     return {
       ...config,
-      command: expand(config.command),
-      args: config.args.map(expand),
-      cwd: resolve(cwd, config.cwd ?? '.'),
-      env: Object.fromEntries(Object.entries(config.env).map(([k, v]) => [k, expand(v)])),
+      command: pathValue(config.command),
+      args: config.args.map(pathValue),
+      cwd: resolve(cwd, config.native ? pathValue(config.cwd ?? '.') : (config.cwd ?? '.')),
+      env: Object.fromEntries(Object.entries(config.env).map(([k, v]) => [k, credentialValue(v)])),
     };
   const url = expand(config.url);
   if (!httpUrl(url)) throw new Error('Expected an HTTP(S) URL without userinfo or fragment');
@@ -159,6 +186,8 @@ export function resolveConfig(config: ServerConfig, cwd: string): ServerConfig {
   return {
     ...config,
     url,
-    headers: Object.fromEntries(Object.entries(config.headers).map(([k, v]) => [k, expand(v)])),
+    headers: Object.fromEntries(
+      Object.entries(config.headers).map(([k, v]) => [k, credentialValue(v)]),
+    ),
   };
 }

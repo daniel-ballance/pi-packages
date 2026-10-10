@@ -4,6 +4,92 @@ A Pi package connecting MCP servers to native Pi tools, resource access, and use
 
 Supports the original **2024-11-05** specification, the **2025-03-26**, **2025-06-18**, and **2025-11-25** revisions, and the distinct **2026-07-28** protocol. This is a practical client implementation, **not a claim of exhaustive specification conformance**. See the [version-by-feature matrix](CONFORMANCE.md) and limitations below.
 
+## Native Pi alignment and migration safety
+
+This is a **replacement MCP client**, not an add-on to native Pi. Registering its
+`/mcp` command replaces built-in session MCP handling on current Pi. Native shell
+commands such as `pi mcp list` still use the built-in client and are not this
+package's validator.
+
+**Choose the configuration format explicitly.** Package mode (the default) uses
+milliseconds and `disabled`; native mode uses seconds and `enabled`, preserving
+native exposure/per-tool hiding and trusted partial project overrides. Never
+remove unsupported restrictions merely to make a file load. Native mode leaves
+`mcp.json` unchanged, so unloading the package does not reinterpret converted
+units or disabling fields. Package-mode files must be restored to native format
+**before** unloading the package. Deferred loading is not hiding.
+
+### Native configuration mode (Pi 1.x)
+
+Place `mcp-client.json` alongside the native `mcp.json` (global agent directory,
+or trusted project `.pi/`):
+
+```json
+{
+  "configurationFormat": "native",
+  "serverOptions": {
+    "mac-computer-use": { "protocol": "2025-11-25", "elicitation": true }
+  },
+  "computerUse": {
+    "mac-computer-use": {
+      "apps": ["com.apple.calculator"],
+      "operations": ["get_app_state", "click", "press_key"],
+      "persistence": "session"
+    }
+  }
+}
+```
+
+The policy only makes matching requests eligible for a **human** approval dialog;
+it is not a permission grant. The first matching request offers **Allow for this
+session**, **Decline**, or **Cancel**, identifying the app and complete eligible
+operation subset. Explicit session consent is held in memory for that app and
+connection only. Later requests must pass the same strict validation before
+reusing that grant; unknown apps, operations, schemas or risk metadata do not
+inherit permission. Reconnect, recovery, reload and branch navigation invalidate
+the grant. Nothing is written to disk and permanent scope is never sent.
+
+The installed server asks for elicitation before each operation; returning
+`persist: "session"` alone does not make it remember consent. On reuse the client
+returns the server's recognized `computer-use-persisted-state` source marker.
+The policy checks elicitation requests, not arbitrary tool code: this is not a
+per-call sandbox. It never authenticates, changes OS permissions, or bypasses
+native app policy. Unrecognized approval requests fail closed instead of falling
+back to generic forms. `mcp_status` exposes a bounded safe approval-event history;
+missing UI answers are not described as explicit human denials. Use
+`/mcp revoke SERVER` to forget client-side consent immediately and cancel pending
+approval dialogs for that server; this cannot undo actions already executed.
+
+Native imports use registered servers as the lowest-priority layer, then global
+and trusted project files. Transportless overrides preserve connection settings;
+an explicit `toolExposure` map replaces the earlier map, as in native Pi. Exact
+tool rules precede the first matching wildcard. Unsupported options (including
+`autoEnableCodemode`, provider auth, richer OAuth and shell-valued `!commands`)
+fail the whole load without executing anything. Native credentials are not
+imported. Timeouts are hard deadlines, not progress-reset timers. The optional
+`serverOptions` map permits only wire/capability settings, not access-policy
+changes. Native input also recognizes `protocol` and `toolLoading` compatibility
+fields; `toolLoading` never overrides exposure.
+
+Native mode registers `mcp__server__tool` identities, namespaces, boolean
+annotations, full MCP result envelopes for codemode, and native resource names
+(`list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`). Hidden
+tools are omitted and stale definitions cannot execute. Server-list changes and
+session changes abort startup and reconcile connections. POSIX stdio cleanup
+owns and terminates the process group, including ordinary wrapper grandchildren;
+escaped groups remain best-effort.
+
+See the repository [alignment audit](../../docs/mcp-client-alignment/AUDIT.md) and
+[implementation status](../../docs/mcp-client-alignment/README.md). We use native
+Pi 1.1.0 as the host-integration reference, not as the authority for Current MCP
+wire behavior. Isolated RPC smoke tests pass on actual **Pi 1.0.3 and 1.1.0**:
+native names, hidden-tool rejection, registered servers, synthetic session-only
+approval, resources, error envelopes and codemode images. A separate live Pi/T3
+Calculator test subsequently verified **2 + 2 = 4** by fresh accessibility state
+and screenshot through the existing signed server, with **one human session
+approval and 11 validated consent reuses**. This is bounded integration evidence,
+not broad app coverage or full conformance. `mcp-additions` is parked.
+
 ## Install
 
 From this repository:
@@ -75,8 +161,8 @@ These are placeholders, not installed servers. A stdio command must already be a
 - `${ENV_VAR}` and `${ENV_VAR:-default}` expand in stdio command/args/env and HTTP URL/headers; missing variables without a default fail that server's connection. No shell expansion, command substitution, or automatic `.env` loading occurs.
 - Child processes inherit the MCP SDK's minimal safe environment plus explicit `env`, **not the complete Pi environment**. Child stderr is discarded so it cannot corrupt the TUI or RPC output.
 - `roots` is opt-in. Paths resolve against Pi's session working directory and are sent as file URIs. Omit it to advertise no roots capability; `[]` advertises an empty roots list. **Roots are informational, not a filesystem sandbox.**
-- `elicitation` defaults to false. When enabled, form elicitation is advertised only in Pi's TUI/RPC modes. Simple scalar forms offer **Fill in fields**: strings/numbers use native inputs, enums/booleans use selections, optional fields can be skipped, and a review requires **Send answers** before release. Field errors do not echo entered values; three invalid attempts cancel the form. The complete original schema is still validated. Complex/reference-based schemas retain **Provide JSON**; guided forms are limited to 16 fields and 40 enum choices and do not offer credential-named/password/write-only fields. Decline and cancellation remain available. Never enter secrets into form elicitation.
-- `elicitationUrl` separately enables URL elicitation. Pi displays the URL and requires approval before launching the system browser; non-HTTP(S) URLs and userinfo are refused. OAuth/secret entry happens in the browser, never in form dialogs. All MCP dialogs share one queue across servers.
+- `elicitation` defaults to false. When enabled, form elicitation is advertised only in Pi's TUI/RPC modes. Simple scalar forms offer **Fill in fields**: strings/numbers use native inputs, enums/booleans use selections, and optional fields can be skipped. Both guided and **Provide JSON** paths now require **Send answers / Edit answers / Cancel** review before release; editing re-enters all values, with at most three review rounds. Review shows the complete losslessly escaped response JSON, in 512-character pages (at most 32 pages). Sending is offered only after the final page; oversized responses fail closed. Field errors do not echo entered values; three invalid attempts cancel that entry flow. The complete original schema is validated. Nonsecret complex/reference schemas and titled-single/multi-select enum schemas retain the reviewed JSON path; dedicated guided controls for those enums are not yet implemented. Guided forms are limited to 16 fields and 40 enum choices. Obvious credential/password/write-only schemas and secret-named JSON keys are rejected on either path; detection is heuristic, not a guarantee. Unknown modes fail closed and cancellation is checked after dialogs. Never enter secrets into form elicitation.
+- `elicitationUrl` separately enables URL elicitation. Pi displays the URL and requires approval before launching the system browser; non-HTTP(S) URLs and userinfo are refused. OAuth/secret entry happens in the browser, never in form dialogs. The negotiated protocol, not the configured `auto` setting, determines whether a legacy `elicitationId` is required; Current MRTR URL requests do not require it. Consent is not proof of completion of the external interaction. All MCP dialogs share one queue across servers.
 - `sampling` defaults to false. Enable it for separately approved, billed completions in TUI/RPC mode. `samplingMaxTokens` caps output (default 4096, range 1–32768). Pi's current model is used; server preferences do not change it. Input and release each require confirmation. No Pi session context or Pi tools are shared.
 - `samplingTools` additionally allows server-supplied tool definitions and balanced tool-use/result transcripts in sampling. Pi returns **proposals for the server to execute**; it never executes them or runs another agent loop. Proposed arguments are validated and require release approval. `required` is checked on the generated response; a model that does not provide tool use fails rather than silently violating the request.
 - `toolLoading` defaults to `eager` for compatibility. Set `deferred` on large catalogs: tools remain registered but inactive until `mcp_search_tools` activates matches through Pi's native deferred-loading API. There is no search agent or provider-specific loader.
@@ -129,7 +215,7 @@ The official SDK supplies legacy Streamable HTTP, HTTP+SSE, and OAuth mechanics.
 
 ## Use
 
-Server tools become Pi tools named `mcp_<server>_<tool>_<hash>`. Names are stable, collision-resistant, and at most 64 characters. Original server names and descriptions remain visible. Existing Pi tools are preserved; server tools cannot replace `bash`, `read`, etc.
+In package mode, server tools become Pi tools named `mcp_<server>_<tool>_<hash>`. Native mode uses the native identities described above. Names are stable, collision-resistant, and at most 64 characters. Original server names and descriptions remain visible. Existing Pi tools are preserved; server tools cannot replace `bash`, `read`, etc.
 
 In the TUI, a call is one line in the built-in tool style, not the internal hash. The server is the thing and the tool name is the action, both bold: `context7 • query docs /earendil-works/pi How does renderCall work`. A leading `browser` is dropped, so Playwright reads `playwright • navigate https://example.com`. Tools that are not aimed at one server are just the action: `server status`, `tasks`, `search tools pydantic`. The first argument is accent-colored, the rest use the tool-output color, and `limit` or `timeout` is a muted `(limit 5)`. Server-provided titles are not used on this line. Argument previews are bounded; expanding the tool shows labelled arguments, including explicit `false` values and nested objects/arrays. Expanded previews recursively redact obvious secret-named and `writeOnly` fields. Values behind schema references/compositions are conservatively shown as `[schema-protected]`, not expanded. Previews are not a guarantee of secret detection. This is display-only: wire names, model-visible arguments/results, Pi's result preview, images, errors, and result expansion are unchanged. **Known Pi 0.87.1 limitation:** after `/reload`, historical dynamic-tool calls can fall back to Pi's generic renderer, showing hashed names and raw arguments without these preview redactions. New calls use the custom renderer; do not treat display redaction as a security boundary. See the [reload QA finding](../../docs/mcp-ax-ux/QA.md#known-pi-reload-limitation--not-fixed-here).
 
@@ -230,6 +316,19 @@ Use **`/reload`** to reload configuration, reconnect failed servers and renew su
 
 Textual tool output and execution errors are limited to **2000 lines / 50 KiB**. Large or unsupported results are stored in a private temporary directory with a mode-0600 JSON file. The artifact pointer is placed **first**, so it survives Pi's tool-result compaction preview. Small raw results (including annotations/metadata) are retained in non-context result details. Files are not deleted at session shutdown, so the agent/user can inspect them afterward; normal system temporary-file cleanup applies. Files and Pi session history can contain server output or sensitive data.
 
+Cancellation or timeout of a legacy `tools/call`, `resources/read`, or `prompts/get`
+closes that connection: server-initiated approvals have no reliable parent-call
+identity and must not outlive the cancelled operation. Other concurrent operations
+on that connection also fail; use `/reload` to reconnect, inspect server state,
+and never blindly replay a side-effecting call. Current MRTR inputs use the
+originating operation's cancellation signal and do not close unrelated work.
+Late responses and collected batch replies are suppressed after shutdown.
+
+Tool results with omitted `content` are normalized to an empty array, matching
+native Pi's tolerance for structured-only results. Explicit malformed fields are
+still rejected. Native mode additionally implements the full codemode result
+object contract.
+
 Incoming stdio frames, HTTP JSON bodies (including errors), and individual SSE events are bounded at **10 MiB**, including legacy transports. Long-lived streams are limited per event, not cumulatively. Cancellation is best-effort: it does not undo server-side effects. Servers and their tool descriptions/results remain untrusted input; use only servers you intend to grant tool access to. Project trust protects configuration loading, **not** execution inside a sandbox.
 
 Capabilities are advertised only when their handlers are enabled. TUI/RPC dialogs fail closed when dismissed; print/JSON modes never auto-approve human input. Server failure is isolated from other servers and existing Pi tools.
@@ -243,6 +342,18 @@ npm run format:check
 npm test
 npm pack --dry-run
 ```
+
+Read-only native file preflight (no connections or writes; excludes runtime registrations):
+
+```sh
+./node_modules/.bin/tsx scripts/native-preflight.ts /path/to/agent/mcp.json
+# A second project path requires explicit --trust-project.
+node scripts/native-rpc-smoke.mjs /absolute/path/to/pi
+```
+
+The RPC smoke uses synthetic servers and simulated fixture consent only, in an
+isolated temporary HOME. Never point its test-driver approval logic at live
+servers. It does not install or replace the Pi executable.
 
 For an offline manual TUI demo, run `./scripts/tui-demo.sh` from this package (requires the `pi` executable). It uses a temporary agent directory, a deterministic local provider and fixture server—not personal MCP servers or a billed model. Type `slow`, `form` or `fail`; use `/mcp prompt`, `/mcp subscribe` and `/mcp status` to try the guided commands. Add `--tui-mode fullscreen` for fullscreen mode. See [tmux QA notes](../../docs/mcp-ax-ux/QA.md) for the tested scenarios and reproduction commands. The demo script is a repository development fixture, not included in the published package.
 

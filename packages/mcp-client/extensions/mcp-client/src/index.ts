@@ -10,7 +10,11 @@ import { Type } from 'typebox';
 import { Text } from '@earendil-works/pi-tui';
 import { connect } from './connection.js';
 import { loadConfig, resolveConfig, MODERN, type ServerConfig } from './config.js';
-import { present, boundedError } from './content.js';
+import { present, presentNativeResult, boundedError, normalizeToolResult } from './content.js';
+import { loadClientSettings, type ClientSettings } from './client-settings.js';
+import { loadNativeConfig } from './native-config.js';
+import { nativeToolNames, nativeDefinitionFields, toolExposure } from './native-host.js';
+import { registerNativeResources, nativeResourceNames } from './native-resources.js';
 import {
   headerBindings,
   parameterHeaders,
@@ -49,6 +53,7 @@ interface ServerState {
   peer?: Peer;
   oauth?: McpOAuth;
   tools: Map<string, ObjectValue>;
+  ids?: Map<string, string>;
   bindings: Map<string, HeaderBinding[]>;
   dirty: boolean;
   refresh?: Promise<void>;
@@ -57,6 +62,9 @@ interface ServerState {
   subscriptionErrors: Map<string, string>;
   error?: string;
   discoveryError?: string;
+  approvalEvents?: unknown[];
+  resetApprovals?: () => void;
+  abortApprovals?: () => void;
   rejected: { name: string; reason: string }[];
 }
 
@@ -71,6 +79,28 @@ export default function mcpClient(pi: ExtensionAPI) {
     pi.appendEntry('mcp-task', { ...task, answered: [...task.answered] });
   };
   let shuttingDown = false;
+  let sessionLifetime = new AbortController();
+  let settings: ClientSettings = {
+    configurationFormat: 'package',
+    serverOptions: {},
+    computerUse: {},
+  };
+  const nativeHost = pi as unknown as {
+    getMcpServers?: () => { name: string; config: unknown; extensionPath?: string }[];
+  };
+  const idFor = (server: string, tool: string): string =>
+    servers.get(server)?.ids?.get(tool) ?? toolName(server, tool);
+  const unavailableDefinition = (name: string) =>
+    registerTool({
+      name,
+      label: name,
+      description: 'Withdrawn MCP tool',
+      parameters: Type.Object({}),
+      ...{ exposure: 'hidden' as const },
+      async execute() {
+        throw new DiagnosticError('MCP tool is no longer available');
+      },
+    });
   let currentContext: ExtensionContext;
   const activity = new McpActivity(() => currentContext);
   let invalidConfig = false;
@@ -115,14 +145,16 @@ export default function mcpClient(pi: ExtensionAPI) {
     const status = shuttingDown
       ? undefined
       : healthStatus(
-          [...servers].map(([name, state]) => ({
-            name,
-            connected: !!state.peer,
-            error: state.error ?? [...state.subscriptionErrors.values()].join('; '),
-            discoveryError:
-              state.discoveryError ??
-              (state.rejected.length ? `${state.rejected.length} tools excluded` : undefined),
-          })),
+          [...servers]
+            .filter(([, state]) => !state.config.disabled)
+            .map(([name, state]) => ({
+              name,
+              connected: !!state.peer,
+              error: state.error ?? [...state.subscriptionErrors.values()].join('; '),
+              discoveryError:
+                state.discoveryError ??
+                (state.rejected.length ? `${state.rejected.length} tools excluded` : undefined),
+            })),
           invalidConfig,
         );
     currentContext.ui.setStatus(
@@ -137,9 +169,14 @@ export default function mcpClient(pi: ExtensionAPI) {
   ) => {
     if (ctx.hasUI) ctx.ui.notify(text, level);
   };
-  const get = (name: string) => {
+  const get = (name: string, tool?: string) => {
     const state = servers.get(name);
-    if (!state?.peer)
+    if (
+      !state?.peer ||
+      state.config.disabled ||
+      (state.config.exposure === 'hidden' &&
+        (!tool || toolExposure(state.config, tool) === 'hidden'))
+    )
       throw new DiagnosticError(
         `MCP server ${displayText(name)} is unavailable. Use /mcp status and /reload.`,
       );
@@ -155,10 +192,11 @@ export default function mcpClient(pi: ExtensionAPI) {
     const active = new Set(pi.getActiveTools());
     return [...servers].map(([name, state]) => ({
       name,
-      connection: state.peer ? 'connected' : 'unavailable',
+      connection: state.config.disabled ? 'disabled' : state.peer ? 'connected' : 'unavailable',
       version: state.peer?.version,
       capabilities: state.peer?.capabilities,
       serverInfo: state.peer?.serverInfo,
+      ...(state.approvalEvents?.length ? { approvalEvents: state.approvalEvents } : {}),
       serverGuidance: state.peer?.instructions
         ? {
             trust: 'untrusted server-provided reference, not client instructions',
@@ -168,8 +206,7 @@ export default function mcpClient(pi: ExtensionAPI) {
       subscriptions: [...state.desired],
       subscriptionErrors: [...state.subscriptionErrors.values()],
       tools: state.tools.size,
-      activeTools: [...state.tools.keys()].filter((tool) => active.has(toolName(name, tool)))
-        .length,
+      activeTools: [...state.tools.keys()].filter((tool) => active.has(idFor(name, tool))).length,
       toolLoading: state.config.toolLoading,
       catalog: !state.peer
         ? 'unavailable'
@@ -258,9 +295,20 @@ export default function mcpClient(pi: ExtensionAPI) {
     const work = async () => {
       state.dirty = false;
       if (!peer.capabilities.tools) return;
-      const tools = await peer.list('tools/list', 'tools');
+      const tools = await peer.list('tools/list', 'tools', sessionLifetime.signal);
       if (shuttingDown || state.peer !== peer) return;
       const activeBefore = new Set(pi.getActiveTools());
+      const previousIds = new Map([...state.tools.keys()].map((tool) => [tool, idFor(name, tool)]));
+      const candidateIds = state.config.native
+        ? nativeToolNames(
+            name,
+            tools.filter((tool) => typeof tool.name === 'string').map((tool) => tool.name),
+          )
+        : new Map(
+            tools
+              .filter((tool) => typeof tool.name === 'string')
+              .map((tool) => [tool.name, toolName(name, tool.name)]),
+          );
       const next = new Map<string, ObjectValue>();
       const bindings = new Map<string, HeaderBinding[]>();
       const added: string[] = [];
@@ -277,8 +325,11 @@ export default function mcpClient(pi: ExtensionAPI) {
             next.has(tool.name)
           )
             throw new Error('Invalid or duplicate tool definition');
+          if (toolExposure(state.config, tool.name) === 'hidden') continue;
+          const id = candidateIds.get(tool.name)!;
           // A fresh catalog does not imply changed schemas. Keep Pi definitions stable.
           if (
+            previousIds.get(tool.name) === id &&
             state.tools.has(tool.name) &&
             JSON.stringify(state.tools.get(tool.name)) === JSON.stringify(tool)
           ) {
@@ -295,7 +346,6 @@ export default function mcpClient(pi: ExtensionAPI) {
             state.config.transport === 'http' && peer.version === MODERN
               ? headerBindings(tool.inputSchema)
               : [];
-          const id = toolName(name, tool.name);
           stage = 'tool name conflicts with another extension';
           if (!owned.has(id) && pi.getAllTools().some((t) => t.name === id))
             throw new Error('Tool name already registered by another extension');
@@ -307,10 +357,13 @@ export default function mcpClient(pi: ExtensionAPI) {
             description: `[MCP server ${name}] ${tool.description ?? tool.name}\nOutput limited to 2000 lines / 50 KiB; full oversized results saved locally.`,
             // MCP arguments are always an object; preserve refs/composition and validate the original below.
             parameters: Type.Unsafe<ObjectValue>({ ...tool.inputSchema, type: 'object' }),
+            ...(state.config.native
+              ? nativeDefinitionFields(name, tool, state.config, peer.instructions)
+              : {}),
             renderCall: renderMcpCall(name, { ...tool, name: tool.name }),
             async execute(_id, args, signal, onUpdate, toolContext) {
               currentContext = toolContext;
-              const current = get(name);
+              const current = get(name, tool.name);
               if (
                 current.peer !== peer ||
                 JSON.stringify(current.tools.get(tool.name)) !== JSON.stringify(tool)
@@ -341,7 +394,7 @@ export default function mcpClient(pi: ExtensionAPI) {
                   `Tool execution outcome is unknown; inspect server state before retrying a side-effecting call. No automatic retry was performed.\nServer/transport diagnostic (untrusted): ${diagnostic.message}`,
                 );
               });
-              if (result.resultType === 'task') {
+              if (peer.version === MODERN && result.resultType === 'task') {
                 persistTask({
                   server: name,
                   identity: identity(current),
@@ -357,30 +410,39 @@ export default function mcpClient(pi: ExtensionAPI) {
                   note: 'Use mcp_tasks to wait, inspect, or cancel this task. Do not repeat the original tool call.',
                 });
               }
-              if (!Array.isArray(result.content))
+              let normalized: ObjectValue;
+              try {
+                normalized = normalizeToolResult(result);
+              } catch {
                 throw new DiagnosticError(
-                  'Server returned invalid tools/call content. The operation may have taken effect; do not blindly retry.',
+                  'Server returned invalid tools/call result fields. The operation may have taken effect; do not blindly retry.',
                 );
-              if (output && !result.isError && !output(result.structuredContent))
+              }
+              if (output && !normalized.isError && !output(normalized.structuredContent))
                 throw new DiagnosticError(
                   `Server returned a result, but structuredContent does not match outputSchema (${validationIssue(output)}). The operation may have taken effect; do not blindly retry.`,
                 );
-              return present(result, `${name}/${tool.name}`);
+              return state.config.native
+                ? presentNativeResult(normalized, `${name}/${tool.name}`)
+                : present(normalized, `${name}/${tool.name}`);
             },
           });
           next.set(tool.name, tool);
           bindings.set(tool.name, mirror);
-          if (isNew) added.push(id);
+          if (isNew && (!state.config.native || toolExposure(state.config, tool.name) === 'direct'))
+            added.push(id);
           owned.add(id);
         } catch {
           rejected.push({ name: displayText(String(tool.name), 100), reason: stage });
         }
       }
       const removed = new Set(
-        [...state.tools.keys()]
-          .filter((tool) => !next.has(tool))
-          .map((tool) => toolName(name, tool)),
+        [...previousIds]
+          .filter(([tool, id]) => !next.has(tool) || candidateIds.get(tool) !== id)
+          .map(([, id]) => id),
       );
+      if (state.config.native) for (const id of removed) unavailableDefinition(id);
+      state.ids = candidateIds;
       state.tools = next;
       state.bindings = bindings;
       const changedRejections = JSON.stringify(state.rejected) !== JSON.stringify(rejected);
@@ -395,7 +457,7 @@ export default function mcpClient(pi: ExtensionAPI) {
         ...new Set(
           [...activeBefore]
             .filter((id) => !removed.has(id))
-            .concat(state.config.toolLoading === 'eager' ? added : []),
+            .concat(state.config.native || state.config.toolLoading === 'eager' ? added : []),
         ),
       ]);
     };
@@ -415,8 +477,10 @@ export default function mcpClient(pi: ExtensionAPI) {
       });
     return state.refresh;
   }
-  pi.on('session_start', async (_event, ctx) => {
+  async function startSession(_event: unknown, ctx: ExtensionContext) {
     shuttingDown = false;
+    sessionLifetime = new AbortController();
+    const lifetime = sessionLifetime.signal;
     currentContext = ctx;
     invalidConfig = false;
     configError = undefined;
@@ -437,7 +501,23 @@ export default function mcpClient(pi: ExtensionAPI) {
     if (ctx.isProjectTrusted()) paths.push(join(ctx.cwd, CONFIG_DIR_NAME, 'mcp.json'));
     let configs: Record<string, ServerConfig>;
     try {
-      configs = await loadConfig(paths);
+      settings = await loadClientSettings(paths.map((path) => join(path, '..', 'mcp-client.json')));
+      const registrations = nativeHost.getMcpServers?.() ?? [];
+      if (settings.configurationFormat === 'native') {
+        if (!nativeHost.getMcpServers)
+          throw new DiagnosticError(
+            'Native compatibility requires Pi with the public MCP registration and tool-exposure APIs',
+          );
+        configs = await loadNativeConfig(paths, registrations, settings.serverOptions);
+      } else {
+        configs = {
+          ...(registrations.length ? await loadNativeConfig([], registrations) : {}),
+          ...(await loadConfig(paths)),
+        };
+      }
+      if (Object.values(configs).some((config) => config.native) && !nativeHost.getMcpServers)
+        throw new DiagnosticError('Native tool compatibility requires a modern Pi host');
+      lifetime.throwIfAborted();
     } catch (error) {
       invalidConfig = true;
       configError = failureReason(error);
@@ -445,49 +525,53 @@ export default function mcpClient(pi: ExtensionAPI) {
       return;
     }
     await Promise.all(
-      Object.entries(configs)
-        .filter(([, c]) => !c.disabled)
-        .map(async ([name, unresolved]) => {
-          const state: ServerState = {
-            config: unresolved,
-            tools: new Map(),
-            bindings: new Map(),
-            dirty: true,
-            subscriptions: new Map(),
-            desired: new Set(),
-            subscriptionErrors: new Map(),
-            rejected: [],
+      Object.entries(configs).map(async ([name, unresolved]) => {
+        const state: ServerState = {
+          config: unresolved,
+          tools: new Map(),
+          bindings: new Map(),
+          dirty: true,
+          subscriptions: new Map(),
+          desired: new Set(),
+          subscriptionErrors: new Map(),
+          rejected: [],
+        };
+        servers.set(name, state);
+        if (unresolved.disabled) return;
+        try {
+          lifetime.throwIfAborted();
+          const config = resolveConfig(unresolved, ctx.cwd);
+          state.config = config;
+          if (config.transport !== 'stdio' && config.oauth)
+            state.oauth = await new McpOAuth(
+              config.url,
+              config.oauth,
+              join(getAgentDir(), 'mcp-auth'),
+            ).load();
+          const capabilities = {
+            ...(config.roots !== undefined ? { roots: {} } : {}),
+            ...((config.elicitation || config.elicitationUrl) && ctx.hasUI
+              ? {
+                  elicitation: {
+                    ...(config.elicitation ? { form: {} } : {}),
+                    ...(config.elicitationUrl ? { url: {} } : {}),
+                  },
+                }
+              : {}),
+            ...(config.sampling && ctx.hasUI
+              ? { sampling: config.samplingTools ? { tools: {} } : {} }
+              : {}),
+            ...(config.tasks ? { extensions: { [TASKS]: {} } } : {}),
           };
-          servers.set(name, state);
-          try {
-            const config = resolveConfig(unresolved, ctx.cwd);
-            state.config = config;
-            if (config.transport !== 'stdio' && config.oauth)
-              state.oauth = await new McpOAuth(
-                config.url,
-                config.oauth,
-                join(getAgentDir(), 'mcp-auth'),
-              ).load();
-            const capabilities = {
-              ...(config.roots !== undefined ? { roots: {} } : {}),
-              ...((config.elicitation || config.elicitationUrl) && ctx.hasUI
-                ? {
-                    elicitation: {
-                      ...(config.elicitation ? { form: {} } : {}),
-                      ...(config.elicitationUrl ? { url: {} } : {}),
-                    },
-                  }
-                : {}),
-              ...(config.sampling && ctx.hasUI
-                ? { sampling: config.samplingTools ? { tools: {} } : {} }
-                : {}),
-              ...(config.tasks ? { extensions: { [TASKS]: {} } } : {}),
-            };
-            const peer = await activity.run(`${name} · connecting`, () =>
-              connect(
-                config,
-                capabilities,
-                (peer) => {
+          const peer = await activity.run(`${name} · connecting`, () =>
+            connect(
+              config,
+              capabilities,
+              (peer) => {
+                let approvalLifetime = new AbortController();
+                const installInput = () => {
+                  approvalLifetime.abort();
+                  approvalLifetime = new AbortController();
                   peer.oninput = inputHandler(
                     name,
                     config,
@@ -513,86 +597,160 @@ export default function mcpClient(pi: ExtensionAPI) {
                       );
                       if (result.code !== 0) throw new Error('Could not open browser');
                     },
+                    () => peer.version,
+                    settings.computerUse[name],
+                    (event: unknown) => {
+                      state.approvalEvents ??= [];
+                      state.approvalEvents.push({ at: new Date().toISOString(), event });
+                      if (state.approvalEvents.length > 20) state.approvalEvents.shift();
+                    },
+                    AbortSignal.any([lifetime, approvalLifetime.signal]),
                   );
-                  peer.onrecovering = () => {
-                    state.dirty = true;
-                  };
-                  peer.onrecovered = async () => {
-                    state.dirty = true;
-                    if (peer.capabilities.resources?.subscribe)
-                      for (const uri of state.desired)
-                        await peer.raw('resources/subscribe', { uri });
-                  };
-                  peer.onnotification = (method, params) => {
-                    if (method === 'notifications/tools/list_changed') state.dirty = true;
-                    if (
-                      method === 'notifications/prompts/list_changed' ||
-                      method === 'notifications/resources/list_changed'
-                    ) {
-                      peer.catalogExpiry.clear();
-                      notify(
-                        currentContext,
-                        `MCP ${name}: ${method.includes('prompts') ? 'prompt' : 'resource'} catalog changed`,
-                      );
-                    }
-                    if (method === 'notifications/elicitation/complete')
-                      notify(currentContext, `MCP ${name}: URL elicitation completed`);
-                    if (method === 'notifications/resources/updated')
-                      notify(
-                        ctx,
-                        `MCP ${name}: resource updated ${String(params.uri).slice(0, 200)}`,
-                      );
-                    if (method === 'notifications/message' && config.logLevel)
-                      notify(
-                        ctx,
-                        `MCP ${name} log: ${String(JSON.stringify(params.data)).slice(0, 1000)}`,
-                      );
-                    // Logs/instructions are not automatically injected into the model context.
-                  };
-                  peer.onclose = () => {
-                    if (state.peer !== peer || shuttingDown) return;
-                    state.peer = undefined;
-                    state.error = 'Connection closed; /reload to reconnect';
-                    updateStatus();
-                    pi.setActiveTools(
-                      pi
-                        .getActiveTools()
-                        .filter(
-                          (id) =>
-                            ![...state.tools.keys()].some((tool) => toolName(name, tool) === id),
-                        ),
+                };
+                state.resetApprovals = installInput;
+                state.abortApprovals = () => approvalLifetime.abort();
+                installInput();
+                peer.onrecovering = () => {
+                  approvalLifetime.abort();
+                  state.dirty = true;
+                };
+                peer.onrecovered = async () => {
+                  installInput();
+                  state.dirty = true;
+                  if (peer.capabilities.resources?.subscribe)
+                    for (const uri of state.desired) await peer.raw('resources/subscribe', { uri });
+                };
+                peer.onnotification = (method, params) => {
+                  if (method === 'notifications/tools/list_changed') state.dirty = true;
+                  if (
+                    method === 'notifications/prompts/list_changed' ||
+                    method === 'notifications/resources/list_changed'
+                  ) {
+                    peer.catalogExpiry.clear();
+                    notify(
+                      currentContext,
+                      `MCP ${name}: ${method.includes('prompts') ? 'prompt' : 'resource'} catalog changed`,
                     );
-                  };
-                },
-                (tool, args) => parameterHeaders(state.bindings.get(tool) ?? [], args),
-                state.oauth,
-              ),
-            );
-            if (shuttingDown) {
-              await peer.close();
-              return;
-            }
-            state.peer = peer;
-            await refresh(name, state, ctx);
-            const lists = {
-              ...(peer.capabilities.tools?.listChanged ? { toolsListChanged: true } : {}),
-              ...(peer.capabilities.prompts?.listChanged ? { promptsListChanged: true } : {}),
-              ...(peer.capabilities.resources?.listChanged ? { resourcesListChanged: true } : {}),
-            };
-            if (peer.version === MODERN && Object.keys(lists).length)
-              listen(name, get(name), 'lists', lists);
-            await restoreSubscriptions(name, state, ctx);
-          } catch (error) {
-            const reason = failureReason(error);
-            await state.peer?.close().catch(() => {});
-            state.peer = undefined;
-            state.error = `${reason}; check server configuration and /reload`;
-          } finally {
-            updateStatus();
+                  }
+                  if (method === 'notifications/elicitation/complete')
+                    notify(currentContext, `MCP ${name}: URL elicitation completed`);
+                  if (method === 'notifications/resources/updated')
+                    notify(
+                      ctx,
+                      `MCP ${name}: resource updated ${String(params.uri).slice(0, 200)}`,
+                    );
+                  if (method === 'notifications/message' && config.logLevel)
+                    notify(
+                      ctx,
+                      `MCP ${name} log: ${String(JSON.stringify(params.data)).slice(0, 1000)}`,
+                    );
+                  // Logs/instructions are not automatically injected into the model context.
+                };
+                peer.onclose = () => {
+                  approvalLifetime.abort();
+                  if (state.peer !== peer || shuttingDown) return;
+                  state.peer = undefined;
+                  state.error = 'Connection closed; /reload to reconnect';
+                  updateStatus();
+                  pi.setActiveTools(
+                    pi
+                      .getActiveTools()
+                      .filter(
+                        (id) => ![...state.tools.keys()].some((tool) => idFor(name, tool) === id),
+                      ),
+                  );
+                };
+              },
+              (tool, args) => parameterHeaders(state.bindings.get(tool) ?? [], args),
+              state.oauth,
+              lifetime,
+            ),
+          );
+          if (shuttingDown || lifetime.aborted) {
+            await peer.close();
+            return;
           }
-        }),
+          state.peer = peer;
+          await refresh(name, state, ctx);
+          const lists = {
+            ...(peer.capabilities.tools?.listChanged ? { toolsListChanged: true } : {}),
+            ...(peer.capabilities.prompts?.listChanged ? { promptsListChanged: true } : {}),
+            ...(peer.capabilities.resources?.listChanged ? { resourcesListChanged: true } : {}),
+          };
+          if (peer.version === MODERN && Object.keys(lists).length)
+            listen(name, { ...state, peer }, 'lists', lists);
+          await restoreSubscriptions(name, state, ctx);
+        } catch (error) {
+          const reason = failureReason(error);
+          state.abortApprovals?.();
+          await state.peer?.close().catch(() => {});
+          state.peer = undefined;
+          state.error = `${reason}; check server configuration and /reload`;
+        } finally {
+          updateStatus();
+        }
+      }),
     );
-  });
+    if (Object.values(configs).some((config) => config.native)) {
+      for (const name of nativeResourceNames)
+        if (!owned.has(name) && pi.getAllTools().some((tool) => tool.name === name))
+          throw new DiagnosticError('Native resource tool name conflicts with another extension');
+      registerNativeResources(
+        registerTool,
+        () =>
+          [...servers]
+            .filter(
+              ([, state]) =>
+                state.peer && !state.config.disabled && state.config.exposure !== 'hidden',
+            )
+            .map(([name]) => name),
+        get,
+      );
+      for (const name of nativeResourceNames) owned.add(name);
+    }
+    const exposures = new Set(
+      [...servers.values()]
+        .filter((state) => state.config.native && !state.config.disabled)
+        .flatMap((state) => [
+          state.config.exposure ?? 'codemode',
+          ...Object.values(state.config.toolExposure ?? {}),
+        ]),
+    );
+    const available = pi.getAllTools();
+    const discovery = [
+      ['codemode', 'codemode'],
+      ['deferred', 'tool_search'],
+    ] as const;
+    const activate = discovery
+      .filter(
+        ([exposure, name]) =>
+          exposures.has(exposure) &&
+          available.some(
+            (tool) =>
+              tool.name === name &&
+              tool.sourceInfo?.path === `builtin:${name === 'tool_search' ? 'tool-search' : name}`,
+          ),
+      )
+      .map(([, name]) => name);
+    if (activate.length) pi.setActiveTools([...new Set([...pi.getActiveTools(), ...activate])]);
+  }
+  let reconciliation: Promise<void> = Promise.resolve();
+  let generation = 0;
+  const restart = (ctx: ExtensionContext) => {
+    const requested = ++generation;
+    sessionLifetime.abort();
+    reconciliation = reconciliation
+      .catch(() => {})
+      .then(async () => {
+        if (requested !== generation) return;
+        await stopSession();
+        if (requested !== generation) return;
+        await startSession({}, ctx);
+      });
+    return reconciliation;
+  };
+  pi.on('session_start', (_event, ctx) => restart(ctx));
+  pi.on('mcp_servers_change' as any, (_event: unknown, ctx: ExtensionContext) => restart(ctx));
   pi.on('session_tree', async (_event, ctx) => {
     currentContext = ctx;
     tasks.clear();
@@ -607,6 +765,8 @@ export default function mcpClient(pi: ExtensionAPI) {
           tasks.set(taskKey(task.server, task.taskId), task);
       }
     }
+    // Revoke every old-branch grant before any asynchronous restoration can yield.
+    for (const state of servers.values()) state.resetApprovals?.();
     for (const [name, state] of servers) {
       try {
         await restoreSubscriptions(name, state, ctx);
@@ -642,8 +802,9 @@ export default function mcpClient(pi: ExtensionAPI) {
     )
       return { isError: true };
   });
-  pi.on('session_shutdown', async () => {
+  async function stopSession() {
     shuttingDown = true;
+    sessionLifetime.abort();
     activity.clear();
     updateStatus();
     await Promise.all(
@@ -652,7 +813,22 @@ export default function mcpClient(pi: ExtensionAPI) {
         await state.peer?.close().catch(() => {});
       }),
     );
+    for (const state of servers.values())
+      if (state.config.native)
+        for (const tool of state.tools.keys()) {
+          const id = state.ids?.get(tool);
+          if (id) unavailableDefinition(id);
+        }
+    for (const name of nativeResourceNames) if (owned.has(name)) unavailableDefinition(name);
+    pi.setActiveTools(pi.getActiveTools().filter((name) => !owned.has(name)));
     servers.clear();
+  }
+  pi.on('session_shutdown', async () => {
+    shuttingDown = true;
+    generation++;
+    sessionLifetime.abort();
+    await reconciliation.catch(() => {});
+    await stopSession();
   });
 
   registerTool({
@@ -688,8 +864,12 @@ export default function mcpClient(pi: ExtensionAPI) {
       )
         throw new Error('2026 task extension not enabled by both peers');
       const task = tasks.get(taskKey(args.server, args.taskId));
-      if (!task || task.identity !== identity(state))
-        throw new Error('Task is not recorded for this server identity');
+      if (
+        !task ||
+        task.identity !== identity(state) ||
+        toolExposure(state.config, task.tool) === 'hidden'
+      )
+        throw new Error('Task is not recorded or permitted for this server identity');
       if (args.action === 'get') {
         const result = TaskSchema.parse(
           await state.peer.request('tasks/get', { taskId: task.taskId }, { signal }),
@@ -754,7 +934,7 @@ export default function mcpClient(pi: ExtensionAPI) {
         .filter(([name, state]) => state.peer && (!args.server || args.server === name))
         .flatMap(([server, state]) =>
           [...state.tools.values()].map((tool) => ({
-            name: toolName(server, tool.name),
+            name: idFor(server, tool.name),
             server,
             originalName: tool.name,
             description: tool.description ?? tool.name,
@@ -1020,7 +1200,7 @@ export default function mcpClient(pi: ExtensionAPI) {
   }
   pi.registerCommand('mcp', {
     description:
-      'MCP: status [details] | refresh | sampling | login SERVER | logout SERVER | prompts SERVER | prompt [SERVER|JSON] | subscribe [SERVER|JSON] | unsubscribe [SERVER|JSON]',
+      'MCP: status [details] | refresh | sampling | revoke SERVER | login SERVER | logout SERVER | prompts SERVER | prompt [SERVER|JSON] | subscribe [SERVER|JSON] | unsubscribe [SERVER|JSON]',
     handler: async (args, ctx) => {
       currentContext = ctx;
       const [, action = 'status', text = ''] = args.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/) ?? [];
@@ -1057,6 +1237,22 @@ export default function mcpClient(pi: ExtensionAPI) {
               }),
             );
           }
+        } else if (action === 'revoke') {
+          const state = servers.get(text);
+          if (!state?.peer || !state.resetApprovals)
+            throw new DiagnosticError('Expected a connected MCP server name');
+          state.resetApprovals();
+          state.approvalEvents = [
+            ...(state.approvalEvents ?? []).slice(-19),
+            {
+              at: new Date().toISOString(),
+              event: { decision: 'revoke', source: 'user-command' },
+            },
+          ];
+          notify(
+            ctx,
+            `Cleared remembered client approvals for ${displayText(text)}. Future requests need fresh consent; actions already executed are not undone.`,
+          );
         } else if (action === 'login' || action === 'logout') {
           const state = servers.get(text);
           if (!state?.oauth)
@@ -1131,7 +1327,7 @@ export default function mcpClient(pi: ExtensionAPI) {
             if (!state.peer || state.peer.version !== MODERN) continue;
             for (const key of state.subscriptionErrors.keys()) {
               if (key === 'lists')
-                listen(name, get(name), key, {
+                listen(name, { ...state, peer: state.peer }, key, {
                   ...(state.peer.capabilities.tools?.listChanged ? { toolsListChanged: true } : {}),
                   ...(state.peer.capabilities.prompts?.listChanged
                     ? { promptsListChanged: true }

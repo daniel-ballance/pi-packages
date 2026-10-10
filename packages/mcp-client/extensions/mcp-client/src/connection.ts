@@ -68,9 +68,11 @@ export async function connect(
   config: ServerConfig,
   capabilities: ObjectValue,
   configure: (peer: Peer) => void,
-  toolHeaders: (name: string, args: ObjectValue) => Record<string, string>,
+  toolHeaders: (name: string, args: ObjectValue) => Record<string, string> = () => ({}),
   oauth?: McpOAuth,
+  signal?: AbortSignal,
 ): Promise<Peer> {
+  signal?.throwIfAborted();
   const end = Date.now() + config.timeout;
   const remaining = () => Math.max(1, end - Date.now());
   const authenticatedFetch: typeof boundedFetch = async (url, init) => {
@@ -87,7 +89,7 @@ export async function connect(
     // Never replay an operation on 401. /mcp login refreshes credentials explicitly.
     return boundedFetch(url, { ...init, headers });
   };
-  const make = (modern: boolean): Transport => {
+  const make = (modern: boolean, fetch: typeof authenticatedFetch): Transport => {
     if (config.transport === 'stdio') return new StdioTransport(config);
     if (config.transport === 'sse') {
       if (modern) throw new Error('2026-07-28 does not support legacy SSE transport');
@@ -104,11 +106,11 @@ export async function connect(
                 }),
             },
           }),
-        authenticatedFetch,
+        fetch,
       );
     }
     return modern
-      ? new ModernHttp(config.url, config.headers, toolHeaders, authenticatedFetch)
+      ? new ModernHttp(config.url, config.headers, toolHeaders, fetch)
       : new LegacyBatches(
           (fetch) =>
             new SessionTransport(
@@ -119,20 +121,34 @@ export async function connect(
                 }),
               config.timeout,
             ),
-          authenticatedFetch,
+          fetch,
         );
   };
   const start = async (modern: boolean) => {
-    const peer = new Peer(make(modern), capabilities, config.timeout);
+    signal?.throwIfAborted();
+    const startup = new AbortController();
+    const startupSignal = startup.signal;
+    let starting = true;
+    const fetch: typeof authenticatedFetch = (url, init) =>
+      authenticatedFetch(url, {
+        ...init,
+        // Startup cancellation also covers SSE connection establishment and OAuth
+        // refresh. Once returned, the Peer owns its independent operation lifetime.
+        signal: starting
+          ? AbortSignal.any([startupSignal, ...(init?.signal ? [init.signal] : [])])
+          : init?.signal,
+      });
+    const peer = new Peer(make(modern, fetch), capabilities, config.timeout);
     peer.version = modern ? MODERN : config.protocol === 'auto' ? LEGACY[0] : config.protocol;
     peer.logLevel = config.logLevel;
-    configure(peer);
-    const initialize = async () => {
-      const result = await peer.raw('initialize', {
-        protocolVersion: peer.version,
-        capabilities,
-        clientInfo: CLIENT_INFO,
-      });
+    const initialize = async (signal?: AbortSignal) => {
+      signal?.throwIfAborted();
+      const result = await peer.raw(
+        'initialize',
+        { protocolVersion: peer.version, capabilities, clientInfo: CLIENT_INFO },
+        { signal },
+      );
+      signal?.throwIfAborted();
       if (
         !LEGACY.includes(result.protocolVersion) ||
         (config.protocol !== 'auto' && result.protocolVersion !== config.protocol)
@@ -145,7 +161,7 @@ export async function connect(
       peer.transport.setProtocolVersion?.(peer.version);
       await peer.transport.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
       if (config.logLevel && peer.capabilities.logging)
-        await peer.raw('logging/setLevel', { level: config.logLevel });
+        await peer.raw('logging/setLevel', { level: config.logLevel }, { signal });
     };
     const session =
       peer.transport instanceof LegacyBatches && peer.transport.inner instanceof SessionTransport
@@ -162,35 +178,52 @@ export async function connect(
           config.timeout,
         );
     }
+    let onAbort: (() => void) | undefined;
+    const cancelStartup = () => startup.abort(signal?.reason);
+    signal?.addEventListener('abort', cancelStartup, { once: true });
     try {
-      await deadline(
-        (async () => {
-          await peer.start();
-          if (modern) {
-            const result = await peer.request(
-              'server/discover',
-              {},
-              { timeout: Math.min(remaining(), 5000) },
-            );
-            if (
-              !Array.isArray(result.supportedVersions) ||
-              !result.supportedVersions.includes(MODERN) ||
-              !result.capabilities ||
-              typeof result.capabilities !== 'object'
-            )
-              throw new Error('No supported modern version or invalid discovery result');
-            peer.capabilities = result.capabilities;
-            peer.serverInfo = result.serverInfo;
-            peer.instructions = result.instructions;
-          } else await initialize();
-        })(),
-        remaining(),
-      );
+      configure(peer);
+      startupSignal.throwIfAborted();
+      const aborted = new Promise<never>((_, reject) => {
+        onAbort = () => reject(startupSignal.reason);
+        startupSignal.addEventListener('abort', onAbort, { once: true });
+      });
+      const discover = (async () => {
+        await peer.start();
+        startupSignal.throwIfAborted();
+        if (modern) {
+          const result = await peer.request(
+            'server/discover',
+            {},
+            { timeout: Math.min(remaining(), 5000), signal: startupSignal },
+          );
+          if (
+            !Array.isArray(result.supportedVersions) ||
+            !result.supportedVersions.includes(MODERN) ||
+            !result.capabilities ||
+            typeof result.capabilities !== 'object'
+          )
+            throw new Error('No supported modern version or invalid discovery result');
+          peer.capabilities = result.capabilities;
+          peer.serverInfo = result.serverInfo;
+          peer.instructions = result.instructions;
+        } else await initialize(startupSignal);
+      })();
+      await deadline(Promise.race([discover, aborted]), remaining());
+      startupSignal.throwIfAborted();
+      starting = false;
       if (session) session.established = true;
       return peer;
     } catch (error) {
+      startup.abort(error);
       await peer.close().catch(() => {});
-      throw error;
+      // Peer has its own (possibly very short) timeout. Still await stdio's
+      // independent bounded teardown so connect never returns on mere SIGKILL.
+      if (peer.transport instanceof StdioTransport) await peer.transport.close().catch(() => {});
+      throw signal?.aborted ? signal.reason : error;
+    } finally {
+      signal?.removeEventListener('abort', cancelStartup);
+      if (onAbort) startupSignal.removeEventListener('abort', onAbort);
     }
   };
   if (config.protocol !== 'auto') return start(config.protocol === MODERN);
@@ -198,6 +231,7 @@ export async function connect(
   try {
     return await start(true);
   } catch (error) {
+    signal?.throwIfAborted();
     if (Date.now() >= end) throw error;
     if (error instanceof RpcError && [-32020, -32021, -32022].includes(error.code)) throw error;
     const fallback =
