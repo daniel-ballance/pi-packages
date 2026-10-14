@@ -56,3 +56,30 @@ test("real RPC policy enforcement, mandatory guard, revalidated resume, and clea
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("real RPC child loads alwaysExtensions without a parent selection", { timeout: 30000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "policy-rpc-always-"));
+  const agentDir = join(root, "agent"); mkdirSync(agentDir);
+  const previous = { PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR, PI_OFFLINE: process.env.PI_OFFLINE };
+  process.env.PI_CODING_AGENT_DIR = agentDir; process.env.PI_OFFLINE = "1";
+  // The stub model exists only through the provider extension, so a successful turn proves it loaded.
+  writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "subagent-test/stub:off" }], tools: ["read"], extensions: [provider], alwaysExtensions: [provider] }));
+  const policy = new SubagentPolicy({
+    cwd: root, agentDir, projectTrusted: true, guardPath: guard, tools: () => ["read"],
+    models: () => [{ provider: "subagent-test", id: "stub", input: ["text"], contextWindow: 32000, maxTokens: 1000, cost: {}, thinkingLevels: ["off"] }],
+  });
+  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, 4);
+  try {
+    const compiled = policy.compile(root, { model: "subagent-test/stub:off", tools: [] });
+    const a = await manager.spawn({ name: "always", task: "Remember fig.", ...compiled, executable: process.execPath, executableArgs: [cli] });
+    await manager.wait([a.id], "all", 5000);
+    assert.equal(manager.get(a.id).status, "idle");
+    assert.ok(manager.read(a.id).updates.some(u => u.kind === "assistant" && u.text.includes("fig")));
+  } finally {
+    await manager.shutdown();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -80,6 +80,8 @@ function catalogLines(data: Data, theme: Theme): string[] {
   for (const model of models.slice(0, 5)) lines.push(theme.fg("accent", `  ${inline(object(model)?.id)}`));
   if (models.length > 5) lines.push(theme.fg("dim", `  … ${models.length - 5} more model options`));
   if (tools.length) lines.push(theme.fg("dim", `tools: ${tools.slice(0, 8).map(inline).join(", ")}${tools.length > 8 ? ", …" : ""}`));
+  const always = [...array(data.alwaysExtensions), ...array(data.alwaysTools)].map(inline);
+  if (always.length) lines.push(theme.fg("dim", `always loaded: ${always.slice(0, 6).join(", ")}${always.length > 6 ? ", …" : ""}`));
   if (count(data.omittedEntries)) lines.push(theme.fg("warning", `${data.omittedEntries} unavailable option(s) · /subagents diagnostics`));
   return lines;
 }

@@ -24,6 +24,7 @@ A project override must restate every capability it needs from the global config
 | `models` | Required array of `{ "id": "provider/model:thinking", "description": "optional guidance" }`. Exact identities, no aliases/fallbacks. |
 | `tools` | Allowed tool names; omitted means none. Spawn still chooses an explicit subset. Recursive `subagent_*` tools are always forbidden. |
 | `extensions`, `skills`, `promptTemplates`, `themes` | Allowed explicit resource **files**; omitted means none. Extensions also accept the three [managed built-in identifiers](builtins.md). Not packages, globs, or directories. |
+| `alwaysExtensions`, `alwaysTools` | Entries from `extensions`/`tools` (same strings) added to every child's composition without a parent selection; omitted means none. An always-loaded extension's tools stay inactive unless also selected or listed in `alwaysTools`. Any unavailable always-on entry disables spawning (see diagnostics). |
 | `systemPrompt`, `appendSystemPrompt` | Allow replacing/appending system-prompt text; omitted means false. Omit both spawn arguments to keep Pi's normal prompt behavior. |
 | `contextFiles` | Permit normal AGENTS.md/CLAUDE.md discovery; omitted means false. Children may opt out. This is distinct from the system prompt. |
 | `workingDirectories` | Allowed roots and descendants; default `["."]`. Real paths are checked. |
@@ -69,7 +70,7 @@ To enforce a read/search-only policy, remove write/edit/bash capabilities from t
 
 Suggested destination: whichever of the above scopes the user intends. Starts with one live child to avoid assuming a local server can sustain concurrency; measure before increasing it. Allows an explicit custom provider extension at `./providers/local-provider.ts`, relative to that chosen policy file. Replace the example resource path with the actual trusted extension file.
 
-The parent must already have the provider/model registered to advertise it. The child must also receive that provider, either through its normal Pi provider configuration or an explicitly allowlisted **and selected** extension. Adding an extension to the allowlist does not automatically select/load it for every child. Use the catalog's resolved absolute extension path in the spawn `extensions` array. If the provider is defined in Pi's model configuration instead, omit the unnecessary extension entry.
+The parent must already have the provider/model registered to advertise it. The child must also receive that provider, either through its normal Pi provider configuration or an explicitly allowlisted **and selected** extension. Adding an extension to `extensions` alone does not select/load it for every child; also list it in `alwaysExtensions` to do that. Use the catalog's resolved absolute extension path in the spawn `extensions` array. If the provider is defined in Pi's model configuration instead, omit the unnecessary extension entry.
 
 A quantized model served through a compatible API still needs working tool-call serialization, chat templates and reasoning controls. A successful plain-chat request does not establish agent compatibility. Do not assume an API key is required or not required: follow that provider's registration/authentication behavior in Pi. Do not put credentials in `subagents.json`.
 

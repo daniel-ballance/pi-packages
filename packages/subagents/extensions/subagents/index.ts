@@ -173,7 +173,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   pi.registerTool({
     name: "subagent_catalog", label: "Subagent Catalog",
     ...render("catalog"),
-    description: "Discover currently usable, allowlisted model/thinking combinations with guidance, registry capabilities/pricing, tools, resources, prompt permissions and working-directory roots. Consult before composing a child. Unavailable entries are omitted; user diagnostics are in /subagents diagnostics. Configuration reloads with /reload. Output capped at 30KB/1000 lines.",
+    description: "Discover currently usable, allowlisted model/thinking combinations with guidance, registry capabilities/pricing, tools, resources, always-loaded extensions/tools, prompt permissions and working-directory roots. Consult before composing a child. Unavailable entries are omitted; user diagnostics are in /subagents diagnostics. Configuration reloads with /reload. Output capped at 30KB/1000 lines.",
     parameters: Type.Object({}),
     async execute(_call, _args, _signal, _update, ctx) { return result(getPolicy(ctx).catalog(), ctx); },
   });
@@ -181,7 +181,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     name: "subagent_spawn", label: "Spawn Subagent",
     ...render("spawn"),
     description: "Spawn a persistent Pi RPC child and send its initial task. Returns after prompt acceptance, not completion. " +
-      "Consult subagent_catalog first. Compose an exact allowed provider/model:thinking and explicit tools/resources. " +
+      "Consult subagent_catalog first. Compose an exact allowed provider/model:thinking and explicit tools/resources; catalog alwaysExtensions/alwaysTools are added automatically. " +
       "Optional systemPrompt replaces the default; appendSystemPrompt adds instructions; omit both to inherit Pi defaults/SYSTEM.md. " +
       "Discovery is disabled; recursive subagent tools are forbidden. Bash still grants full machine access: NOT a sandbox. " +
       "Children stop on parent reload/exit, with saved conversations resumable. Output capped at 30KB/1000 lines; full overflow saved to a file.",

@@ -64,6 +64,8 @@ The built-in policy supplies one exact fallback model, not a ranked menu. It is 
   "skills": [],
   "promptTemplates": [],
   "themes": [],
+  "alwaysExtensions": [],
+  "alwaysTools": [],
   "systemPrompt": true,
   "appendSystemPrompt": true,
   "contextFiles": true,
@@ -78,6 +80,7 @@ The built-in policy supplies one exact fallback model, not a ranked menu. It is 
 - `version: 1` and `models` are required. Model entries contain an exact `provider/model:thinking` ID and optional descriptive guidance. No fuzzy matches, implicit thinking-level changes or fallback models. Model IDs containing slashes or colons work; the final colon separates the thinking level.
 - `tools` permits names, not shell commands. Recursive `subagent_*` tools are always filtered and diagnosed, even if declared. Built-in tools are known directly; extension tools must currently be discoverable in the parent's tool registry to be offered. Selected tools are also checked in the actual child before its task starts. A resource containing a tool does not independently grant permission to that tool.
 - `extensions`, `skills`, `promptTemplates`, `themes` permit **explicit local resource files**, using Pi's CLI resource categories. Relative paths resolve against the configuration file's directory; `~/` is supported. For a skill, specify its `SKILL.md`. Directories, wildcards, remote package URLs and implicit resource discovery are intentionally not accepted in this iteration. Installed package resource files can be named explicitly.
+- `alwaysExtensions` and `alwaysTools` name entries that every child receives without a parent selection, on spawn, resume and workflow workers. Each entry must also appear in `extensions` or `tools`, so the allowlists remain the complete permission set. Use `alwaysExtensions` for hooks, providers or renderers that should apply everywhere. An always-loaded extension's tools still require `tools` permission; list them in `alwaysTools` to activate them in every child, or leave them for per-spawn selection. Always-on entries become part of each child's saved composition. If any entry is unavailable (missing file, tool not locally known), spawning is disabled and the reason appears in `/subagents diagnostics`; children are never started without the entry.
 - `systemPrompt` and `appendSystemPrompt` permit freely composed text for the corresponding CLI flags. Omit both spawn fields to use Pi's normal default/`SYSTEM.md`; supply `appendSystemPrompt` to augment it, or `systemPrompt` to replace it. Both may be supplied, matching CLI semantics. Pi may interpret an existing file path as prompt-file input, as it does on its CLI.
 - `contextFiles` permits normal `AGENTS.md`/`CLAUDE.md` context discovery. It does not replace system-prompt handling. Children can opt out even when permitted. The resolved choice is saved for resume validation.
 - `workingDirectories` permits directory roots and their descendants. Relative roots resolve against the parent launch cwd, **not** the configuration directory. Real paths are checked so symlink traversal cannot escape an allowed root. The default is `["."]`.

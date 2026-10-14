@@ -15,6 +15,8 @@ export interface PolicyConfig {
   models: { id: string; description?: string }[];
   tools: string[];
   extensions: string[]; skills: string[]; promptTemplates: string[]; themes: string[];
+  /** Subsets of `extensions`/`tools` merged into every composition without a parent selection. */
+  alwaysExtensions: string[]; alwaysTools: string[];
   systemPrompt: boolean; appendSystemPrompt: boolean; contextFiles: boolean;
   maxChildren: number; workingDirectories: string[];
   peerMessageLimit: number;
@@ -33,6 +35,7 @@ export const DEFAULT_POLICY: PolicyConfig = {
   ],
   tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
   extensions: [], skills: [], promptTemplates: [], themes: [],
+  alwaysExtensions: [], alwaysTools: [],
   systemPrompt: true, appendSystemPrompt: true, contextFiles: true,
   maxChildren: 4, workingDirectories: ["."], peerMessageLimit: 0,
 };
@@ -71,6 +74,11 @@ export function parsePolicy(value: unknown): PolicyConfig {
   if (typeof peerMessageLimit !== "number" || !Number.isInteger(peerMessageLimit) || peerMessageLimit < 0 || peerMessageLimit > 1000) throw new Error("peerMessageLimit must be an integer from 0 to 1000");
   const extensions = strings(v.extensions ?? [], "extensions");
   for (const extension of extensions) if (extension.startsWith("builtin:") && !BUILTINS.includes(extension as Builtin)) throw new Error(`Forbidden or unknown built-in extension: ${extension}`);
+  const tools = strings(v.tools ?? [], "tools");
+  const alwaysExtensions = strings(v.alwaysExtensions ?? [], "alwaysExtensions");
+  for (const extension of alwaysExtensions) if (!extensions.includes(extension)) throw new Error(`alwaysExtensions entry must also be listed in extensions: ${extension}`);
+  const alwaysTools = strings(v.alwaysTools ?? [], "alwaysTools");
+  for (const tool of alwaysTools) if (!tools.includes(tool)) throw new Error(`alwaysTools entry must also be listed in tools: ${tool}`);
   let providerExtensions: Record<string, string> = {};
   if (v.providerExtensions !== undefined) {
     if (!v.providerExtensions || typeof v.providerExtensions !== "object" || Array.isArray(v.providerExtensions)) throw new Error("providerExtensions must map provider IDs to resource files");
@@ -78,8 +86,8 @@ export function parsePolicy(value: unknown): PolicyConfig {
     providerExtensions = v.providerExtensions as Record<string, string>;
   }
   return {
-    version: 1, models, tools: strings(v.tools ?? [], "tools"),
-    extensions, skills: strings(v.skills ?? [], "skills"),
+    version: 1, models, tools, alwaysTools,
+    extensions, alwaysExtensions, skills: strings(v.skills ?? [], "skills"),
     providerExtensions, childSettings: parseChildSettings(v.childSettings), mcp: parseMcpPolicy(v.mcp),
     promptTemplates: strings(v.promptTemplates ?? [], "promptTemplates"), themes: strings(v.themes ?? [], "themes"),
     systemPrompt: flags.systemPrompt, appendSystemPrompt: flags.appendSystemPrompt, contextFiles: flags.contextFiles,
@@ -114,7 +122,7 @@ export class SubagentPolicy {
     this.diagnostics = this.ignoredProject ? [this.ignoredProject] : [];
     if (!this.config) {
       this.diagnostics.push(`${this.source}: ${this.error}`);
-      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], workingDirectories: [] as string[], maxChildren: 0, peerMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false };
+      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: 0, peerMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false };
     }
     const config = this.config;
     const available = this.environment.models();
@@ -159,6 +167,19 @@ export class SubagentPolicy {
         return [path];
       } catch (error) { this.diagnostics.push(`${key}: ${value}: ${error}`); return []; }
     })])) as Record<typeof RESOURCES[number], string[]>;
+    // Missing always-on entries disable spawning rather than silently composing children without them.
+    let alwaysUnavailable = false;
+    const alwaysExtensions = config.alwaysExtensions.flatMap(value => {
+      try {
+        const resolved = BUILTINS.includes(value as Builtin) ? value : this.path(value);
+        if (resources.extensions.includes(resolved)) return [resolved];
+      } catch {}
+      this.diagnostics.push(`alwaysExtensions: ${value}: unavailable; spawning disabled`); alwaysUnavailable = true; return [];
+    });
+    const alwaysTools = config.alwaysTools.filter(tool => {
+      if (tools.includes(tool)) return true;
+      this.diagnostics.push(`alwaysTools: ${tool}: unavailable; spawning disabled`); alwaysUnavailable = true; return false;
+    });
     const workingDirectories = config.workingDirectories.flatMap(value => {
       try {
         const path = this.path(value, this.environment.cwd);
@@ -167,8 +188,8 @@ export class SubagentPolicy {
       } catch (error) { this.diagnostics.push(`workingDirectories: ${value}: ${error}`); return []; }
     });
     return {
-      source: this.source, spawnEnabled: !!models.length && !!workingDirectories.length,
-      models, tools, ...resources, workingDirectories,
+      source: this.source, spawnEnabled: !!models.length && !!workingDirectories.length && !alwaysUnavailable,
+      models, tools, ...resources, alwaysExtensions, alwaysTools, workingDirectories,
       systemPrompt: config.systemPrompt, appendSystemPrompt: config.appendSystemPrompt,
       contextFiles: config.contextFiles, maxChildren: config.maxChildren, peerMessageLimit: config.peerMessageLimit,
       omittedEntries: this.diagnostics.length,
@@ -193,9 +214,13 @@ export class SubagentPolicy {
     if (!this.catalog().tools.includes("bash")) throw new Error("Workflow commands require bash in the subagent tool policy");
     return this.directory(cwd);
   }
-  compile(cwd: string, selection: Composition): Omit<SpawnOptions, "name" | "task"> {
+  compile(cwd: string, requested: Composition): Omit<SpawnOptions, "name" | "task"> {
     const catalog = this.catalog();
     if (!catalog.spawnEnabled) throw new Error("No spawnable configuration. Inspect subagent_catalog; user diagnostics: /subagents diagnostics.");
+    // Always-on entries become part of the saved composition, so resume revalidates them like explicit choices.
+    const union = (always: string[], chosen?: string[]) => always.length ? [...new Set([...(chosen ?? []), ...always])] : chosen;
+    const selection: Composition = { ...requested, tools: union(catalog.alwaysTools, requested.tools)!, extensions: union(catalog.alwaysExtensions, requested.extensions) };
+    if (selection.extensions === undefined) delete selection.extensions;
     const directory = this.checkedDirectory(cwd, catalog.workingDirectories);
     if (!catalog.models.some(m => m.id === selection.model)) throw new Error("Model/thinking selection is not currently allowed and usable; use subagent_catalog.");
     for (const tool of selection.tools) if (tool.startsWith("subagent_") || !catalog.tools.includes(tool)) throw new Error(`Tool not allowed: ${tool}`);
