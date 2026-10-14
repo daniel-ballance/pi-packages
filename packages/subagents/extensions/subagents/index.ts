@@ -11,13 +11,14 @@ import { SubagentPolicy } from "./src/policy.js";
 import { NoticeScheduler } from "./src/notifications.js";
 import { collectReports } from "./src/collection.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
-import { formatAgentListing } from "./src/usage.js";
+import { formatAgentListing, summarizeAgents } from "./src/usage.js";
 import { subagentRenderers } from "./src/render.js";
 import { Workflows } from "./src/workflows.js";
 import { managerWorkflowHost } from "./src/workflow-host.js";
 import { registerWorkflowUI } from "./src/workflow-ui.js";
 import { inspectorSource } from "./src/inspector-data.js";
 import { showInspector, type InspectorPanel } from "./src/inspector.js";
+import { HerdrStatus } from "./src/herdr.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
 const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path or built-in extension identifier from subagent_catalog." })));
@@ -62,7 +63,14 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   let context: ExtensionContext | undefined;
   let footerLabel = "";
   let restoreFooter: (() => void) | undefined;
+  let herdr: HerdrStatus | undefined;
+  let stopHerdrEvents: (() => void) | undefined;
+  const runningWorkflows = () => workflows ? (workflows.inspect() as { runs: { status: string; name: string }[] }).runs.filter(r => ["running", "pausing"].includes(r.status)) : [];
+  const reportActivity = () => herdr?.subagents({
+    children: manager ? summarizeAgents(manager.list()).active : 0, workflows: runningWorkflows().length,
+  });
   const refresh = () => {
+    reportActivity();
     if (!manager || !context?.hasUI) return;
     footerLabel = formatSubagentSummary(manager.list());
     // Also requests a render, but don't add our old third row in the TUI.
@@ -84,8 +92,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     return manager;
   };
   const getWorkflows = (ctx: ExtensionContext) => workflows ??= new Workflows(join(get(ctx).directory, "workflows"), managerWorkflowHost(get(ctx), () => getPolicy(ctx)), () => {
+    reportActivity();
     if (context?.hasUI && workflows) {
-      const running = (workflows.inspect() as { runs: { status: string; name: string }[] }).runs.filter(r => ["running", "pausing"].includes(r.status));
+      const running = runningWorkflows();
       context.ui.setStatus("workflows", context.mode !== "tui" && running.length ? `workflow: ${running[0].name}` : undefined);
     }
     notifications?.wake();
@@ -105,6 +114,13 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     if (ctx.mode === "tui") {
       restoreFooter = installFooterDecoration(FooterComponent.prototype,
         () => footerLabel, text => ctx.ui.theme.fg("dim", text));
+      // Like herdr's own integration, TUI only: RPC/print parents have no pane to show.
+      herdr ??= HerdrStatus.fromEnv(process.env, (): Record<string, string> => {
+        const file = ctx.sessionManager.getSessionFile();
+        return file?.startsWith("/") ? { agent_session_path: file } : { agent_session_id: ctx.sessionManager.getSessionId() };
+      });
+      stopHerdrEvents ??= herdr && pi.events.on("herdr:blocked", data => herdr?.blocked(data));
+      herdr?.start(!ctx.isIdle());
     }
     if (ctx.mode === "tui" || ctx.mode === "rpc") {
       const manager = get(ctx);
@@ -132,8 +148,11 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     }
   };
   pi.on("session_start", (_event, ctx) => startSession(ctx));
-  pi.on("agent_start", () => notifications?.busy());
-  pi.on("agent_settled", () => notifications?.wake());
+  pi.on("agent_start", () => { notifications?.busy(); herdr?.parent(true); });
+  pi.on("agent_settled", (_event, ctx) => {
+    notifications?.wake();
+    if (ctx.isIdle()) herdr?.parent(false);
+  });
   pi.on("message_end", event => {
     if ("customType" in event.message && event.message.customType === "subagent-report") {
       const keys = noticeKeys(event.message.details);
@@ -149,8 +168,13 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     inspector = undefined;
     notifications?.dispose();
     notifications = undefined;
+    const herdrCleared = herdr?.dispose();
+    herdr = undefined;
+    stopHerdrEvents?.();
+    stopHerdrEvents = undefined;
     try { await workflows?.shutdown(); await manager?.shutdown(); }
     finally {
+      await herdrCleared;
       restoreFooter?.();
       restoreFooter = undefined;
       footerLabel = "";

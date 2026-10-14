@@ -254,6 +254,20 @@ Worker views foreground purpose, current activity, assignment timing, latest res
 
 The TUI summary is `subagents: active/total • $cost` (three decimal places), lowercase and theme-dim, right-aligned above the model. Active counts starting, working and waiting-for-input children; total counts all tracked children in this parent session, including closed children and actual launch failures, but not preflight rejections. Cost sums the latest cumulative Pi session-stat snapshots, including closed children; resuming a child updates its existing snapshot rather than adding its previous cost again. Snapshots refresh after each assistant/tool-result message, persisted usage/summary entry, and turn/compaction completion, as well as startup/resume, settle and close. Costs therefore update during multi-turn work; an in-progress streaming response is not included until it completes. Missing/unavailable usage contributes zero to the numeric subtotal until reported; a compact `+` marker identifies incomplete cost reporting. These are Pi-reported costs, not guaranteed subscription billing amounts. Narrow terminals get a separate row. `src/footer.ts` decorates the actual `FooterComponent.prototype.render`; it is an isolated process-wide compatibility hook, not a supported Pi decoration API. It preserves stock rendering and restores the original method on shutdown. It assumes the directory/model remain the first two rows; completely custom footers that do not use that class are unaffected. RPC clients receive a normal status entry. Workflow workers are included in the same totals; workflows do not add a separate TUI footer status line. Full workflow state is available in the inspector.
 
+## herdr status
+
+In a [herdr](https://herdr.dev) pane with herdr's Pi integration installed (`herdr integration install pi`), the pane stays `working` while subagents or workflows run, even after the parent settles. herdr's integration reports only the parent, so without this the pane goes idle while children are still busy. A display-only working label says why: `2 subagents` while the parent is settled, `working + 2 subagents` while both are busy, and `1 subagent, 1 workflow` for mixed work. The same text is exposed as the `subagents` pane token for custom herdr sidebar rows (`$subagents`).
+
+Active means the same as the footer: starting, working and waiting-for-input children, plus running or pausing workflows. When the last one finishes, the pane goes idle, which herdr shows as done until you view it.
+
+How it works, and its limits:
+
+- herdr gives lifecycle authority to the official `herdr:pi` source and ignores state from other sources, so the parent co-reports under `herdr:pi`, from Pi itself, with a higher `seq`. Labels use display-only metadata under this package's own `pi-subagents` source.
+- Nothing is reported until a subagent first runs; sessions that never spawn one are left entirely to herdr's integration. Once engaged, the integration's own reports are outranked for the rest of that runtime, so this mirrors its whole state machine (blocked, then working, then idle), including `herdr:blocked` events.
+- `/reload`, `/new` and `/resume` load fresh extensions; herdr's integration takes back control and children stop as usual. Labels and the token are cleared on reload and on exit. If Pi is killed outright, the `subagents` token can remain until the pane closes.
+- TUI parents only, like herdr's integration. Nothing is sent outside a herdr pane or with `--disable-native-subagents`. Without the integration installed, herdr ignores these reports. Delivery failures are ignored.
+- This relies on herdr's current reporting contract (tested with herdr 0.8.2 and integration version 8), including its reserved `herdr:` source prefix. A future herdr change could make it a no-op.
+
 ## Persistence, reload, and migration
 
 State lives in `<Pi agent directory>/subagents/<parent-session-id>/`: a registry, saved Pi sessions, and per-child event/stderr logs. Directories are private (0700), manager-written files 0600. Logs may contain sensitive code/task data and are capped at 20 MiB each (the final record may be truncated). There is no automatic retention/deletion policy.
@@ -288,6 +302,14 @@ pi --offline --no-extensions -e ./packages/subagents/extensions/subagents/index.
 # /subagents-demo opens synthetic workflow/worker data with simulated streaming.
 # Add --tui-mode fullscreen to try the other layout.
 ```
+
+The herdr status test is opt-in because it needs herdr and a real `pi` executable on `PATH` (herdr recognises agents by process name, so the dev-dependency CLI under node cannot stand in):
+
+```bash
+HERDR_E2E=1 node --import tsx --test test/herdr-e2e.test.ts   # HERDR_E2E_PI=/path/to/pi to override
+```
+
+It starts a throwaway herdr session, installs herdr's current Pi integration into a temporary agent directory, and drives a real Pi TUI with real children and scripted offline models. It covers settled parents with running children, staggered and failed children, parent turns and `herdr:blocked` while engaged, workflows, `/reload`, quitting mid-child, RPC/opt-out silence and a missing integration. It does not touch your Pi configuration or default herdr session.
 
 The demo is a development-only fixture, not a shipped command. It launches no children and does not modify state. The workflow view uses a compact lane graph with one selectable step per row, not a two-dimensional box navigator. Artifact/log paths are displayed, not opened. Inspector tests exercise navigation, grouping, responsive graph/list switching, scroll following, theme/keybinding changes, bounded activity and non-acknowledging inspection. Graph tests walk the rendered wires of 300 deterministic DAGs to check that every real edge—and no invented edge—connects its intended nodes.
 
