@@ -27,8 +27,6 @@ export interface SubscriptionOptions {
   query?: QueryFunction;
   env?: NodeJS.ProcessEnv;
   cwd?: () => string;
-  /** Called when the account or its plan limits become known or change. */
-  onChange?(): void;
   /**
    * Keep conversations on disk in Claude Code and continue them after a restart: where the
    * records of what each kept session holds are filed, and how Claude Code's own copy is read.
@@ -129,16 +127,13 @@ export class ClaudeSubscription {
         cwd,
         onAccount: account => {
           this.account = account;
-          this.options.onChange?.();
         },
         onRateLimit: info => {
           this.rateLimit = info;
-          this.options.onChange?.();
         },
         onResult: result => {
           this.count(result, counted);
           counted = result.modelUsage ?? counted ?? {};
-          this.options.onChange?.();
         },
         knownTools: this.options.knownTools,
         onSettled: () => {
@@ -224,13 +219,11 @@ export class ClaudeSubscription {
     const before = this.runs.get(result.session_id) ?? {};
     this.count(result, before);
     this.runs.set(result.session_id, result.modelUsage ?? before);
-    this.options.onChange?.();
   }
 
   /** Take a plan-limit notice from such a process. */
   noteRateLimit(info: SDKRateLimitInfo): void {
     this.rateLimit = info;
-    this.options.onChange?.();
   }
 
   /**

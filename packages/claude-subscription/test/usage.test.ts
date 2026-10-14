@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readUsage, renderMeter, renderReport, resetTime, type ReportDetails } from "../extensions/claude-subscription/src/usage.js";
+import { readUsage, renderReport, resetTime, type ReportDetails } from "../extensions/claude-subscription/src/usage.js";
 
 // The plan fields captured from probe1-handshake.out.json's `usage` response, 2026-10-13.
 const captured = {
@@ -42,7 +42,6 @@ test("the captured plan report keeps every server row and uses percentage units"
     ["weekly_scoped", "weekly", "Weekly · Fable", 1],
   ]);
   assert.equal(usage.limits[0].resetsAt, Date.parse(captured.rate_limits.five_hour.resets_at));
-  assert.equal(renderMeter(usage, "always"), "5h 4% · wk 1%");
   const report = renderReport(usage, details, iso);
   assert.match(report, /^Claude Max · user@example.invalid · Personal/);
   assert.match(report, /5-hour: 4% used · resets 2026-10-14T01:40:00.261Z/);
@@ -60,29 +59,19 @@ test("turn events read unified windows as fractions and epoch seconds", () => {
   assert.equal(usage.source, "event");
   assert.deepEqual(usage.limits.map(row => row.percent), [8, 1]);
   assert.equal(usage.limits[0].resetsAt, 1791942000000);
-  assert.equal(renderMeter(usage, "always"), "5h 8% · wk 1%");
-  assert.equal(renderMeter(usage, "attention"), undefined);
   assert.match(renderReport(usage, details), /Limits from the last turn; full plan report unavailable/);
   assert.match(renderReport(usage, details), /Extra usage: off \(disabled by your organization\)/);
 });
 
-test("attention starts at eighty percent for events and reached limits say so", () => {
-  const warning = readUsage(undefined, { ...event, unifiedWindows: { five_hour: { utilization: 0.8, resetsAt: 1791942000 } } });
-  assert.equal(renderMeter(warning, "attention", iso), "5h 80% near limit · resets 2026-10-14T01:40:00.000Z");
+test("reached limits say so in the report", () => {
   const rejected = readUsage(undefined, { ...event, status: "rejected" });
-  assert.match(renderMeter(rejected, "always", iso) ?? "", /^5h 8% limit reached · resets /);
-  assert.equal(renderMeter(rejected, "off"), undefined);
-  assert.equal(renderMeter(readUsage(undefined, { status: "rejected" }), "attention"), "Claude plan limit reached");
-  assert.match(renderMeter(readUsage(undefined, { status: "allowed_warning", rateLimitType: "five_hour" }), "attention") ?? "", /near limit/);
+  assert.match(renderReport(rejected, details, iso), /5-hour: 8% used · limit reached · resets 2026-10-14T01:40:00.000Z/);
+  assert.match(renderReport(readUsage(undefined, { status: "rejected" }), details), /Plan limit: usage unknown · limit reached/);
+  const reached = readUsage({ rate_limits: { limits: [{ kind: "session", percent: 100 }] } });
+  assert.match(renderReport(reached, details), /5-hour: 100% used · limit reached/);
 });
 
-test("server severity determines attention without grading its rows ourselves", () => {
-  const normal = readUsage({ rate_limits: { limits: [{ kind: "session", percent: 95, severity: "normal" }] } });
-  assert.equal(renderMeter(normal, "attention"), undefined);
-  const warning = readUsage({ rate_limits: { limits: [{ kind: "weekly_scoped", percent: 40, severity: "warning", scope: { model: { display_name: "Fable" } } }] } });
-  assert.equal(renderMeter(warning, "attention"), "wk Fable 40% near limit");
-  const reached = readUsage({ rate_limits: { limits: [{ kind: "session", percent: 100 }] } });
-  assert.equal(renderMeter(reached, "attention"), "5h 100% limit reached");
+test("a server's own label names its row", () => {
   const labeled = readUsage({ rate_limits: { limits: [{ kind: "session", label: "Current session", percent: 5 }] } });
   assert.match(renderReport(labeled, details), /Current session: 5% used/);
 });
@@ -108,7 +97,7 @@ test("older reports without limits rows keep legacy and model scoped windows", (
 
 test("missing report windows fall back to events while an explicit empty list stays empty", () => {
   for (const report of [undefined, null, {}, { rate_limits: null }, { rate_limits: { limits: null } }]) {
-    assert.equal(renderMeter(readUsage(report, event), "always"), "5h 8% · wk 1%");
+    assert.deepEqual(readUsage(report, event).limits.map(row => [row.label, row.percent]), [["5-hour", 8], ["Weekly (all models)", 1]]);
   }
   const empty = readUsage({ rate_limits: { limits: [] } }, event);
   assert.equal(empty.limits.length, 0);
@@ -125,7 +114,6 @@ test("degraded payloads never throw or print invalid percentages and dates", () 
     const report = renderReport(readUsage(value, value), { ...details, account: undefined, fastMode: undefined });
     assert.doesNotMatch(report, /NaN|Infinity|Invalid Date/);
   }
-  assert.equal(renderMeter(readUsage(undefined), "always"), "Claude usage unavailable");
   assert.match(renderReport(readUsage(undefined), { ...details, account: undefined }), /Claude plan unknown\nPlan usage unavailable/);
   assert.ok(resetTime(1791942000000).length > 0);
 });

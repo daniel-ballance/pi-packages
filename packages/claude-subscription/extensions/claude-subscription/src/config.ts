@@ -7,11 +7,6 @@ export const CONFIG_FILE = "claude-subscription.json";
 /** What the user may switch on or off. Every extra beyond the provider itself is a choice. */
 export interface Config {
   /**
-   * Plan-limit meter in the footer: `always` while a model of this provider is selected,
-   * `attention` only when a limit is close or reached, `off` never.
-   */
-  status: "always" | "attention" | "off";
-  /**
    * Offer `claude_web_search` and `claude_web_fetch`: Anthropic's web search and Claude
    * Code's page reader, run by Claude Code on the plan. They work with any Pi model.
    */
@@ -29,7 +24,7 @@ export interface Config {
   resume: boolean;
 }
 
-export const DEFAULT_CONFIG: Config = { status: "always", webTools: false, claudeCode: false, resume: false };
+export const DEFAULT_CONFIG: Config = { webTools: false, claudeCode: false, resume: false };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42,10 +37,7 @@ export function parseConfig(value: unknown): { config: Config; problems: string[
   if (value === undefined) return { config, problems };
   if (!isRecord(value)) return { config, problems: ["the file must hold a JSON object"] };
   for (const [key, setting] of Object.entries(value)) {
-    if (key === "status") {
-      if (setting === "always" || setting === "attention" || setting === "off") config.status = setting;
-      else problems.push('"status" must be "always", "attention" or "off"');
-    } else if (key === "webTools" || key === "claudeCode" || key === "resume") {
+    if (key === "webTools" || key === "claudeCode" || key === "resume") {
       if (typeof setting === "boolean") config[key] = setting;
       else problems.push(`"${key}" must be true or false`);
     } else problems.push(`unknown setting "${key}"`);

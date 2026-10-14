@@ -93,11 +93,10 @@ Pick a model with `/model` (provider `claude-subscription`) or
 `--model claude-subscription/<id>`. Thinking levels map to Claude's effort
 levels the way Pi's own Anthropic adapter maps them.
 
-The footer shows where you stand against the plan, for example
-`5h 20% · wk 4%`, while one of these models is selected, and says so when a
-limit is close or reached. `/claude-subscription` shows the account, every
-limit Claude Code reports with its reset time, extra-usage and fast-mode state,
-and an estimate of what this Pi process has used at API list prices.
+The extension adds nothing to Pi's footer. `/claude-subscription` shows the
+account, every limit Claude Code reports with its reset time and whether it is
+reached, extra-usage and fast-mode state, and an estimate of what this Pi
+process has used at API list prices.
 
 The model list starts as Pi's own Claude catalog. Once a day, when network
 access is allowed, the provider asks Claude Code which models the account
@@ -112,7 +111,6 @@ Optional, in `claude-subscription.json` in Pi's agent directory
 
 | Setting | Default | What it does |
 |---|---|---|
-| `status` | `"always"` | The footer meter: `"always"`, `"attention"` (only near or at a limit) or `"off"`. |
 | `resume` | `false` | Claude Code keeps each conversation on disk, so a restarted Pi continues it with the model's real history and prompt cache. See below. |
 | `webTools` | `false` | Adds `claude_web_search` and `claude_web_fetch`, run by Claude Code on the plan. |
 | `claudeCode` | `false` | Adds `claude_code`, which hands a task to Claude Code with its own tools. |

@@ -31,7 +31,7 @@ test("the extension registers one native provider, a status command and shutdown
   assert.ok(providers[0].getModels().length > 0);
   assert.ok(providers[0].getModels().every(model => model.provider === "claude-subscription" && model.api === "claude-agent-sdk" && model.cost.input === 0));
   assert.deepEqual(commands, ["claude-subscription"]);
-  assert.deepEqual(events.sort(), ["agent_settled", "before_agent_start", "model_select", "session_shutdown", "session_start"]);
+  assert.deepEqual(events.sort(), ["before_agent_start", "session_shutdown"]);
 });
 
 test("a turn on this provider uses its own prompt, and a prompt already chosen stays", () => {
@@ -77,9 +77,6 @@ const planReport = { rate_limits: { extra_usage: { is_enabled: false }, limits: 
   { kind: "weekly_scoped", group: "weekly", percent: 1, scope: { model: { display_name: "Fable" } } },
 ] } };
 
-/** Lets the background read of the plan report finish. */
-const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
-
 function harness(t: TestContext, config?: unknown) {
   const agentDir = mkdtempSync(join(tmpdir(), "claude-subscription-extension-"));
   const oldDir = process.env.PI_CODING_AGENT_DIR;
@@ -93,6 +90,7 @@ function harness(t: TestContext, config?: unknown) {
   let provider: Provider;
   let command: (args: string, ctx: unknown) => Promise<void>;
   const handlers = new Map<string, (event: any, ctx: any) => void | Promise<void>>();
+  /** Anything written to the footer; the extension leaves it to Pi. */
   const statuses: (string | undefined)[] = [];
   const notices: string[] = [];
   const tools: string[] = [];
@@ -100,7 +98,7 @@ function harness(t: TestContext, config?: unknown) {
     hasUI: true, mode: "rpc", signal: undefined,
     model: { provider: "claude-subscription" },
     ui: {
-      setStatus(key: string, value: string | undefined) { assert.equal(key, "claude-subscription"); statuses.push(value); },
+      setStatus(_key: string, value: string | undefined) { statuses.push(value); },
       notify(value: string, type: string) { assert.equal(type, "info"); notices.push(value); },
     },
   };
@@ -118,49 +116,20 @@ function harness(t: TestContext, config?: unknown) {
   };
 }
 
-test("the meter is read in the background, follows the selected model, and is not re-read every turn", async t => {
+test("the plan is read only for the command, and the footer is left to Pi", async t => {
   const plan = t.mock.method(ClaudeSubscription.prototype, "planUsage", async () => planReport);
+  t.mock.method(ClaudeSubscription.prototype, "identify", async () => ({ subscriptionType: "Claude Max" }));
   let closes = 0;
   t.mock.method(ClaudeSubscription.prototype, "closeSessions", () => { closes++; });
   const h = harness(t);
-  await h.fire("session_start");
-  await settle();
-  assert.deepEqual(h.statuses, [undefined, "5h 12% · wk 3%"], "nothing is claimed before anything is known");
-
-  h.ctx.model.provider = "openai";
-  await h.fire("model_select", { model: h.ctx.model });
-  assert.equal(h.statuses.at(-1), undefined, "another provider's model has no Claude plan to show");
-  h.ctx.model.provider = "claude-subscription";
-  await h.fire("model_select", { model: h.ctx.model });
-  assert.equal(h.statuses.at(-1), "5h 12% · wk 3%");
-  await h.fire("agent_settled");
-  await settle();
-  assert.equal(plan.mock.callCount(), 1, "a recent report is not asked for again");
-
+  for (const event of ["session_start", "model_select", "agent_settled"]) await h.fire(event, { model: h.ctx.model });
+  assert.equal(plan.mock.callCount(), 0, "no Claude Code process is started for the plan until asked");
+  await h.command();
+  assert.equal(plan.mock.callCount(), 1);
+  assert.match(h.notices[0], /5-hour: 12% used/);
+  assert.deepEqual(h.statuses, []);
   await h.fire("session_shutdown");
-  assert.equal(h.statuses.at(-1), undefined);
   assert.equal(closes, 1);
-});
-
-test("the footer setting decides what the meter shows, and switching it off asks Claude Code nothing", async t => {
-  const plan = t.mock.method(ClaudeSubscription.prototype, "planUsage", async () => planReport);
-  const quiet = harness(t, { status: "attention" });
-  await quiet.fire("session_start");
-  await settle();
-  assert.equal(quiet.statuses.at(-1), undefined, "well inside the limits there is nothing to say");
-  assert.equal(plan.mock.callCount(), 1);
-
-  const off = harness(t, { status: "off" });
-  await off.fire("session_start");
-  await settle();
-  assert.equal(off.statuses.at(-1), undefined);
-  assert.equal(plan.mock.callCount(), 1);
-
-  const headless = harness(t);
-  headless.ctx.hasUI = false;
-  await headless.fire("session_start");
-  await settle();
-  assert.equal(plan.mock.callCount(), 1, "print and JSON modes have no footer, so no process is started for one");
 });
 
 test("the command reports every plan row, the session's spend and configuration problems", async t => {
@@ -172,6 +141,7 @@ test("the command reports every plan row, the session's spend and configuration 
   });
   t.mock.method(ClaudeSubscription.prototype, "planUsage", async () => planReport);
   const h = harness(t, { status: "always", typo: true });
+  // The footer meter was removed; an old setting for it is reported like any other unknown one.
   await h.command();
   assert.equal(h.notices.length, 1);
   assert.match(h.notices[0], /Claude Max · user@example.invalid/);
@@ -181,6 +151,7 @@ test("the command reports every plan row, the session's spend and configuration 
   assert.match(h.notices[0], /Fast mode: off \(unavailable: extra usage is off\)/);
   assert.match(h.notices[0], /\$0.0200 estimate at API list prices · 1 turn · not a bill/);
   assert.match(h.notices[0], /unknown setting "typo"/);
+  assert.match(h.notices[0], /unknown setting "status"/);
 });
 
 test("a failed sign-in is reported in place of the account, and print modes start nothing", async t => {
@@ -198,7 +169,7 @@ test("a failed sign-in is reported in place of the account, and print modes star
   assert.equal(h.notices.length, 1);
 });
 
-test("what a turn reports about the plan reaches the meter at once", async t => {
+test("what a turn reports about the plan reaches the command when the full report is unavailable", async t => {
   let instance: ClaudeSubscription | undefined;
   const fake = fakeQuery(async claude => {
     const user = await claude.user();
@@ -206,6 +177,7 @@ test("what a turn reports about the plan reaches the meter at once", async t => 
     claude.text("answer", "Hi.", { uuids: [user.uuid] });
     claude.result([user.uuid]);
   });
+  t.mock.method(ClaudeSubscription.prototype, "identify", async () => ({ subscriptionType: "Claude Max" }));
   // Capture the extension's instance, substituting only the SDK query boundary for this turn.
   t.mock.method(ClaudeSubscription.prototype, "planUsage", async function(this: ClaudeSubscription) {
     instance = this;
@@ -213,13 +185,14 @@ test("what a turn reports about the plan reaches the meter at once", async t => 
     return undefined;
   });
   const h = harness(t);
-  await h.fire("session_start");
-  await settle();
-  assert.equal(h.statuses.at(-1), undefined);
+  await h.command();
   const model = h.provider.getModels()[0];
   const message = await h.provider.streamSimple(model, normalizeContext({ messages: [{ role: "user", content: "Hi", timestamp: 1 }], tools: [] }), {}).result();
   assert.equal(message.stopReason, "stop", message.errorMessage);
-  assert.equal(h.statuses.at(-1), "5h 8% · wk 1%");
+  await h.command();
+  assert.match(h.notices.at(-1) ?? "", /5-hour: 8% used/);
+  assert.match(h.notices.at(-1) ?? "", /Limits from the last turn/);
+  assert.deepEqual(h.statuses, []);
   assert.deepEqual(fake.spawned[0].failures, []);
   await h.fire("session_shutdown");
   assert.equal(instance?.openSessions, 0);
@@ -230,38 +203,4 @@ test("the extras are offered only when the user's settings ask for them", t => {
   assert.deepEqual(harness(t, { webTools: true }).tools, ["claude_web_search", "claude_web_fetch"]);
   assert.deepEqual(harness(t, { claudeCode: true }).tools, ["claude_code"]);
   assert.deepEqual(harness(t, {}).tools, []);
-});
-
-test("an answer about the plan that a turn has since overtaken does not hide what the turn said", async t => {
-  let answer: ((value: unknown) => void) | undefined;
-  t.mock.method(ClaudeSubscription.prototype, "planUsage", () => new Promise(resolve => { answer = resolve; }));
-  let instance: ClaudeSubscription | undefined;
-  t.mock.method(ClaudeSubscription.prototype, "closeSessions", function(this: ClaudeSubscription) { instance = this; });
-  const h = harness(t);
-  await h.fire("session_start");
-  await h.fire("session_shutdown");
-  await h.fire("session_start");
-  assert.ok(instance && answer);
-  // While the read is out, a turn reports the 5-hour window nearly used up.
-  instance.noteRateLimit({ status: "allowed_warning", rateLimitType: "five_hour", unifiedWindows: { five_hour: { utilization: 0.95, resetsAt: 1791942000 } } } as never);
-  assert.match(h.statuses.at(-1) ?? "", /^5h 95% near limit/);
-  answer(planReport);
-  await settle();
-  assert.match(h.statuses.at(-1) ?? "", /^5h 95% near limit/, "the older answer is dropped");
-});
-
-test("the plan is asked about at most every few minutes, answered or not, and never after the session ends", async t => {
-  const signals: (AbortSignal | undefined)[] = [];
-  const plan = t.mock.method(ClaudeSubscription.prototype, "planUsage", async (signal?: AbortSignal) => {
-    signals.push(signal);
-    return undefined;
-  });
-  const h = harness(t);
-  await h.fire("session_start");
-  for (let turn = 0; turn < 4; turn++) await h.fire("agent_settled");
-  await settle();
-  assert.equal(plan.mock.callCount(), 1, "a Claude Code that cannot answer is not asked again every turn");
-  assert.equal(signals[0]?.aborted, false);
-  await h.fire("session_shutdown");
-  assert.equal(signals[0]?.aborted, true, "a read still out when Pi's session ends is stopped with it");
 });
