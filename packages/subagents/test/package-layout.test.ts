@@ -8,9 +8,9 @@ import { execFileSync } from "node:child_process";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
-const collectionExtensions = ["mcp-client", "self-reload", "subagents", "web-search"];
-// T3 and the Claude subscription provider remain opt-in, but pack/discover independently.
-const extensionNames = [...collectionExtensions, "claude-subscription", "t3-subagents"];
+const collectionExtensions = ["claude-subscription", "mcp-client", "self-reload", "subagents", "web-search"];
+// T3 remains opt-in, but packs/discovers independently.
+const extensionNames = [...collectionExtensions, "t3-subagents"];
 const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
 const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
 const expectedSkills = [...engineeringSkills, "subagents", "workflows"].sort();

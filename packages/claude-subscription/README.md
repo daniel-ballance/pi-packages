@@ -51,8 +51,8 @@ not a claim about what your Anthropic account is charged.
 
 ## Install
 
-This package is **not part of the root collection manifest**. Load it on its own.
-From a local checkout:
+This package is included in the [root collection](../../README.md#install-in-pi).
+Install the collection or this package individually. From a local checkout:
 
 ```sh
 npm ci --ignore-scripts
