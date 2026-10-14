@@ -1,0 +1,31 @@
+{
+  "name": "computer-use",
+  "version": "0.1.0",
+  "description": "Use OpenAI's installed macOS Computer Use Companion through ordinary Pi tools",
+  "type": "module",
+  "keywords": ["pi-package", "computer-use", "macos"],
+  "files": ["extensions", "skills", "prompts", "themes", "README.md"],
+  "pi": {
+    "extensions": ["./extensions/computer-use/index.ts"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
+  },
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": { "@modelcontextprotocol/sdk": "1.32.1" },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.99.2",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.99.2",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typebox": "^1.0.0"
+  }
+}

@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
-const collectionExtensions = ["claude-subscription", "mcp-client", "self-reload", "subagents", "web-search"];
+const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "self-reload", "subagents", "web-search"];
 const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
 const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
 const expectedSkills = [...engineeringSkills, "subagents", "workflows"].sort();

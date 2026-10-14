@@ -10,6 +10,7 @@
   "pi": {
     "extensions": [
       "./packages/claude-subscription/extensions/claude-subscription/index.ts",
+      "./packages/computer-use/extensions/computer-use/index.ts",
       "./packages/mcp-client/extensions/mcp-client/index.ts",
       "./packages/self-reload/extensions/self-reload/index.ts",
       "./packages/subagents/extensions/subagents/index.ts",
