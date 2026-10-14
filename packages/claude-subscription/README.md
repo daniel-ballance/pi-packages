@@ -2,10 +2,13 @@
 
 A Pi provider that reaches Claude models through the
 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview) and the
-Claude account Claude Code is signed in to. Pi stays the harness: its tools,
-sessions and compaction are unchanged. Claude Code is only the transport, and
-its login is the only credential. While a model from this provider is selected,
-Pi's default system prompt is replaced with a short prompt of this package's own.
+Claude account Claude Code is signed in to.
+
+The aim is that choosing one of these models feels like choosing the same model
+on Pi's `anthropic` provider with an API key: Pi's tools, sessions, compaction,
+thinking levels and commands all work as they do there. Claude Code is only the
+transport, and its login is the only credential. Where the two still differ is
+listed under [Compared with the `anthropic` provider](#compared-with-the-anthropic-provider).
 
 ## Read this first: how Anthropic bills it
 
@@ -17,7 +20,7 @@ Checked on 2026-10-13 with a Max plan and Agent SDK 0.3.296:
 
 | Request sent through this provider | Anthropic's response |
 |---|---|
-| Plain Agent SDK use: a neutral system prompt and custom tools | Accepted, counted against plan limits |
+| This package's own prompt (below) and Pi's tools | Accepted, counted against plan limits |
 | Pi's stock system prompt | `400 Third-party apps now draw from your extra usage, not your plan limits.` |
 
 So with Pi's default prompt, Anthropic treats the traffic as a third-party app
@@ -25,28 +28,26 @@ and bills it to **extra usage**, not plan limits. If extra usage is off for the
 account, a request that still carries that prompt is rejected with that message,
 which Pi shows as is.
 
-This package does not send that default. On `before_agent_start`, when the
-selected model belongs to this provider and you have not set your own prompt, it
-sets Pi's `customPrompt` to its own short text. That is the same option
-`SYSTEM.md` and `--system-prompt` fill, so a prompt from either of those is sent
-as you wrote it. Project context, skills, an appended prompt, and the working
-directory are still added. A prompt you supply that is Pi's default text can
-still draw the rejection above. A one-line Haiku request with this package's
-prompt, from an empty directory, was accepted and did not return that error.
+This package does not send that default. When the selected model belongs to
+this provider and you have not set your own prompt, it sets Pi's `customPrompt`
+to a short text of its own. That is the option `SYSTEM.md` and
+`--system-prompt` fill, so a prompt from either of those is sent as you wrote
+it, and one that is Pi's default text can still draw the rejection above.
+Everything else Pi puts in a prompt is still sent: its tool list, the rules
+tools and extensions contribute, project context, skills, an appended prompt
+and the working directory. Each request names this package to Anthropic as
+`pi-claude-subscription/<version>`.
+
+How Anthropic classifies a request is theirs to decide and may change. An error
+from them reaches Pi unaltered.
 
 Costs appear as `$0` in Pi because nothing is billed per token to Pi. That is
 not a claim about what your Anthropic account is charged.
 
 ## Requirements
 
-- Pi 0.99.2 or newer, Node.js 22+.
-- Claude Code signed in with a Claude account: `claude auth login`. If
-  `CLAUDE_CODE_OAUTH_TOKEN` is set instead, the provider treats Claude Code as
-  signed in and passes the variable through; that path has not been exercised.
-
-Sign-in happens only in Claude Code. This package has no `/login` flow, never
-reads or stores the credential, and the provider appears in `/model` only once
-Claude Code has a login.
+- Pi 0.99.2 or newer (tested with 0.99.2 and 1.2.0), Node.js 22+.
+- A Claude subscription.
 
 ## Install
 
@@ -68,86 +69,155 @@ pi -e ./packages/claude-subscription/extensions/claude-subscription/index.ts \
 The Agent SDK ships the Claude Code binary for your platform (about 250 MB
 installed). It is run as published.
 
+## Sign in
+
+If Claude Code is already signed in on this machine, there is nothing to do:
+the provider appears in `/model` as soon as it sees that login.
+
+Otherwise run `/login` in Pi, choose **Sign in with an API key** (Pi has no
+other place for a login it does not hold) and then
+**Claude subscription (Agent SDK)**:
+
+- **Sign in with Claude Code** runs Claude Code's own browser sign-in. The
+  credential stays with Claude Code; Pi stores nothing.
+- **Paste a long-lived token**, for a machine without a browser, takes the
+  token `claude setup-token` prints. Pi stores it in `auth.json`, as it stores
+  other providers' keys, and passes it to Claude Code as
+  `CLAUDE_CODE_OAUTH_TOKEN`.
+
+`claude auth login` in a terminal does the same as the first route.
+
 ## Use
 
 Pick a model with `/model` (provider `claude-subscription`) or
 `--model claude-subscription/<id>`. Thinking levels map to Claude's effort
-levels. `/claude-subscription` shows the signed-in account, its plan and the
-latest plan-limit notice. The footer shows a limit only when it is close or
-reached.
+levels the way Pi's own Anthropic adapter maps them.
+
+The footer shows where you stand against the plan, for example
+`5h 20% · wk 4%`, while one of these models is selected, and says so when a
+limit is close or reached. `/claude-subscription` shows the account, every
+limit Claude Code reports with its reset time, extra-usage and fast-mode state,
+and an estimate of what this Pi process has used at API list prices.
 
 The model list starts as Pi's own Claude catalog. Once a day, when network
 access is allowed, the provider asks Claude Code which models the account
-offers and narrows the list to those. A model newer than the installed Pi gets
-its context window from Claude Code.
+offers and narrows the list to those. Context windows and output limits are
+Claude Code's own, which can be smaller than the API's: on a Max plan today
+Opus 4.6 and Sonnet 4.6 have 200k through Claude Code, not 1M.
+
+## Settings
+
+Optional, in `claude-subscription.json` in Pi's agent directory
+(`~/.pi/agent`). All of it is off or at its default without the file.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `status` | `"always"` | The footer meter: `"always"`, `"attention"` (only near or at a limit) or `"off"`. |
+| `resume` | `false` | Claude Code keeps each conversation on disk, so a restarted Pi continues it with the model's real history and prompt cache. See below. |
+| `webTools` | `false` | Adds `claude_web_search` and `claude_web_fetch`, run by Claude Code on the plan. |
+| `claudeCode` | `false` | Adds `claude_code`, which hands a task to Claude Code with its own tools. |
+
+The last two are not part of the provider and are meant to stay off: Pi's own
+tools and extensions are how Pi gains capabilities. They exist for the case
+where something only Claude Code can do is wanted, each runs its own
+short-lived Claude Code process, and neither is on any path a model request
+takes.
+
+### Keeping sessions across restarts
+
+With `resume` off, a Pi process that continues an earlier conversation
+(`pi -c`, `--resume`) starts a new Claude Code process and shows it the earlier
+turns as a text record. With it on, Claude Code writes the conversation to its
+own `~/.claude/projects/` directory as it goes, and the new process resumes
+that: same history, thinking included, and the prompt cache if it is still
+warm. Those files hold the prompt, tool definitions and your account email, are
+readable only by you, and are removed by Claude Code after 30 days. A small
+record of what each kept session holds is filed under
+`~/.pi/agent/claude-subscription/sessions/`.
+
+A kept session is used only when it holds exactly the start of the transcript
+Pi sends, with the same prompt, tools and working directory, and Claude Code's
+copy ends where the record says. Anything else falls back to the text record.
+
+## Compared with the `anthropic` provider
+
+| | `anthropic` with an API key | This provider |
+|---|---|---|
+| System prompt | Pi's default | This package's short preamble in place of Pi's first paragraph and its pointer to Pi's docs; the rest of Pi's prompt is the same. Claude Code adds one line ("You are a Claude agent, built on Anthropic's Claude Agent SDK.") and `<system-reminder>` blocks with the working directory, platform, model, date and account email. |
+| Tool names | `read` | The model is shown `mcp__pi__read`. Pi's screen, transcript and sessions say `read`, and the model is told to call tools by Pi's names when it talks to you. |
+| Cost in the footer | Dollars | `$0`; no `(sub)` marker. The estimate is in `/claude-subscription`. |
+| Context window, output limit | The API's | Claude Code's, which may be smaller. |
+| After a restart | The transcript, replayed exactly | A text record of it, or the kept session with `resume` on. |
+| After compaction, a branch, an edited message, or a turn answered by another provider | The transcript, replayed exactly | A new Claude Code process given a text record of the earlier turns, without their thinking. |
+| Switching model, thinking level or active tools mid-conversation | Seamless | Seamless: applied to the running process. Turning thinking off or on, or changing a thinking budget on the 4.5 models, starts a new process. |
+| An answer you interrupt | Forgotten by the model | Still in the model's context, as in Claude Code. |
+| `maxTokens`, temperature, cache retention, request headers | Honoured | Not available; Claude Code sets them. |
+| `after_provider_response` and header events | Fire | Do not fire: there is no HTTP response to show. `before_provider_request` sees the turn input and may replace it; `provider_stream_event` sees every SDK message. |
+| Prompt-cache warming | Available | Not used; the Claude Code process is kept instead. |
+| A failed request | Retried in place | Retried by Pi with a new process and a text record. |
+| A call to a tool that does not exist | Shown, and answered by Pi with an error | Answered by Claude Code itself; the turn carries on and Pi shows nothing. |
 
 ## How it works
 
 Each Pi conversation gets one Claude Code process, started through the SDK's
 streaming `query()` and kept alive between Pi's requests.
 
-- **Prompt and tools.** The system prompt is this package's short prompt, or
-  one you set yourself, and it replaces Claude Code's. Built-in
-  Claude Code tools, user and project settings, hooks, memory files and MCP
+- **Prompt and tools.** The system prompt Pi built replaces Claude Code's.
+  Built-in Claude Code tools, user and project settings, hooks, memory and MCP
   servers are all off. Pi's tools are presented through an in-process MCP
-  server, so the model sees them as `mcp__pi__<name>` with Pi's exact schemas.
+  server with Pi's exact schemas.
 - **Tool calls.** When the model calls a tool, the provider ends Pi's request
   with `toolUse` and holds the call open. Pi runs the tool, with its own
   permission gates, and its result is handed to the waiting call. The turn then
   continues on the same native history and prompt cache.
 - **Continuity.** The provider records which transcript entries the process
   has seen. A request whose transcript extends that record continues the
-  process. Anything else (compaction, a branch, an edited history, a different
-  model, prompt or tool set, a restart) starts a new process seeded with the
-  earlier turns as a tagged text record.
+  process, after bringing it to the request's model, effort and tool set.
+  Anything else starts a new process.
 - **Steering and aborts.** Input that arrives with tool results is folded into
   the running turn. Aborting interrupts the turn and keeps the process.
 - **Lifetime.** Processes close on Pi's session shutdown, after 30 idle minutes
-  (one minute for tool-less requests such as summaries), or when more than four
-  are open.
-
-### What Claude Code adds
-
-The request is Pi's, with two additions from the Agent SDK: the system prompt
-is prefixed with "You are a Claude agent, built on Anthropic's Claude Agent
-SDK.", and the first user message carries short `<system-reminder>` blocks
-(working directory, platform, model, date, account email).
+  (five for requests without tools, such as summaries), or when more than four
+  conversations are open. One that is waiting on a tool Pi is running is left
+  alone however long the tool takes.
 
 ### Environment
 
-The Claude Code process inherits Pi's environment without `ANTHROPIC_API_KEY`,
-`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the `CLAUDE_CODE_USE_*` cloud
-switches, so it uses the Claude account rather than per-token API routing. If
-Claude Code still reports a login that is not a subscription, the request fails
-with an explanation instead of running. `CLAUDE_AGENT_SDK_CLIENT_APP` identifies
-the caller to Anthropic as `pi-claude-subscription/<version>`.
+The Claude Code process inherits Pi's environment, plus what Pi resolved for
+the provider, without `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+`ANTHROPIC_BASE_URL` and the `CLAUDE_CODE_USE_*` cloud switches, so it uses the
+Claude account rather than per-token API routing. Variables that describe
+another Claude Code session (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID` and the
+like) are removed too, so Pi can be started from inside Claude Code. If Claude
+Code still reports a login that is not a subscription, the request fails with
+an explanation instead of running.
 
-## Limits
+### Subagents
 
-- A seeded process sees earlier turns as text, without their thinking blocks.
-- Any failed request discards its process, so the retry is seeded.
-- `maxTokens` is not forwarded; Claude Code sets the output limit per model.
-- `onResponse` is not called: the SDK exposes no HTTP response. `onPayload`
-  receives the turn input and may replace its `input`; `onProviderStreamEvent`
-  receives every SDK message.
-- Tool names are sent as `mcp__pi__<name>`, so very long Pi tool names can
-  exceed the API's 64-character limit.
-- Claude Code's own compaction is off; Pi compacts.
+A child Pi process needs this extension loaded to use these models. With the
+`subagents` package of this collection, name it under `providerExtensions` for
+`claude-subscription` in the subagent policy. A child started with its own
+`--system-prompt` keeps that prompt, as described under billing above.
 
 ## Terms
 
 Anthropic's [legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance)
 covers which credentials may be used where. This package is for your own use
-with your own account. It runs the unmodified Claude Code binary, completes
-sign-in only through Claude Code, and does not collect, store or relay
-credentials. Do not use it to offer Claude access to other people.
+with your own account. It runs the unmodified Claude Code binary and completes
+sign-in only through Claude Code. Do not use it to offer Claude access to other
+people.
 
 ## Development
 
 ```sh
 npm run check
 npm test
+npm run test:live
 ```
 
-Tests script the Agent SDK's `query()` and call tools through the real
-in-process MCP server. They need no login and make no network requests.
+`npm test` scripts the Agent SDK's `query()` and calls tools through the real
+in-process MCP server. It needs no login and makes no network requests.
+
+`npm run test:live` drives the real `pi` binary against your Claude plan: about
+twenty short Haiku requests in half a minute. It skips itself when `pi` is not
+installed or Claude Code is not signed in. See `test/live/README.md`.
