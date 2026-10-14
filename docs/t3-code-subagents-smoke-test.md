@@ -1,9 +1,11 @@
 # t3-subagents live smoke test
 
+**Historical:** the `t3-subagents` package was removed on 2026-10-14; see [the revamp note](t3-subagents-revamp.md).
+
 **Passed:** 2026-10-06, 23:25:32–23:26:01 UTC.
 
 This supplements the [research and implementation note](t3-code-subagents-integration.md)
-and the automated offline RPC fixtures in [t3-subagents](../packages/t3-subagents/README.md).
+and the automated offline RPC fixtures in `t3-subagents`.
 
 ## Setup
 

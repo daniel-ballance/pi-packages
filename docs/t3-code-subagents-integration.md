@@ -2,7 +2,9 @@
 
 Research date: **2026-10-06**. The findings and evidence limits below describe the initial read-only research phase.
 
-**Implementation follow-up:** the user chose launch-scoped native opt-out plus a separate T3-owned executor. The first slice now lives in [`packages/t3-subagents`](../packages/t3-subagents/README.md); [`subagents`](../packages/subagents/README.md) implements `--disable-native-subagents`. User T3 settings and Allowlists remain untouched. Pi RPC fixtures cover both launch paths and nested hooks. A subsequent [live smoke test](t3-code-subagents-smoke-test.md) exercised the new wrapper through the installed T3 bridge, including real completion, active cancellation and saved-session recovery, without changing user launch settings. The installed T3 cancellation contract and audited upstream cancellation implementation differ; the package documents that version-dependent scope.
+**Superseded 2026-10-14:** the `t3-subagents` wrapper package was removed. Inside T3 Code, Pi uses T3's own `delegate_task`/`task_status`/`task_cancel` tools directly and the native `subagents` package stays inactive (it detects `T3_MCP_URL`). See [the revamp note](t3-subagents-revamp.md). The research below is kept as history.
+
+**Implementation follow-up:** the user chose launch-scoped native opt-out plus a separate T3-owned executor. The first slice lived in `packages/t3-subagents`; [`subagents`](../packages/subagents/README.md) implements `--disable-native-subagents`. User T3 settings and Allowlists remain untouched. Pi RPC fixtures cover both launch paths and nested hooks. A subsequent [live smoke test](t3-code-subagents-smoke-test.md) exercised the new wrapper through the installed T3 bridge, including real completion, active cancellation and saved-session recovery, without changing user launch settings. The installed T3 cancellation contract and audited upstream cancellation implementation differ; the package documents that version-dependent scope.
 
 ## Original research recommendation
 

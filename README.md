@@ -3,8 +3,7 @@
 A collection of Pi packages that extend the harness with capabilities it does not
 ship. Each package lives under [`packages/`](packages/).
 
-- [subagents](packages/subagents/README.md) — persistent RPC child agents with composable `subagents.json` allowlists, peer messaging, bounded workflows, supervision, and saved-session recovery.
-- [t3-subagents](packages/t3-subagents/README.md) — opt-in bounded delegation through T3 Code, with saved task identities, explicit result reads and cancellation. Load separately in T3 and disable native subagent startup for that launch; standalone Pi is unchanged.
+- [subagents](packages/subagents/README.md) — persistent RPC child agents with composable `subagents.json` allowlists, peer messaging, bounded workflows, supervision, and saved-session recovery. For Pi run directly; inside T3 Code it stays inactive and T3's own delegated tasks take over.
 - [durable-subagents](packages/durable-subagents/README.md) — opt-in Pi extension backed by native Durable conversations, with persistent collaborators, scoped peers, human holds and parent result notifications. Install this local package separately; the original subagents package remains unchanged.
 - [self-reload](packages/self-reload/README.md) — agent-requested runtime reload with automatic continuation, for rapid extension development.
 - [web-search](packages/web-search/README.md) — zero-configuration DuckDuckGo web search with titles, URLs, and snippets; no API key required.

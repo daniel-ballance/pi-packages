@@ -22,9 +22,16 @@ runner, footer decoration or notification scheduler is initialized. Unrelated
 extensions and skill discovery are unchanged. Normal unflagged TUI/RPC launches
 retain the existing behavior; marked native Children still register nothing.
 
-Use this with the separate [t3-subagents](https://github.com/daniel-ballance/pi-packages/blob/main/packages/t3-subagents/README.md) extension
-when T3 owns delegated execution and parent wake-ups. It is an opt-out, not an
-automatic environment-based policy change, and does not edit `subagents.json`.
+The flag does not edit `subagents.json`.
+
+## Inside T3 Code
+
+When T3 Code launches Pi with its MCP bridge, it sets `T3_MCP_URL`, and this
+package stays inactive exactly as if `--disable-native-subagents` were passed.
+T3's own `delegate_task`, `task_status` and `task_cancel` tools are the
+subagent system there: T3's model configuration decides which providers and
+models children can use, and T3 owns execution, permissions, completion
+wake-ups and the subagent UI. This package is for running Pi directly.
 
 ## Bundled setup and execution skill
 

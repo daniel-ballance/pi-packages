@@ -36,9 +36,11 @@ export default function subagents(pi: ExtensionAPI) {
   });
   // Pi applies parsed CLI flags after factories load. Register nothing else
   // until session_start, including on reload with the same launch flags.
+  // Inside T3 Code, T3's own delegated tasks are the subagent system; T3 sets
+  // T3_MCP_URL for the Pi sessions it launches with its MCP bridge.
   let initialized = false;
   pi.on("session_start", (_event, ctx) => {
-    if (initialized || pi.getFlag("disable-native-subagents") === true) return;
+    if (initialized || pi.getFlag("disable-native-subagents") === true || process.env.T3_MCP_URL) return;
     initialized = true;
     initializeSubagents(pi, ctx);
   });

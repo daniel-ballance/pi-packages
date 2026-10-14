@@ -9,8 +9,6 @@ import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-codin
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 const collectionExtensions = ["claude-subscription", "mcp-client", "self-reload", "subagents", "web-search"];
-// T3 remains opt-in, but packs/discovers independently.
-const extensionNames = [...collectionExtensions, "t3-subagents"];
 const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
 const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
 const expectedSkills = [...engineeringSkills, "subagents", "workflows"].sort();
@@ -97,7 +95,7 @@ test("Pi Git installation resolves every extension without development dependenc
     const result = await load(installed, installed);
     assert.deepEqual(result.extensions, expectedPaths);
     assert.deepEqual(result.skills, expectedSkills);
-    for (const name of extensionNames) {
+    for (const name of collectionExtensions) {
       await assert.rejects(readFile(join(installed, "packages", name, "node_modules/@earendil-works/pi-coding-agent/package.json")));
       assert.deepEqual((await load(join(installed, "packages", name), installed)).extensions,
         [`packages/${name}/extensions/${name}/index.ts`]);
@@ -125,7 +123,7 @@ test("pnpm production workspace resolves every extension without development dep
     const result = await load(temp, temp);
     assert.deepEqual(result.extensions, expectedPaths);
     assert.deepEqual(result.skills, expectedSkills);
-    for (const name of extensionNames) {
+    for (const name of collectionExtensions) {
       await assert.rejects(readFile(join(temp, "packages", name, "node_modules/@earendil-works/pi-coding-agent/package.json")));
       assert.deepEqual((await load(join(temp, "packages", name), temp)).extensions,
         [`packages/${name}/extensions/${name}/index.ts`]);
@@ -136,7 +134,7 @@ test("pnpm production workspace resolves every extension without development dep
 });
 
 test("individual packages still discover their public resources", async () => {
-  for (const name of extensionNames) {
+  for (const name of collectionExtensions) {
     const result = await load(join(root, "packages", name));
     assert.deepEqual(result.extensions, [`packages/${name}/extensions/${name}/index.ts`]);
     assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
@@ -156,7 +154,7 @@ test("every package has resource directories and packs its declared extension im
       cwd: path, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
     }));
     const files = pack.files.map((file: { path: string }) => file.path);
-    if (extensionNames.includes(name)) {
+    if (collectionExtensions.includes(name)) {
       assert.ok(files.includes(`extensions/${name}/index.ts`), name);
       if (name !== "self-reload") assert.ok(files.some((file: string) => file.startsWith(`extensions/${name}/src/`)), name);
       assert.ok(!files.includes("index.ts"));
