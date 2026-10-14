@@ -8,8 +8,9 @@ export const PROVIDER_NAME = "Claude subscription (Agent SDK)";
 export const API_ID = "claude-agent-sdk";
 export type SubscriptionModel = Model<typeof API_ID>;
 
-// Plan usage is counted against subscription limits, not billed per token.
-const NO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+// Turns are priced as the API would bill them, as Pi prices other subscription providers.
+// A model newer than Pi's catalog has no known price, so it counts as free until Pi lists it.
+const UNKNOWN_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 const EFFORTS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
 
@@ -17,7 +18,7 @@ function isEffort(value: unknown): value is EffortLevel {
   return EFFORTS.some(effort => effort === value);
 }
 
-/** A model as this provider lists it: same limits, served through the Agent SDK at no per-token cost. */
+/** A model as this provider lists it: same limits and API prices, served through the Agent SDK. */
 export function rehome(model: Model<Api>): SubscriptionModel {
   return {
     id: model.id,
@@ -29,7 +30,7 @@ export function rehome(model: Model<Api>): SubscriptionModel {
     thinkingLevelMap: model.thinkingLevelMap,
     input: model.input,
     inputLimits: model.inputLimits,
-    cost: NO_COST,
+    cost: { ...model.cost },
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
   };
@@ -71,7 +72,7 @@ export function discoveredModels(reported: readonly ModelInfo[], baseline: reado
         ? { off: null, minimal: null, low: level("low"), medium: level("medium"), high: level("high"), xhigh: level("xhigh"), max: level("max") }
         : undefined,
       input: ["text", "image"],
-      cost: NO_COST,
+      cost: UNKNOWN_COST,
       contextWindow: 200_000,
       maxTokens: 32_000,
     });

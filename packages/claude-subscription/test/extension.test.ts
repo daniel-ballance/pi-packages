@@ -29,7 +29,8 @@ test("the extension registers one native provider, a status command and shutdown
   assert.equal(providers[0].auth.oauth, undefined, "sign-in is Claude Code's own; Pi holds no OAuth credential for it");
   assert.equal((providers[0].auth.apiKey as { isSubscription?: boolean } | undefined)?.isSubscription, true);
   assert.ok(providers[0].getModels().length > 0);
-  assert.ok(providers[0].getModels().every(model => model.provider === "claude-subscription" && model.api === "claude-agent-sdk" && model.cost.input === 0));
+  assert.ok(providers[0].getModels().every(model => model.provider === "claude-subscription" && model.api === "claude-agent-sdk"));
+  assert.ok(providers[0].getModels().some(model => model.cost.input > 0), "turns are priced as the API prices them");
   assert.deepEqual(commands, ["claude-subscription"]);
   assert.deepEqual(events.sort(), ["before_agent_start", "session_shutdown"]);
 });

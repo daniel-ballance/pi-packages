@@ -337,10 +337,10 @@ test("thinking levels become effort, and a change of effort keeps the session", 
     { type: "text", text: "answer" },
   ]);
   assert.deepEqual(events.map(event => event.type).filter(type => type.startsWith("thinking")), ["thinking_start", "thinking_delta", "thinking_end"]);
-  assert.deepEqual(message.usage, {
-    input: 100, output: 7, cacheRead: 40, cacheWrite: 8, totalTokens: 155,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  });
+  const { cost, ...tokens } = message.usage;
+  assert.deepEqual(tokens, { input: 100, output: 7, cacheRead: 40, cacheWrite: 8, totalTokens: 155 });
+  // Priced at Opus 5.5's API list prices, as Pi's own anthropic provider would bill the same tokens.
+  assert.ok(Math.abs(cost.total - 0.000588) < 1e-12, `cost ${cost.total}`);
 
   h.user("Now quickly");
   await h.ask({ reasoning: "low" });

@@ -41,8 +41,10 @@ and the working directory. Each request names this package to Anthropic as
 How Anthropic classifies a request is theirs to decide and may change. An error
 from them reaches Pi unaltered.
 
-Costs appear as `$0` in Pi because nothing is billed per token to Pi. That is
-not a claim about what your Anthropic account is charged.
+Pi prices each turn at the API's list prices from its own Claude catalog, as
+it does for other subscription providers, so the footer shows what the same
+tokens would cost on the API. That is not what your subscription is charged. A
+model newer than Pi's catalog has no known price and counts as `$0`.
 
 ## Requirements
 
@@ -143,7 +145,7 @@ copy ends where the record says. Anything else falls back to the text record.
 |---|---|---|
 | System prompt | Pi's default | This package's short preamble in place of Pi's first paragraph and its pointer to Pi's docs; the rest of Pi's prompt is the same. Claude Code adds one line ("You are a Claude agent, built on Anthropic's Claude Agent SDK.") and `<system-reminder>` blocks with the working directory, platform, model, date and account email. |
 | Tool names | `read` | The model is shown `mcp__pi__read`. Pi's screen, transcript and sessions say `read`, and the model is told to call tools by Pi's names when it talks to you. |
-| Cost in the footer | Dollars | `$0`; no `(sub)` marker. The estimate is in `/claude-subscription`. |
+| Cost in the footer | Dollars | The same API list prices, without a `(sub)` marker: Pi shows that only for its own OAuth subscription sign-in. |
 | Context window, output limit | The API's | Claude Code's, which may be smaller. |
 | After a restart | The transcript, replayed exactly | A text record of it, or the kept session with `resume` on. |
 | After compaction, a branch, an edited message, or a turn answered by another provider | The transcript, replayed exactly | A new Claude Code process given a text record of the earlier turns, without their thinking. |

@@ -32,7 +32,7 @@ function refresh(overrides: Partial<RefreshModelsContext> = {}): RefreshModelsCo
   };
 }
 
-test("the catalog is Pi's own Claude catalog, served by this provider at no per-token cost", () => {
+test("the catalog is Pi's own Claude catalog, priced as the API prices it", () => {
   const builtin = getBuiltinModels("anthropic");
   const models = baselineModels();
   assert.deepEqual(models.map(model => model.id), builtin.map(model => model.id));
@@ -42,7 +42,7 @@ test("the catalog is Pi's own Claude catalog, served by this provider at no per-
   assert.deepEqual(opus, {
     id: "claude-opus-5-5", name: source.name, api: "claude-agent-sdk", provider: "claude-subscription", baseUrl: "",
     reasoning: true, thinkingLevelMap: source.thinkingLevelMap, input: source.input, inputLimits: source.inputLimits,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: source.contextWindow, maxTokens: source.maxTokens,
+    cost: source.cost, contextWindow: source.contextWindow, maxTokens: source.maxTokens,
   });
 });
 
