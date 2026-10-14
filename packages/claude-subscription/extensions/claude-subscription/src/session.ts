@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AccountInfo, EffortLevel, Options, SDKMessage, SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk";
+import type { AccountInfo, EffortLevel, Options, SDKMessage, SDKRateLimitInfo, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   createAssistantMessageEventStream,
@@ -21,12 +21,31 @@ export interface SessionHost {
   cwd: string;
   onAccount?(account: AccountInfo): void;
   onRateLimit?(info: SDKRateLimitInfo): void;
+  /** Claude Code's accounting for a turn that ended, whether it succeeded or not. */
+  onResult?(result: SDKResultMessage): void;
+  /** A response ended: the session is now waiting, paused on tools, or closed. */
+  onSettled?(): void;
+  /** Names of every tool Pi has registered, including ones not active now. */
+  knownTools?(): readonly string[];
+}
+
+/**
+ * A session Claude Code keeps on disk, so that a later Pi process can continue it with its
+ * real history instead of a replay as text. `absorbed` names a session being resumed: the
+ * transcript entries it already holds.
+ */
+export interface Persisted {
+  sessionId: string;
+  absorbed?: readonly string[];
 }
 
 /** How long an interrupted turn may take to wind down before the session is discarded. */
 const INTERRUPT_GRACE_MS = 5_000;
+/** Pi passes this when the user switched its idle timeout off. */
+const NO_TIMEOUT_MS = 2_147_483_647;
 
 const SIGN_IN = "Run `claude auth login`, sign in with your Claude account, then try again.";
+const ABORTED = "Request was aborted";
 
 function describe(account: AccountInfo): string {
   if (account.apiProvider && account.apiProvider !== "firstParty") return ` (it is using ${account.apiProvider})`;
@@ -49,9 +68,11 @@ type State = "idle" | "streaming" | "awaiting-tools" | "closed";
  * pause on them, take Pi's results and carry on with its native history and prompt cache.
  * `keys` records which transcript entries the session has absorbed; a request continues
  * the session only when its transcript extends that record.
+ *
+ * The model, the effort and the tool set are all changed on the running session, so a
+ * `/model` switch or a tool activated mid-conversation keeps that history too.
  */
 export class AgentSession {
-  readonly hasTools: boolean;
   lastUsed = Date.now();
   private state: State = "idle";
   private readonly keys: string[] = [];
@@ -64,21 +85,28 @@ export class AgentSession {
   private readonly query: AgentQuery;
   private readonly messages: AsyncIterator<SDKMessage>;
   private readonly ready: Promise<void>;
-  private readonly modelId: string;
   private readonly leadingKey: string;
-  private readonly toolsKey: string;
   private readonly thinkingKey: string;
+  private modelId: string;
+  private toolsKey: string;
+  private toolCount: number;
   private effort: EffortLevel | undefined;
   private stderr = "";
+  /** uuid of the last message in Claude Code's own record of the conversation. */
+  private lastUuid: string | undefined;
 
-  constructor(private readonly host: SessionHost, model: Model<Api>, transcript: Transcript, thinking: Thinking) {
+  constructor(
+    private readonly host: SessionHost, model: Model<Api>, transcript: Transcript, thinking: Thinking,
+    private readonly persisted?: Persisted,
+  ) {
+    if (persisted?.absorbed) this.keys.push(...persisted.absorbed);
     this.modelId = model.id;
     this.leadingKey = transcript.leadingKey;
     this.toolsKey = transcript.toolsKey;
+    this.toolCount = transcript.tools.length;
     this.thinkingKey = JSON.stringify(thinking.thinking);
     this.effort = thinking.effort;
-    this.hasTools = transcript.tools.length > 0;
-    this.bridge = new ToolBridge(transcript.tools);
+    this.bridge = new ToolBridge(transcript.tools, host.knownTools?.());
     const options: Options = {
       model: model.id,
       cwd: host.cwd,
@@ -86,7 +114,8 @@ export class AgentSession {
       // The transcript's system prompt replaces Claude Code's; Pi's tools are the only tools.
       systemPrompt: transcript.systemPrompt,
       tools: [],
-      mcpServers: this.hasTools ? { [SERVER_NAME]: this.bridge.config } : {},
+      // Always attached, even empty: a tool Pi activates later is added to the running session.
+      mcpServers: { [SERVER_NAME]: this.bridge.config },
       strictMcpConfig: true,
       // Pi gates its own tools. Nothing else is offered, and anything else would be denied.
       allowedTools: this.bridge.allowedTools,
@@ -95,9 +124,16 @@ export class AgentSession {
       permissionPrompts: "none",
       // No user or project Claude Code configuration: hooks, memory files and MCP servers stay out.
       settingSources: [],
-      // Pi compacts its own transcript; a second compaction here would hide history from it.
-      settings: { autoCompactEnabled: false },
-      persistSession: false,
+      settings: {
+        // Pi compacts its own transcript; a second compaction here would hide history from it.
+        autoCompactEnabled: false,
+        idleCompaction: false,
+        // Claude Code's memory directory is not a settings source, so it is switched off by name.
+        autoMemoryEnabled: false,
+      },
+      // Nothing is written to disk unless the user asked for sessions that survive a restart.
+      persistSession: persisted !== undefined,
+      ...(persisted?.absorbed ? { resume: persisted.sessionId } : persisted ? { sessionId: persisted.sessionId } : {}),
       // A given title spares the model call that would otherwise name the session.
       title: "Pi",
       // Deliver Pi's text as written, without slash-command or @file handling.
@@ -132,14 +168,41 @@ export class AgentSession {
     return this.state === "streaming";
   }
 
+  /** Paused on tool calls Pi is running, which can take as long as the tools do. */
+  get awaitingTools(): boolean {
+    return this.state === "awaiting-tools";
+  }
+
+  /** Requests without tools are one-off calls such as summaries; they rarely continue. */
+  get hasTools(): boolean {
+    return this.toolCount > 0;
+  }
+
+  /** Settles once Claude Code has started and named a subscription; rejects when it cannot. */
+  get started(): Promise<void> {
+    return this.ready;
+  }
+
+  /**
+   * What the session on disk now holds, for a later Pi process to find. Nothing while the
+   * session is not kept, is mid-answer or closed, or has not said where its record ends.
+   */
+  get record(): { sessionId: string; cwd: string; leadingKey: string; toolsKey: string; thinkingKey: string; keys: string[]; lastUuid: string; paused: boolean } | undefined {
+    if (!this.persisted || !this.lastUuid || (this.state !== "idle" && this.state !== "awaiting-tools")) return undefined;
+    return {
+      sessionId: this.persisted.sessionId, cwd: this.host.cwd, leadingKey: this.leadingKey, toolsKey: this.toolsKey,
+      thinkingKey: this.thinkingKey, keys: [...this.keys], lastUuid: this.lastUuid, paused: this.state === "awaiting-tools",
+    };
+  }
+
   /**
    * The entries this session has not seen, when the transcript continues the conversation
-   * it holds: same model, prompt and tools, its record as a prefix, and new input it can take.
+   * it holds: the same prompt and way of thinking, its record as a prefix, and new input
+   * it can take. The model and the tools may differ; `respond` brings the session to them.
    */
-  continues(model: Model<Api>, transcript: Transcript, thinking: Thinking): Entry[] | undefined {
+  continues(transcript: Transcript, thinking: Thinking): Entry[] | undefined {
     if (this.state !== "idle" && this.state !== "awaiting-tools") return undefined;
-    if (model.id !== this.modelId || transcript.leadingKey !== this.leadingKey || transcript.toolsKey !== this.toolsKey) return undefined;
-    if (JSON.stringify(thinking.thinking) !== this.thinkingKey) return undefined;
+    if (transcript.leadingKey !== this.leadingKey || JSON.stringify(thinking.thinking) !== this.thinkingKey) return undefined;
     const { entries } = transcript;
     if (entries.length <= this.keys.length || this.keys.some((key, index) => entries[index].key !== key)) return undefined;
     const fresh = entries.slice(this.keys.length);
@@ -156,15 +219,18 @@ export class AgentSession {
   }
 
   /** Stream the next assistant message for `fresh`; `seed` marks a session with no history yet. */
-  respond(model: Model<Api>, fresh: readonly Entry[], seed: boolean, thinking: Thinking, options?: StreamOptions): AssistantMessageEventStream {
+  respond(
+    model: Model<Api>, transcript: Transcript, fresh: readonly Entry[], seed: boolean, thinking: Thinking,
+    options?: StreamOptions,
+  ): AssistantMessageEventStream {
     const stream = createAssistantMessageEventStream();
     this.lastUsed = Date.now();
-    void this.run(model, fresh, seed, thinking, options, stream);
+    void this.run(model, transcript, fresh, seed, thinking, options, stream);
     return stream;
   }
 
   private async run(
-    model: Model<Api>, fresh: readonly Entry[], seed: boolean, thinking: Thinking,
+    model: Model<Api>, transcript: Transcript, fresh: readonly Entry[], seed: boolean, thinking: Thinking,
     options: StreamOptions | undefined, stream: AssistantMessageEventStream,
   ): Promise<void> {
     const response = new Response(model, stream, wire => this.bridge.piName(wire));
@@ -173,16 +239,29 @@ export class AgentSession {
     const before = this.state;
     this.state = "streaming";
     let delivered = false;
+    /** A control request went out and has not been confirmed, so the session's settings are unknown. */
+    let unsettled = false;
     let interrupted = false;
     let settled = false;
     let grace: NodeJS.Timeout | undefined;
-    const interrupt = (): void => {
-      interrupted = true;
-      this.query.interrupt().catch(() => {});
-      grace = setTimeout(() => this.close(), INTERRUPT_GRACE_MS);
+    let cancel: ((reason: Error) => void) | undefined;
+    const cancelled = new Promise<never>((_, reject) => {
+      cancel = reject;
+    });
+    cancelled.catch(() => {});
+    // Until input is delivered an abort only has to stop the waiting; after that the turn is interrupted.
+    const abort = (): void => {
+      if (!delivered) cancel?.(new Error(ABORTED));
+      else if (!interrupted) {
+        interrupted = true;
+        this.query.interrupt().catch(() => {});
+        grace = setTimeout(() => this.close(), INTERRUPT_GRACE_MS);
+      }
     };
+    const idleLimit = options?.timeoutMs && options.timeoutMs > 0 && options.timeoutMs < NO_TIMEOUT_MS ? options.timeoutMs : undefined;
     try {
-      if (signal?.aborted) throw new Error("Request was aborted");
+      if (signal?.aborted) throw new Error(ABORTED);
+      signal?.addEventListener("abort", abort, { once: true });
       const results = new Map<string, CallToolResult>();
       for (const entry of seed ? [] : fresh) {
         if (entry.kind === "toolResult") results.set(entry.message.toolCallId, toolResult(entry.message));
@@ -190,24 +269,37 @@ export class AgentSession {
       let input = seed ? seedBlocks(fresh) : inputBlocks(fresh);
       // There is no HTTP payload to show; this is what the session is about to be given.
       // A replacement may change the user input, the one part still open at this point.
-      const replaced = await options?.onPayload?.({
+      const replaced = await Promise.race([cancelled, Promise.resolve(options?.onPayload?.({
         model: model.id,
         session: seed ? "new" : "continued",
         thinking: thinking.thinking,
         effort: thinking.effort,
         toolResults: Object.fromEntries(results),
         input,
-      }, model);
+      }, model))]);
       if (typeof replaced === "object" && replaced !== null && "input" in replaced && isBlocks(replaced.input)) {
         input = replaced.input;
       }
-      await this.ready;
+      await Promise.race([cancelled, this.ready]);
+      // Bring the running session to what this request asks for, keeping its history.
+      if (model.id !== this.modelId) {
+        unsettled = true;
+        await Promise.race([cancelled, this.query.setModel(model.id)]);
+        this.modelId = model.id;
+      }
       if (thinking.effort !== this.effort) {
-        await this.query.applyFlagSettings({ effortLevel: thinking.effort ?? null });
+        unsettled = true;
+        await Promise.race([cancelled, this.query.applyFlagSettings({ effortLevel: thinking.effort ?? null })]);
         this.effort = thinking.effort;
       }
-      if (signal?.aborted) throw new Error("Request was aborted");
-      signal?.addEventListener("abort", interrupt, { once: true });
+      if (transcript.toolsKey !== this.toolsKey) {
+        unsettled = true;
+        await Promise.race([cancelled, this.bridge.replace(transcript.tools)]);
+        this.toolsKey = transcript.toolsKey;
+        this.toolCount = transcript.tools.length;
+      }
+      unsettled = false;
+      if (signal?.aborted) throw new Error(ABORTED);
 
       delivered = true;
       for (const entry of fresh) this.keys.push(entry.key);
@@ -225,11 +317,15 @@ export class AgentSession {
 
       let failure: string | undefined;
       for (;;) {
-        const next = await this.messages.next();
+        const next = await this.next(idleLimit);
         if (next.done) throw new Error(`Claude Code exited before the turn finished.${this.stderr ? ` ${this.stderr.trim()}` : ""}`);
         const message = next.value;
         await options?.onProviderStreamEvent?.(message, model);
         if ("user_message_uuids" in message) for (const uuid of message.user_message_uuids ?? []) this.unconsumed.delete(uuid);
+        // Claude Code's record is a chain of these two kinds of message; the last one names where it ends.
+        if ((message.type === "assistant" || message.type === "user") && message.parent_tool_use_id === null && message.uuid) {
+          this.lastUuid = message.uuid;
+        }
         if (message.type === "rate_limit_event") {
           this.host.onRateLimit?.(message.rate_limit_info);
         } else if (message.type === "stream_event") {
@@ -250,9 +346,10 @@ export class AgentSession {
             if (message.error === "authentication_failed") failure += ` ${SIGN_IN}`;
           }
         } else if (message.type === "result") {
+          this.host.onResult?.(message);
           if (interrupted) {
             settled = true;
-            throw new Error("Request was aborted");
+            throw new Error(ABORTED);
           }
           if (message.is_error || message.subtype !== "success") {
             throw new Error(failure || (message.subtype === "success" ? message.result : message.errors.join("; "))
@@ -274,7 +371,7 @@ export class AgentSession {
       const aborted = interrupted || signal?.aborted === true;
       output.stopReason = aborted ? "aborted" : "error";
       output.errorMessage = error instanceof Error ? error.message : String(error);
-      if (aborted && !delivered && !seed && !this.closed) {
+      if (aborted && !delivered && !seed && !unsettled && !this.closed) {
         // Nothing reached Claude Code: the session is exactly where it was.
         this.state = before;
       } else if (settled && this.unconsumed.size === 0 && !this.closed) {
@@ -288,9 +385,26 @@ export class AgentSession {
       stream.push({ type: "error", reason: output.stopReason, error: output });
     } finally {
       clearTimeout(grace);
-      signal?.removeEventListener("abort", interrupt);
+      signal?.removeEventListener("abort", abort);
       this.lastUsed = Date.now();
       stream.end();
+      this.host.onSettled?.();
+    }
+  }
+
+  /** The next SDK message, or an error once Claude Code has been silent for Pi's idle limit. */
+  private async next(idleLimit: number | undefined): Promise<IteratorResult<SDKMessage>> {
+    if (idleLimit === undefined) return this.messages.next();
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        this.messages.next(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Request timed out: Claude Code sent nothing for ${Math.round(idleLimit / 1000)}s`)), idleLimit);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 

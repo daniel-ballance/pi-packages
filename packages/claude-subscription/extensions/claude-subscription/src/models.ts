@@ -53,7 +53,8 @@ export function discoveredModels(reported: readonly ModelInfo[], baseline: reado
     if (!id.startsWith("claude-") || models.has(id)) continue;
     const match = known.get(id);
     if (match) {
-      models.set(id, match);
+      // A copy: the caller corrects its limits, and the baseline stays as Pi ships it.
+      models.set(id, { ...match });
       continue;
     }
     const levels = info.supportedEffortLevels ?? [];
@@ -87,6 +88,13 @@ const DEFAULT_BUDGETS: Record<ThinkingLevel, number> = {
   minimal: 1024, low: 2048, medium: 8192, high: 16384, xhigh: 16384, max: 16384,
 };
 
+/** Effort for a level, as Pi's own Anthropic adapter picks it: the model's map first, then the nearest level it surely has. */
+function effortFor(model: Model<Api>, level: ThinkingLevel | undefined): EffortLevel {
+  const mapped = level ? model.thinkingLevelMap?.[level] : undefined;
+  if (isEffort(mapped)) return mapped;
+  return level === "minimal" || level === "low" ? "low" : level === "medium" ? "medium" : "high";
+}
+
 /**
  * Translate Pi's thinking level for a Claude Code session. Models with a level map take
  * adaptive thinking steered by effort; the older ones take a token budget.
@@ -94,11 +102,9 @@ const DEFAULT_BUDGETS: Record<ThinkingLevel, number> = {
 export function thinkingFor(model: Model<Api>, options: Pick<SimpleStreamOptions, "reasoning" | "thinkingBudgets"> | undefined): Thinking {
   const level = options?.reasoning;
   if (model.thinkingLevelMap) {
-    // `off: null` marks a model whose thinking cannot be disabled; it then runs at its default effort.
+    // `off: null` marks a model whose thinking cannot be disabled; without a level it runs at Pi's default effort.
     if (!level && model.thinkingLevelMap.off !== null) return { thinking: { type: "disabled" } };
-    const mapped = level ? model.thinkingLevelMap[level] : undefined;
-    const effort = isEffort(mapped) ? mapped : level === "minimal" ? "low" : isEffort(level) ? level : undefined;
-    return { thinking: { type: "adaptive", display: "summarized" }, effort };
+    return { thinking: { type: "adaptive", display: "summarized" }, effort: effortFor(model, level) };
   }
   if (!level || !model.reasoning) return { thinking: { type: "disabled" } };
   const budgets: Partial<Record<ThinkingLevel, number>> = options?.thinkingBudgets ?? {};

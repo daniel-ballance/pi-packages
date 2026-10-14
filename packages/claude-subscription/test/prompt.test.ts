@@ -9,10 +9,6 @@ const { buildSystemPrompt } = await import(
 
 interface PromptInput extends SystemPromptChoice {
   cwd: string;
-  selectedTools?: string[];
-  toolSnippets?: Record<string, string>;
-  toolGuidelines?: Record<string, string[]>;
-  promptGuidelines?: string[];
   appendSystemPrompt?: string;
   contextFiles?: Array<{ path: string; content: string }>;
   skills?: Array<{ name: string; description: string; filePath: string; disableModelInvocation: boolean }>;
@@ -54,14 +50,38 @@ test("the rendered prompt is this package's own, and still carries the project a
   useOwnSystemPrompt(input, "claude-subscription");
   const prompt = buildSystemPrompt(input);
   assert.match(prompt, new RegExp(`^${escape(SYSTEM_PROMPT)}`));
-  assert.doesNotMatch(prompt, /operating inside pi|coding agent harness|Pi documentation|In addition to the tools above/i);
-  assert.doesNotMatch(prompt, /Use read to examine files instead of cat or sed/);
-  assert.doesNotMatch(prompt, /Show your work/);
-  assert.doesNotMatch(prompt, /- read: Read file contents/);
+  assert.doesNotMatch(prompt, /operating inside pi|coding agent harness|Pi documentation/i);
   assert.match(prompt, /<addendum>\nKeep edits on a worktree\.\n<\/addendum>/);
   assert.match(prompt, /<project_context>[\s\S]*This repository is pi-packages\.[\s\S]*<\/project_context>/);
   assert.match(prompt, /<skills>[\s\S]*<name>review<\/name>[\s\S]*<\/skills>/);
   assert.match(prompt, /<cwd>\n\/work\/pi-packages\n<\/cwd>/);
+});
+
+test("what tools and extensions tell the model about themselves is still sent", () => {
+  const stock = buildSystemPrompt(options());
+  const section = (prompt: string, name: string): string => new RegExp(`<${name}>\n([\\s\\S]*?)\n</${name}>`).exec(prompt)?.[1] ?? "";
+
+  // Pi drops its tool list and rules whenever the preamble is replaced; they come back as sections, word for word.
+  const input = options();
+  useOwnSystemPrompt(input, "claude-subscription");
+  const prompt = buildSystemPrompt(input);
+  assert.equal(section(prompt, "tools"), section(stock, "tools"));
+  assert.equal(section(prompt, "rules"), section(stock, "rules"));
+  assert.match(section(prompt, "tools"), /^- read: Read file contents\n- bash: Execute bash commands\n\nIn addition to the tools above/);
+  assert.match(section(prompt, "rules"), /- Use read to examine files instead of cat or sed\.\n- Show your work\.\n- Be concise/);
+
+  // A tool that is only reachable through another one is left out, as newer Pi releases leave it out.
+  const hidden = options({ hiddenTools: ["bash"] });
+  useOwnSystemPrompt(hidden, "claude-subscription");
+  const hiddenPrompt = buildSystemPrompt(hidden);
+  assert.match(section(hiddenPrompt, "tools"), /^- read: Read file contents\n\nIn addition/);
+  assert.doesNotMatch(section(hiddenPrompt, "rules"), /Use bash for file operations/);
+
+  // Sections an extension already supplied are its own to word.
+  const supplied = options({ sections: { rules: "Only these." } });
+  useOwnSystemPrompt(supplied, "claude-subscription");
+  assert.equal(section(buildSystemPrompt(supplied), "rules"), "Only these.");
+  assert.match(SYSTEM_PROMPT, /`read` is `mcp__pi__read`/);
 });
 
 test("a prompt the user wrote is rendered unchanged, and an empty one is left for Pi", () => {

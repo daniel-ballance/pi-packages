@@ -5,7 +5,7 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ToolListChangedNotificationSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { AgentQuery, QueryFunction } from "../../extensions/claude-subscription/src/sdk.js";
 
 interface Usage { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
@@ -25,8 +25,8 @@ class Channel<T> {
     for (const waiter of this.waiting.splice(0)) waiter({ value: undefined, done: true });
   }
   next(): Promise<IteratorResult<T, void>> {
-    const item = this.items.shift();
-    if (item !== undefined) return Promise.resolve({ value: item, done: false });
+    // By length, not by value: a queue of signals holds nothing but `undefined`.
+    if (this.items.length) return Promise.resolve({ value: this.items.shift() as T, done: false });
     if (this.ended) return Promise.resolve({ value: undefined, done: true });
     return new Promise(resolve => this.waiting.push(resolve));
   }
@@ -46,6 +46,12 @@ export class FakeClaude implements AgentQuery {
   account: AccountInfo = { subscriptionType: "Claude Max", email: "user@example.invalid", apiProvider: "firstParty" };
   models: ModelInfo[] = [];
   contextWindows: Record<string, number> = {};
+  /** What the `/usage` control request answers; undefined makes it throw, as an older Claude Code would. */
+  planUsage: unknown = undefined;
+  /** A Claude Code that keeps the tool list it first read, however often it is told the list changed. */
+  ignoresToolChanges = false;
+  /** Models the host switched the running session to, in order. */
+  readonly switched: (string | undefined)[] = [];
   interrupts = 0;
   closed = false;
   private model: string | undefined;
@@ -80,9 +86,14 @@ export class FakeClaude implements AgentQuery {
   }
   async setModel(model?: string): Promise<void> {
     this.model = model;
+    this.switched.push(model);
   }
   async getContextUsage(): Promise<SDKControlGetContextUsageResponse> {
     return { rawMaxTokens: this.contextWindows[this.model ?? ""] ?? 200_000 } as SDKControlGetContextUsageResponse;
+  }
+  async usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(): Promise<unknown> {
+    if (this.planUsage === undefined) throw new Error("usage is not available");
+    return this.planUsage;
   }
   close(): void {
     this.closed = true;
@@ -155,6 +166,10 @@ export class FakeClaude implements AgentQuery {
   result(uuids: readonly (string | undefined)[], extra: object = {}): void {
     this.emit({ type: "result", subtype: "success", is_error: false, result: "", num_turns: 1, queued_turn_count: 0, user_message_uuids: uuids, ...extra });
   }
+  /** Drop the connection to Pi's tool server, so the next `tools()` reads the list afresh. */
+  forgetTools(): void {
+    this.client = undefined;
+  }
   /** A failed request, as Claude Code reports it: a synthetic assistant message, then an error result. */
   apiError(text: string, error = "invalid_request", uuids: readonly (string | undefined)[] = []): void {
     this.emit({ type: "assistant", error, parent_tool_use_id: null, message: { id: "synthetic", role: "assistant", content: [{ type: "text", text }] } });
@@ -167,6 +182,10 @@ export class FakeClaude implements AgentQuery {
       const [near, far] = InMemoryTransport.createLinkedPair();
       await server.instance.connect(far);
       const client = new Client({ name: "fake-claude-code", version: "0.0.0" });
+      // Like Claude Code, read the list again when the server says it changed, unless told to ignore it.
+      client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+        if (!this.ignoresToolChanges) await client.listTools();
+      });
       await client.connect(near);
       return client;
     })();

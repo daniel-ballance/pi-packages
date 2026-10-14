@@ -26,11 +26,13 @@ export class Response {
   private toolCalls: string[] = [];
   private earlierOutput = 0;
   private earlierReasoning = 0;
+  private latestOutput = 0;
 
   constructor(
     private readonly model: Model<Api>,
     private readonly stream: AssistantMessageEventStream,
-    private readonly piName: (wire: string) => string,
+    /** Pi's name for a tool the model called, or nothing for a call Pi is not to be given. */
+    private readonly piName: (called: string) => string | undefined,
   ) {
     this.output = {
       role: "assistant",
@@ -69,6 +71,7 @@ export class Response {
       this.rawStopReason = undefined;
       this.earlierOutput = output.usage.output;
       this.earlierReasoning = output.usage.reasoning ?? 0;
+      this.latestOutput = 0;
       output.responseId = event.message.id;
       if (event.message.model !== this.model.id) output.responseModel = event.message.model;
       this.usage(event.message.usage);
@@ -85,7 +88,10 @@ export class Response {
         output.content.push({ type: "thinking", thinking: "[Reasoning redacted]", thinkingSignature: block.data, redacted: true });
         stream.push({ type: "thinking_start", contentIndex, partial: output });
       } else if (block.type === "tool_use") {
-        output.content.push({ type: "toolCall", id: block.id, name: this.piName(block.name), arguments: {} });
+        const name = this.piName(block.name);
+        // Claude Code answers a call for a tool it does not have and the turn goes on; Pi sees none of it.
+        if (name === undefined) return false;
+        output.content.push({ type: "toolCall", id: block.id, name, arguments: {} });
         this.json.set(contentIndex, "");
         this.toolCalls.push(block.id);
         stream.push({ type: "toolcall_start", contentIndex, partial: output });
@@ -151,10 +157,15 @@ export class Response {
     if (reported.cache_creation_input_tokens != null) usage.cacheWrite = reported.cache_creation_input_tokens;
     const longLived = reported.cache_creation?.ephemeral_1h_input_tokens;
     if (longLived != null) usage.cacheWrite1h = longLived;
-    if (reported.output_tokens != null) usage.output = this.earlierOutput + reported.output_tokens;
+    if (reported.output_tokens != null) {
+      this.latestOutput = reported.output_tokens;
+      usage.output = this.earlierOutput + reported.output_tokens;
+    }
     const thinking = reported.output_tokens_details?.thinking_tokens;
     if (thinking != null) usage.reasoning = this.earlierReasoning + thinking;
-    usage.totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+    // Pi reads the total as the size of the context. Output of earlier API messages is
+    // already inside the latest input, so only the latest message's output is added.
+    usage.totalTokens = usage.input + usage.cacheRead + usage.cacheWrite + this.latestOutput;
     usage.cost = calculateCost(this.model, usage);
   }
 }

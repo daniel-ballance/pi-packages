@@ -14,6 +14,8 @@ export interface AgentQuery extends AsyncIterable<SDKMessage> {
   applyFlagSettings(settings: { effortLevel?: EffortLevel | null }): Promise<void>;
   setModel(model?: string): Promise<void>;
   getContextUsage(options?: { detail?: "summary" | "full" }): Promise<SDKControlGetContextUsageResponse>;
+  /** The data behind Claude Code's `/usage`. Anthropic marks it unstable, so it may be missing. */
+  usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?(options?: { skipBehaviors?: boolean }): Promise<unknown>;
   close(): void;
 }
 
@@ -41,10 +43,33 @@ const API_ROUTING = [
   "CLAUDE_CODE_USE_FOUNDRY",
 ];
 
-/** Environment for the Claude Code process: the caller's, minus per-token API routing. */
-export function subscriptionEnv(source: NodeJS.ProcessEnv, version: string): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = { ...source };
-  for (const name of API_ROUTING) delete env[name];
+/**
+ * Variables a running Claude Code session sets for its own children. When Pi is started
+ * from inside one, they describe that session, not the process this package starts.
+ */
+const PARENT_SESSION = [
+  "CLAUDECODE",
+  "CLAUDE_CODE_ENTRYPOINT",
+  "CLAUDE_CODE_EXECPATH",
+  "CLAUDE_CODE_SESSION_ID",
+  "CLAUDE_CODE_CHILD_SESSION",
+  "CLAUDE_CODE_SESSION_ATTENDED",
+  "CLAUDE_CODE_MESSAGING_SOCKET",
+  "CLAUDE_CODE_MESSAGING_TOKEN",
+  "CLAUDE_AGENT_SDK_VERSION",
+  "CLAUDE_EFFORT",
+  "CLAUDE_PID",
+];
+
+/**
+ * Environment for the Claude Code process: the caller's, then the provider-scoped values Pi
+ * resolved for the request, minus per-token API routing and another session's identity.
+ */
+export function subscriptionEnv(
+  source: NodeJS.ProcessEnv, version: string, scoped: Record<string, string> = {},
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...source, ...scoped };
+  for (const name of [...API_ROUTING, ...PARENT_SESSION]) delete env[name];
   env.CLAUDE_AGENT_SDK_CLIENT_APP = `pi-claude-subscription/${version}`;
   return env;
 }
