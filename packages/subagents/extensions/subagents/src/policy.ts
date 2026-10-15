@@ -34,17 +34,49 @@ export interface LocalModel {
   provider: string; id: string; input: readonly string[]; contextWindow: number; maxTokens: number;
   cost: unknown; thinkingLevels: readonly string[]; api?: string; type?: string;
 }
+// The built-in policy, used only when no subagents.json exists. It is a menu across the
+// common providers so that multi-model workflows (pistack's roles, cross-family review)
+// work with no setup; entries the user cannot reach are dropped silently. Unlike a user's
+// file, where every optional field is off until set, it turns on nesting and loops.
+const MENU: { id: string; description: string }[] = [
+  { id: "openai-codex/gpt-6-luna:medium", description: "Fast and cheap: lookups, triage, routine edits." },
+  { id: "openai-codex/gpt-6-luna:high", description: "Fast, more thorough." },
+  { id: "openai-codex/gpt-6.1-sol:medium", description: "Strong general model." },
+  { id: "openai-codex/gpt-6.1-sol:high", description: "Strong general model, more thinking." },
+  { id: "openai-codex/gpt-6.1-sol:xhigh", description: "Hardest code and judgment." },
+  { id: "openai/gpt-6.1-sol:high", description: "Strong general model (API key)." },
+  { id: "xai/grok-4.7:high", description: "Code work." },
+  { id: "xai/grok-4.7:xhigh", description: "Code work, more thinking." },
+  { id: "anthropic/claude-opus-5-5:high", description: "Judgment and prose." },
+  { id: "anthropic/claude-opus-5-5:xhigh", description: "Judgment and prose, hardest tasks." },
+  { id: "anthropic/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer." },
+  { id: "google/gemini-3.1-pro-preview:high", description: "Another family for review panels." },
+];
 export const DEFAULT_POLICY: PolicyConfig = {
   version: 1,
-  models: [
-    { id: "openai-codex/gpt-6-luna:medium", description: "Default execution model; verify availability in subagent_catalog." },
-  ],
-  tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
+  models: MENU,
+  tools: ["read", "bash", "edit", "write", "grep", "find", "ls", "todo",
+    "subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_close", "subagent_list", "subagent_send"],
   extensions: [], skills: [], promptTemplates: [], themes: [],
   alwaysExtensions: [], alwaysTools: [],
   systemPrompt: true, appendSystemPrompt: true, contextFiles: true,
-  maxChildren: 4, workingDirectories: ["."], peerMessageLimit: 0,
+  maxChildren: 6, workingDirectories: ["."], peerMessageLimit: 0,
+  maxDepth: 2,
+  loops: { enabled: true, minIntervalMs: 60_000, maxIterations: 50, maxDurationMs: 8 * 60 * 60_000 },
 };
+/** The claude-subscription provider ships as an extension, so Children get it only by selecting that file. */
+export function builtInPolicy(claudeSubscription?: string): PolicyConfig {
+  if (!claudeSubscription) return DEFAULT_POLICY;
+  return {
+    ...DEFAULT_POLICY,
+    models: [...MENU,
+      { id: "claude-subscription/claude-opus-5-5:high", description: "Judgment and prose (Claude subscription)." },
+      { id: "claude-subscription/claude-opus-5-5:xhigh", description: "Judgment and prose, hardest tasks (Claude subscription)." },
+      { id: "claude-subscription/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer (Claude subscription)." }],
+    extensions: [claudeSubscription],
+    providerExtensions: { "claude-subscription": claudeSubscription },
+  };
+}
 const RESOURCES = ["extensions", "skills", "promptTemplates", "themes"] as const;
 const KNOWN = new Set([...Object.keys(DEFAULT_POLICY), "providerExtensions", "childSettings", "mcp", "loops", "maxDepth"]);
 export function splitModel(value: string) {
@@ -110,6 +142,10 @@ export interface PolicyEnvironment {
   cwd: string; agentDir: string; projectTrusted: boolean; guardPath: string;
   models: () => LocalModel[]; tools: () => string[];
   toolSources?: () => Record<string, string>;
+  /** The policy used when no subagents.json exists; DEFAULT_POLICY if omitted. */
+  builtIn?: PolicyConfig;
+  /** Providers an extension registered in this session. Children start with --no-extensions, so they lack them. */
+  extensionProviders?: () => readonly string[];
 }
 export class SubagentPolicy {
   readonly source: string;
@@ -124,7 +160,7 @@ export class SubagentPolicy {
     if (existsSync(project) && !environment.projectTrusted) this.ignoredProject = `Ignored untrusted project policy: ${project}`;
     this.source = environment.projectTrusted && existsSync(project) ? project : existsSync(global) ? global : "built-in";
     this.base = this.source === "built-in" ? environment.cwd : dirname(this.source);
-    try { this.config = parsePolicy(this.source === "built-in" ? DEFAULT_POLICY : JSON.parse(readFileSync(this.source, "utf8"))); }
+    try { this.config = parsePolicy(this.source === "built-in" ? environment.builtIn ?? DEFAULT_POLICY : JSON.parse(readFileSync(this.source, "utf8"))); }
     catch (error) { this.error = String(error); }
   }
   private path(value: string, base = this.base) {
@@ -154,9 +190,15 @@ export class SubagentPolicy {
         } catch { this.diagnostics.push(`Unavailable provider extension for ${entry.id}`); return []; }
       }
       if (!model || !model.thinkingLevels.includes(requested.thinking)) {
-        this.diagnostics.push(`Unavailable model/authentication/thinking level: ${entry.id}`); return [];
+        // The built-in menu lists models most users cannot reach; only a user's own entries are news.
+        if (this.source !== "built-in") this.diagnostics.push(`Unavailable model/authentication/thinking level: ${entry.id}`);
+        return [];
       }
-      return [{ ...entry, input: model.input, contextWindow: model.contextWindow, maxTokens: model.maxTokens, cost: model.cost }];
+      // Children start with --no-extensions: a provider an extension registered exists in a
+      // Child only if the composition selects that extension.
+      const fromExtension = !providerFile && !!this.environment.extensionProviders?.().includes(requested.provider);
+      return [{ ...entry, input: model.input, contextWindow: model.contextWindow, maxTokens: model.maxTokens, cost: model.cost,
+        ...(fromExtension ? { requiresExtension: "Its provider comes from an extension: select that extension in extensions, or map the provider in providerExtensions." } : {}) }];
     });
     const knownTools = new Set(this.environment.tools());
     if (config.extensions.includes("builtin:codemode")) knownTools.add("codemode");
@@ -297,6 +339,9 @@ export class SubagentPolicy {
     }
     const providerFile = this.config!.providerExtensions?.[splitModel(selection.model).provider];
     if (providerFile && !(selection.extensions ?? []).includes(this.path(providerFile))) throw new Error("Model requires selecting its provider extension");
+    if (!providerFile && !(selection.extensions ?? []).some(e => !e.startsWith("builtin:")) && this.environment.extensionProviders?.().includes(splitModel(selection.model).provider)) {
+      throw new Error(`${selection.model} comes from a provider an extension registers, and Children start without extensions: select that extension, or ask the user to map the provider in providerExtensions.`);
+    }
     const mcpPolicy = this.config!.mcp ?? { servers: [], inheritCredentials: false };
     const servers = [...new Set(selection.mcpServers ?? [])].map(name => {
       const grant = mcpPolicy.servers.find(s => s.name === name);

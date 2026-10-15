@@ -31,7 +31,7 @@ A project override must restate every capability it needs from the global config
 | `maxChildren` | Live-process cap, including idle children; integer 1–64, default 4. Not a cost, token or tool-execution limit. |
 | `peerMessageLimit` | Integer 0–1000; default 0 disables peer messaging. Positive value caps each directional allowance. Also allowlist `peer_send` and explicitly select it in both participating children. Parent must then connect the pair; no implicit links. |
 
-| `providerExtensions` | Optional provider ID → explicit allowlisted extension file; composition must also select that file. |
+| `providerExtensions` | Optional provider ID → explicit allowlisted extension file; composition must also select that file. Use it for any provider an extension registers (such as `claude-subscription`): Children start with `--no-extensions`, so without it the catalog marks those models `requiresExtension` and a spawn must select the provider's extension itself. |
 | `childSettings` | Optional codemode mode/budget overrides and cache-warming suppression; see [built-ins](reference/builtins.md). |
 | `mcp` | Optional native MCP server/raw-tool grants and explicit credential inheritance consent; see [built-ins](reference/builtins.md). |
 | `maxDepth` | Optional integer 1–4; omitted means 1: Children cannot delegate. Above 1, the `tools` allowlist may include `subagent_catalog`, `subagent_spawn`, `subagent_send`, `subagent_wait`, `subagent_read`, `subagent_close` and `subagent_list`; a parent selects them per Child, never for a Child at the deepest level, and never through `alwaysTools`. `maxChildren` still caps live Children across all levels. |

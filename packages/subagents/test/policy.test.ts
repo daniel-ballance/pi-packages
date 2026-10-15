@@ -3,21 +3,34 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_POLICY, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
+import { builtInPolicy, DEFAULT_POLICY, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
 
-test("built-in fallback is one exact execution model with unchanged non-model permissions", () => {
+test("built-in policy is a multi-provider menu with delegation, nesting and loops on, for use with no setup", () => {
   const policy = parsePolicy(DEFAULT_POLICY);
-  assert.deepEqual(policy.models, [
-    { id: "openai-codex/gpt-6-luna:medium", description: "Default execution model; verify availability in subagent_catalog." },
-  ]);
-  assert.deepEqual(policy.tools, ["read", "bash", "edit", "write", "grep", "find", "ls"]);
+  const ids = policy.models.map(model => model.id);
+  for (const id of ["openai-codex/gpt-6-luna:medium", "openai-codex/gpt-6.1-sol:high", "xai/grok-4.7:xhigh", "anthropic/claude-opus-5-5:xhigh"]) assert.ok(ids.includes(id), id);
+  for (const tool of ["read", "bash", "edit", "write", "todo", "subagent_spawn", "subagent_catalog"]) assert.ok(policy.tools.includes(tool), tool);
+  assert.equal(policy.maxDepth, 2);
+  assert.equal(policy.loops?.enabled, true);
   assert.equal(policy.peerMessageLimit, 0);
-  assert.equal(policy.maxChildren, 4);
+  assert.equal(policy.maxChildren, 6);
   assert.deepEqual(policy.workingDirectories, ["."]);
   for (const resources of [policy.extensions, policy.skills, policy.promptTemplates, policy.themes]) assert.deepEqual(resources, []);
-  assert.equal(policy.systemPrompt, true);
-  assert.equal(policy.appendSystemPrompt, true);
-  assert.equal(policy.contextFiles, true);
+  const withClaude = parsePolicy(builtInPolicy("/x/claude-subscription/index.ts"));
+  assert.deepEqual(withClaude.extensions, ["/x/claude-subscription/index.ts"]);
+  assert.deepEqual(withClaude.providerExtensions, { "claude-subscription": "/x/claude-subscription/index.ts" });
+  assert.ok(withClaude.models.some(model => model.id === "claude-subscription/claude-opus-5-5:xhigh"));
+  assert.equal(builtInPolicy(undefined), DEFAULT_POLICY);
+});
+
+test("with no policy file, unreachable built-in models are dropped without diagnostics", () => {
+  const f = fixture();
+  try {
+    const p = new SubagentPolicy(f.environment);
+    assert.equal(p.source, "built-in");
+    assert.deepEqual(p.catalog().models.map(model => model.id), ["openai-codex/gpt-6-luna:medium"]);
+    assert.equal(p.diagnostics.some(d => d.includes("Unavailable model")), false);
+  } finally { f.cleanup(); }
 });
 
 // Multi-option validation must not depend on the size of the shipped fallback.
@@ -118,7 +131,7 @@ test("malformed selected policy fails closed, never falls through to broader def
 test("catalog removes unavailable entries, recursive tools and missing resources; diagnostics remain user-facing", () => {
   const f = fixture();
   try {
-    f.put(f.global, { ...DEFAULT_POLICY, models: [...TEST_MODELS, { id: "anthropic/missing:medium" }, { id: "openai-codex/gpt-6-luna:xhigh" }], tools: ["read", "absent", "subagent_spawn"], extensions: ["missing.ts"] });
+    f.put(f.global, { ...DEFAULT_POLICY, maxDepth: undefined, loops: undefined, models: [...TEST_MODELS, { id: "anthropic/missing:medium" }, { id: "openai-codex/gpt-6-luna:xhigh" }], tools: ["read", "absent", "subagent_spawn"], extensions: ["missing.ts"] });
     const p = new SubagentPolicy(f.environment);
     const catalog = p.catalog();
     assert.equal(catalog.models.length, 2);

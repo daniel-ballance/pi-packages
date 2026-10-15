@@ -432,7 +432,9 @@ export class SubagentManager {
     const extra = config.cliArgs ?? [];
     const args = [...(config.executableArgs ?? [])];
     if (!config.inheritExtensions) args.push("--no-extensions");
-    if (config.model) args.push("--model", config.model);
+    // --models replaces the user's enabledModels for this launch: a Child never cycles
+    // models, and patterns naming providers it lacks only print warnings.
+    if (config.model) args.push("--model", config.model, "--models", config.model);
     if (config.thinking) args.push("--thinking", config.thinking);
     // A CLI name allowlist cannot include not-yet-discovered MCP tools. Managed
     // children use the mandatory guard for both activation and execution instead.
