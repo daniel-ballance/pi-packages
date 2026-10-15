@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply, emptyList, formatList, formatWidget, parseOperation } from "../extensions/todo/src/list.js";
+import { apply, emptyList, focusOrder, formatList, parseOperation, widgetRows, type Item, type ItemState } from "../extensions/todo/src/list.js";
 
 function ok<T>(value: T): Exclude<T, { readonly error: string }> {
   if (typeof value === "object" && value !== null && "error" in value) assert.fail(String(value.error));
@@ -65,16 +65,19 @@ test("the plain-text list carries every item, its state and its note", () => {
   assert.equal(formatList(emptyList), "Todo: no items");
 });
 
-test("the widget shows one short line per item; notes stay in the tool result", () => {
-  const long = "Reproduce it yourself on the matching surface via the control skill, even when a protocol says to ask the user to reproduce it.";
-  const set = apply(emptyList, parseOperation({ op: "set", items: [long, "Plan the fix"] }) as never);
-  assert.ok("list" in set);
-  const updated = apply(set.list, parseOperation({ op: "update", id: 1, state: "done", note: "Reproduced via the CLI." }) as never);
-  assert.ok("list" in updated);
-  const lines = formatWidget(updated.list, 60);
-  assert.equal(lines[0], "Todo: 1/2 resolved");
-  assert.equal(lines.length, 3);
-  assert.ok(lines.every(line => line.length <= 60), JSON.stringify(lines));
-  assert.ok(lines[1]!.endsWith("…"));
-  assert.equal(lines.join("\n").includes("Reproduced via"), false);
+const items = (states: ItemState[]): Item[] => states.map((state, index) => ({ id: index + 1, text: `Step ${index + 1}`, state }));
+
+test("the widget order puts the work in hand first: in progress, pending, then resolved, by number within each", () => {
+  const list = items(["done", "pending", "in_progress", "skipped", "pending", "in_progress", "done"]);
+  assert.deepEqual(focusOrder(list).map(item => item.id), [3, 6, 2, 5, 1, 4, 7]);
+});
+
+test("a long list leaves out resolved items before open ones, and counts what it leaves out", () => {
+  const list = { items: items(["done", "done", "done", "done", "done", "done", "done", "done", "in_progress", "pending", "pending", "pending"]) };
+  const { shown, hidden } = widgetRows(list, 10);
+  assert.equal(shown.length, 9, "one row is kept for the count");
+  assert.deepEqual(shown.slice(0, 4).map(item => item.id), [9, 10, 11, 12], "every open item shows");
+  assert.deepEqual(hidden, { pending: 0, in_progress: 0, done: 3, skipped: 0 });
+  const short = widgetRows({ items: items(["done", "pending"]) }, 10);
+  assert.deepEqual([short.shown.map(item => item.id), short.hidden.done + short.hidden.pending], [[2, 1], 0]);
 });

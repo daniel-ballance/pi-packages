@@ -1,8 +1,9 @@
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Text, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { detectHost, registerHostAware } from "./src/host.js";
-import { apply, counts, emptyList, formatList, formatWidget, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
+import { apply, counts, emptyList, formatList, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
+import { resultLines, widgetLines } from "./src/render.js";
 
 const ENTRY = "todo";
 
@@ -42,7 +43,9 @@ export default function todo(pi: ExtensionAPI) {
 
   const showWidget = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
-    ctx.ui.setWidget(ENTRY, list.items.some(isOpen) ? formatWidget(list) : undefined);
+    const shown = list;
+    // A component, not lines: Pi cuts a widget's lines at ten, and this one decides what to leave out.
+    ctx.ui.setWidget(ENTRY, shown.items.some(isOpen) ? (_tui, theme) => ({ render: width => widgetLines(shown, width, theme), invalidate() {} }) : undefined);
   };
 
   const result = (change: string, error?: string) => ({
@@ -81,9 +84,12 @@ export default function todo(pi: ExtensionAPI) {
     renderResult(output, { expanded, isPartial }, theme) {
       if (isPartial) return new Text(theme.fg("muted", "updating…"), 0, 0);
       const text = output.content.map(part => part.type === "text" ? part.text : "").join("\n");
-      if (expanded) return new Text(theme.fg("muted", text), 0, 0);
       const [change = ""] = text.split("\n");
       const items = (output.details as { items?: Item[] } | undefined)?.items ?? [];
+      if (expanded) {
+        const first = output.isError ? theme.fg("error", change) : theme.fg("muted", change);
+        return { render: (width: number) => [...wrapTextWithAnsi(first, width), ...items.length ? resultLines({ items }, width, theme) : []], invalidate() {} };
+      }
       const resolved = items.filter(item => item.state === "done" || item.state === "skipped").length;
       const summary = items.length ? ` · ${resolved}/${items.length} resolved` : "";
       return new Text(output.isError ? theme.fg("error", change) : theme.fg("muted", `${change}${summary}`), 0, 0);

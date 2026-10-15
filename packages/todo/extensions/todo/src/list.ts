@@ -80,14 +80,22 @@ export function formatItem(item: Item): string {
   return `${MARKS[item.state]} ${item.id}. ${item.text}${note}`;
 }
 
-/** A glanceable list for the widget: one line per item, notes left to the tool result. */
-export function formatWidget(list: TodoList, width = 100): string[] {
-  const total = counts(list);
-  const line = (item: Item) => {
-    const text = `${MARKS[item.state]} ${item.id}. ${item.text.replace(/\s+/g, " ")}`;
-    return text.length > width ? `${text.slice(0, width - 1)}…` : text;
-  };
-  return [`Todo: ${total.done + total.skipped}/${list.items.length} resolved`, ...list.items.map(line)];
+// The widget puts the work in hand first: in progress, then pending, then resolved.
+const FOCUS: Record<ItemState, number> = { in_progress: 0, pending: 1, done: 2, skipped: 2 };
+
+/** Items in focus order, by number within each group. */
+export function focusOrder(items: readonly Item[]): Item[] {
+  return [...items].sort((a, b) => FOCUS[a.state] - FOCUS[b.state] || a.id - b.id);
+}
+
+/**
+ * What the widget has room for: at most `limit` rows. When the list is longer, the
+ * last row counts what is left out, and in focus order that is resolved items first.
+ */
+export function widgetRows(list: TodoList, limit: number): { readonly shown: readonly Item[]; readonly hidden: Record<ItemState, number> } {
+  const ordered = focusOrder(list.items);
+  const shown = ordered.length <= limit ? ordered : ordered.slice(0, Math.max(0, limit - 1));
+  return { shown, hidden: counts({ items: ordered.slice(shown.length) }) };
 }
 
 export function formatList(list: TodoList): string {
