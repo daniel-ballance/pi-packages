@@ -92,7 +92,7 @@ allowlist permits.
      use for wake-ups. Without it they fall back to a watcher Child.
 5. Run `/pistack-setup`. It offers only models the allowlist permits and writes
    `~/.pi/agent/pistack.json`.
-6. Turn the mode on with `/pistack-mode on`. It stays on for the session branch.
+6. Turn the mode on with `/pistack-mode on`. It stays on for the session branch. In print mode, pass it and the task in one invocation (`pi -p "/pistack-mode on" "<task>"`): Pi saves nothing until the model replies, so a run with only the command forgets it.
 
 An example policy:
 
