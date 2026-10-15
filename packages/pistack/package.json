@@ -1,0 +1,54 @@
+{
+  "name": "pistack",
+  "version": "0.1.0",
+  "description": "The Pi edition of Cursor's pstack: router mode, playbooks, principles and routed skills, generated from the vendored upstream and translated for Pi in a terminal and under T3 Code.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "keywords": [
+    "pi-package",
+    "skills"
+  ],
+  "files": [
+    "extensions",
+    "agents",
+    "skills",
+    "prompts",
+    "themes",
+    "AGENTS.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "sync": "git -C ../.. submodule update --init packages/pistack/vendor/pstack && node generator/generate.mjs",
+    "check": "node generator/generate.mjs --check && node generator/lint-skills.mjs && tsc --noEmit -p skills/poteto-mode/scripts/watch-pr/tsconfig.json && tsc --noEmit -p tsconfig.json",
+    "test": "npm run test:once && T3_MCP_URL=http://127.0.0.1:1/mcp npm run test:once",
+    "test:once": "node --test test/*.test.mjs test/*.test.ts && cd skills/poteto-mode/scripts && node --test check-plan.test.ts watch-pr/*.test.ts orch/*.test.ts"
+  },
+  "dependencies": {
+    "commander": "14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typebox": "^1.0.0",
+    "typescript": "^5.9.3"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/*/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts/**/*.md"
+    ],
+    "themes": [
+      "./themes/**/*.json"
+    ]
+  },
+  "pistack": {
+    "upstream": "cursor/plugins@e5136d82418d2db3165ea1050d17577cd618cc05 pstack 0.15.25"
+  }
+}

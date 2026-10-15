@@ -140,6 +140,18 @@ test("individual packages still discover their public resources", async () => {
     assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
   }
   assert.deepEqual((await load(join(root, "packages/agent-skills"))).skills, engineeringSkills);
+  // pistack is generated: every emitted SKILL.md must load under its directory name.
+  const pistackDir = join(root, "packages/pistack/skills");
+  const pistackSkills = [];
+  for (const entry of await readdir(pistackDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && await stat(join(pistackDir, entry.name, "SKILL.md")).then(() => true, () => false)) pistackSkills.push(entry.name);
+  }
+  assert.ok(pistackSkills.length > 0);
+  const pistack = await load(join(root, "packages/pistack"));
+  assert.deepEqual(pistack.skills, pistackSkills.sort());
+  assert.deepEqual(pistack.extensions, ["packages/pistack/extensions/pistack/index.ts"]);
+  // Opt-in packages outside the collection manifest still load on their own.
+  assert.deepEqual((await load(join(root, "packages/todo"))).extensions, ["packages/todo/extensions/todo/index.ts"]);
 });
 
 test("every package has resource directories and packs its declared extension implementation", async () => {

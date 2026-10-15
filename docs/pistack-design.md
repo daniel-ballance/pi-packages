@@ -225,6 +225,14 @@ structured results. An `agent_end` handler notifies on open `in_progress`
 items. Under T3, active (T3 has no Pi-side todo) unless a T3 todo tool is
 detected, in which case inactive per rule 2.
 
+**Implemented (workstream `todo`).** Two deviations, with reasons: (1) the
+"skipped requires a reason" rule is enforced when the call arrives, not in the
+schema, because providers require tool parameters to be one flat object; the
+error result names the rule and shows the unchanged list. (2) The package is
+opt-in, outside the collection manifest, like `pistack`. `appendEntry` is kept
+over tool-result `details` (Pi's own todo example) because codemode's nested
+calls write no transcript entries, so `details` would lose their changes.
+
 ### 4.3 `subagents` package changes
 
 **(a) Wake / loop.** Parent-side `subagent_loop` (and `/loop` command): on an
@@ -329,6 +337,22 @@ append, persisted with `appendEntry`, `ui.setStatus`), `ask_user` tool, child
 preamble helper (prepend the mode skill path to brokered tasks, replacing
 `poteto-agent`). `/loop` and todo come from 4.3 and 4.2, not here.
 
+**Implemented (workstream `pistack-extension`).** `/pistack-mode on|off|status`
+(a `before_agent_start` prompt section rather than a replaced system prompt, so
+Pi records a delta), `ask_user` (`model-only`), `pistack_roles`, `/pistack-setup`
+and the child brief prefix for `subagent_spawn` and T3 `delegate_task`. Choices:
+the extension is written against the subset of Pi's API it uses, so pistack needs
+only `typebox` and no Pi SDK of its own (no tenth host for the security patch);
+the package-layout test loads it through Pi's real loader. `/pistack-setup`
+offers only identities the subagents allowlist permits (a command cannot call
+`subagent_catalog`, so subagents replies on the `subagents:catalog` event-bus
+channel), never above the chosen budget, and
+covers the common case (one code and one judgment model) and defers to
+`/skill:setup-pstack` under T3, whose catalog only the model can read. **Not
+done yet:** Layer 3 below (fan-out skills as codemode scripts, orchestrate as
+workflow definitions); the generated skills delegate through the capabilities
+reference instead.
+
 **Layer 3, programs via codemode + workflows.** Fan-out skills (`swarm`,
 `arena`, `interrogate`) are expressed as codemode scripts: spawn N in
 `Promise.all`, wait, reduce N reports to a compact table in-script so raw
@@ -408,8 +432,24 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
 3. **Thinking levels per provider.** Confirm the enum each provider exposes
    (`LocalModel.thinkingLevels` in `policy.ts`) before writing the budget
    ladder.
+
+   **Resolved 2026-10-15.** Pi's `ModelThinkingLevel` is `off | minimal | low |
+   medium | high | xhigh | max` (`pi-ai` `types.d.ts`); each model supports a
+   subset (`getSupportedThinkingLevels`). Live catalog on this workstation:
+   `openai-codex/gpt-6.1-sol` minimal–max, `xai/grok-4.7` low–xhigh,
+   `claude-subscription/claude-opus-5-5` low–max, `claude-fable-5-1`
+   minimal–max, `halogen/qwen3.8-flash-next-w4b` off–xhigh. pstack's budget
+   ladder (`unlimited/large/medium/small` → `max/xhigh/high/medium`) maps onto
+   these names directly; clamp to the closest supported level below. No speed
+   tier exists, so `-fast` hints are dropped.
 4. **Session file layout per cwd** for the history-mining skills, and the
    privacy rule (this project only).
+
+   **Resolved 2026-10-15.** `~/.pi/agent/sessions/--<path>--/<timestamp>_<id>.jsonl`,
+   where `<path>` is the cwd without its leading separator and with `/`, `\`
+   and `:` replaced by `-` (Pi 1.2.0 `docs/session-format.md`); `--session-dir`,
+   `PI_CODING_AGENT_SESSION_DIR` or `sessionDir` move it. Skills read only the
+   current cwd's directory, as stated in the capabilities reference.
 5. **Does T3 inject a todo tool for Pi?** Decides the todo tool's T3
    activation.
 
@@ -444,8 +484,44 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
    rules are too coarse and need refining before the tree is committed; the
    target is that token rewrites and section overlays cover nearly everything
    and patches stay in the single digits.
+
+   **Measured 2026-10-15 (first full generation):** 118 token rules (34 global,
+   84 scoped to one file's sentence), 5 section overlays, **0 patches**. Of 112
+   emitted upstream files, 55 are translated and 57 pass verbatim; the coupling
+   lint and `lint-skill` (0 errors) are clean. **After review and the scripts
+   port:** 160 token rules, 5 overlays, **1 patch** (`worktree-audit.sh`, whose
+   multi-line shell changes have no sentence to anchor a token rule). The file-scoped count is the cost
+   of upstream restating Cursor mechanics in prose; each such rule is a tripwire,
+   so an upstream rewording fails loudly instead of leaking a Cursor-ism.
+   `make-bot-ui` (Cursor's Grok Bot routines) is excluded with `automations/benny`.
 9. **Mode name.** Keep `poteto-mode` (upstream attribution, `/skill:poteto-mode`)
    or rename (`/skill:pistack`)? A rename is one token rule either way.
+
+   **Decided 2026-10-15 (user): keep `poteto-mode`.**
+10. **Decisions taken while building the generator (2026-10-15, user where
+    marked).**
+    - Overlap with `agent-skills` (user): pistack is self-contained; every
+      skill, agent and script lives in `packages/pistack`, nothing is routed
+      to `agent-skills`, so `rules/routes.json` is dropped. Upstream names are
+      kept; `tdd` collides by name with `agent-skills`' `tdd` only when both
+      are enabled, and the README says so. pistack stays out of the root
+      collection manifest (opt-in, like `durable-subagents`) so the collection
+      never loads two `tdd` skills.
+    - `automations/benny` and `docs/guide` (user): excluded from the first
+      generation.
+    - `todo` (user): a standalone package; pistack uses it but does not
+      contain it.
+    - Upstream scripts live inside the skills tree
+      (`skills/poteto-mode/scripts/`), so there is no separate generated
+      `scripts/` root; hand-written tooling lives in `generator/`.
+    - Section replacements record a hash of the upstream section they replace
+      and fail when upstream edits it, so an overlay cannot silently hide an
+      upstream change.
+    - Pi-native additions (the capabilities reference) live in `extra/` and
+      are copied into the output untouched, then linted.
+    - The capabilities lookup reference is
+      `skills/poteto-mode/references/host-capabilities.md`; skills link it
+      instead of naming backend tools.
 
 ## 6. Brief for the implementing agent
 
