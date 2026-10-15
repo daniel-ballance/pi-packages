@@ -665,10 +665,14 @@ async function restartable(t: TestContext) {
   const disk = new Map<string, { type: string; uuid: string; message: unknown }[]>();
   const start = (...scripts: (Script | undefined)[]) => {
     const { query, spawned } = fakeQuery(...scripts);
+    const store = new SessionStore(directory);
+    const save = store.save.bind(store);
+    let saved = Promise.resolve(true);
+    store.save = record => saved = save(record);
     const subscription = new ClaudeSubscription({
       version: "0.0.0-test", query, env: {}, cwd: () => "/work",
       resume: {
-        store: new SessionStore(directory),
+        store,
         read: async () => async sessionId => (disk.get(sessionId) ?? []) as never,
       },
     });
@@ -677,6 +681,9 @@ async function restartable(t: TestContext) {
       const model = subscription.provider.getModels().find(candidate => candidate.id === "claude-opus-5-5")!;
       const message = await subscription.provider.streamSimple(model, normalizeContext({ systemPrompt: SYSTEM, messages, tools: TOOLS }), { reasoning: "high" }).result();
       messages.push(message);
+      // Responses settle before the background hint write. A restart fixture needs
+      // the record on disk, including on CI filesystems where fsync takes longer.
+      assert.equal(await saved, true, "the resume hint was saved before restarting Pi");
       return message;
     };
     return { subscription, spawned, ask };
@@ -870,25 +877,35 @@ test("a kept session that is slow to start does not hold up an abort or outlive 
   ]);
   first.subscription.closeSessions();
   messages.push({ role: "user", content: "two", timestamp: 2 });
-  const never: Script = async claude => {
-    claude.initializationResult = () => new Promise(() => {});
+  const stalled = () => {
+    let initialized!: () => void;
+    const started = new Promise<void>(resolve => { initialized = resolve; });
+    const script: Script = async claude => {
+      claude.initializationResult = () => {
+        initialized();
+        return new Promise(() => {});
+      };
+    };
+    return { script, started };
   };
 
-  const aborted = start(never);
+  const aborting = stalled();
+  const aborted = start(aborting.script);
   const model = aborted.subscription.provider.getModels().find(candidate => candidate.id === "claude-opus-5-5")!;
   const context = normalizeContext({ systemPrompt: SYSTEM, messages, tools: TOOLS });
   const controller = new AbortController();
   const stream = aborted.subscription.provider.streamSimple(model, context, { reasoning: "high", signal: controller.signal });
-  await new Promise(resolve => setTimeout(resolve, 20));
+  await aborting.started;
   assert.equal(aborted.spawned.length, 1);
   controller.abort();
   assert.equal((await stream.result()).stopReason, "aborted");
   assert.equal(aborted.spawned[0].closed, true);
   assert.equal(aborted.subscription.openSessions, 0);
 
-  const closed = start(never);
+  const closing = stalled();
+  const closed = start(closing.script);
   const late = closed.subscription.provider.streamSimple(model, context, { reasoning: "high" });
-  await new Promise(resolve => setTimeout(resolve, 20));
+  await closing.started;
   closed.subscription.closeSessions();
   assert.match((await late.result()).errorMessage ?? "", /session ended/);
   assert.equal(closed.spawned[0].closed, true);
@@ -913,8 +930,6 @@ test("a resumed session counts on from the totals kept with it, and takes the mo
     { type: "user", uuid: "uuid-u1", message: { role: "user", content: "one" } },
     { type: "assistant", uuid: "uuid-a1", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } },
   ]);
-  // The record is written as the response settles; give the write its turn before "restarting".
-  await new Promise(resolve => setTimeout(resolve, 50));
   first.subscription.closeSessions();
 
   const second = start(async claude => {
