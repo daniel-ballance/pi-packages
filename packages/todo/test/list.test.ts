@@ -32,12 +32,54 @@ test("skipping requires a non-empty reason", () => {
   assert.deepEqual(list.items[0], { id: 1, text: "Frame", state: "skipped", note: "no fan-out needed" });
 });
 
-test("items are never deleted, and unknown ids and malformed operations are errors", () => {
+test("unknown ids and malformed operations are errors", () => {
   const { list } = ok(apply(emptyList, { op: "set", items: ["Frame"] }));
   assert.match((apply(list, { op: "update", ids: [7], state: "done" }) as { error: string }).error, /no item 7/);
-  for (const params of [{ op: "delete", id: 1 }, { op: "set", items: [] }, { op: "set", items: ["", "x"] }, { op: "update", id: 1, state: "finished" }, { op: "update", state: "done" }, {}]) {
+  for (const params of [
+    { op: "delete", id: 1 }, { op: "set", items: [] }, { op: "set", items: ["", "x"] }, { op: "update", id: 1, state: "finished" }, { op: "update", state: "done" }, {},
+    { op: "add", items: [] }, { op: "add" }, { op: "remove" }, { op: "remove", ids: [] },
+    { op: "update", id: 1 }, { op: "update", id: 1, text: "  " }, { op: "update", ids: [1, 2], text: "Same words twice" },
+  ]) {
     assert.ok("error" in parseOperation(params), JSON.stringify(params));
   }
+});
+
+test("add appends pending items with new numbers, after any that were removed", () => {
+  let { list } = ok(apply(emptyList, { op: "set", items: ["Frame", "Fan out"] }));
+  ({ list } = ok(apply(list, { op: "update", ids: [1], state: "done" })));
+  const added = ok(apply(list, ok(parseOperation({ op: "add", items: ["Report", "Ship"] }))));
+  assert.equal(added.change, "Added items 3, 4.");
+  assert.deepEqual(added.list.items.map(item => [item.id, item.text, item.state]), [[1, "Frame", "done"], [2, "Fan out", "pending"], [3, "Report", "pending"], [4, "Ship", "pending"]]);
+  const removed = ok(apply(added.list, { op: "remove", ids: [4] })).list;
+  const again = ok(apply(removed, { op: "add", items: ["Announce"] }));
+  assert.equal(again.change, "Added item 5.", "a removed item's number is not reused");
+  assert.equal(ok(apply(emptyList, { op: "add", items: ["First"] })).list.items[0]!.id, 1);
+});
+
+test("update rewords one item, or sets a note, without changing its state", () => {
+  let { list } = ok(apply(emptyList, { op: "set", items: ["Frame", "Fan out"] }));
+  const reworded = ok(apply(list, ok(parseOperation({ op: "update", id: 2, text: "Fan out to three Children" }))));
+  assert.equal(reworded.change, "Item 2 now reads: Fan out to three Children.");
+  assert.deepEqual(reworded.list.items[1], { id: 2, text: "Fan out to three Children", state: "pending" });
+  ({ list } = ok(apply(reworded.list, ok(parseOperation({ op: "update", id: 2, text: "Fan out to two", state: "in_progress" })))));
+  assert.deepEqual(list.items[1], { id: 2, text: "Fan out to two", state: "in_progress" });
+  const noted = ok(apply(list, ok(parseOperation({ op: "update", id: 2, note: "waiting on one Child" }))));
+  assert.equal(noted.change, "Item 2 has a new note.");
+  assert.deepEqual(noted.list.items[1], { id: 2, text: "Fan out to two", state: "in_progress", note: "waiting on one Child" });
+});
+
+test("remove deletes only items never started; a step not done is skipped instead", () => {
+  let { list } = ok(apply(emptyList, { op: "set", items: ["Frame", "Fan out", "Fan out", "Report"] }));
+  ({ list } = ok(apply(list, { op: "update", ids: [1], state: "done" })));
+  ({ list } = ok(apply(list, { op: "update", ids: [2], state: "in_progress" })));
+  const removed = ok(apply(list, ok(parseOperation({ op: "remove", id: 3 }))));
+  assert.equal(removed.change, "Removed item 3.");
+  assert.deepEqual(removed.list.items.map(item => item.id), [1, 2, 4]);
+  for (const id of [1, 2]) {
+    const refused = apply(list, { op: "remove", ids: [id, 3] }) as { error: string };
+    assert.match(refused.error, new RegExp(`item ${id} is (done|in progress); only pending items can be removed.*skipped.*reason`), "all or nothing");
+  }
+  assert.match((apply(list, { op: "remove", ids: [9] }) as { error: string }).error, /no item 9/);
 });
 
 test("update takes several ids at once, all or nothing", () => {

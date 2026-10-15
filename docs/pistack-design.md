@@ -216,6 +216,11 @@ New package `packages/todo`. One tool with operations:
   never deleted; a wrong step is marked skipped with a reason.
 - `get()`.
 
+Later additions: `add(items[])` appends; `update` also takes `ids`, `text` (one
+item) and a note on its own; `remove(ids)` deletes only `pending` items, for
+duplicates and mistakes. A step started or decided against still ends `done`
+or `skipped` with a reason.
+
 Persistence: each change is an `appendEntry` custom entry; state is rebuilt
 from entries on `session_start` and on branch navigation so `/fork`,
 `/tree` and resumed sessions see the right list. UI: `ui.setWidget` panel in
