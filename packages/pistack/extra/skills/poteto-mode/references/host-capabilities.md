@@ -16,11 +16,13 @@ Skills name a role, such as `swarm workers` or `interrogate reviewers`, and a de
 
 When the catalog offers no model of the hinted family, do not retry the hint. Use another offered model, preferring a different family from yours when the role is a reviewer or judge, and name the substitution in your reply. When the catalog offers nothing usable for the role, report the role as blocked and ask for a role default or allowlist change.
 
+A role value written on the other host is a hint, not an identity: a T3 value (`<provider instance>/<model>:<thinking>`) in a terminal, or a Pi value (`provider/model:thinking`) under T3. Match its model family and thinking level as above. The role defaults file is shared by both hosts and holds whatever the last setup wrote.
+
 Role defaults: call `pistack_roles` when it exists. Otherwise read `.pi/pistack.json` in a trusted project, else `~/.pi/agent/pistack.json`. The file is `{"budget": "...", "roles": {"<role>": "<model>" or ["<model>", ...]}}`. A missing file or role means the skill's default hint.
 
 ## Isolation
 
-- **Terminal.** Create the checkout yourself with `git worktree add .pi/worktrees/<name> -b <branch> <base>`, then delegate with `cwd` set to it.
+- **Terminal.** When `subagent_spawn` takes a `worktree` option, pass `worktree: true` (or `{base, branch}`) with a `cwd` inside the repository. The child runs in a new checkout under `.pi/worktrees/` on a new branch, made from your current commit unless `base` names another; uncommitted edits are not copied, so commit first. Merging, and removing the checkout and its branch, stay with you: closing the child leaves both. Without that option (an older subagents), create the checkout yourself with `git worktree add .pi/worktrees/<name> -b <branch> <base>`, then delegate with `cwd` set to it.
 - **T3.** Pass `isolation: "worktree"`. The checkout starts from your last commit; uncommitted edits are not copied, so commit first. To start from another branch or SHA, tell the child to fetch and check it out before any other work.
 
 ## Nesting
@@ -34,7 +36,8 @@ Durable run state that is not part of the repository (decision trails, orchestra
 
 ## Wake and loop
 
-- **Terminal.** Delegate a watcher child whose brief is "watch X and report when Y". Its result wakes you when it settles.
+- **Terminal, on a clock.** When `subagent_catalog` shows `loops` enabled, use `subagent_loop`: `op: "start"` with a `task` that says what each tick checks and when to stop, an `intervalSeconds` no shorter than the catalog's minimum, and, if you want them tighter than the catalog's bounds, `maxIterations` and `maxDurationMinutes`. Call `op: "stop"` once the stop condition holds. A tick starts a turn only when you are idle; one loop runs at a time, and a reload stops it. Without loops, delegate a watcher child whose brief is "every N minutes, check X; report when Y", and give it a deadline.
+- **Terminal, on an event.** Delegate a watcher child whose brief is "watch X and report when Y". Its result wakes you when it settles. With loops enabled, a long loop tick is the fallback heartbeat in case the watcher dies.
 - **T3.** `mcp__t3-code__schedule_task` for a timer or webhook; `mcp__t3-code__watch_pull_request` for a pull request.
 
 ## Ask the human
