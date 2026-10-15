@@ -142,7 +142,7 @@ export class PeerClient {
     return new Promise((resolve, reject) => {
       const fail = () => {
         this.pending.delete(id); cleanup();
-        if (cancellable) try { write(this.socket, { cancel: id }); } catch { /* the pipe is gone; so is the call */ }
+        if (cancellable) this.cancel(id);
         reject(new Error(interrupted));
       };
       const timer = setTimeout(fail, timeoutMs);
@@ -152,6 +152,13 @@ export class PeerClient {
       try { write(this.socket, { id, ...body }); }
       catch (error) { this.pending.delete(id); cleanup(); reject(error); }
     });
+  }
+  /** A cancel is tiny, so it skips the backpressure limit and is always queued. If even
+   * that fails, closing the pipe cancels every call in the root (servePeer aborts on close). */
+  private cancel(id: number) {
+    if (this.socket.destroyed) return;
+    try { this.socket.write(JSON.stringify({ cancel: id }) + "\n"); }
+    catch { this.close(new Error("could not send a cancellation")); }
   }
   close(cause?: Error) {
     for (const waiter of this.pending.values()) {

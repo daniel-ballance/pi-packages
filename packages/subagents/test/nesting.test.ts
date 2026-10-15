@@ -161,3 +161,20 @@ test("an oversized delegated request is refused before it is sent, and the pipe 
     assert.deepEqual(await client.manage("list", {}), { echoed: "list" });
   } finally { sockets.close(); }
 });
+
+test("a cancellation is sent even when the pipe is backed up", async () => {
+  const sockets = await socketPair();
+  try {
+    const written: string[] = [];
+    const client = new PeerClient(sockets.client);
+    const stop = new AbortController();
+    const call = client.manage("wait", {}, stop.signal);
+    // Simulate a backed-up pipe: ordinary requests would now be refused.
+    Object.defineProperty(sockets.client, "writableLength", { get: () => 1024 * 1024 });
+    const write = sockets.client.write.bind(sockets.client);
+    sockets.client.write = ((chunk: string, ...rest: never[]) => { written.push(String(chunk)); return write(chunk, ...rest); }) as typeof sockets.client.write;
+    stop.abort();
+    await assert.rejects(call);
+    assert.deepEqual(written.map(line => JSON.parse(line)), [{ cancel: 1 }]);
+  } finally { sockets.close(); }
+});
