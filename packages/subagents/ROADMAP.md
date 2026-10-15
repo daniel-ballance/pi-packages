@@ -8,7 +8,7 @@ See the [README](README.md) for the current behavior and policy contract.
 
 - The parent composes children from allowlisted ingredients, rather than choosing mandatory predefined agent profiles.
 - Policy remains explicit and fail-closed. New capabilities must not silently broaden existing configurations.
-- Children cannot recursively manage other children through the extension's management tools. Communication must not grant spawn, resume, abort, close, policy-editing or approval authority.
+- Children manage other children only within bounds the policy grants (`maxDepth`, default 1: none). One root Manager owns the whole tree; a Child acts only on its own subtree, through proxied tools, and never edits policy, links peers outside its subtree, releases holds or decides human approvals. Communication must not grant spawn, resume, abort, close, policy-editing or approval authority.
 - Agent messages are delegated work output, not user instructions or permission grants. Human-required approvals remain human decisions.
 - Persistent conversations, observable lifecycle state, bounded output and reliable cleanup remain core requirements.
 - Notifications should represent unread, actionable work rather than duplicate reports or routine chatter.

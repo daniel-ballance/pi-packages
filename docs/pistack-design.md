@@ -275,6 +275,17 @@ stamps depth and parent ID, and owns the whole tree. Consequences:
   Manager), is simpler but loses holds, inspection, accounting and orphan
   cleanup below depth 1. Record this as an ADR.
 
+**Implemented (workstream `subagents-recursion`)**, with two deliberate
+differences, recorded in ADR 0002: (1) no `maxDescendants` field. One root
+Manager owns every Child, so `maxChildren`, already "the live-process cap,
+including idle children", is the tree-wide cap; a per-node reinterpretation would
+have changed an existing field's meaning. (2) A nested Child's routine reports
+are pulled by its parent (`subagent_wait`/`subagent_read`), not pushed: pushing
+a report into a Child through `subagent_send` would register it as a new
+assignment. Human-intervention notices still go to the root, as do reports from a
+Child whose parent stopped. The proxied set is `catalog`, `spawn`, `send`,
+`wait`, `read`, `close`, `list`.
+
 pstack's own warning sets the default posture: "each nested layer re-pays a
 full orientation preamble, and a blocking sub-coordinator hides its children
 while the parent idles." Depth is allowed; the orchestrate playbook opts in.

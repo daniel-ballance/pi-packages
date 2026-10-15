@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add bounded nesting: with the new optional `maxDepth` policy field (default 1, unchanged behaviour), a parent may give a Child proxied delegation tools. Calls travel over the Child's private pipe to the one root Manager, which composes grandchildren from the same allowlist and scopes every call to the caller's subtree. Close, abort, halt and kill cascade down a subtree; list, costs, the live cap and the inspector cover the whole tree. A nested Child's routine reports go to its own parent, not the root.
+
 - Add `subagent_loop` and `/loop`: bounded wake loops that start a parent turn on an interval until the parent stops them or a bound ends them. Off unless the new optional `loops` policy field enables them; `subagent_catalog` shows the bounds. Existing policies are unchanged.
 - Make the built-in characterization test pass on Pi 1.2.0 as well as 0.99.2.
 - Add an optional `worktree` field to `subagent_spawn`: the child runs in a new git worktree under `<repository of cwd>/.pi/worktrees/` on a new branch. The checkout is validated against `workingDirectories`, removed with its branch if the spawn fails, and otherwise left for the parent to merge and remove. No policy change.

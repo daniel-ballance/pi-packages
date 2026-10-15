@@ -22,7 +22,7 @@ A project override must restate every capability it needs from the global config
 |---|---|
 | `version` | Required, currently `1`. |
 | `models` | Required array of `{ "id": "provider/model:thinking", "description": "optional guidance" }`. Exact identities, no aliases/fallbacks. |
-| `tools` | Allowed tool names; omitted means none. Spawn still chooses an explicit subset. Recursive `subagent_*` tools are always forbidden. |
+| `tools` | Allowed tool names; omitted means none. Spawn still chooses an explicit subset. `subagent_*` tools are forbidden, except the seven delegation tools when `maxDepth` is above 1 (see `maxDepth`). |
 | `extensions`, `skills`, `promptTemplates`, `themes` | Allowed explicit resource **files**; omitted means none. Extensions also accept the three [managed built-in identifiers](builtins.md). Not packages, globs, or directories. |
 | `alwaysExtensions`, `alwaysTools` | Entries from `extensions`/`tools` (same strings) added to every child's composition without a parent selection; omitted means none. An always-loaded extension's tools stay inactive unless also selected or listed in `alwaysTools`. Any unavailable always-on entry disables spawning (see diagnostics). |
 | `systemPrompt`, `appendSystemPrompt` | Allow replacing/appending system-prompt text; omitted means false. Omit both spawn arguments to keep Pi's normal prompt behavior. |
@@ -34,6 +34,7 @@ A project override must restate every capability it needs from the global config
 | `providerExtensions` | Optional provider ID → explicit allowlisted extension file; composition must also select that file. |
 | `childSettings` | Optional codemode mode/budget overrides and cache-warming suppression; see [built-ins](builtins.md). |
 | `mcp` | Optional native MCP server/raw-tool grants and explicit credential inheritance consent; see [built-ins](builtins.md). |
+| `maxDepth` | Optional integer 1–4; omitted means 1: Children cannot delegate. Above 1, the `tools` allowlist may include `subagent_catalog`, `subagent_spawn`, `subagent_send`, `subagent_wait`, `subagent_read`, `subagent_close` and `subagent_list`; a parent selects them per Child, never for a Child at the deepest level, and never through `alwaysTools`. `maxChildren` still caps live Children across all levels. |
 | `loops` | Optional parent wake loops (`subagent_loop`, `/loop`); omitted means disabled. When present, all four fields are required: `enabled` (boolean), `minIntervalMs` (1000–86400000), `maxIterations` (1–10000) and `maxDurationMs` (60000–604800000). They are ceilings: a loop may ask for fewer ticks or a shorter run, never more, and its interval may not exceed its run's duration. |
 
 Example loop ceilings: `"loops": { "enabled": true, "minIntervalMs": 60000, "maxIterations": 50, "maxDurationMs": 28800000 }` permits one loop at a time, ticking at most once a minute, 50 times, for up to eight hours. Each tick starts a parent turn and so costs model usage.

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
+import type { ManagementRequest } from "./peer-transport.js";
+import { isProxiedTool } from "./nesting.js";
 import { ActivityFeed, type LiveActivity } from "./activity.js";
 import type { Composition } from "./policy.js";
 import type { ChildPolicy } from "./child-policy.js";
@@ -19,6 +21,8 @@ export interface SpawnOptions {
   childPolicy?: ChildPolicy;
   /** Internal workflow ownership; not exposed by subagent_spawn. */
   workflow?: string; deferTask?: boolean;
+  /** Internal: the Child that spawned this one through its proxied tools. */
+  parentId?: string;
   coordination?: { owns?: string[]; outputs?: string[] };
 }
 export interface Update { cursor: number; kind: string; text: string; time: string }
@@ -28,7 +32,9 @@ export interface Assignment { id: string; task: string; status: "running" | "com
 export interface ResultReview { assignmentId: string; status: "unreviewed" | "reviewed"; at?: string }
 export interface AgentRecord {
   id: string; name: string; task: string; status: Status;
-  config: Omit<SpawnOptions, "env" | "task" | "name" | "workflow" | "deferTask">;
+  config: Omit<SpawnOptions, "env" | "task" | "name" | "workflow" | "deferTask" | "parentId">;
+  /** Set for a Child spawned by another Child; depth 1 is a Child of the root Parent. */
+  parentId?: string; depth?: number;
   workflow?: string;
   sessionFile: string; sessionId?: string; logFile: string; stderrFile: string;
   createdAt: string; updatedAt: string; pid?: number;
@@ -90,6 +96,16 @@ export class SubagentManager {
   private interventionHook?: (record: AgentRecord, kind: InterventionKind) => void;
   /** Install a synchronous parent hook to pause owned workflows before any cancellation awaits. */
   setInterventionHook(hook?: (record: AgentRecord, kind: InterventionKind) => void) { this.interventionHook = hook; }
+  private management?: (callerId: string, request: ManagementRequest) => Promise<unknown>;
+  /** Serves the proxied delegation tools of Children that were given them. */
+  setManagementHandler(handler?: (callerId: string, request: ManagementRequest) => Promise<unknown>) { this.management = handler; }
+  /** Direct Children of id (records, live or not). */
+  childrenOf(id: string) { return [...this.records.values()].filter(record => record.parentId === id); }
+  /** Whether id is ancestor's Child, grandchild, or deeper. */
+  isDescendant(id: string, ancestor: string) {
+    for (let current = this.records.get(id)?.parentId; current; current = this.records.get(current)?.parentId) if (current === ancestor) return true;
+    return false;
+  }
   readonly peers: PeerBroker;
   constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"]) => AgentRecord["config"], readonly peerMessageLimit = 0) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -181,6 +197,9 @@ export class SubagentManager {
     this.logSizes.set(path, size + Math.min(bytes.length, MAX_LOG - size));
   }
   private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
+    // A nested Child reports to its own parent, which drains it with its proxied
+    // tools. Only human interventions, and Children whose parent stopped, reach the root.
+    if (kind !== "human_intervention" && record.parentId && this.children.has(record.parentId)) return;
     if (kind !== "human_intervention" && (this.shuttingDown || this.workflowChildren.has(record.id) || record.observedCursors?.includes(cursor))) return;
     const key = `${record.id}:${cursor}:${kind}`;
     if (this.notices.has(key)) return;
@@ -337,13 +356,14 @@ export class SubagentManager {
   }
   async spawn(options: SpawnOptions, reservation?: SlotReservation) {
     const id = `subagent-${randomUUID().slice(0, 8)}`;
-    const { name, task, env, workflow, deferTask, ...requested } = options;
+    const { name, task, env, workflow, deferTask, parentId, ...requested } = options;
+    const depth = parentId ? (this.get(parentId).depth ?? 1) + 1 : 1;
     if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
     // No record/session/log paths for requests rejected before any launch attempt.
     const config = this.preflight(requested, env, reservation);
     if (reservation) this.claimSlot(reservation);
     const record: AgentRecord = {
-      id, name, task, config, workflow, status: "stopped",
+      id, name, task, config, workflow, status: "stopped", ...(parentId ? { parentId, depth } : {}),
       sessionFile: join(this.directory, `${id}.session.jsonl`),
       logFile: join(this.directory, `${id}.events.jsonl`),
       stderrFile: join(this.directory, `${id}.stderr.log`),
@@ -406,6 +426,12 @@ export class SubagentManager {
         if (this.children.get(record.id) !== child) throw new Error("Stale peer process");
         return this.peers.send(record.id, packet.recipient, packet.message);
       } : undefined,
+      manageRequest: config.selection?.tools.some(isProxiedTool) && !record.workflow ? async request => {
+        if (this.children.get(record.id) !== child) throw new Error("Stale child process");
+        if (!this.management) throw new Error("Delegation is not available from this parent");
+        this.assertReleased(record); // A held Child cannot start or steer more work.
+        return this.management(record.id, request);
+      } : undefined,
       event: packet => this.event(record, packet),
       stderr: text => this.log(record.stderrFile, text),
       exit: error => {
@@ -450,7 +476,8 @@ export class SubagentManager {
       await child.request({ type: "prompt", message: "/_child-policy-check" });
       this.assertReleased(record);
       const tools = this.verifiedTools.get(record.id);
-      if (!tools || tools.some(name => name.startsWith("subagent_")) || (config.tools ?? []).some(name => !tools.includes(name))) {
+      const delegating = (name: string) => isProxiedTool(name) && !record.workflow && (config.tools ?? []).includes(name);
+      if (!tools || tools.some(name => name.startsWith("subagent_") && !delegating(name)) || (config.tools ?? []).some(name => !tools.includes(name))) {
         throw new Error("Child tool policy check failed: selected tools unavailable, or mandatory guard did not load.");
       }
     }
@@ -683,6 +710,8 @@ export class SubagentManager {
   }
   async abort(id: string) {
     const record = this.get(id);
+    // Cancelling a coordinator cancels the work it delegated.
+    for (const descendant of this.childrenOf(id)) if (this.children.has(descendant.id) && !this.aborting.has(descendant.id)) await this.abort(descendant.id).catch(() => {});
     const child = this.child(id);
     if (this.aborting.has(id)) throw new Error("Abort is already in progress");
     this.aborting.add(id);
@@ -753,6 +782,10 @@ export class SubagentManager {
     // Separate final notice: the requested notice may already be in flight with
     // its original text. Delivery of that receipt must never erase confirmation.
     this.announce(record, "human_intervention", text);
+    // The hold already blocks this Child's delegation; hold its subtree too.
+    for (const descendant of this.childrenOf(id)) {
+      if (this.children.has(descendant.id) && !descendant.hold) await this.intervene(descendant.id, kind, beforeCancel).catch(() => {});
+    }
     return this.summary(id);
   }
   /** Parent-only release: clearing a hold never resumes, prompts, or restarts work. */
@@ -769,6 +802,8 @@ export class SubagentManager {
   }
   async close(id: string, preserveNotices = false) {
     const record = this.get(id);
+    // Closing a coordinator closes everything it delegated, deepest first.
+    for (const descendant of this.childrenOf(id)) if (this.children.has(descendant.id)) await this.close(descendant.id, preserveNotices).catch(() => {});
     record.queuedAssignments = [];
     this.workflowChildren.delete(id);
     // Explicit close means abandon ordinary reports, never human intervention.

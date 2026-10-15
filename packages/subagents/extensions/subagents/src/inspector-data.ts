@@ -82,8 +82,10 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
   const agents = source.agents(), runs = source.workflows();
   const rows: Row[] = [];
   const add = (id: string, text: string, tone: Tone = "text", wrap = true) => rows.push({ id, text, tone, wrap });
+  // Rows are grouped by state, not by tree; a nested Child names who delegated it.
+  const delegator = (agent: AgentRecord) => agent.parentId && agents.find(candidate => candidate.id === agent.parentId);
   const agentRow = (agent: AgentRecord) => rows.push({ id: `agent:${agent.id}`,
-    text: `${mark(agent.status)} ${oneLine(agent.name).toLowerCase()} · ${label(agent.status)}${assignment(agent) ? ` · ${assignment(agent)!.status}` : ""}${unread(agent) ? " · parent review needed" : ""}${agent.hold ? ` · ${agent.hold.kind} ${agent.hold.outcome}` : ""} · ${cost(agent)}`,
+    text: `${mark(agent.status)} ${agent.parentId ? "↳ " : ""}${oneLine(agent.name).toLowerCase()} · ${label(agent.status)}${assignment(agent) ? ` · ${assignment(agent)!.status}` : ""}${unread(agent) ? " · parent review needed" : ""}${agent.hold ? ` · ${agent.hold.kind} ${agent.hold.outcome}` : ""}${delegator(agent) ? ` · from ${oneLine((delegator(agent) as AgentRecord).name).toLowerCase()}` : ""} · ${cost(agent)}`,
     tone: statusTone(agent.status), target: { kind: "agent", id: agent.id } });
   if (location.kind === "overview") {
     const runIds = new Set(runs.map(r => r.id));

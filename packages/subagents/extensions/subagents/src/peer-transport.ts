@@ -2,6 +2,7 @@ import { Socket } from "node:net";
 import { Duplex } from "node:stream";
 import { read, write as writeFd, close as closeFd } from "node:fs";
 import { JsonlDecoder, type Packet } from "./rpc.js";
+import { isManagementOp, type ManagementOp } from "./nesting.js";
 
 const MAX_FRAME = 64 * 1024;
 const MAX_PENDING = 8;
@@ -9,27 +10,43 @@ function write(socket: Duplex, packet: Packet) {
   if (socket.destroyed || socket.writableLength > MAX_FRAME) throw new Error("Peer transport unavailable or backpressured; acceptance may be unknown. Do not retry blindly.");
   socket.write(JSON.stringify(packet) + "\n");
 }
-/** Private inherited pipe: the owner supplies sender identity, never the packet. */
-export function servePeer(socket: Duplex, receive: (packet: Packet) => Promise<unknown>) {
+export type ManagementRequest = { op: ManagementOp; args: Record<string, unknown> };
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
+
+/** Private inherited pipe: the owner supplies sender identity, never the packet.
+ * Two request shapes share it: a peer message, and (for a Child allowed to
+ * delegate) a management call that the root Manager scopes to the sender's subtree. */
+export function servePeer(socket: Duplex, receive?: (packet: Packet) => Promise<unknown>, manage?: (request: ManagementRequest) => Promise<unknown>) {
   let active = 0;
   let sequence = 0;
   const decoder = new JsonlDecoder(packet => {
     if (!packet || !Number.isSafeInteger(packet.id) || packet.id <= sequence) throw new Error("Invalid/replayed peer request ID");
     sequence = packet.id;
-    if (Object.keys(packet).some(key => !["id", "recipient", "message"].includes(key)) ||
+    if ("op" in packet) {
+      if (!manage || Object.keys(packet).some(key => !["id", "op", "args"].includes(key)) || !isManagementOp(packet.op) || !isPlainObject(packet.args)) {
+        write(socket, { id: packet.id, success: false, error: "Invalid management request, or delegation is not enabled for this Child." }); return;
+      }
+      dispatch(packet, () => manage({ op: packet.op, args: packet.args }));
+      return;
+    }
+    if (!receive || Object.keys(packet).some(key => !["id", "recipient", "message"].includes(key)) ||
         typeof packet.recipient !== "string" || !packet.recipient || packet.recipient.length > 120 ||
         typeof packet.message !== "string" || !packet.message.trim() || packet.message.length > 4000) {
       write(socket, { id: packet.id, success: false, error: "Invalid peer request; only recipient and message are accepted." }); return;
     }
+    dispatch(packet, () => receive(packet));
+  }, MAX_FRAME);
+  function dispatch(packet: Packet, run: () => Promise<unknown>) {
     if (active >= MAX_PENDING) {
-      write(socket, { id: packet.id, success: false, error: "Too many pending peer sends (maximum 8)." }); return;
+      write(socket, { id: packet.id, success: false, error: "Too many pending requests (maximum 8)." }); return;
     }
     active++;
-    void Promise.resolve().then(() => receive(packet)).then(
+    void Promise.resolve().then(run).then(
       data => write(socket, { id: packet.id, success: true, data }),
       error => write(socket, { id: packet.id, success: false, error: String(error).slice(0, 2000) }),
     ).catch(() => socket.destroy()).finally(() => active--);
-  }, MAX_FRAME);
+  }
   socket.setEncoding("utf8");
   socket.on("data", chunk => { try { decoder.push(chunk); } catch { socket.destroy(); } });
   socket.on("error", () => socket.destroy());
@@ -96,19 +113,26 @@ export class PeerClient {
     return new PeerClient(process.versions.bun ? new DescriptorDuplex(3) : new Socket({ fd: 3, readable: true, writable: true }));
   }
   send(recipient: string, message: string, signal?: AbortSignal, timeoutMs = 35000): Promise<unknown> {
+    return this.request({ recipient, message }, signal, timeoutMs, "Peer send interrupted or timed out; acceptance may be unknown. Ask the parent to inspect; do not retry blindly.");
+  }
+  /** A delegation call to the root Manager; waits may take up to a minute. */
+  manage(op: ManagementOp, args: Record<string, unknown>, signal?: AbortSignal, timeoutMs = 90000): Promise<unknown> {
+    return this.request({ op, args }, signal, timeoutMs, `subagent_${op} interrupted or timed out; its effect may be unknown. Inspect with subagent_list before retrying.`);
+  }
+  private request(body: Packet, signal: AbortSignal | undefined, timeoutMs: number, interrupted: string): Promise<unknown> {
     signal?.throwIfAborted();
-    if (this.pending.size >= MAX_PENDING) throw new Error("Too many pending peer sends");
+    if (this.pending.size >= MAX_PENDING) throw new Error("Too many pending requests to the parent manager");
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
       const fail = () => {
         this.pending.delete(id); cleanup();
-        reject(new Error("Peer send interrupted or timed out; acceptance may be unknown. Ask the parent to inspect; do not retry blindly."));
+        reject(new Error(interrupted));
       };
       const timer = setTimeout(fail, timeoutMs);
       const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", fail); };
       this.pending.set(id, { resolve, reject, cleanup });
       signal?.addEventListener("abort", fail, { once: true });
-      try { write(this.socket, { id, recipient, message }); }
+      try { write(this.socket, { id, ...body }); }
       catch (error) { this.pending.delete(id); cleanup(); reject(error); }
     });
   }
