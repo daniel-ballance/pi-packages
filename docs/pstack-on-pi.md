@@ -1,6 +1,9 @@
 # pstack on Pi: research and implementation options
 
-Date: **2026-10-15**. Status: **research; no decision taken.**
+Date: **2026-10-15**. Status: **research complete; decisions recorded in
+[pistack-design.md](pistack-design.md).** Pi facts below were checked against
+0.99.2; the design brief re-baselines on the installed 1.2.0 and lists the
+deltas that matter (its §2).
 
 Question: what is Cursor's `pstack` plugin, what does it actually depend on,
 and how could the same system be built for Pi using the Pi API surface and the

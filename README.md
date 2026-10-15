@@ -230,4 +230,5 @@ as a whole. This separation does not modify global Pi settings or policies.
 - [Failure-only MCP status](docs/mcp-status/README.md) — rationale, mockup, and visual references.
 - [MCP client alignment](docs/mcp-client-alignment/README.md) — native Pi integration audit, implementation progress, and migration safety gates for the replacement client.
 - [MCP additions](docs/mcp-additions/README.md) — parked native-hook proposal and compatibility research; no installable package.
-- [pstack on Pi](docs/pstack-on-pi.md) — research into Cursor's pstack plugin and options for building the same playbook/principle/role-routing system on Pi; no decision or package yet.
+- [pstack on Pi](docs/pstack-on-pi.md) — research into Cursor's pstack plugin and the Pi capability mapping.
+- [pistack design brief](docs/pistack-design.md) — decisions for the Pi edition of pstack: deterministic generation from the vendored upstream, host parity between CLI and T3, todo package, and subagents changes (loop, worktree, bounded nesting).
