@@ -42,7 +42,7 @@ export function registerNativeResources(
           throw new Error('A cursor requires an explicit server');
         const selected = args.server ? [args.server] : names();
         const all: ObjectValue[] = [];
-        let nextCursor: unknown;
+        let nextCursor: string | undefined;
         for (const server of selected) {
           const { peer } = get(server);
           if (!peer.capabilities.resources) continue;
@@ -58,6 +58,8 @@ export function registerNativeResources(
                 .filter(visible)
                 .map((resource: ObjectValue) => ({ ...resource, server })),
             );
+            if (result.nextCursor !== undefined && typeof result.nextCursor !== 'string')
+              throw new Error('Invalid MCP resource pagination cursor');
             nextCursor = result.nextCursor;
           } else {
             all.push(

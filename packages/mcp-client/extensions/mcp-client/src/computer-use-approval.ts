@@ -97,13 +97,20 @@ export async function approveComputerUse(
   params: ObjectValue,
   policy: ComputerUsePolicy | undefined,
   ctx: ExtensionContext,
-  options: { signal?: AbortSignal; timeout: number },
+  options: { signal?: AbortSignal; timeout: number; deadline: number },
   session?: {
     grants: Set<string>;
     report: ComputerUseApprovalDiagnostics;
   },
 ): Promise<ObjectValue> {
-  options.signal?.throwIfAborted();
+  const checkActive = () => {
+    options.signal?.throwIfAborted();
+    // Queue/UI promise continuations can run before overdue timeout callbacks.
+    // Enforce the original monotonic deadline even while the signal is live.
+    if (performance.now() >= options.deadline)
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+  };
+  checkActive();
   if (!policy || !ctx.hasUI)
     throw new RpcError(-32601, 'Supervised computer-use approval is not enabled');
   const meta = params._meta;
@@ -160,10 +167,10 @@ export async function approveComputerUse(
     );
 
   const app = meta.tool_params.app;
-  options.signal?.throwIfAborted();
+  checkActive();
   if (session?.grants.has(app)) {
     session.report({ decision: 'accept', source: 'session', reason: 'session-grant' });
-    options.signal?.throwIfAborted();
+    checkActive();
     return {
       action: 'accept',
       content: { source: 'computer-use-persisted-state' },
@@ -174,9 +181,9 @@ export async function approveComputerUse(
   const choice = await ctx.ui.select(
     `Supervised Computer Use approval\nConfigured server: ${identity(name)}\nApp ID: ${identity(app)}\nOperation: ${identity(meta.tool_name)}\nAllowed operations for this app: ${policy.operations.map(identity).join(', ')}\nScope: this session only, on this connection; no permanent permission. Subsequent eligible requests for this app and the complete operation subset above reuse your consent without another prompt. Reconnect, reload or branch change ends this grant; this is not a per-call sandbox.\nOnly approve your intended harmless task. This is not authentication or a change to OS permissions.`,
     ['Allow for this session', 'Decline', 'Cancel'],
-    options,
+    { signal: options.signal, timeout: options.timeout },
   );
-  options.signal?.throwIfAborted();
+  checkActive();
   if (choice === 'Decline') {
     session?.report({ decision: 'decline', source: 'human', reason: 'human-declined' });
     return { action: 'decline' };
@@ -195,7 +202,7 @@ export async function approveComputerUse(
     return { action: 'cancel' };
   }
   session?.report({ decision: 'accept', source: 'human', reason: 'human-approved' });
-  options.signal?.throwIfAborted();
+  checkActive();
   session?.grants.add(app);
   return { action: 'accept', content: {}, _meta: { persist: 'session' } };
 }
