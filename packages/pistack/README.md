@@ -22,7 +22,7 @@ install, not from an npm-installed copy. After a local-path install, run
 
 ## Install
 
-pistack is not part of the root collection manifest. Install it on its own:
+The collection installs pistack, along with `subagents` and `todo`. To install it without the rest of the collection:
 
 ```sh
 pi install /path/to/pi-packages/packages/pistack
@@ -31,8 +31,21 @@ pi install /path/to/pi-packages/packages/pistack
 Skills arrive as `/skill:<name>`. pstack's workflow skills set
 `disable-model-invocation: true`, so they cost no prompt space until invoked.
 
-pistack ships its own `tdd` skill. If you also enable `agent-skills`' `tdd`, Pi
-keeps whichever it discovers first and warns; enable one of them.
+pistack ships its own `tdd` skill. The collection leaves it out, so `agent-skills`'
+`tdd` is the one that loads there; poteto-mode refers to the skill only by name.
+Installed on its own, pistack loads its own `tdd`. Don't also enable
+`agent-skills`' `tdd` in that case: Pi keeps whichever it discovers first and warns.
+
+A collection install that filters resources needs pistack's and todo's entries
+in its lists, for example:
+
+```json
+{
+  "source": "https://github.com/daniel-ballance/pi-packages",
+  "extensions": ["packages/subagents/extensions/subagents/index.ts", "packages/todo/extensions/todo/index.ts", "packages/pistack/extensions/pistack/index.ts"],
+  "skills": ["packages/subagents/skills/subagents/SKILL.md", "packages/pistack/skills/*/SKILL.md"]
+}
+```
 
 ## Extension
 
@@ -59,17 +72,17 @@ pistack tells the hosts apart by `T3_MCP_URL`, which T3 sets when it launches Pi
 Delegation comes from the `subagents` package, and pistack can only use what its
 allowlist permits.
 
-1. Install the collection, which includes `subagents`, then `todo` and `pistack`,
+1. Install the collection, which includes `subagents`, `todo` and `pistack`,
    following the repository's [install steps](../../README.md#install-in-pi):
 
    ```sh
-   pi install /path/to/pi-packages
-   pi install /path/to/pi-packages/packages/todo
-   pi install /path/to/pi-packages/packages/pistack
+   pi install https://github.com/daniel-ballance/pi-packages
    ```
 
-   Pi does not run npm for local paths, so run the repository's install first.
-   Then restart Pi or run `/reload`.
+   Install either the collection or the individual packages, not both.
+
+   From a local checkout instead, run the repository's install first: Pi does
+   not run npm for local paths. Then restart Pi or run `/reload`.
 2. With no `subagents.json`, subagents' built-in policy already suits pistack:
    it offers the models you can reach across the common providers (and the
    collection's `claude-subscription` models, with their extension mapped),
