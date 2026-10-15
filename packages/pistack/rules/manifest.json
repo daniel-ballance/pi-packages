@@ -1,0 +1,25 @@
+{
+  "vendor": "vendor/pstack/pstack",
+  "map": [
+    {
+      "from": "skills/",
+      "to": "skills/"
+    },
+    {
+      "from": "agents/",
+      "to": "agents/"
+    },
+    {
+      "from": "LICENSE",
+      "to": "LICENSE"
+    }
+  ],
+  "exclude": [
+    "^skills/make-bot-ui/",
+    "^skills/poteto-mode/scripts/(bootstrap\\.ts|bun\\.lock|package\\.json)$"
+  ],
+  "upstream": {
+    "repository": "cursor/plugins",
+    "checkout": "vendor/pstack"
+  }
+}

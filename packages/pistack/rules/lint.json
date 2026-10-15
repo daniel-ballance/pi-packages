@@ -1,0 +1,28 @@
+{
+  "deny": [
+    "Task tool",
+    "subagent_type",
+    "run_in_background",
+    "environment: \"cloud\"",
+    "cloud_base_branch",
+    "AskQuestion",
+    ".cursor",
+    ".mdc",
+    "generalPurpose",
+    "cursor-team-kit",
+    "bun ",
+    "/loop",
+    "agent-transcripts",
+    "mcps/",
+    "create-skill",
+    "deslop",
+    "control-ui",
+    "control-cli",
+    "/add-plugin",
+    "readonly: ",
+    "Custom Mode",
+    "Task call",
+    "`Task`",
+    "pstack-models"
+  ]
+}
