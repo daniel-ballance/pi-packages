@@ -11,3 +11,16 @@ export type ManagementOp = "catalog" | "spawn" | "send" | "wait" | "read" | "clo
 export const opOf = (tool: ProxiedTool) => tool.slice("subagent_".length) as ManagementOp;
 const OPS = new Set<string>(PROXIED_TOOLS.map(opOf));
 export const isManagementOp = (value: unknown): value is ManagementOp => typeof value === "string" && OPS.has(value);
+
+/** Largest delegated reply: the private pipe caps frames at 64 KiB, envelope included. */
+export const DELEGATED_REPLY_BYTES = 60_000;
+
+/** A reply that fits one frame as sent (compact JSON), else a preview that does and a way to narrow. */
+export function fitDelegatedReply(data: unknown, limit = DELEGATED_REPLY_BYTES): unknown {
+  const text = JSON.stringify(data) ?? "null";
+  if (Buffer.byteLength(text) <= limit) return data;
+  const room = limit - 1024;
+  let length = room;
+  while (length > 0 && Buffer.byteLength(JSON.stringify(text.slice(0, length))) > room) length = Math.floor(length * 0.8);
+  return { truncated: true, note: "Reply too large for delegation; narrow it (pass ids or since, or read one Child at a time).", preview: text.slice(0, length) };
+}

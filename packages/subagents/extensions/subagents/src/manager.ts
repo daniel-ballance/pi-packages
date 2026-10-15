@@ -96,9 +96,11 @@ export class SubagentManager {
   private interventionHook?: (record: AgentRecord, kind: InterventionKind) => void;
   /** Install a synchronous parent hook to pause owned workflows before any cancellation awaits. */
   setInterventionHook(hook?: (record: AgentRecord, kind: InterventionKind) => void) { this.interventionHook = hook; }
-  private management?: (callerId: string, request: ManagementRequest) => Promise<unknown>;
+  private management?: (callerId: string, request: ManagementRequest, signal: AbortSignal) => Promise<unknown>;
   /** Serves the proxied delegation tools of Children that were given them. */
-  setManagementHandler(handler?: (callerId: string, request: ManagementRequest) => Promise<unknown>) { this.management = handler; }
+  setManagementHandler(handler?: (callerId: string, request: ManagementRequest, signal: AbortSignal) => Promise<unknown>) { this.management = handler; }
+  /** In-flight delegated calls per caller, cancelled when the caller's process exits. */
+  private callerCalls = new Map<string, Set<AbortController>>();
   /** Direct Children of id (records, live or not). */
   childrenOf(id: string) { return [...this.records.values()].filter(record => record.parentId === id); }
   /** Whether id is ancestor's Child, grandchild, or deeper. */
@@ -208,10 +210,6 @@ export class SubagentManager {
     this.logSizes.set(path, size + Math.min(bytes.length, MAX_LOG - size));
   }
   private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
-    // A nested Child reports to its own parent, which drains it with its proxied
-    // tools. Human interventions, input requests (only the root can answer them),
-    // and Children whose parent stopped reach the root.
-    if (kind !== "human_intervention" && kind !== "input_requested" && record.parentId && this.children.has(record.parentId)) return;
     if (kind !== "human_intervention" && (this.shuttingDown || this.workflowChildren.has(record.id) || record.observedCursors?.includes(cursor))) return;
     const key = `${record.id}:${cursor}:${kind}`;
     if (this.notices.has(key)) return;
@@ -220,13 +218,29 @@ export class SubagentManager {
     this.persist();
     // Notification scheduling must not prevent a human cancellation; the queue is durable.
     if (kind === "human_intervention") { try { this.notice(notice); } catch { /* retry from persisted queue */ } }
-    else this.notice(notice); // Wake the delivery scheduler; don't inject into the parent here.
+    else if (!this.routedToParent(notice)) this.notice(notice); // Wake the delivery scheduler; don't inject into the parent here.
   }
-  pendingNotices(): Notice[] { return [...this.notices.values()]; }
-  private observe(record: AgentRecord, cursors: number[]) {
+  /**
+   * A nested Child's routine report waits for its own parent, which drains it with its
+   * proxied tools. It stays queued: if that parent stops before reading it, it reaches
+   * the root. Human interventions and input requests (only the root can answer) always do.
+   */
+  private routedToParent(notice: Notice) {
+    if (notice.kind === "human_intervention" || notice.kind === "input_requested") return false;
+    const parentId = this.records.get(notice.id)?.parentId;
+    return !!parentId && this.children.has(parentId);
+  }
+  /** Notices for the root Parent now. */
+  pendingNotices(): Notice[] { return [...this.notices.values()].filter(notice => !this.routedToParent(notice)); }
+  /** keepInput: a coordinator's read never settles an input request; only the root can answer it. */
+  private observe(record: AgentRecord, cursors: number[], keepInput = false) {
     record.observedCursors = [...new Set([...(record.observedCursors ?? []), ...cursors])].sort((a, b) => a - b).slice(-200);
     const seen = new Set(cursors);
-    for (const [key, notice] of this.notices) if (notice.id === record.id && notice.kind !== "human_intervention" && seen.has(notice.cursor)) this.notices.delete(key);
+    for (const [key, notice] of this.notices) {
+      if (notice.id !== record.id || notice.kind === "human_intervention" || !seen.has(notice.cursor)) continue;
+      if (keepInput && notice.kind === "input_requested") continue;
+      this.notices.delete(key);
+    }
   }
   markNoticesDelivered(keys: string[]) {
     for (const key of keys) {
@@ -236,14 +250,15 @@ export class SubagentManager {
     }
     this.persist();
   }
-  acknowledgeRead(receipt: ReadReceipt, advanceCursor: boolean) {
+  /** byRoot false: a coordinator Child read this through its proxied tools. */
+  acknowledgeRead(receipt: ReadReceipt, advanceCursor: boolean, byRoot = true) {
     const record = this.get(receipt.id);
     const cursors = receipt.updates.map(update => update.cursor);
     const requests = new Set(receipt.uiRequests.map(request => request.id));
     for (const notice of this.notices.values()) {
       if (notice.id === record.id && notice.requestId && requests.has(notice.requestId)) cursors.push(notice.cursor);
     }
-    this.observe(record, cursors);
+    this.observe(record, cursors, !byRoot);
     if (record.assignment?.resultCursor && cursors.includes(record.assignment.resultCursor) && record.resultReview?.assignmentId === record.assignment.id && record.resultReview.status === "unreviewed") {
       record.resultReview = { assignmentId: record.assignment.id, status: "reviewed", at: new Date().toISOString() };
     }
@@ -451,12 +466,19 @@ export class SubagentManager {
         if (this.children.get(record.id) !== child) throw new Error("Stale child process");
         if (!this.management) throw new Error("Delegation is not available from this parent");
         this.assertDelegationOpen(record);
-        return this.management(record.id, request);
+        // A call outlives its caller only as a cancelled operation: nobody can receive its result.
+        const controller = new AbortController();
+        const calls = this.callerCalls.get(record.id) ?? new Set<AbortController>();
+        this.callerCalls.set(record.id, calls.add(controller));
+        try { return await this.management(record.id, request, controller.signal); }
+        finally { calls.delete(controller); if (!calls.size && this.callerCalls.get(record.id) === calls) this.callerCalls.delete(record.id); }
       } : undefined,
       event: packet => this.event(record, packet),
       stderr: text => this.log(record.stderrFile, text),
       exit: error => {
         this.peers.interrupt(record.id);
+        for (const call of this.callerCalls.get(record.id) ?? []) call.abort(new Error(`${record.id} exited; its delegated call was cancelled`));
+        this.callerCalls.delete(record.id);
         this.children.delete(record.id);
         this.activeRuns.delete(record.id);
         this.abortIntents.delete(record.id);
@@ -479,6 +501,9 @@ export class SubagentManager {
         if (expected && record.error) { record.lastError = record.error; delete record.error; }
         this.update(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
         if (!expected) this.announce(record, "failure", record.error!);
+        // Its Children's unread reports were waiting for it; they now go to the root.
+        const released = [...this.notices.values()].find(notice => this.records.get(notice.id)?.parentId === record.id);
+        if (released) this.notice(released);
       },
     });
     this.children.set(record.id, child);
@@ -735,8 +760,12 @@ export class SubagentManager {
     // cannot delegate more meanwhile, then every live descendant, deepest first.
     this.fence(id);
     try {
-      for (const descendant of this.subtree(id)) if (this.children.has(descendant.id) && !this.aborting.has(descendant.id)) await this.abortOne(descendant).catch(() => {});
-      return await this.abortOne(record);
+      const failures: string[] = [];
+      for (const descendant of this.subtree(id)) {
+        if (this.children.has(descendant.id) && !this.aborting.has(descendant.id)) await this.abortOne(descendant).catch(error => { failures.push(`${descendant.id}: ${String(error)}`); });
+      }
+      const summary = await this.abortOne(record);
+      return failures.length ? { ...summary, subtreeFailures: failures } : summary;
     } finally { this.unfence(id); }
   }
   private async abortOne(record: AgentRecord) {
@@ -842,8 +871,10 @@ export class SubagentManager {
     // so that it cannot delegate more while its subtree closes.
     this.fence(id);
     try {
-      for (const descendant of this.subtree(id)) await this.closeOne(descendant, preserveNotices).catch(() => {});
-      return await this.closeOne(record, preserveNotices);
+      const failures: string[] = [];
+      for (const descendant of this.subtree(id)) await this.closeOne(descendant, preserveNotices).catch(error => { failures.push(`${descendant.id}: ${String(error)}`); });
+      const summary = await this.closeOne(record, preserveNotices);
+      return failures.length ? { ...summary, subtreeFailures: failures } : summary;
     } finally { this.unfence(id); }
   }
   private async closeOne(record: AgentRecord, preserveNotices: boolean) {
@@ -853,7 +884,7 @@ export class SubagentManager {
     // Explicit close means abandon ordinary reports, never human intervention.
     // Reload/exit shutdown deliberately preserves unread results for recovery.
     if (!preserveNotices) {
-      this.observe(record, this.pendingNotices().filter(n => n.id === id && n.kind !== "human_intervention").map(n => n.cursor));
+      this.observe(record, [...this.notices.values()].filter(n => n.id === id && n.kind !== "human_intervention").map(n => n.cursor));
       this.persist();
     }
     const child = this.children.get(id);

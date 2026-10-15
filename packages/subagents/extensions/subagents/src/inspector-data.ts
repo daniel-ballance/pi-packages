@@ -78,7 +78,7 @@ function latestResult(a: AgentRecord) {
 }
 
 /** Each agent after its nearest ancestor in the same list, otherwise in list order. */
-export function treeOrder(list: AgentRecord[], everyone: AgentRecord[] = list): AgentRecord[] {
+export function treeOrder(list: readonly AgentRecord[], everyone: readonly AgentRecord[] = list): AgentRecord[] {
   const byId = new Map(list.map(agent => [agent.id, agent]));
   const all = new Map(everyone.map(agent => [agent.id, agent]));
   const anchor = (agent: AgentRecord) => {

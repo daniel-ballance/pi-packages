@@ -23,7 +23,7 @@ import { detectHost } from "./src/host.js";
 import { describeLoop, formatInterval, LoopController, loopTickMessage, parseInterval, type LoopState } from "./src/loop.js";
 import { createWorktree, planWorktree, removeWorktree, type Worktree } from "./src/worktree.js";
 import { SHARED_SCHEMAS, TOOL_SPECS } from "./src/tool-schemas.js";
-import { isProxiedTool } from "./src/nesting.js";
+import { fitDelegatedReply, isProxiedTool } from "./src/nesting.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Value } from "typebox/value";
 import type { ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -108,7 +108,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       manager.setInterventionHook((record, kind) => {
         if (record.workflow) getWorkflows(ctx).holdForIntervention(record.id, `User ${kind === "halt" ? "halted" : "killed"} ${record.name} (${record.id})`, record.workflow);
       });
-      manager.setManagementHandler((callerId, request) => delegate(callerId, request.op, request.args));
+      manager.setManagementHandler((callerId, request, signal) => delegate(callerId, request.op, request.args, signal));
     }
     return manager;
   };
@@ -159,7 +159,10 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     return { text, state };
   };
   // A Child's proxied call: same tool, same validation, scoped to its own subtree.
-  const delegate = async (callerId: string, op: string, raw: Record<string, unknown>) => {
+  // Replies cross the private pipe (fitDelegatedReply); never spill to a file in the
+  // root's private directory, which the Child need not be able to read.
+  const fitReply = (data: unknown) => fitDelegatedReply(data);
+  const delegate = async (callerId: string, op: string, raw: Record<string, unknown>, signal?: AbortSignal) => {
     const ctx = context;
     const tool = proxiable.get(`subagent_${op}`);
     if (!ctx || !manager || !tool) throw new Error("Delegation is not available from this parent session");
@@ -180,13 +183,17 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     }
     if (op === "list") {
       const agents = scoped.overview(args.includeRejected === true).agents.filter(agent => scoped.isDescendant(agent.id, callerId));
-      return { totals: summarizeAgents(agents), agents };
+      return fitReply({ totals: summarizeAgents(agents), agents });
     }
     // These tools use only session-level context; a proxied call has no tool loadout of its own.
-    const output = await delegation.run({ callerId }, () => tool.execute(`delegated-${randomUUID()}`, args as never, undefined, undefined, ctx as ExtensionToolContext));
-    if (op !== "catalog") return output.details;
+    const output = await delegation.run({ callerId }, () => tool.execute(`delegated-${randomUUID()}`, args as never, signal, undefined, ctx as ExtensionToolContext));
+    signal?.throwIfAborted(); // The caller exited: nobody can receive this.
+    // result() spilled an oversized reply to the root's directory: send the text instead.
+    const details = output.details && typeof output.details === "object" && "fullResult" in output.details
+      ? { truncated: true, preview: output.content.map(part => part.type === "text" ? part.text : "").join("\n") } : output.details;
+    if (op !== "catalog") return fitReply(details);
     const depth = (scoped.get(callerId).depth ?? 1) + 1, maxDepth = getPolicy(ctx).config?.maxDepth ?? 1;
-    return { ...output.details as object, delegation: { childDepth: depth, maxDepth, childrenMayDelegate: depth < maxDepth } };
+    return fitReply({ ...details as object, delegation: { childDepth: depth, maxDepth, childrenMayDelegate: depth < maxDepth } });
   };
   const result = (data: unknown, ctx: ExtensionContext) => {
     const text = JSON.stringify(data, null, 2);
@@ -340,7 +347,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const depth = parentId ? (manager.get(parentId).depth ?? 1) + 1 : 1;
       let config = policy.compile(requested, selection, depth);
       const capacity = manager.capacity();
-      if (!capacity.available) throw new Error(`Live-child capacity reached. Inspect before closing idle workers; held work requires discussion. Recovery: ${JSON.stringify(recoverySummary(manager.list(), capacity))}`);
+      // A delegating Child sees only its own subtree, in errors and warnings too.
+      const visible = <T extends { id: string }>(records: T[]) => parentId ? records.filter(record => manager.isDescendant(record.id, parentId)) : records;
+      if (!capacity.available) throw new Error(`Live-child capacity reached${parentId ? " across the whole tree" : ""}. Inspect before closing idle workers; held work requires discussion. Recovery: ${JSON.stringify(recoverySummary(visible(manager.list()), capacity))}`);
       if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
       // Everything is checked before git writes anything, the destination included.
       const plan = wanted ? planWorktree({ cwd: requested, name, ...(typeof wanted === "object" ? wanted : {}) }) : undefined;
@@ -353,8 +362,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         if (worktree) config = policy.compile(cwd, selection, depth);
         const coordination = normalizeCoordination(declared, cwd);
         const child = await manager.spawn({ name, task, ...config, coordination, ...(parentId ? { parentId } : {}) });
-        const warnings = coordinationWarnings(coordination, manager.list(), child.id);
-        return result({ ...child, ...(worktree ? { worktree } : {}), coordinationWarnings: warnings.slice(0, 25), coordinationWarningCount: warnings.length }, ctx);
+        const all = coordinationWarnings(coordination, manager.list(), child.id), warnings = visible(all);
+        const outside = all.length - warnings.length;
+        return result({ ...child, ...(worktree ? { worktree } : {}), coordinationWarnings: warnings.slice(0, 25), coordinationWarningCount: warnings.length, ...(outside ? { overlapsOutsideYourSubtree: outside } : {}) }, ctx);
       } catch (error) {
         if (worktree) try { removeWorktree(worktree); } catch { /* report the spawn failure, not the cleanup */ }
         throw error;
@@ -432,7 +442,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const data = manager.read(args.id, args.since, false);
       const output = result(data, ctx);
       // If the formatter spills to disk, don't claim unseen updates were read.
-      if (output.details === data) manager.acknowledgeRead(data, args.since === undefined);
+      if (output.details === data) manager.acknowledgeRead(data, args.since === undefined, !delegation.getStore());
       return output;
     },
   });
@@ -443,11 +453,12 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     async execute(_call, args, signal, _update, ctx) {
       const manager = get(ctx);
       const state = await manager.wait(args.ids ?? [], args.mode ?? "all", (args.timeoutSeconds ?? 30) * 1000, signal);
+      signal?.throwIfAborted(); // Never collect for a caller that is gone.
       if (!args.collect) return result(state, ctx);
       const collected = collectReports(manager, state.agents.map(agent => agent.id));
       const data = { ...state, ...collected };
       const output = result(data, ctx);
-      if (output.details === data) for (const report of collected.reports) manager.acknowledgeRead(report, true);
+      if (output.details === data) for (const report of collected.reports) manager.acknowledgeRead(report, true, !delegation.getStore());
       return output;
     },
   });

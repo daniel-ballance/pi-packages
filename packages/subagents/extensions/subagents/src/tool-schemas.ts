@@ -19,7 +19,7 @@ export const TOOL_SPECS = {
       description: "Spawn a persistent Pi RPC child and send its initial task. Returns after prompt acceptance, not completion. " +
         "Consult subagent_catalog first. Compose an exact allowed provider/model:thinking and explicit tools/resources; catalog alwaysExtensions/alwaysTools are added automatically. " +
         "Optional systemPrompt replaces the default; appendSystemPrompt adds instructions; omit both to inherit Pi defaults/SYSTEM.md. " +
-        "Discovery is disabled; recursive subagent tools are forbidden. Bash still grants full machine access: NOT a sandbox. " +
+        "Discovery is disabled; subagent tools other than the delegation tools are forbidden, and those only when subagent_catalog reports maxDepth above the new child's depth. Bash still grants full machine access: NOT a sandbox. " +
         "Children stop on parent reload/exit, with saved conversations resumable. Output capped at 30KB/1000 lines; full overflow saved to a file. " +
         "worktree: true (or {base, branch}) first creates a git worktree under <repository of cwd>/.pi/worktrees/ on a new branch and runs the child there; merging and removing it stay with you.",
       parameters: Type.Object({

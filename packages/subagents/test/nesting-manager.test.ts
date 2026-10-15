@@ -6,13 +6,14 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
 import { treeOrder } from "../extensions/subagents/src/inspector-data.js";
+import { fitDelegatedReply } from "../extensions/subagents/src/nesting.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
 // A coordinator A, its Child B, and B's Child C: the tree the root Manager keeps.
-async function tree(authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"]) {
+async function tree(authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], notice: (notice: unknown) => void = () => {}) {
   const dir = await mkdtemp(join(tmpdir(), "subagent-nesting-"));
-  const manager = new SubagentManager(dir, () => {}, () => {}, 4, authorize);
+  const manager = new SubagentManager(dir, notice, () => {}, 4, authorize);
   const spawn = async (name: string, parentId?: string) => (await manager.spawn({ name, task: name, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId })).id;
   const a = await spawn("A"), b = await spawn("B", a), c = await spawn("C", b);
   // Stop only B, as if its process had exited: C stays live under a stopped intermediate.
@@ -98,4 +99,66 @@ test("inspector groups order each nested Child after its nearest listed ancestor
   const ids = (list: AgentRecord[]) => list.map(entry => entry.id);
   assert.deepEqual(ids(treeOrder([everyone[3]!, everyone[0]!, everyone[1]!, everyone[4]!, everyone[5]!], everyone)), ["x", "a", "c", "d", "e"]);
   assert.deepEqual(ids(treeOrder(everyone)), ["x", "a", "b", "c", "d", "e"]);
+});
+
+test("a coordinator's read leaves its Child's input request for the root; the root's read settles it", async () => {
+  const t = await tree();
+  try {
+    const receipt = t.manager.read(t.c, undefined, false);
+    const cursor = receipt.updates.at(-1)!.cursor;
+    (t.manager as any).announce(t.manager.get(t.c), "input_requested", "confirm?", cursor, "request-1");
+    const withRequest = { ...receipt, uiRequests: [{ id: "request-1" }] } as typeof receipt;
+    t.manager.acknowledgeRead(withRequest, true, false);
+    assert.deepEqual(t.manager.pendingNotices().filter(n => n.id === t.c).map(n => n.kind), ["input_requested"]);
+    t.manager.acknowledgeRead(withRequest, true, true);
+    assert.deepEqual(t.manager.pendingNotices().filter(n => n.id === t.c), []);
+  } finally { await t.cleanup(); }
+});
+
+test("a nested report waits for its parent, and reaches the root if that parent stops first", async () => {
+  const wakes: unknown[] = [];
+  const t = await tree(undefined, notice => wakes.push(notice));
+  try {
+    wakes.length = 0;
+    (t.manager as any).announce(t.manager.get(t.c), "completed", "done", 1001);
+    assert.equal(t.manager.pendingNotices().some(n => n.id === t.c), false, "B is live: B drains it");
+    assert.equal(wakes.length, 0, "the root is not woken for it");
+    await t.stopOnly(t.b);
+    assert.deepEqual(t.manager.pendingNotices().filter(n => n.id === t.c).map(n => n.kind), ["completed"]);
+    assert.ok(wakes.length > 0, "the root is woken once B is gone");
+  } finally { await t.cleanup(); }
+});
+
+test("a delegated call still running when its caller exits is cancelled", async () => {
+  const t = await tree();
+  try {
+    const call = new AbortController();
+    (t.manager as any).callerCalls.set(t.b, new Set([call]));
+    await t.stopOnly(t.b);
+    assert.equal(call.signal.aborted, true);
+  } finally { await t.cleanup(); }
+});
+
+test("a subtree abort or close reports descendants it could not confirm", async () => {
+  const t = await tree();
+  const manager = t.manager as any;
+  try {
+    const abortOne = manager.abortOne.bind(manager);
+    manager.abortOne = async (record: AgentRecord) => { if (record.id === t.c) throw new Error("abort timed out"); return abortOne(record); };
+    const aborted = await t.manager.abort(t.a) as { subtreeFailures?: string[] };
+    assert.deepEqual(aborted.subtreeFailures, [`${t.c}: Error: abort timed out`]);
+    const closeOne = manager.closeOne.bind(manager);
+    manager.closeOne = async (record: AgentRecord, preserve: boolean) => { if (record.id === t.b) throw new Error("stop failed"); return closeOne(record, preserve); };
+    const closed = await t.manager.close(t.a) as { subtreeFailures?: string[] };
+    assert.deepEqual(closed.subtreeFailures, [`${t.b}: Error: stop failed`]);
+  } finally { delete manager.abortOne; delete manager.closeOne; await t.cleanup(); }
+});
+
+test("a delegated reply always fits one pipe frame", () => {
+  const small = { agents: [{ id: "a" }] };
+  assert.equal(fitDelegatedReply(small), small);
+  const big = { agents: Array.from({ length: 4 }, (_, i) => ({ id: `a${i}`, task: "\"quoted\"\n".repeat(4000) })) };
+  const fitted = fitDelegatedReply(big) as { truncated: boolean; preview: string };
+  assert.equal(fitted.truncated, true);
+  assert.ok(Buffer.byteLength(JSON.stringify({ id: 1, success: true, data: fitted })) < 64 * 1024);
 });

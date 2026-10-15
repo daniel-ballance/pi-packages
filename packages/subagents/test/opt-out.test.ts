@@ -50,6 +50,7 @@ test("unflagged startup registers the existing tools once", () => {
     on(name: string, handler: Function) { hooks.set(name, [...hooks.get(name) ?? [], handler]); },
     registerTool(tool: { name: string }) { tools.push(tool.name); },
     registerCommand(name: string) { commands.push(name); },
+    events: { on: () => () => {} },
   } as unknown as ExtensionAPI);
   const start = hooks.get("session_start")![0];
   const ctx = { mode: "print" } as ExtensionContext;
