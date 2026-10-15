@@ -5,13 +5,19 @@ import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
-const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "self-reload", "subagents", "web-search"];
+const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "pistack", "self-reload", "subagents", "todo", "web-search"];
 const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
 const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
-const expectedSkills = [...engineeringSkills, "subagents", "workflows"].sort();
+// pistack's generated skills join the collection, except its tdd: agent-skills' tdd
+// already has that name, and poteto-mode refers to the skill only by name.
+const pistackSkills = readdirSync(join(root, "packages/pistack/skills"), { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/pistack/skills", entry.name, "SKILL.md")) && entry.name !== "tdd")
+  .map(entry => entry.name);
+const expectedSkills = [...engineeringSkills, "subagents", "workflows", ...pistackSkills].sort();
 
 async function load(source: string, base = root) {
   const temp = await mkdtemp(join(tmpdir(), "pi-package-discovery-"));
@@ -134,24 +140,23 @@ test("pnpm production workspace resolves every extension without development dep
 });
 
 test("individual packages still discover their public resources", async () => {
-  for (const name of collectionExtensions) {
+  for (const name of collectionExtensions.filter(name => name !== "pistack")) {
     const result = await load(join(root, "packages", name));
     assert.deepEqual(result.extensions, [`packages/${name}/extensions/${name}/index.ts`]);
     assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
   }
   assert.deepEqual((await load(join(root, "packages/agent-skills"))).skills, engineeringSkills);
-  // pistack is generated: every emitted SKILL.md must load under its directory name.
+  // pistack is generated: every emitted SKILL.md, its own tdd included, must load
+  // under its directory name when the package is installed on its own.
   const pistackDir = join(root, "packages/pistack/skills");
-  const pistackSkills = [];
+  const ownSkills = [];
   for (const entry of await readdir(pistackDir, { withFileTypes: true })) {
-    if (entry.isDirectory() && await stat(join(pistackDir, entry.name, "SKILL.md")).then(() => true, () => false)) pistackSkills.push(entry.name);
+    if (entry.isDirectory() && await stat(join(pistackDir, entry.name, "SKILL.md")).then(() => true, () => false)) ownSkills.push(entry.name);
   }
-  assert.ok(pistackSkills.length > 0);
+  assert.ok(ownSkills.includes("tdd"));
   const pistack = await load(join(root, "packages/pistack"));
-  assert.deepEqual(pistack.skills, pistackSkills.sort());
+  assert.deepEqual(pistack.skills, ownSkills.sort());
   assert.deepEqual(pistack.extensions, ["packages/pistack/extensions/pistack/index.ts"]);
-  // Opt-in packages outside the collection manifest still load on their own.
-  assert.deepEqual((await load(join(root, "packages/todo"))).extensions, ["packages/todo/extensions/todo/index.ts"]);
 });
 
 test("every package has resource directories and packs its declared extension implementation", async () => {

@@ -57,7 +57,7 @@ no longer declared next to T3's.
 
 ## Install
 
-Not part of the collection manifest. Install the package on its own:
+The collection installs it. To install it without the rest of the collection:
 
 ```sh
 pi install /path/to/pi-packages/packages/todo
