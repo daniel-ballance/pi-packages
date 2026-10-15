@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Launch each Child with `--models <its model>`, so the user's `enabledModels` setting no longer prints "No models match pattern" warnings for providers the Child does not load.
 - Make the built-in policy (used only when no `subagents.json` exists) work for multi-model workflows with no setup: a menu across the common providers, dropping unreachable entries without diagnostics; `todo` and the delegation tools; `maxDepth` 2; bounded wake loops; six live Children; and the collection's `claude-subscription` provider when it is installed beside this package. A user's own file still keeps every optional field off until it is set.
 - Mark a catalog model whose provider an extension registered, such as `claude-subscription`, with `requiresExtension` unless `providerExtensions` maps it, and refuse a spawn of it that selects no extension. Children start with `--no-extensions`, so such a Child previously failed at launch with "model not found".
 - Answer `subagents:catalog` requests on Pi's event bus with the usable models, so other extensions' commands (which cannot call tools) can offer only models a Child may use.
