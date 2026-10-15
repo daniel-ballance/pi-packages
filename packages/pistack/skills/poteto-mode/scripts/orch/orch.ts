@@ -583,6 +583,6 @@ export async function main(
   }
 }
 
-if (import.meta.filename === process.argv[1]) {
+if (process.argv[1] && import.meta.filename === (await import("node:fs")).realpathSync(process.argv[1])) {
   process.exitCode = await main(process.argv.slice(2));
 }

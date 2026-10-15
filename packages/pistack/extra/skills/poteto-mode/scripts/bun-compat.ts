@@ -14,7 +14,11 @@ export const Bun = {
   spawn(command: readonly string[], options: Options = {}) {
     const [file, ...args] = command;
     const child = nodeSpawn(file!, args, { cwd: options.cwd, env: options.env as NodeJS.ProcessEnv | undefined, stdio: "ignore" });
-    const exited = new Promise<number | null>(resolve => child.on("exit", code => resolve(code)));
+    // Bun throws when the executable is missing; Node reports it asynchronously.
+    const exited = new Promise<number | null>((resolve, reject) => {
+      child.once("exit", code => resolve(code));
+      child.once("error", reject);
+    });
     return { pid: child.pid, exited };
   },
 };

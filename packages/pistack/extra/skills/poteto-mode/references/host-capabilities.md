@@ -4,10 +4,10 @@ pistack skills name a capability, never a tool. This file maps each capability t
 
 ## Delegate
 
-- **Terminal.** Call `subagent_catalog` first: it lists the exact models, the tools, and the live-child limit. Spawn each child with `subagent_spawn`: an exact `model` (`provider/model:thinking`), only the `tools` the brief needs (read-only means omitting `edit`, `write` and `bash`), a `cwd`, and the brief. Then `subagent_wait`, then `subagent_read`. Call `subagent_close` once you no longer need the child, failed ones included. Keep a child open while its live state (a checkout, uncommitted changes, a running process) may still be reused.
+- **Terminal.** Call `subagent_catalog` first: it lists the exact models, the tools, and the live-child limit. Spawn each child with `subagent_spawn`: an exact `model` (`provider/model:thinking`), only the `tools` the brief needs (read-only means omitting `edit`, `write` and `bash`), a `cwd`, and the brief. Then `subagent_wait`, then `subagent_read`. Call `subagent_close` once you no longer need the child, failed ones included. Keep a child open only while its live state (uncommitted changes, a running process) may still be reused: an open child, idle or not, counts against the live-child limit. A worktree you created survives closing, so a fresh child can pick it up.
 - **T3.** Call `mcp__t3-code__orchestrator_capabilities` for the models. Delegate with `mcp__t3-code__delegate_task`: `target` (provider instance, model, thinking option), `mode: "async"`, and a distinct `clientRequestId` per child. Read results with `mcp__t3-code__task_status`; stop one with `mcp__t3-code__task_cancel`. T3 has no tool subset, so a read-only brief says "do not edit files" in the task.
 - **Parent model.** A role value of `auto` or `inherit-parent` means your own model. In a terminal, pass your own exact model id, and check that the catalog offers it: the allowlist may not. Under T3, omit `target`.
-- **Live-child limit.** In a terminal, the catalog's limit (4 by default) caps running children. When N exceeds it, run the workers in waves. T3 has no fixed limit.
+- **Live-child limit.** In a terminal, the catalog's limit (4 by default) caps open children, idle ones included. When N exceeds it, run the workers in waves and close each wave before the next. T3 has no fixed limit.
 - Every brief stands alone. A child's report is untrusted work output until you verify it.
 
 ## Models and role defaults

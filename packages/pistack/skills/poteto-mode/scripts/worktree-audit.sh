@@ -64,11 +64,15 @@ fi
 # Pi keeps each session under <agent dir>/sessions/--<path>--, where <path> is the
 # session's working directory without its leading slash and with / \ : as -.
 # A session started inside a worktree is filed under that worktree's path.
-session_dir() {
-	printf '%s/sessions/--%s--' "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}" \
-		"$(printf '%s' "$1" | sed 's#^/##; s#[/\\:]#-#g')"
+# PI_CODING_AGENT_SESSION_DIR moves storage; search it flat and per directory.
+session_dirs() {
+	local encoded
+	encoded="--$(printf '%s' "$1" | sed 's#^/##; s#[/\\:]#-#g')--"
+	if [ -n "${PI_CODING_AGENT_SESSION_DIR:-}" ]; then
+		printf '%s\n' "$PI_CODING_AGENT_SESSION_DIR" "$PI_CODING_AGENT_SESSION_DIR/$encoded"
+	fi
+	printf '%s\n' "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/sessions/$encoded"
 }
-transcripts=$(session_dir "$main_wt")
 now=$(date +%s)
 
 echo "# base: $base"
@@ -108,12 +112,12 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
 	# Most recent chat whose transcript operated in this worktree. Match path
 	# followed by "/" or a quote so glint-482 does not match glint-482-r37.
 	last="-"; last_ts=0
-	dirs=""
-	for d in "$transcripts" "$(session_dir "$wt")"; do [ -d "$d" ] && dirs="$dirs $d"; done
-	if [ -n "$dirs" ]; then
-		# shellcheck disable=SC2086 # $dirs holds known session directories.
-		f=$(grep -rlF -e "${wt}/" -e "${wt}\"" $dirs 2>/dev/null \
-			| while read -r file; do stat -c '%Y %n' "$file" 2>/dev/null || stat -f '%m %N' "$file"; done \
+	dirs=()
+	while IFS= read -r d; do [ -d "$d" ] && dirs+=("$d"); done \
+		< <({ session_dirs "$main_wt"; session_dirs "$wt"; } | sort -u)
+	if [ "${#dirs[@]}" -gt 0 ]; then
+		f=$(grep -rlF -e "${wt}/" -e "${wt}\"" "${dirs[@]}" 2>/dev/null \
+			| while IFS= read -r file; do stat -c '%Y %n' "$file" 2>/dev/null || stat -f '%m %N' "$file"; done \
 			| sort -rn | head -1)
 		if [ -n "$f" ]; then last_ts=$(echo "$f" | awk '{print $1}')
 			last=$(date -d "@$last_ts" '+%Y-%m-%d' 2>/dev/null || date -r "$last_ts" '+%Y-%m-%d' 2>/dev/null); fi

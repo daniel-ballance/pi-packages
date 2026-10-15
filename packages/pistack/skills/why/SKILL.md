@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Investigate the motivation and intent behind code. The companion `how` skill answers what the code does and how it works. `why` answers what forces led to its shape.
 
-Each spawn below names a role in the role defaults and a default. Use that role's model, or the default if no role default is set. For `auto` or `inherit-parent`, use your own model (**Parent model** under **Delegate**). Resolve the model per **Models and role defaults** in the [host capabilities](../poteto-mode/references/host-capabilities.md). If the catalog does not offer it, use the default and say so. If it does not offer the default either, use the closest offered model of the same family. Pick each subagent's reasoning level for the job, per the Subagents section of the **poteto-mode** skill.
+Each spawn below names a role in the role defaults and a default. Use that role's model, or the default if no role default is set. For `auto` or `inherit-parent`, use your own model (**Parent model** under **Delegate**). Resolve the model per **Models and role defaults** in the [host capabilities](../poteto-mode/references/host-capabilities.md). If the catalog does not offer it, use the default and say so; if it does not offer the default either, follow that section's fallback. Pick each subagent's reasoning level for the job, per the Subagents section of the **poteto-mode** skill.
 
 Delegate every spawn per **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md), with the MCP tools it needs. Leave out `edit` and `write`: investigators shouldn't write anything, but the MCP-backed investigators and the synthesizer's citation spot-checks need MCP access.
 

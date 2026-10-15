@@ -13,13 +13,20 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // Bun's toEqual ignores undefined properties and does not compare prototypes.
 function plain(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(plain);
+  if (value instanceof Error) return { name: value.name, message: value.message, ...plainFields(value) };
   if (!isRecord(value) || value instanceof Date || value instanceof RegExp || value instanceof Map || value instanceof Set) return value;
+  return plainFields(value);
+}
+
+function plainFields(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined).map(([key, entry]) => [key, plain(entry)]));
 }
 
+const special = (value: unknown) => value instanceof Date || value instanceof RegExp || value instanceof Map || value instanceof Set || value instanceof Error;
+
 function matches(actual: unknown, expected: unknown): boolean {
   if (Array.isArray(expected)) return Array.isArray(actual) && actual.length === expected.length && expected.every((entry, index) => matches(actual[index], entry));
-  if (isRecord(expected) && !(expected instanceof Date) && !(expected instanceof RegExp)) {
+  if (isRecord(expected) && !special(expected)) {
     return isRecord(actual) && Object.entries(expected).every(([key, entry]) => matches(actual[key], entry));
   }
   try { assert.deepStrictEqual(plain(actual), plain(expected)); return true; } catch { return false; }
