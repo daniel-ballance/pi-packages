@@ -152,3 +152,19 @@ test("hand-written extras are copied into the output and still linted", () => {
     assert.throws(() => generate({ packageDir: dirty.root, outDir: dirty.out }), /skills\/demo\/references\/contract\.md:1: Task tool/);
   } finally { dirty.dispose(); }
 });
+
+test("a section rule matches the heading after token rewrites, and hashes the upstream heading", () => {
+  const { root, out, read, dispose } = fixture({
+    "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\n---\n\nUse the Task tool.\n\n## Run /demo\n\nCursor.\n",
+    "rules/tokens.json": JSON.stringify([
+      { id: "task-tool", min: 1, find: "the Task tool", replace: "a child" },
+      { id: "skill-name", min: 1, find: "^name: Demo$", flags: "m", replace: "name: demo" },
+      { id: "slash", min: 1, find: "/demo\\b", replace: "/skill:demo" },
+    ]),
+    "rules/sections.json": JSON.stringify([{ file: "skills/demo/SKILL.md", heading: "## Run /skill:demo", upstreamHeading: "## Run /demo", overlay: "demo/subagents.md", upstream: "2990d269bc84" }]),
+  });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.match(read("skills/demo/SKILL.md"), /## Subagents\n\nPi delegation\.\n$/);
+  } finally { dispose(); }
+});

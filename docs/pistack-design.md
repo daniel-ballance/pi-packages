@@ -449,6 +449,14 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
    rules are too coarse and need refining before the tree is committed; the
    target is that token rewrites and section overlays cover nearly everything
    and patches stay in the single digits.
+
+   **Measured 2026-10-15 (first full generation):** 118 token rules (34 global,
+   84 scoped to one file's sentence), 5 section overlays, **0 patches**. Of 112
+   emitted upstream files, 55 are translated and 57 pass verbatim; the coupling
+   lint and `lint-skill` (0 errors) are clean. The file-scoped count is the cost
+   of upstream restating Cursor mechanics in prose; each such rule is a tripwire,
+   so an upstream rewording fails loudly instead of leaking a Cursor-ism.
+   `make-bot-ui` (Cursor's Grok Bot routines) is excluded with `automations/benny`.
 9. **Mode name.** Keep `poteto-mode` (upstream attribution, `/skill:poteto-mode`)
    or rename (`/skill:pistack`)? A rename is one token rule either way.
 

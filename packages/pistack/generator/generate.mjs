@@ -87,12 +87,12 @@ export function sectionHash(text, heading) {
 }
 
 function applySections(files, upstream, sections, overlaysDir, problems) {
-  for (const { file, heading, overlay, upstream: expected } of sections) {
+  for (const { file, heading, upstreamHeading = heading, overlay, upstream: expected } of sections) {
     const text = files.get(file);
     if (typeof text !== "string") { problems.push(`section rule: ${file} is not an emitted text file`); continue; }
     const lines = text.split("\n"), section = findSection(lines, heading);
     if (section.error) { problems.push(`section rule: ${file}: heading "${heading}" ${section.error}. Upstream changed the section.`); continue; }
-    const actual = sectionHash(upstream.get(file), heading);
+    const actual = sectionHash(upstream.get(file), upstreamHeading);
     if (actual !== expected) {
       problems.push(`section rule: ${file}: section "${heading}" changed upstream (was ${expected}, now ${actual}). Review the overlay, then update its hash.`);
       continue;

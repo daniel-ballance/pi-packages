@@ -12,6 +12,7 @@
   ],
   "files": [
     "extensions",
+    "agents",
     "skills",
     "prompts",
     "themes",
@@ -25,10 +26,18 @@
     "test": "node --test test/*.test.mjs"
   },
   "pi": {
-    "extensions": ["./extensions/*/index.ts"],
-    "skills": ["./skills"],
-    "prompts": ["./prompts/**/*.md"],
-    "themes": ["./themes/**/*.json"]
+    "extensions": [
+      "./extensions/*/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts/**/*.md"
+    ],
+    "themes": [
+      "./themes/**/*.json"
+    ]
   },
   "pistack": {
     "upstream": "cursor/plugins@e5136d82418d2db3165ea1050d17577cd618cc05 pstack 0.15.25"

@@ -43,8 +43,10 @@ Applied in this order; the same upstream and rules give byte-identical output.
    then apply in order, so a later rule sees an earlier rule's output. `min` is
    a tripwire: a rule matching fewer times fails generation with its id, which
    means upstream reworded the text.
-2. **Section replacements** (`rules/sections.json`): `{file, heading, overlay,
-   upstream}`. The section runs from the exact heading line to the next heading
+2. **Section replacements** (`rules/sections.json`): `{file, heading,
+   upstreamHeading?, overlay, upstream}`. `heading` is the line as it reads after
+   token rewrites; `upstreamHeading` is the raw upstream line when a token rule
+   changed it. The section runs from the exact heading line to the next heading
    of the same or a higher level. The overlay replaces it whole, heading
    included. `upstream` is the first 12 hex digits of the SHA-256 of the
    untranslated upstream section; when upstream edits the section, generation
@@ -70,6 +72,14 @@ corrected rule, never an edit to the output.
 - A recurring upstream sentence gets one global rule, not one per skill.
 - Default model hints such as `claude-opus-5-5-xhigh` stay as written; the
   capabilities reference explains how to resolve them on Pi.
+- A file-specific rule must come before any global rule that rewrites part of
+  its text; the slash-command rule (`/name` to `/skill:name`) runs last.
+- Write links relative to the skill directory, not the file: Pi resolves a
+  skill's relative paths from its directory (`docs/skills.md`), and `lint-skill`
+  checks them the same way. From `skills/poteto-mode/playbooks/x.md` the
+  capabilities reference is `references/host-capabilities.md`.
+- `lint-skill` warnings about orphan resources are expected: upstream reaches
+  playbooks and references by naming convention. Errors fail the check.
 
 ## Updating upstream
 

@@ -6,8 +6,12 @@ skills for rigorous, parallel agent work. pistack is generated from the vendored
 upstream and translated for Pi in a terminal and for Pi launched by T3 Code.
 Maintainers: see [AGENTS.md](AGENTS.md).
 
-**Status:** generator skeleton. Only `swarm` is emitted so far; the full tree
-follows.
+**Status:** every upstream skill, playbook, principle and agent recipe is
+generated, except `make-bot-ui` (Cursor's Grok Bot routines). Not yet included:
+the helper scripts under `skills/poteto-mode/scripts/` (`orch`, `watch-pr`,
+`check-plan`, `worktree-audit`), upstream's `docs/guide` and `automations/benny`.
+Until they are, playbooks that run one (orchestrate, babysit, shipping,
+multi-phase plan, worktree cleanup) name a file this package does not ship.
 
 ## Install
 

@@ -39,6 +39,10 @@ Ask only for a product or preference call no experiment can settle. Use `ask_use
 
 Use the `todo` tool when it exists. Without it, keep a Markdown checklist in your reply and update it as steps change. Never delete a step; mark it skipped with a reason.
 
+## Drive the app
+
+Prove a change on the real surface, the way a user would. Use the project's verification skill (a `verify-*` skill; create one with `/skill:create-verification-skill`) or its existing harness. Otherwise drive the surface directly: a CLI or TUI through `bash`, a web UI through a browser driver such as a Playwright MCP server, a macOS app through the `computer-use` package where installed. Under T3, `mcp__t3-code__preview_*` drive a web preview. A surface you cannot drive is a risk you report, not a pass.
+
 ## Visuals
 
 - **Terminal.** Write the file and give its path.
