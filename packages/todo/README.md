@@ -43,11 +43,12 @@ same way.
 ## Interfaces
 
 - **Terminal (TUI):** a widget above the editor shows the list while any item is
-  open, one short line per item (notes stay in the tool result), and stored
-  entries render in the transcript. When a run ends with an
-  item still `in_progress`, a warning names it.
+  open, one short line per item (notes stay in the tool result). In the
+  transcript each change is one tool-call line, such as
+  `Item 3 is done. · 3/7 resolved`; expand it to see the whole list. When a run
+  ends with an item still `in_progress`, a warning names it.
 - **T3 Code and other RPC clients:** the tool result text is complete on its
-  own; widgets and transcript renderers are additions a client may ignore.
+  own; the widget and the compact rendering are additions a client may ignore.
 - **Without UI** (print mode), nothing touches the UI; results are unchanged.
 
 Under T3 Code the tool stays active, because T3 gives Pi no todo tool of its
