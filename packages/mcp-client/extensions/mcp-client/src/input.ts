@@ -52,6 +52,7 @@ export function inputHandler(
     params: ObjectValue,
     signal?: AbortSignal,
   ): Promise<ObjectValue> => {
+    const deadline = performance.now() + config.timeout;
     const ctx = typeof context === 'function' ? context() : context;
     signal = AbortSignal.any([
       AbortSignal.timeout(config.timeout),
@@ -89,15 +90,17 @@ export function inputHandler(
             {
               signal,
               timeout: config.timeout,
+              deadline,
             },
             { grants, report },
           ),
         );
       } catch (error) {
+        const aborted = signal.aborted || performance.now() >= deadline;
         report({
-          decision: signal.aborted ? 'abort' : 'reject',
+          decision: aborted ? 'abort' : 'reject',
           source: 'human',
-          reason: signal.aborted
+          reason: aborted
             ? 'aborted'
             : error instanceof RpcError
               ? error.code === -32601
