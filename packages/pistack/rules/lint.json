@@ -1,0 +1,15 @@
+{
+  "deny": [
+    "Task tool",
+    "subagent_type",
+    "run_in_background",
+    "environment: \"cloud\"",
+    "cloud_base_branch",
+    "AskQuestion",
+    ".cursor",
+    ".mdc",
+    "generalPurpose",
+    "cursor-team-kit",
+    "bun "
+  ]
+}

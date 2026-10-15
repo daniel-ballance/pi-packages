@@ -1,0 +1,36 @@
+{
+  "name": "pistack",
+  "version": "0.1.0",
+  "description": "The Pi edition of Cursor's pstack: router mode, playbooks, principles and routed skills, generated from the vendored upstream and translated for Pi in a terminal and under T3 Code.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "keywords": [
+    "pi-package",
+    "skills"
+  ],
+  "files": [
+    "extensions",
+    "skills",
+    "prompts",
+    "themes",
+    "AGENTS.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "sync": "git -C ../.. submodule update --init packages/pistack/vendor/pstack && node generator/generate.mjs",
+    "check": "node generator/generate.mjs --check && node generator/lint-skills.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "pi": {
+    "extensions": ["./extensions/*/index.ts"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
+  },
+  "pistack": {
+    "upstream": "cursor/plugins@e5136d82418d2db3165ea1050d17577cd618cc05 pstack 0.15.25"
+  }
+}

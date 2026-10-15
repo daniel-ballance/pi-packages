@@ -1,0 +1,8 @@
+{
+  "vendor": "vendor/pstack/pstack",
+  "map": [
+    { "from": "skills/swarm/", "to": "skills/swarm/" },
+    { "from": "LICENSE", "to": "LICENSE" }
+  ],
+  "exclude": []
+}

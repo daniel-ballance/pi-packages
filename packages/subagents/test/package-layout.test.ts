@@ -140,6 +140,14 @@ test("individual packages still discover their public resources", async () => {
     assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
   }
   assert.deepEqual((await load(join(root, "packages/agent-skills"))).skills, engineeringSkills);
+  // pistack is generated: every emitted SKILL.md must load under its directory name.
+  const pistackDir = join(root, "packages/pistack/skills");
+  const pistackSkills = [];
+  for (const entry of await readdir(pistackDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && await stat(join(pistackDir, entry.name, "SKILL.md")).then(() => true, () => false)) pistackSkills.push(entry.name);
+  }
+  assert.ok(pistackSkills.length > 0);
+  assert.deepEqual((await load(join(root, "packages/pistack"))).skills, pistackSkills.sort());
 });
 
 test("every package has resource directories and packs its declared extension implementation", async () => {
