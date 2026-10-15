@@ -1,6 +1,6 @@
 # Configuring `subagents.json`
 
-This reference describes this package's policy, not Pi's provider registry or global settings. See the [package README](../../../README.md) for the complete contract.
+This reference describes this package's policy, not Pi's provider registry or global settings. See the [package README](../../README.md) for the complete contract.
 
 ## Scope and precedence
 
@@ -23,7 +23,7 @@ A project override must restate every capability it needs from the global config
 | `version` | Required, currently `1`. |
 | `models` | Required array of `{ "id": "provider/model:thinking", "description": "optional guidance" }`. Exact identities, no aliases/fallbacks. |
 | `tools` | Allowed tool names; omitted means none. Spawn still chooses an explicit subset. Recursive `subagent_*` tools are always forbidden. |
-| `extensions`, `skills`, `promptTemplates`, `themes` | Allowed explicit resource **files**; omitted means none. Extensions also accept the three [managed built-in identifiers](builtins.md). Not packages, globs, or directories. |
+| `extensions`, `skills`, `promptTemplates`, `themes` | Allowed explicit resource **files**; omitted means none. Extensions also accept the three [managed built-in identifiers](reference/builtins.md). Not packages, globs, or directories. |
 | `alwaysExtensions`, `alwaysTools` | Entries from `extensions`/`tools` (same strings) added to every child's composition without a parent selection; omitted means none. An always-loaded extension's tools stay inactive unless also selected or listed in `alwaysTools`. Any unavailable always-on entry disables spawning (see diagnostics). |
 | `systemPrompt`, `appendSystemPrompt` | Allow replacing/appending system-prompt text; omitted means false. Omit both spawn arguments to keep Pi's normal prompt behavior. |
 | `contextFiles` | Permit normal AGENTS.md/CLAUDE.md discovery; omitted means false. Children may opt out. This is distinct from the system prompt. |
@@ -32,8 +32,8 @@ A project override must restate every capability it needs from the global config
 | `peerMessageLimit` | Integer 0–1000; default 0 disables peer messaging. Positive value caps each directional allowance. Also allowlist `peer_send` and explicitly select it in both participating children. Parent must then connect the pair; no implicit links. |
 
 | `providerExtensions` | Optional provider ID → explicit allowlisted extension file; composition must also select that file. |
-| `childSettings` | Optional codemode mode/budget overrides and cache-warming suppression; see [built-ins](builtins.md). |
-| `mcp` | Optional native MCP server/raw-tool grants and explicit credential inheritance consent; see [built-ins](builtins.md). |
+| `childSettings` | Optional codemode mode/budget overrides and cache-warming suppression; see [built-ins](reference/builtins.md). |
+| `mcp` | Optional native MCP server/raw-tool grants and explicit credential inheritance consent; see [built-ins](reference/builtins.md). |
 
 Unknown policy fields fail validation. There are no `profiles`, per-model tool permissions, routing rules, cost ceilings, benchmark-score fields or automatic escalation settings. Peer-message counts bound exchanges, not token/cost usage; parent-only renewal can grant further exchanges. Descriptions are optional advisory text, not executable policy.
 
@@ -52,13 +52,13 @@ Each example is a separate whole policy, not a fragment to merge automatically:
 
 ### Global: conservative exploration
 
-[global-readonly.subagents.json](../examples/global-readonly.subagents.json)
+[global-readonly.subagents.json](examples/global-readonly.subagents.json)
 
 Suggested destination: `<Pi agent directory>/subagents.json`. Offers one exploration model and read/search tools, no shell/edit/write tools, two live children, and cwd limited to the launch tree. This reduces permitted actions; it is **not** a sandbox or a guarantee that arbitrary trusted code is read-only.
 
 ### Trusted project: exploration plus implementation
 
-[project-development.subagents.json](../examples/project-development.subagents.json)
+[project-development.subagents.json](examples/project-development.subagents.json)
 
 Suggested destination: `<project launch cwd>/.pi/subagents.json`. Offers separate exploration and harder-reasoning entries with editing/testing tools. All listed models are permitted to select any listed tool; their descriptions recommend usage, not enforce roles. This example deliberately restates tools and permissions because it replaces the global policy entirely.
 
@@ -66,7 +66,7 @@ To enforce a read/search-only policy, remove write/edit/bash capabilities from t
 
 ### Local deployment: custom provider and limited concurrency
 
-[local-provider.subagents.json](../examples/local-provider.subagents.json)
+[local-provider.subagents.json](examples/local-provider.subagents.json)
 
 Suggested destination: whichever of the above scopes the user intends. Starts with one live child to avoid assuming a local server can sustain concurrency; measure before increasing it. Allows an explicit custom provider extension at `./providers/local-provider.ts`, relative to that chosen policy file. Replace the example resource path with the actual trusted extension file.
 
@@ -76,7 +76,7 @@ A quantized model served through a compatible API still needs working tool-call 
 
 ### Disable new delegation at a scope
 
-[disabled.subagents.json](../examples/disabled.subagents.json)
+[disabled.subagents.json](examples/disabled.subagents.json)
 
 An empty `models` array intentionally permits no spawning/resumption. It does not kill existing children; use explicit close for cleanup. This is different from removing the selected policy and revealing defaults underneath.
 

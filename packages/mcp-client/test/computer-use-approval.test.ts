@@ -589,3 +589,55 @@ test('timeout covering queue residence cannot produce late approval', async () =
   await assert.rejects(pending, /timeout/i);
   assert.equal(h.titles.length, 0);
 });
+
+test('expired queued approval cannot win a race with a delayed timeout callback', async () => {
+  let release!: () => void;
+  const blocked = withMcpDialog(() => new Promise<void>((resolve) => (release = resolve)));
+  await Promise.resolve();
+  const h = harness();
+  const handler = inputHandler(
+    'raw',
+    { ...config, timeout: 10 },
+    h.ctx,
+    undefined,
+    undefined,
+    undefined,
+    policy,
+    (event) => h.events.push(event),
+  );
+  const pending = handler('elicitation/create', request());
+  // Simulate a descheduled event loop. Release the queue in this turn, before
+  // overdue timer callbacks can run; its promise continuations run first.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30);
+  release();
+  await blocked;
+  await assert.rejects(pending, /timeout/i);
+  assert.equal(h.titles.length, 0);
+  assert.equal(h.events.at(-1)?.decision, 'abort');
+  await handler('elicitation/create', request());
+  assert.equal(h.titles.length, 1);
+  assert.ok(!h.events.some((event) => event.source === 'session'));
+});
+
+test('expired selection cannot store a grant before a delayed timeout callback', async () => {
+  const h = harness();
+  h.ctx.ui.select = async () => {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30);
+    return 'Allow for this session';
+  };
+  const handler = inputHandler(
+    'raw',
+    { ...config, timeout: 10 },
+    h.ctx,
+    undefined,
+    undefined,
+    undefined,
+    policy,
+    (event) => h.events.push(event),
+  );
+  await assert.rejects(handler('elicitation/create', request()), /timeout/i);
+  assert.equal(h.events.at(-1)?.decision, 'abort');
+  h.ctx.ui.select = async () => 'Decline';
+  assert.deepEqual(await handler('elicitation/create', request()), { action: 'decline' });
+  assert.ok(!h.events.some((event) => event.source === 'session'));
+});
