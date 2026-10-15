@@ -419,3 +419,13 @@ test("real manager streams activity; browsing preserves workflow and agent notic
     assert.equal(manager.activitySnapshot(agent.id).text, "");
   } finally { await workflows.shutdown(); await manager.shutdown(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test("a nested Child's row names the Child that delegated it", () => {
+  const source = demoSource();
+  const [coordinator] = source.agents().filter(agent => !agent.workflow);
+  const nested = { ...structuredClone(coordinator!), id: "nested", name: "Nested Worker", parentId: coordinator!.id, depth: 2 };
+  const agents = [...source.agents(), nested];
+  const page = inspectorPage({ ...source, agents: () => agents }, { kind: "overview", history: true });
+  const row = [...page.rows, ...inspectorPage({ ...source, agents: () => agents }, { kind: "overview" }).rows].find(r => r.id === "agent:nested")!;
+  assert.match(row.text, new RegExp(`^\\S+ ↳ nested worker · .* · from ${coordinator!.name.toLowerCase()} · `));
+});

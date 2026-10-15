@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { Duplex } from "node:stream";
-import { servePeer } from "./peer-transport.js";
+import { servePeer, type ManagementRequest } from "./peer-transport.js";
 
 /** A negative RPC acknowledgement proves the command was not accepted. */
 export class RpcRejectedError extends Error {}
@@ -38,12 +38,14 @@ export class RpcChild {
     event: (packet: Packet) => void; stderr: (text: string) => void;
     exit: (error?: Error) => void;
     peerRequest?: (packet: Packet) => Promise<unknown>;
+    manageRequest?: (request: ManagementRequest, signal: AbortSignal) => Promise<unknown>;
   }) {
     const env = { ...options.env };
     delete env.PI_SUBAGENT_PEER_FD;
-    if (options.peerRequest) env.PI_SUBAGENT_PEER_FD = "3";
+    const privatePipe = !!(options.peerRequest || options.manageRequest);
+    if (privatePipe) env.PI_SUBAGENT_PEER_FD = "3";
     this.child = spawn(options.executable, options.args, {
-      cwd: options.cwd, env, stdio: options.peerRequest ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
+      cwd: options.cwd, env, stdio: privatePipe ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
     }) as ChildProcessWithoutNullStreams;
     const fail = (error: Error) => {
@@ -80,11 +82,11 @@ export class RpcChild {
         resolve();
       });
     });
-    if (options.peerRequest) {
+    if (privatePipe) {
       const peer = this.child.stdio[3] as Duplex | null;
       try {
         if (!peer) throw new Error("Failed to attach managed peer pipe");
-        servePeer(peer, options.peerRequest);
+        servePeer(peer, options.peerRequest, options.manageRequest);
       } catch (error) { fail(error as Error); }
     }
   }

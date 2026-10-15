@@ -150,6 +150,8 @@ test("individual packages still discover their public resources", async () => {
   const pistack = await load(join(root, "packages/pistack"));
   assert.deepEqual(pistack.skills, pistackSkills.sort());
   assert.deepEqual(pistack.extensions, ["packages/pistack/extensions/pistack/index.ts"]);
+  // Opt-in packages outside the collection manifest still load on their own.
+  assert.deepEqual((await load(join(root, "packages/todo"))).extensions, ["packages/todo/extensions/todo/index.ts"]);
 });
 
 test("every package has resource directories and packs its declared extension implementation", async () => {

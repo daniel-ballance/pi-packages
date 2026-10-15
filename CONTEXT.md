@@ -19,8 +19,9 @@ The Pi session that composes, supervises and reads the results of Children.
 _Avoid_: orchestrator, controller, driver, main agent
 
 **Child**:
-A persistent Pi RPC process composed explicitly by the Parent and tracked by one
-Manager. It survives turns, keeps its own context, and is resumable.
+A persistent Pi RPC process composed explicitly by the Parent, or within
+`maxDepth` by another Child, and tracked by the one root Manager. It survives turns,
+keeps its own context, and is resumable.
 _Avoid_: subagent (that is the package and tool namespace, not the running thing),
 worker (workflows only), agent (ambiguous)
 
@@ -46,10 +47,19 @@ tools that exist, resource files that resolve, directories that are permitted.
 Distinct from the Allowlist, which is what was declared.
 _Avoid_: inventory, list, registry
 
-**Non-recursion guard**:
-The invariant that Children never receive `subagent_*` tools, even when declared.
-A Child cannot compose or manage other Children.
-_Avoid_: recursion limit, depth cap
+**Child guard**:
+The mandatory extension in every Child that keeps its active tools to the ones its
+composer selected and blocks every other tool at execution, `subagent_*` tools the
+Child was not given included. No policy can disable it.
+_Avoid_: sandbox, non-recursion guard (a Child may now delegate within `maxDepth`)
+
+**Delegation depth**:
+How far below the root Parent a Child sits; the root Parent's own Children have
+depth 1. The policy's `maxDepth` (default 1) bounds it. A Child above the deepest
+level may be given proxied delegation tools: it then composes Children of its own,
+but only through the one root Manager, only from the same Allowlist, and acts only
+on its own subtree.
+_Avoid_: recursion, nesting level, sub-agent of a sub-agent
 
 ### Lifecycle
 
@@ -144,6 +154,38 @@ A validation only a person can decide, recorded through `/workflows approve|reje
 There is deliberately no model-callable approval operation.
 _Avoid_: manual gate, approval step
 
+### Host parity
+
+**Host**:
+What launched Pi: a terminal (`cli`) or T3 Code (`t3`, detected by `T3_MCP_URL`).
+Packages ask the shared host helper, never the environment directly.
+_Avoid_: mode (Pi's `--mode rpc` is a transport; T3 also runs Pi over RPC), platform
+
+**Contract**:
+The host-neutral capability a skill is written against: delegate, wait, cancel,
+isolate in a worktree, wake, ask the human, track a todo. Skills name contracts and
+resolve them through one lookup reference, never a backend tool name inline.
+_Avoid_: interface, API
+
+**Backend**:
+The host-native tool that satisfies a Contract on one Host, such as `subagent_spawn`
+in a terminal or T3's `delegate_task` under T3. Each Contract has one Backend per
+Host; a gap on one Host is stated in the skill, not papered over.
+_Avoid_: adapter, driver, provider (Pi uses that word for model providers)
+
+**Duplicated primitive**:
+A tool whose Contract T3 already satisfies natively. Under T3 it is registered with
+`deferred` exposure: reachable through tool search and codemode, absent from the
+prompt. Under the CLI it is registered as usual.
+_Avoid_: hidden, disabled (both mean unreachable, which deferred is not)
+
+**Role default**:
+The model, with thinking level, that one pistack role uses unless the skill or the
+human says otherwise, kept in `pistack.json`. A hint for choosing a Composition's
+model, not a Composition: tools, resources and directories are still chosen per
+Child, and the Allowlist still bounds the model.
+_Avoid_: profile, preset (see Composition)
+
 ### Boundaries
 
 **Not a sandbox**:
@@ -168,5 +210,7 @@ _Avoid_: results, findings (use those for what the Parent has verified)
   inside a workflow Run. A manually spawned Child is a Child.
 - **"profile" / "role"** were considered and rejected. Composing a fixed profile
   caps what the Parent can build. The concept is **Composition**, chosen per Child.
+  pistack's **Role default** is narrower: a model hint per role, never a whole
+  Composition.
 - **"done"** conflated three different facts. Resolved: **Settled** (turn ended),
   **Accepted** (RPC queued), **Validated** (a Check passed). Say which one.
