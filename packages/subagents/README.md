@@ -109,7 +109,7 @@ Other extensions can read the usable models without a tool call: emit `{ reply }
 
 Unavailable entries are omitted, never silently substituted. Their names/reasons are shown to the **user** through `/subagents diagnostics`; the model-facing catalog contains only an omitted-entry count. If no model is usable, spawning is disabled until configuration/availability is fixed.
 
-Configured credentials do not guarantee a successful request: expired authentication, provider outages, remote entitlement problems, and resource load errors can still surface at launch/use. Custom provider models must also be configured in the child environment or supplied by an explicitly selected extension. The child must resolve the exact requested model/thinking selection; fallback is rejected before sending the task.
+Configured credentials do not guarantee a successful request: expired authentication, provider outages, remote entitlement problems, and resource load errors can still surface at launch/use. Custom provider models must also be configured in the child environment or supplied by an explicitly selected extension. A model whose provider an extension registered (for example `claude-subscription`) is marked `requiresExtension` in the catalog, and a spawn of it must select the provider's extension, because Children start with `--no-extensions`. Map the provider in `providerExtensions` to make that selection explicit and checked. The child must resolve the exact requested model/thinking selection; fallback is rejected before sending the task.
 
 ## Managed built-in extensions
 

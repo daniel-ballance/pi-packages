@@ -110,6 +110,8 @@ export interface PolicyEnvironment {
   cwd: string; agentDir: string; projectTrusted: boolean; guardPath: string;
   models: () => LocalModel[]; tools: () => string[];
   toolSources?: () => Record<string, string>;
+  /** Providers an extension registered in this session. Children start with --no-extensions, so they lack them. */
+  extensionProviders?: () => readonly string[];
 }
 export class SubagentPolicy {
   readonly source: string;
@@ -156,7 +158,11 @@ export class SubagentPolicy {
       if (!model || !model.thinkingLevels.includes(requested.thinking)) {
         this.diagnostics.push(`Unavailable model/authentication/thinking level: ${entry.id}`); return [];
       }
-      return [{ ...entry, input: model.input, contextWindow: model.contextWindow, maxTokens: model.maxTokens, cost: model.cost }];
+      // Children start with --no-extensions: a provider an extension registered exists in a
+      // Child only if the composition selects that extension.
+      const fromExtension = !providerFile && !!this.environment.extensionProviders?.().includes(requested.provider);
+      return [{ ...entry, input: model.input, contextWindow: model.contextWindow, maxTokens: model.maxTokens, cost: model.cost,
+        ...(fromExtension ? { requiresExtension: "Its provider comes from an extension: select that extension in extensions, or map the provider in providerExtensions." } : {}) }];
     });
     const knownTools = new Set(this.environment.tools());
     if (config.extensions.includes("builtin:codemode")) knownTools.add("codemode");
@@ -297,6 +303,9 @@ export class SubagentPolicy {
     }
     const providerFile = this.config!.providerExtensions?.[splitModel(selection.model).provider];
     if (providerFile && !(selection.extensions ?? []).includes(this.path(providerFile))) throw new Error("Model requires selecting its provider extension");
+    if (!providerFile && !(selection.extensions ?? []).some(e => !e.startsWith("builtin:")) && this.environment.extensionProviders?.().includes(splitModel(selection.model).provider)) {
+      throw new Error(`${selection.model} comes from a provider an extension registers, and Children start without extensions: select that extension, or ask the user to map the provider in providerExtensions.`);
+    }
     const mcpPolicy = this.config!.mcp ?? { servers: [], inheritCredentials: false };
     const servers = [...new Set(selection.mcpServers ?? [])].map(name => {
       const grant = mcpPolicy.servers.find(s => s.name === name);

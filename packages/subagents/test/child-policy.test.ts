@@ -89,3 +89,27 @@ test("alwaysExtensions and alwaysTools join every composition and must be availa
     assert.throws(() => policy.compile(root, { model: "test/stub:off", tools: [] }), /No spawnable/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("a model from an extension provider needs its extension selected, since Children start without extensions", () => {
+  const root = mkdtempSync(join(tmpdir(), "extension-provider-unit-"));
+  const provider = join(root, "provider.mjs");
+  writeFileSync(provider, "export default () => {}");
+  const model = (prov: string) => ({ provider: prov, id: "m", api: "test", input: ["text"], cost: {}, contextWindow: 1, maxTokens: 1, thinkingLevels: ["off"] });
+  const environment = (config: object) => {
+    writeFileSync(join(root, "subagents.json"), JSON.stringify({ version: 1, tools: ["read"], extensions: [provider], ...config }));
+    return new SubagentPolicy({ cwd: root, agentDir: root, projectTrusted: true, guardPath: "/guard.ts", tools: () => ["read"],
+      models: () => [model("bridge"), model("builtin")], extensionProviders: () => ["bridge"] });
+  };
+  try {
+    const unmapped = environment({ models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }] });
+    const catalog = unmapped.catalog().models;
+    assert.match(String((catalog.find(m => m.id === "bridge/m:off") as { requiresExtension?: string }).requiresExtension), /select that extension/);
+    assert.equal((catalog.find(m => m.id === "builtin/m:off") as { requiresExtension?: string }).requiresExtension, undefined);
+    assert.throws(() => unmapped.compile(root, { model: "bridge/m:off", tools: [] }), /comes from a provider an extension registers/);
+    assert.ok(unmapped.compile(root, { model: "bridge/m:off", tools: [], extensions: [provider] }), "selecting the extension is enough");
+    assert.ok(unmapped.compile(root, { model: "builtin/m:off", tools: [] }));
+    const mapped = environment({ models: [{ id: "bridge/m:off" }], providerExtensions: { bridge: provider } });
+    assert.equal((mapped.catalog().models[0] as { requiresExtension?: string }).requiresExtension, undefined);
+    assert.throws(() => mapped.compile(root, { model: "bridge/m:off", tools: [] }), /requires selecting its provider extension/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
