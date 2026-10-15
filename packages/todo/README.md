@@ -43,7 +43,8 @@ same way.
 ## Interfaces
 
 - **Terminal (TUI):** a widget above the editor shows the list while any item is
-  open, and stored entries render in the transcript. When a run ends with an
+  open, one short line per item (notes stay in the tool result), and stored
+  entries render in the transcript. When a run ends with an
   item still `in_progress`, a warning names it.
 - **T3 Code and other RPC clients:** the tool result text is complete on its
   own; widgets and transcript renderers are additions a client may ignore.

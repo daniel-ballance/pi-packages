@@ -69,6 +69,16 @@ export function formatItem(item: Item): string {
   return `${MARKS[item.state]} ${item.id}. ${item.text}${note}`;
 }
 
+/** A glanceable list for the widget: one line per item, notes left to the tool result. */
+export function formatWidget(list: TodoList, width = 100): string[] {
+  const total = counts(list);
+  const line = (item: Item) => {
+    const text = `${MARKS[item.state]} ${item.id}. ${item.text.replace(/\s+/g, " ")}`;
+    return text.length > width ? `${text.slice(0, width - 1)}…` : text;
+  };
+  return [`Todo: ${total.done + total.skipped}/${list.items.length} resolved`, ...list.items.map(line)];
+}
+
 export function formatList(list: TodoList): string {
   if (list.items.length === 0) return "Todo: no items";
   const total = counts(list);

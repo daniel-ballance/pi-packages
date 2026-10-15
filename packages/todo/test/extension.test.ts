@@ -70,7 +70,7 @@ test("the list is rebuilt from the active branch on start and on tree navigation
 test("the widget shows open work, clears when nothing is open, and no UI is touched without one", async () => {
   const h = harness();
   await h.call({ op: "set", items: ["Frame"] });
-  assert.deepEqual(h.ui.widgets.at(-1), ["todo", ["Todo: 0 done, 0 skipped, 0 in progress, 1 pending", "[ ] 1. Frame"]]);
+  assert.deepEqual(h.ui.widgets.at(-1), ["todo", ["Todo: 0/1 resolved", "[ ] 1. Frame"]]);
   await h.call({ op: "update", id: 1, state: "done" });
   assert.deepEqual(h.ui.widgets.at(-1), ["todo", undefined]);
   const headless = harness({ hasUI: false });

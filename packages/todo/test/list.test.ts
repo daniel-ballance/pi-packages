@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply, emptyList, formatList, parseOperation } from "../extensions/todo/src/list.js";
+import { apply, emptyList, formatList, formatWidget, parseOperation } from "../extensions/todo/src/list.js";
 
 function ok<T>(value: T): Exclude<T, { readonly error: string }> {
   if (typeof value === "object" && value !== null && "error" in value) assert.fail(String(value.error));
@@ -52,4 +52,18 @@ test("the plain-text list carries every item, its state and its note", () => {
     "[>] 3. Report",
   ].join("\n"));
   assert.equal(formatList(emptyList), "Todo: no items");
+});
+
+test("the widget shows one short line per item; notes stay in the tool result", () => {
+  const long = "Reproduce it yourself on the matching surface via the control skill, even when a protocol says to ask the user to reproduce it.";
+  const set = apply(emptyList, parseOperation({ op: "set", items: [long, "Plan the fix"] }) as never);
+  assert.ok("list" in set);
+  const updated = apply(set.list, parseOperation({ op: "update", id: 1, state: "done", note: "Reproduced via the CLI." }) as never);
+  assert.ok("list" in updated);
+  const lines = formatWidget(updated.list, 60);
+  assert.equal(lines[0], "Todo: 1/2 resolved");
+  assert.equal(lines.length, 3);
+  assert.ok(lines.every(line => line.length <= 60), JSON.stringify(lines));
+  assert.ok(lines[1]!.endsWith("…"));
+  assert.equal(lines.join("\n").includes("Reproduced via"), false);
 });

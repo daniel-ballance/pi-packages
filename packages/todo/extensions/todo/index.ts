@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-w
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { detectHost, registerHostAware } from "./src/host.js";
-import { apply, counts, emptyList, formatItem, formatList, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
+import { apply, counts, emptyList, formatItem, formatList, formatWidget, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
 
 const ENTRY = "todo";
 
@@ -34,7 +34,7 @@ export default function todo(pi: ExtensionAPI) {
 
   const showWidget = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
-    ctx.ui.setWidget(ENTRY, list.items.some(isOpen) ? formatList(list).split("\n") : undefined);
+    ctx.ui.setWidget(ENTRY, list.items.some(isOpen) ? formatWidget(list) : undefined);
   };
 
   const result = (change: string, error?: string) => ({
