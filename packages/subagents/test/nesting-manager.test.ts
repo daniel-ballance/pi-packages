@@ -1,0 +1,101 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { test } from "node:test";
+import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
+import { treeOrder } from "../extensions/subagents/src/inspector-data.js";
+
+const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
+
+// A coordinator A, its Child B, and B's Child C: the tree the root Manager keeps.
+async function tree(authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"]) {
+  const dir = await mkdtemp(join(tmpdir(), "subagent-nesting-"));
+  const manager = new SubagentManager(dir, () => {}, () => {}, 4, authorize);
+  const spawn = async (name: string, parentId?: string) => (await manager.spawn({ name, task: name, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId })).id;
+  const a = await spawn("A"), b = await spawn("B", a), c = await spawn("C", b);
+  // Stop only B, as if its process had exited: C stays live under a stopped intermediate.
+  const stopOnly = (id: string) => (manager as any).closeOne(manager.get(id), false);
+  return { dir, manager, a, b, c, stopOnly, async cleanup() { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); } };
+}
+
+test("closing a coordinator closes descendants below a stopped intermediate", async () => {
+  const t = await tree();
+  try {
+    await t.stopOnly(t.b);
+    assert.notEqual(t.manager.get(t.c).status, "stopped");
+    await t.manager.close(t.a);
+    for (const id of [t.a, t.b, t.c]) assert.equal(t.manager.get(id).status, "stopped", id);
+  } finally { await t.cleanup(); }
+});
+
+test("a coordinator and its subtree delegate nothing while it is being closed or cancelled", async () => {
+  const t = await tree();
+  try {
+    const open = (id: string) => (t.manager as any).assertDelegationOpen(t.manager.get(id));
+    open(t.c);
+    const closing = t.manager.close(t.b); // The fence is set before the first await.
+    assert.throws(() => open(t.b), /being cancelled or closed/);
+    assert.throws(() => open(t.c), /being cancelled or closed/);
+    open(t.a);
+    await closing;
+    assert.equal(t.manager.get(t.c).status, "stopped");
+  } finally { await t.cleanup(); }
+});
+
+test("a human hold covers the whole subtree, saved descendants included", async () => {
+  const t = await tree();
+  try {
+    await t.stopOnly(t.b);
+    await t.manager.intervene(t.a, "halt");
+    for (const id of [t.a, t.b, t.c]) assert.equal(t.manager.get(id).hold?.kind, "halt", id);
+    assert.equal(t.manager.get(t.b).hold?.outcome, "confirmed", "a saved conversation is held without a process");
+    // Releasing a descendant first does not free it while its coordinator is held.
+    t.manager.releaseHold(t.c);
+    await assert.rejects(t.manager.send(t.c, "more"), /under human halt hold; release it first/);
+    t.manager.releaseHold(t.a);
+    await assert.rejects(t.manager.resume(t.b, "go"), /under human halt hold/);
+  } finally { await t.cleanup(); }
+});
+
+test("a human kill of a coordinator kills live descendants and holds saved ones", async () => {
+  const t = await tree();
+  try {
+    await t.stopOnly(t.b);
+    await t.manager.intervene(t.a, "kill");
+    assert.equal(t.manager.get(t.c).hold?.kind, "kill");
+    assert.equal(t.manager.get(t.c).hold?.outcome, "confirmed");
+    assert.equal(t.manager.get(t.b).hold?.kind, "halt", "nothing to kill; the saved conversation is held");
+  } finally { await t.cleanup(); }
+});
+
+test("resume revalidates a nested Child at its own depth", async () => {
+  const depths: number[] = [];
+  const t = await tree((config, depth) => { depths.push(depth); return config; });
+  try {
+    await t.manager.close(t.a);
+    depths.length = 0;
+    await t.manager.resume(t.c);
+    assert.ok(depths.length && depths.every(depth => depth === 3), JSON.stringify(depths));
+  } finally { await t.cleanup(); }
+});
+
+test("a nested Child's input request reaches the root; its ordinary reports do not", async () => {
+  const t = await tree();
+  try {
+    const announce = (kind: string, cursor: number) => (t.manager as any).announce(t.manager.get(t.c), kind, "text", cursor);
+    announce("completed", 1001);
+    announce("input_requested", 1002);
+    const kinds = t.manager.pendingNotices().filter(notice => notice.id === t.c).map(notice => notice.kind);
+    assert.deepEqual(kinds, ["input_requested"]);
+  } finally { await t.cleanup(); }
+});
+
+test("inspector groups order each nested Child after its nearest listed ancestor", () => {
+  const agent = (id: string, parentId?: string) => ({ id, parentId }) as AgentRecord;
+  const everyone = [agent("x"), agent("a"), agent("b", "a"), agent("c", "b"), agent("d", "a"), agent("e", "z")];
+  const ids = (list: AgentRecord[]) => list.map(entry => entry.id);
+  assert.deepEqual(ids(treeOrder([everyone[3]!, everyone[0]!, everyone[1]!, everyone[4]!, everyone[5]!], everyone)), ["x", "a", "c", "d", "e"]);
+  assert.deepEqual(ids(treeOrder(everyone)), ["x", "a", "b", "c", "d", "e"]);
+});

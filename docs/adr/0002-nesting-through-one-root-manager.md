@@ -10,6 +10,6 @@ pistack's orchestrate playbook needs coordinator Children that delegate to Child
 ## Consequences
 
 - One Manager owns the tree, so `maxChildren` is the live cap for all levels together. A separate tree-wide `maxDescendants` field was not added: it would have duplicated `maxChildren`, or changed what that field means.
-- Close, abort, halt and kill cascade down a subtree, like T3's `task_cancel`.
-- Routine reports from a nested Child go to its own parent, which drains them with `subagent_wait` and `subagent_read`; they are pulled, not pushed, because pushing a report into a Child would look like a new assignment. Human-intervention notices always reach the root, as do reports from a Child whose parent stopped.
+- Close, abort, halt and kill cascade down the whole subtree, stopped descendants included, like T3's `task_cancel`. The subtree is fenced from delegating while a cascade runs, and a hold on any ancestor blocks a descendant.
+- Routine reports from a nested Child go to its own parent, which drains them with `subagent_wait` and `subagent_read`; they are pulled, not pushed, because pushing a report into a Child would look like a new assignment. Human-intervention notices and input requests always reach the root (only the root can answer a dialog), as do reports from a Child whose parent stopped.
 - Delegation tools are never always-on, never given to a Child at the deepest level, never given to workflow workers, and the peer, hold, resume, respond and workflow tools stay parent-only.

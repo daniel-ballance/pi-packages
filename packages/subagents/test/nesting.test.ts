@@ -46,6 +46,7 @@ test("maxDepth allows delegation tools only for Children above the deepest level
     assert.equal(coordinator.childPolicy?.toolSources.subagent_spawn, "/internal/child-guard.ts", "proxies come from the guard");
     assert.throws(() => p.compile(dirname(p), { model: "p/m:off", tools: ["subagent_spawn"] }, 2), /depth 2 cannot delegate: maxDepth is 2/);
     assert.ok(p.compile(dirname(p), { model: "p/m:off", tools: ["read"] }, 2), "a leaf without delegation tools is fine");
+    assert.throws(() => p.compile(dirname(p), { model: "p/m:off", tools: ["read"] }, 3), /No Child may run at depth 3: maxDepth is 2/);
   } finally { dispose(); }
 });
 

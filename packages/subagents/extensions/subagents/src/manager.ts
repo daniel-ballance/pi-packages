@@ -102,12 +102,23 @@ export class SubagentManager {
   /** Direct Children of id (records, live or not). */
   childrenOf(id: string) { return [...this.records.values()].filter(record => record.parentId === id); }
   /** Whether id is ancestor's Child, grandchild, or deeper. */
-  isDescendant(id: string, ancestor: string) {
-    for (let current = this.records.get(id)?.parentId; current; current = this.records.get(current)?.parentId) if (current === ancestor) return true;
-    return false;
+  isDescendant(id: string, ancestor: string) { return this.ancestorsOf(id).includes(ancestor); }
+  /** id's parent, grandparent, and so on up to a Child of the root Parent. */
+  private ancestorsOf(id: string) {
+    const ancestors: string[] = [];
+    for (let current = this.records.get(id)?.parentId; current && !ancestors.includes(current); current = this.records.get(current)?.parentId) ancestors.push(current);
+    return ancestors;
   }
+  /** Every record below id, live or not, deepest first. */
+  private subtree(id: string): AgentRecord[] {
+    return this.childrenOf(id).flatMap(child => [...this.subtree(child.id), child]);
+  }
+  /** Coordinators whose subtree is being cancelled or closed: they and their descendants delegate nothing meanwhile. */
+  private fenced = new Map<string, number>();
+  private fence(id: string) { this.fenced.set(id, (this.fenced.get(id) ?? 0) + 1); }
+  private unfence(id: string) { const n = (this.fenced.get(id) ?? 1) - 1; if (n) this.fenced.set(id, n); else this.fenced.delete(id); }
   readonly peers: PeerBroker;
-  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"]) => AgentRecord["config"], readonly peerMessageLimit = 0) {
+  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], readonly peerMessageLimit = 0) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     enforcePrivatePath(directory, 0o700, true);
     this.registry = join(directory, "registry.json");
@@ -198,8 +209,9 @@ export class SubagentManager {
   }
   private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
     // A nested Child reports to its own parent, which drains it with its proxied
-    // tools. Only human interventions, and Children whose parent stopped, reach the root.
-    if (kind !== "human_intervention" && record.parentId && this.children.has(record.parentId)) return;
+    // tools. Human interventions, input requests (only the root can answer them),
+    // and Children whose parent stopped reach the root.
+    if (kind !== "human_intervention" && kind !== "input_requested" && record.parentId && this.children.has(record.parentId)) return;
     if (kind !== "human_intervention" && (this.shuttingDown || this.workflowChildren.has(record.id) || record.observedCursors?.includes(cursor))) return;
     const key = `${record.id}:${cursor}:${kind}`;
     if (this.notices.has(key)) return;
@@ -304,7 +316,7 @@ export class SubagentManager {
     if (remaining === 1) this.reservations.delete(reservation);
     else this.reservations.set(reservation, remaining - 1);
   }
-  private preflight(config: AgentRecord["config"], overrides?: Record<string, string>, reservation?: SlotReservation, capacityReserved = false) {
+  private preflight(config: AgentRecord["config"], depth: number, overrides?: Record<string, string>, reservation?: SlotReservation, capacityReserved = false) {
     if (this.shuttingDown) throw new Error("Manager is shutting down");
     if (!capacityReserved) {
       if (reservation) {
@@ -314,7 +326,7 @@ export class SubagentManager {
       }
     }
     if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
-    const checked = this.authorize ? this.authorize(config) : config;
+    const checked = this.authorize ? this.authorize(config, depth) : config;
     if (!isAbsolute(checked.cwd) || !statSync(checked.cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");
     if ((checked.cliArgs ?? []).some(arg => RESERVED.has(arg.split("=")[0]))) throw new Error("cliArgs cannot override manager-owned RPC mode/session flags, print/export modes, or contain --");
     return checked;
@@ -348,6 +360,15 @@ export class SubagentManager {
   }
   private assertReleased(record: AgentRecord) {
     if (record.hold) throw new Error(`${record.id} is under human ${record.hold.kind} hold; parent must releaseHold explicitly.`);
+    // A held coordinator's subtree stays still even if a descendant's own hold was released first.
+    const held = this.ancestorsOf(record.id).find(id => this.records.get(id)?.hold);
+    if (held) throw new Error(`${record.id} is below ${held}, which is under human ${this.records.get(held)!.hold!.kind} hold; release it first.`);
+  }
+  /** A held Child, or one whose subtree is being cancelled or closed, cannot start or steer more work. */
+  private assertDelegationOpen(record: AgentRecord) {
+    this.assertReleased(record);
+    const fenced = [record.id, ...this.ancestorsOf(record.id)].find(id => this.fenced.has(id));
+    if (fenced) throw new Error(`Delegation refused: ${fenced} and the work it delegated are being cancelled or closed.`);
   }
   private beginAssignment(record: AgentRecord, task: string, id: string = randomUUID(), at = new Date().toISOString()) {
     record.assignment = { id, task, status: "running", at };
@@ -360,7 +381,7 @@ export class SubagentManager {
     const depth = parentId ? (this.get(parentId).depth ?? 1) + 1 : 1;
     if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
     // No record/session/log paths for requests rejected before any launch attempt.
-    const config = this.preflight(requested, env, reservation);
+    const config = this.preflight(requested, depth, env, reservation);
     if (reservation) this.claimSlot(reservation);
     const record: AgentRecord = {
       id, name, task, config, workflow, status: "stopped", ...(parentId ? { parentId, depth } : {}),
@@ -389,7 +410,7 @@ export class SubagentManager {
   private async start(record: AgentRecord, overrides?: Record<string, string>, capacityReserved = false) {
     this.assertReleased(record);
     if (this.children.has(record.id)) throw new Error(`${record.id} already has a process`);
-    const config = this.preflight(record.config, overrides, undefined, capacityReserved);
+    const config = this.preflight(record.config, record.depth ?? 1, overrides, undefined, capacityReserved);
     enforcePrivatePathIfPresent(record.logFile, 0o600, false);
     enforcePrivatePathIfPresent(record.stderrFile, 0o600, false);
     record.config = config;
@@ -429,7 +450,7 @@ export class SubagentManager {
       manageRequest: config.selection?.tools.some(isProxiedTool) && !record.workflow ? async request => {
         if (this.children.get(record.id) !== child) throw new Error("Stale child process");
         if (!this.management) throw new Error("Delegation is not available from this parent");
-        this.assertReleased(record); // A held Child cannot start or steer more work.
+        this.assertDelegationOpen(record);
         return this.management(record.id, request);
       } : undefined,
       event: packet => this.event(record, packet),
@@ -710,8 +731,16 @@ export class SubagentManager {
   }
   async abort(id: string) {
     const record = this.get(id);
-    // Cancelling a coordinator cancels the work it delegated.
-    for (const descendant of this.childrenOf(id)) if (this.children.has(descendant.id) && !this.aborting.has(descendant.id)) await this.abort(descendant.id).catch(() => {});
+    // Cancelling a coordinator cancels the work it delegated: fenced first, so it
+    // cannot delegate more meanwhile, then every live descendant, deepest first.
+    this.fence(id);
+    try {
+      for (const descendant of this.subtree(id)) if (this.children.has(descendant.id) && !this.aborting.has(descendant.id)) await this.abortOne(descendant).catch(() => {});
+      return await this.abortOne(record);
+    } finally { this.unfence(id); }
+  }
+  private async abortOne(record: AgentRecord) {
+    const id = record.id;
     const child = this.child(id);
     if (this.aborting.has(id)) throw new Error("Abort is already in progress");
     this.aborting.add(id);
@@ -732,10 +761,13 @@ export class SubagentManager {
     }
   }
   /** The hold is persisted synchronously before the hook or any asynchronous cancellation. */
-  async intervene(id: string, kind: InterventionKind, beforeCancel?: (record: AgentRecord, kind: InterventionKind) => void) {
+  private supersedes(record: AgentRecord, kind: InterventionKind) {
+    return !record.hold || (kind === "kill" && (record.hold.kind === "halt" || (record.hold.kind === "kill" && record.hold.outcome === "failed")));
+  }
+  async intervene(id: string, kind: InterventionKind, beforeCancel?: (record: AgentRecord, kind: InterventionKind) => void, nested = false) {
     if (kind !== "halt" && kind !== "kill") throw new Error("Invalid human intervention kind");
     const record = this.get(id);
-    if (record.hold && !(kind === "kill" && (record.hold.kind === "halt" || (record.hold.kind === "kill" && record.hold.outcome === "failed")))) throw new Error(`${id} is already under human ${record.hold.kind} hold`);
+    if (!this.supersedes(record, kind)) throw new Error(`${id} is already under human ${record.hold!.kind} hold`);
     const hold: HumanHold = { kind, at: new Date().toISOString(), outcome: "pending" };
     record.hold = hold;
     record.queuedAssignments = [];
@@ -752,7 +784,7 @@ export class SubagentManager {
         if (!child) throw new Error("No managed process attached; force termination cannot be confirmed. Inspect for orphaned work.");
         await child.kill();
       } else if (child) {
-        await this.abort(id); // Pi acknowledges abort only after its session becomes idle.
+        await this.abortOne(record); // Pi acknowledges abort only after its session becomes idle. Descendants are held below.
         if (this.children.get(id) !== child) throw new Error("Process exited before halt confirmation");
         const state = await child.request({ type: "get_state" });
         if (state.isStreaming) throw new Error("Abort acknowledged but child still reports streaming; cancellation unconfirmed");
@@ -782,9 +814,13 @@ export class SubagentManager {
     // Separate final notice: the requested notice may already be in flight with
     // its original text. Delivery of that receipt must never erase confirmation.
     this.announce(record, "human_intervention", text);
-    // The hold already blocks this Child's delegation; hold its subtree too.
-    for (const descendant of this.childrenOf(id)) {
-      if (this.children.has(descendant.id) && !descendant.hold) await this.intervene(descendant.id, kind, beforeCancel).catch(() => {});
+    // The hold already blocks this Child's delegation and its descendants' (assertReleased
+    // checks ancestors). Hold every descendant too, saved ones included, so that none
+    // resumes when this hold is released first. A saved descendant has no process to kill.
+    if (!nested) for (const descendant of this.subtree(id).reverse()) {
+      const descendantKind = kind === "kill" && this.children.has(descendant.id) ? "kill" : "halt";
+      if (!this.supersedes(descendant, descendantKind)) continue;
+      await this.intervene(descendant.id, descendantKind, beforeCancel, true).catch(() => {});
     }
     return this.summary(id);
   }
@@ -802,8 +838,16 @@ export class SubagentManager {
   }
   async close(id: string, preserveNotices = false) {
     const record = this.get(id);
-    // Closing a coordinator closes everything it delegated, deepest first.
-    for (const descendant of this.childrenOf(id)) if (this.children.has(descendant.id)) await this.close(descendant.id, preserveNotices).catch(() => {});
+    // Closing a coordinator closes everything it delegated, deepest first, fenced
+    // so that it cannot delegate more while its subtree closes.
+    this.fence(id);
+    try {
+      for (const descendant of this.subtree(id)) await this.closeOne(descendant, preserveNotices).catch(() => {});
+      return await this.closeOne(record, preserveNotices);
+    } finally { this.unfence(id); }
+  }
+  private async closeOne(record: AgentRecord, preserveNotices: boolean) {
+    const id = record.id;
     record.queuedAssignments = [];
     this.workflowChildren.delete(id);
     // Explicit close means abandon ordinary reports, never human intervention.
@@ -841,7 +885,7 @@ export class SubagentManager {
     if (this.children.has(id)) throw new Error(`${id} already has a process`);
     if (!existsSync(record.sessionFile)) throw new Error("No saved child session exists");
     if (!this.authorize && record.hadEnvOverrides && !env) throw new Error("This child used environment overrides. Supply them again; they are not stored.");
-    this.preflight(record.config, env);
+    this.preflight(record.config, record.depth ?? 1, env);
     try {
       await this.start(record, env);
       if (message) await this.send(id, message);
@@ -898,6 +942,6 @@ export class SubagentManager {
     this.shuttingDown = true;
     this.reservations.clear();
     this.reservedSlots = 0;
-    await Promise.all([...this.children.keys()].map(id => this.close(id, true)));
+    await Promise.all([...this.children.keys()].map(id => this.closeOne(this.get(id), true)));
   }
 }

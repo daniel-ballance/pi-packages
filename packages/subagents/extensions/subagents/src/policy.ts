@@ -256,6 +256,7 @@ export class SubagentPolicy {
     if (!catalog.models.some(m => m.id === selection.model)) throw new Error("Model/thinking selection is not currently allowed and usable; use subagent_catalog.");
     for (const tool of selection.tools) if (!catalog.tools.includes(tool) || (tool.startsWith("subagent_") && !isProxiedTool(tool))) throw new Error(`Tool not allowed: ${tool}`);
     const maxDepth = this.config!.maxDepth ?? 1;
+    if (depth > maxDepth) throw new Error(`No Child may run at depth ${depth}: maxDepth is ${maxDepth}.`);
     if (selection.tools.some(isProxiedTool) && depth >= maxDepth) throw new Error(`A Child at depth ${depth} cannot delegate: maxDepth is ${maxDepth}.`);
     const relativeToProject = relative(this.path(this.environment.cwd), directory);
     const withinProject = !isAbsolute(relativeToProject) && relativeToProject !== ".." && !relativeToProject.startsWith(`..${sep}`);

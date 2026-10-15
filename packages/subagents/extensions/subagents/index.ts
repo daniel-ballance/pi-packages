@@ -97,9 +97,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     context = ctx;
     if (!manager) {
       const limit = getPolicy(ctx).config?.maxChildren ?? 4;
-      manager = new SubagentManager(join(getAgentDir(), "subagents", ctx.sessionManager.getSessionId()), () => notifications?.wake(), refresh, limit, config => {
+      manager = new SubagentManager(join(getAgentDir(), "subagents", ctx.sessionManager.getSessionId()), () => notifications?.wake(), refresh, limit, (config, depth) => {
         if (!config.selection) throw new Error("Legacy child has no allowlisted composition. Spawn a new child using subagent_catalog instead of resuming unrestricted v1 parameters.");
-        return { ...getPolicy(ctx).compile(config.cwd, config.selection), coordination: config.coordination };
+        return { ...getPolicy(ctx).compile(config.cwd, config.selection, depth), coordination: config.coordination };
       }, getPolicy(ctx).config?.peerMessageLimit ?? 0);
       manager.setInterventionHook((record, kind) => {
         if (record.workflow) getWorkflows(ctx).holdForIntervention(record.id, `User ${kind === "halt" ? "halted" : "killed"} ${record.name} (${record.id})`, record.workflow);
