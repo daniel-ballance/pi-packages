@@ -1,0 +1,3 @@
+{
+  "host.ts": ["packages/subagents/extensions/subagents/src/host.ts"]
+}

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
+import { cliEnv } from "./host-env.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const fixture = fileURLToPath(new URL("./fixtures/peer-parent-provider.mjs", import.meta.url));
 const childFixture = fileURLToPath(new URL("./fixtures/peer-provider.mjs", import.meta.url));
@@ -20,7 +21,7 @@ test("real parent tools authorize/inspect child peers without management recursi
   const proof = join(root, "proof.json"), events: Packet[] = []; let stderr = "";
   const parent = new RpcChild({ executable: process.env.PEER_TEST_EXECUTABLE ?? process.execPath,
     args: [...(process.env.PEER_TEST_EXECUTABLE ? [] : [cli]), "--offline", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--approve", "-e", extension, "-e", fixture, "--model", "peer-parent/stub", "--mode", "rpc", "--session", join(root, "parent.jsonl")],
-    cwd: root, env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PATH: `${bin}:${process.env.PATH}`, PEER_SMOKE_OUTPUT: proof },
+    cwd: root, env: { ...cliEnv(), PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PATH: `${bin}:${process.env.PATH}`, PEER_SMOKE_OUTPUT: proof },
     event: event => events.push(event), stderr: text => { stderr += text; }, exit: () => {},
   });
   try {

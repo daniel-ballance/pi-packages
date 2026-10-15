@@ -21,6 +21,10 @@ unset T3_MCP_URL T3_MCP_BEARER_TOKEN T3_PI_RUNTIME_MODE T3_PI_MCP_EXTENSION_PATH
 printf '%s\n' '== repository configuration =='
 node scripts/check-json.mjs
 
+printf '\n%s\n' '== shared modules =='
+node scripts/sync-shared.mjs --check
+node --test shared/*.test.ts scripts/*.test.mjs
+
 if [[ -f "$ROOT/.pi/subagents.json" ]]; then
   printf '%s\n' '== project subagent policy =='
   (

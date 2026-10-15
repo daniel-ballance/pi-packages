@@ -4,6 +4,7 @@
 
 - Add `--disable-native-subagents` for launch-scoped opt-out of all native management, workflow and notification startup. Unflagged TUI/RPC launches and unrelated extensions are unchanged.
 - Stay inactive in Pi sessions launched by T3 Code with its MCP bridge (`T3_MCP_URL` set), as if `--disable-native-subagents` were passed. T3's delegated tasks are the subagent system there; direct Pi launches are unchanged.
+- Detect T3 through the collection's shared host helper (a generated copy in `src/host.ts`). Behaviour is unchanged. The test suite now also runs with a fake `T3_MCP_URL`, and the real-parent RPC tests no longer pass a caller's T3 variables to the Pi processes they launch.
 - Keep a herdr pane `working` while subagents or workflows run after the parent settles, labelled with what is running (for example `2 subagents`), when herdr's Pi integration is installed. TUI only; nothing is sent until a subagent first runs.
 - Add `alwaysExtensions`/`alwaysTools` policy fields: allowlisted entries every child receives without parent selection. An unavailable always-on entry disables spawning instead of being skipped. Existing policies are unchanged.
 
