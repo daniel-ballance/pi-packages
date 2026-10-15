@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-w
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { detectHost, registerHostAware } from "./src/host.js";
-import { apply, counts, emptyList, formatItem, formatList, formatWidget, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
+import { apply, counts, emptyList, formatList, formatWidget, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
 
 const ENTRY = "todo";
 
@@ -67,13 +67,23 @@ export default function todo(pi: ExtensionAPI) {
       const detail = args.op === "update" ? ` ${args.id ?? "?"} → ${args.state ?? "?"}` : args.op === "set" ? ` ${args.items?.length ?? 0} items` : "";
       return new Text(theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", `${args.op}${detail}`), 0, 0);
     },
+    // In the TUI a call is one line, like other tools; the widget shows the list and
+    // expanding the call shows it too. The text result stays complete for the model and T3.
+    renderResult(output, { expanded, isPartial }, theme) {
+      if (isPartial) return new Text(theme.fg("muted", "updating…"), 0, 0);
+      const text = output.content.map(part => part.type === "text" ? part.text : "").join("\n");
+      if (expanded) return new Text(theme.fg("muted", text), 0, 0);
+      const [change = ""] = text.split("\n");
+      const items = (output.details as { items?: Item[] } | undefined)?.items ?? [];
+      const resolved = items.filter(item => item.state === "done" || item.state === "skipped").length;
+      const summary = items.length ? ` · ${resolved}/${items.length} resolved` : "";
+      return new Text(output.isError ? theme.fg("error", change) : theme.fg("muted", `${change}${summary}`), 0, 0);
+    },
   };
   registerHostAware(pi, tool, { duplicatesT3: false });
 
-  pi.registerEntryRenderer<{ items: Item[] }>(ENTRY, (entry, _options, theme) => {
-    const items = entry.data?.items ?? [];
-    return new Text(theme.fg("muted", items.length ? items.map(formatItem).join("\n") : "Todo: no items"), 0, 0);
-  });
+  // Snapshots are stored with appendEntry only to rebuild state per branch. They have no
+  // transcript renderer, so the feed shows each change once, as its tool call.
 
   // State follows the active branch: rebuild it from the last snapshot on it.
   const rebuild = (_event: unknown, ctx: ExtensionContext) => {

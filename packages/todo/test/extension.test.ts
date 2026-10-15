@@ -3,7 +3,7 @@ import { test } from "node:test";
 import todo from "../extensions/todo/index.js";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
-type Tool = { name: string; exposure?: string; execute: (...args: unknown[]) => Promise<any> };
+type Tool = { name: string; exposure?: string; execute: (...args: unknown[]) => Promise<any>; renderResult?: (...args: unknown[]) => unknown };
 
 function harness({ hasUI = true, branch = [] as unknown[] } = {}) {
   const tools: Tool[] = [], entries: { customType: string; data: unknown }[] = [], renderers: string[] = [];
@@ -90,11 +90,20 @@ test("a run that ends with work in progress says so", async () => {
   assert.deepEqual(h.ui.notices, [["Todo: 1 item still in progress: 2. Fan out", "warning"]]);
 });
 
-test("the tool is direct and its entries render in the transcript", () => {
+test("the tool is direct, and the feed shows each change once, as a one-line tool call", async () => {
   const h = harness();
   assert.equal(h.tool().name, "todo");
   assert.equal(h.tool().exposure ?? "direct", "direct");
-  assert.deepEqual(h.renderers, ["todo"]);
+  assert.deepEqual(h.renderers, [], "stored snapshots are not drawn in the transcript");
+  const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as never;
+  const render = (output: unknown, expanded: boolean) =>
+    (h.tool().renderResult!(output as never, { expanded, isPartial: false } as never, theme, {} as never) as { render(width: number): string[] }).render(200).map(line => line.trimEnd()).filter(Boolean);
+  await h.call({ op: "set", items: ["Frame", "Fan out"] });
+  const output = await h.call({ op: "update", id: 1, state: "done" });
+  assert.deepEqual(render(output, false), ["Item 1 is done. · 1/2 resolved"]);
+  assert.ok(render(output, true).some(line => line.includes("2. Fan out")), "expanded shows the list");
+  const failed = await h.call({ op: "update", id: 9, state: "done" });
+  assert.equal(render(failed, false).length, 1);
 });
 
 test("under T3 the tool steps aside, to tool_search and codemode, only when T3 offers its own todo tool", async () => {
