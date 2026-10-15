@@ -30,6 +30,7 @@ function harness({ hasUI = true, branch = [] as unknown[] } = {}) {
   return { tools, tool, call, emit, entries, renderers, ui, setAllTools: (names: string[]) => { allTools = names.map(name => ({ name })); } };
 }
 
+const plainTheme = { fg: (_color: string, text: string) => text, bold: (text: string) => text, strikethrough: (text: string) => text };
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
 const snapshot = (items: unknown[]) => ({ type: "custom", customType: "todo", data: { items } });
 
@@ -70,7 +71,9 @@ test("the list is rebuilt from the active branch on start and on tree navigation
 test("the widget shows open work, clears when nothing is open, and no UI is touched without one", async () => {
   const h = harness();
   await h.call({ op: "set", items: ["Frame"] });
-  assert.deepEqual(h.ui.widgets.at(-1), ["todo", ["Todo: 0/1 resolved", "[ ] 1. Frame"]]);
+  const [key, widget] = h.ui.widgets.at(-1) as [string, (tui: unknown, theme: unknown) => { render(width: number): string[] }];
+  assert.equal(key, "todo");
+  assert.deepEqual(widget(undefined, plainTheme).render(80), [" Todo ──────────── 0/1", "  ○ 1. Frame"]);
   await h.call({ op: "update", id: 1, state: "done" });
   assert.deepEqual(h.ui.widgets.at(-1), ["todo", undefined]);
   const headless = harness({ hasUI: false });
@@ -95,13 +98,13 @@ test("the tool is direct, and the feed shows each change once, as a one-line too
   assert.equal(h.tool().name, "todo");
   assert.equal(h.tool().exposure ?? "direct", "direct");
   assert.deepEqual(h.renderers, [], "stored snapshots are not drawn in the transcript");
-  const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as never;
+  const theme = plainTheme as never;
   const render = (output: unknown, expanded: boolean) =>
     (h.tool().renderResult!(output as never, { expanded, isPartial: false } as never, theme, {} as never) as { render(width: number): string[] }).render(200).map(line => line.trimEnd()).filter(Boolean);
   await h.call({ op: "set", items: ["Frame", "Fan out"] });
   const output = await h.call({ op: "update", id: 1, state: "done" });
   assert.deepEqual(render(output, false), ["Item 1 is done. · 1/2 resolved"]);
-  assert.ok(render(output, true).some(line => line.includes("2. Fan out")), "expanded shows the list");
+  assert.deepEqual(render(output, true), ["Item 1 is done.", "Todo ━━━━━━────── 1/2", " ✓ 1. Frame", " ○ 2. Fan out"], "expanded shows the list");
   const failed = await h.call({ op: "update", id: 9, state: "done" });
   assert.equal(render(failed, false).length, 1);
 });
