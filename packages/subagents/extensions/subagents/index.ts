@@ -21,7 +21,7 @@ import { showInspector, type InspectorPanel } from "./src/inspector.js";
 import { HerdrStatus } from "./src/herdr.js";
 import { detectHost } from "./src/host.js";
 import { describeLoop, formatInterval, LoopController, loopTickMessage, parseInterval, type LoopState } from "./src/loop.js";
-import { createWorktree, removeWorktree, type Worktree } from "./src/worktree.js";
+import { createWorktree, planWorktree, removeWorktree, type Worktree } from "./src/worktree.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
 const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path or built-in extension identifier from subagent_catalog." })));
@@ -301,15 +301,20 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       signal?.throwIfAborted();
       const { name, task, cwd: requested, coordination: declared, worktree: wanted, ...selection } = args;
       const manager = get(ctx);
-      let config = getPolicy(ctx).compile(requested, selection);
+      const policy = getPolicy(ctx);
+      let config = policy.compile(requested, selection);
       const capacity = manager.capacity();
       if (!capacity.available) throw new Error(`Live-child capacity reached. Inspect before closing idle workers; held work requires discussion. Recovery: ${JSON.stringify(recoverySummary(manager.list(), capacity))}`);
-      // Validate the request before touching git; the new checkout is checked again.
+      if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
+      // Everything is checked before git writes anything, the destination included.
+      const plan = wanted ? planWorktree({ cwd: requested, name, ...(typeof wanted === "object" ? wanted : {}) }) : undefined;
+      if (plan) policy.newDirectory(plan.path);
+      normalizeCoordination(declared, plan?.path ?? requested);
       let worktree: Worktree | undefined;
-      if (wanted) worktree = createWorktree({ cwd: requested, name, ...(typeof wanted === "object" ? wanted : {}) });
       try {
+        if (plan) worktree = createWorktree(plan);
         const cwd = worktree?.path ?? requested;
-        if (worktree) config = getPolicy(ctx).compile(cwd, selection);
+        if (worktree) config = policy.compile(cwd, selection);
         const coordination = normalizeCoordination(declared, cwd);
         const child = await manager.spawn({ name, task, ...config, coordination });
         const warnings = coordinationWarnings(coordination, manager.list(), child.id);

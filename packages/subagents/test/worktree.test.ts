@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createWorktree, removeWorktree } from "../extensions/subagents/src/worktree.js";
+import { chmodSync } from "node:fs";
+import { createWorktree, planWorktree, removeWorktree } from "../extensions/subagents/src/worktree.js";
 
 function repo() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "worktree-repo-")));
@@ -61,4 +62,50 @@ test("removing a worktree created for a failed spawn also deletes its new branch
     assert.equal(existsSync(created.path), false);
     assert.equal(git("branch", "--list", created.branch), "");
   } finally { dispose(); }
+});
+
+test("the base is resolved to a commit first, so a different base really is the starting point", () => {
+  const { root, git, dispose } = repo();
+  try {
+    const first = git("rev-parse", "HEAD");
+    writeFileSync(join(root, "later.md"), "later\n");
+    git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "later");
+    const created = createWorktree({ cwd: root, name: "old", base: first });
+    assert.equal(created.head, first);
+    assert.equal(existsSync(join(created.path, "later.md")), false);
+  } finally { dispose(); }
+});
+
+test("option-shaped or malformed bases and branches are refused before git runs", () => {
+  const { root, git, dispose } = repo();
+  try {
+    for (const base of ["--lock", "--no-checkout", "-b"]) assert.throws(() => createWorktree({ cwd: root, name: "x", base }), /base/, base);
+    for (const branch of ["--orphan", "-x", "bad..name", "with space"]) assert.throws(() => createWorktree({ cwd: root, name: "x", branch }), /branch/, branch);
+    assert.equal(git("worktree", "list").split("\n").length, 1);
+  } finally { dispose(); }
+});
+
+test("a git failure after git has written the checkout still leaves nothing behind", () => {
+  const { root, git, dispose } = repo();
+  try {
+    const hook = join(root, ".git/hooks/post-checkout");
+    writeFileSync(hook, "#!/bin/sh\nexit 1\n"); chmodSync(hook, 0o755);
+    assert.throws(() => createWorktree({ cwd: root, name: "hooked" }), /Cannot create a worktree/);
+    assert.equal(git("worktree", "list").split("\n").length, 1, "no checkout left");
+    assert.equal(git("branch", "--list", "subagent/*"), "", "no branch left");
+  } finally { dispose(); }
+});
+
+test("the plan names the destination before anything is created, keeping whitespace in paths", () => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), "worktree-space-")));
+  const root = join(parent, "trailing ");
+  mkdirSync(root);
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
+  try {
+    git("init", "-q", "-b", "main"); writeFileSync(join(root, "a"), "a\n"); git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "a");
+    const plan = planWorktree({ cwd: root, name: "spacey" });
+    assert.ok(plan.path.startsWith(`${root}/.pi/worktrees/spacey-`));
+    assert.equal(existsSync(plan.path), false, "planning creates nothing");
+    assert.equal(createWorktree(plan).path, plan.path);
+  } finally { rmSync(parent, { recursive: true, force: true }); }
 });
