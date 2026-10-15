@@ -91,8 +91,8 @@ test("a loop that reaches its bound says so in the transcript without starting a
 test("/loop starts, reports and stops a loop, and stays silent on UI without one", async () => {
   const h = harness({ loops });
   try {
-    await h.commands.get("loop").handler("5m watch the deploy", h.ctx);
-    assert.match(h.notices.at(-1)!, /Loop started: every 5m, at most 2 ticks/);
+    await h.commands.get("loop").handler("30s watch the deploy", h.ctx);
+    assert.match(h.notices.at(-1)!, /Started a loop: "watch the deploy" every 30s, at most 2 ticks/);
     await h.commands.get("loop").handler("", h.ctx);
     assert.match(h.notices.at(-1)!, /watch the deploy/);
     await h.commands.get("loop").handler("stop", h.ctx);

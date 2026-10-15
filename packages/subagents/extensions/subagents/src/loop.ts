@@ -63,6 +63,8 @@ export class LoopController {
     if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > policy.maxIterations) throw new Error(`maxIterations must be from 1 to at most ${policy.maxIterations}.`);
     const maxDurationMs = request.maxDurationMs ?? policy.maxDurationMs;
     if (!Number.isInteger(maxDurationMs) || maxDurationMs < 1 || maxDurationMs > policy.maxDurationMs) throw new Error(`maxDurationMs must be at most ${policy.maxDurationMs}.`);
+    // Also keeps every timer delay within Node's range (policy durations cap at 7 days).
+    if (request.intervalMs > maxDurationMs) throw new Error(`The interval must be no longer than the run (${maxDurationMs} ms).`);
     const startedAt = this.clock();
     this.state = { task, intervalMs: request.intervalMs, iteration: 0, maxIterations, startedAt, deadline: startedAt + maxDurationMs, nextAt: startedAt + request.intervalMs, due: false };
     this.schedule();
@@ -79,7 +81,9 @@ export class LoopController {
 
   /** The parent settled: deliver a tick that fell due during its turn. */
   settled(): void {
-    if (this.state?.due && this.options.idle()) this.fire();
+    if (!this.state?.due || !this.options.idle()) return;
+    if (this.expired()) return;
+    this.fire();
   }
 
   dispose(): void {
@@ -88,19 +92,30 @@ export class LoopController {
     this.state = undefined;
   }
 
+  // One timer, for whichever comes first: the next tick or the deadline. A tick
+  // waiting for a busy parent keeps the deadline timer running.
   private schedule() {
     if (!this.state) return;
+    const wakeAt = this.state.due ? this.state.deadline : Math.min(this.state.nextAt, this.state.deadline);
     this.timer = this.setTimer(() => {
       this.timer = undefined;
-      if (!this.state) return;
-      if (this.clock() >= this.state.deadline) { this.end(`reached its ${this.state.deadline - this.state.startedAt} ms limit`); return; }
+      if (!this.state || this.expired()) return;
       this.state.due = true;
       if (this.options.idle()) this.fire();
-    }, Math.max(0, this.state.nextAt - this.clock()));
+      else this.schedule();
+    }, Math.max(0, wakeAt - this.clock()));
+  }
+
+  private expired(): boolean {
+    if (!this.state || this.clock() < this.state.deadline) return false;
+    this.end(`reached its ${this.state.deadline - this.state.startedAt} ms limit`);
+    return true;
   }
 
   private fire() {
     const state = this.state!;
+    if (this.timer !== undefined) this.clearTimer(this.timer);
+    this.timer = undefined;
     state.due = false;
     state.iteration++;
     this.options.send({ task: state.task, iteration: state.iteration, maxIterations: state.maxIterations, intervalMs: state.intervalMs, deadline: state.deadline });

@@ -100,3 +100,32 @@ test("one loop per parent, and a new start after the end is allowed", () => {
   advance(60_000);
   assert.equal(controller.start({ task: "b", intervalMs: 60_000 }).task, "b");
 });
+
+test("an interval longer than the run, or beyond the timer range, is refused", () => {
+  const { controller } = harness({ ...loops, maxDurationMs: 600_000 });
+  assert.throws(() => controller.start({ task: "x", intervalMs: 600_001 }), /no longer than the run/);
+  assert.throws(() => controller.start({ task: "x", intervalMs: 2_147_484_000, maxDurationMs: 600_000 }), /no longer than the run/);
+});
+
+test("the duration bound ends the loop at the deadline, not at the next tick after it", () => {
+  const { controller, ended, advance, ticks } = harness();
+  controller.start({ task: "x", intervalMs: 60_000, maxDurationMs: 90_000 });
+  advance(60_000);
+  assert.equal(ticks.length, 1);
+  advance(30_000);
+  assert.deepEqual(ended, ["reached its 90000 ms limit"]);
+  assert.equal(controller.status(), undefined);
+});
+
+test("a tick deferred by a busy parent is dropped if the deadline passes first", () => {
+  const { controller, ticks, ended, advance, setIdle } = harness();
+  controller.start({ task: "x", intervalMs: 60_000, maxDurationMs: 90_000 });
+  setIdle(false);
+  advance(60_000);
+  assert.equal(controller.status()?.due, true);
+  advance(30_000);
+  assert.deepEqual(ended, ["reached its 90000 ms limit"], "the deadline timer still runs while a tick waits");
+  setIdle(true);
+  controller.settled();
+  assert.equal(ticks.length, 0, "no billable tick after the deadline");
+});

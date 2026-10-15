@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { SubagentPolicy } from "./src/policy.js";
-import { NoticeScheduler } from "./src/notifications.js";
+import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
 import { collectReports } from "./src/collection.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { formatAgentListing, summarizeAgents } from "./src/usage.js";
@@ -106,9 +106,11 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     const state = loops?.status();
     if (context?.hasUI) context.ui.setStatus("loop", state ? `loop ${state.iteration}/${state.maxIterations} · every ${formatInterval(state.intervalMs)}` : undefined);
   };
+  // A human intervention reaches the parent before any autonomous tick.
+  const supervisionPending = () => [...manager?.pendingNotices() ?? [], ...workflows?.pendingNotices() ?? []].some(isSupervisoryNotice);
   const getLoops = (ctx: ExtensionContext) => loops ??= new LoopController({
     policy: () => getPolicy(ctx).config?.loops,
-    idle: () => context?.isIdle() === true,
+    idle: () => context?.isIdle() === true && !supervisionPending(),
     send: tick => {
       pi.sendMessage({ customType: "subagent-loop-tick", content: loopTickMessage(tick), display: true, details: tick }, { triggerTurn: true, deliverAs: "followUp" });
       showLoop();
@@ -120,7 +122,24 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       showLoop();
     },
   });
-  const loopResult = (text: string, state?: LoopState) => ({ content: [{ type: "text" as const, text }], details: state ?? {} });
+  // Shared by subagent_loop and /loop, so both answer the same way.
+  const loopAction = (ctx: ExtensionContext, request: { op: "start"; task: string; intervalMs: number; maxIterations?: number; maxDurationMs?: number } | { op: "stop"; by: string } | { op: "status" }) => {
+    const controller = getLoops(ctx);
+    let text: string, state: LoopState | undefined;
+    if (request.op === "start") {
+      const { op: _op, ...loop } = request;
+      state = controller.start(loop);
+      text = `Started a loop: ${describeLoop(state)}.`;
+    } else if (request.op === "stop") {
+      state = controller.stop(`stopped by the ${request.by}`);
+      text = state ? `Stopped the loop after ${state.iteration} of ${state.maxIterations} ticks.` : "No loop is running.";
+    } else {
+      state = controller.status();
+      text = state ? `Loop running: ${describeLoop(state)}.` : "No loop is running.";
+    }
+    showLoop();
+    return { text, state };
+  };
   const result = (data: unknown, ctx: ExtensionContext) => {
     const text = JSON.stringify(data, null, 2);
     const truncated = truncateHead(text, { maxBytes: 30000, maxLines: 1000 });
@@ -242,23 +261,12 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       maxDurationMinutes: Type.Optional(Type.Integer({ minimum: 1, description: "start: stop after this long; defaults to the policy maximum." })),
     }, { additionalProperties: false }),
     async execute(_call, args, _signal, _update, ctx) {
-      const controller = getLoops(ctx);
-      if (args.op === "start") {
-        if (args.task === undefined || args.intervalSeconds === undefined) throw new Error("start needs task and intervalSeconds");
-        const state = controller.start({
-          task: args.task, intervalMs: args.intervalSeconds * 1000, maxIterations: args.maxIterations,
-          maxDurationMs: args.maxDurationMinutes === undefined ? undefined : args.maxDurationMinutes * 60_000,
-        });
-        showLoop();
-        return loopResult(`Started a loop: ${describeLoop(state)}.`, state);
-      }
-      if (args.op === "stop") {
-        const state = controller.stop("stopped by the parent");
-        showLoop();
-        return loopResult(state ? `Stopped the loop after ${state.iteration} of ${state.maxIterations} ticks.` : "No loop is running.", state);
-      }
-      const state = controller.status();
-      return loopResult(state ? `Loop running: ${describeLoop(state)}.` : "No loop is running.", state);
+      if (args.op === "start" && (args.task === undefined || args.intervalSeconds === undefined)) throw new Error("start needs task and intervalSeconds");
+      const { text, state } = loopAction(ctx, args.op === "start"
+        ? { op: "start", task: args.task!, intervalMs: args.intervalSeconds! * 1000, maxIterations: args.maxIterations,
+            maxDurationMs: args.maxDurationMinutes === undefined ? undefined : args.maxDurationMinutes * 60_000 }
+        : args.op === "stop" ? { op: "stop", by: "parent" } : { op: "status" });
+      return { content: [{ type: "text" as const, text }], details: state ?? {} };
     },
   });
   pi.registerTool({
@@ -449,13 +457,11 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const say = (text: string, kind: "info" | "warning" = "info") => { if (ctx.hasUI) ctx.ui.notify(text, kind); };
       const [first = "", ...rest] = args.trim().split(/\s+/);
       try {
-        if (!first) { const state = getLoops(ctx).status(); say(state ? `Loop running: ${describeLoop(state)}.` : "No loop is running."); return; }
-        if (first === "stop") { const state = getLoops(ctx).stop("stopped by the user"); showLoop(); say(state ? `Stopped the loop after ${state.iteration} of ${state.maxIterations} ticks.` : "No loop is running."); return; }
+        if (!first) { say(loopAction(ctx, { op: "status" }).text); return; }
+        if (first === "stop") { say(loopAction(ctx, { op: "stop", by: "user" }).text); return; }
         const intervalMs = parseInterval(first);
         if (intervalMs === undefined || !rest.length) { say("Usage: /loop <30s|5m|1h> <task> | /loop stop | /loop", "warning"); return; }
-        const state = getLoops(ctx).start({ task: rest.join(" "), intervalMs });
-        showLoop();
-        say(`Loop started: every ${formatInterval(state.intervalMs)}, at most ${state.maxIterations} ticks. Stop it with /loop stop.`);
+        say(`${loopAction(ctx, { op: "start", task: rest.join(" "), intervalMs }).text} Stop it with /loop stop.`);
       } catch (error) { say(error instanceof Error ? error.message : String(error), "warning"); }
     },
   });
