@@ -1,17 +1,21 @@
 # todo
 
-A `todo` tool for Pi. The model keeps the current task's steps in a list where
-no step is ever deleted: each one ends `done` or `skipped` with a reason. It is
-the todo list pistack's playbooks copy their steps into, and it works on its own.
+A `todo` tool for Pi. The model keeps the current task's steps in a list where a
+step it started or decided against is never deleted: each one ends `done` or
+`skipped` with a reason. Only a pending item added by mistake can be removed. It
+is the todo list pistack's playbooks copy their steps into, and it works on its
+own.
 
 ## Tool
 
-One tool, `todo`, with three operations:
+One tool, `todo`, with five operations:
 
 | Operation | Parameters | Effect |
 |---|---|---|
 | `set` | `items`: the steps, in order | Replaces the list; items are numbered from 1 and start `pending`. |
-| `update` | `id` or `ids`, `state`, `note?` | Moves one item (`id`) or several (`ids`, all or none) to `pending`, `in_progress`, `done` or `skipped`. `skipped` requires a reason in `note`. |
+| `add` | `items` | Appends `pending` items, numbered after the highest number the list has used. The rest of the list is unchanged. |
+| `update` | `id` or `ids`; `state?`, `text?`, `note?` | Changes one item (`id`) or several (`ids`, all or none). `state` moves them to `pending`, `in_progress`, `done` or `skipped`, and `skipped` requires a reason in `note`. A new state drops the old note unless `note` gives one. `text` rewords a single item. `note` alone replaces the note and keeps the state. At least one of the three is needed. |
+| `remove` | `id` or `ids` | Deletes `pending` items, all or none, such as a duplicate or a mistaken step. An item in progress, done or skipped can't be removed; a step the model decides not to do is `skipped` with a reason instead. Numbers are not reused. |
 | `get` | | Returns the list. |
 
 Every result is the complete list as plain text, for example:

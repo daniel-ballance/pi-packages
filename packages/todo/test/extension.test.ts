@@ -41,11 +41,23 @@ test("each change answers with the complete list as text and as structured conte
   assert.match(text(result), /^Set 2 items\.\nUpdate items as you finish them: .*ids for several.*tools\.todo.*\nTodo: 0 done, 0 skipped, 0 in progress, 2 pending\n\[ \] 1\. Frame\n\[ \] 2\. Fan out/s);
   assert.deepEqual(result.structuredContent.counts, { pending: 2, in_progress: 0, done: 0, skipped: 0 });
   assert.equal(result.structuredContent.items.length, 2);
-  assert.deepEqual(h.entries, [{ customType: "todo", data: { items: [{ id: 1, text: "Frame", state: "pending" }, { id: 2, text: "Fan out", state: "pending" }] } }]);
+  assert.deepEqual(h.entries, [{ customType: "todo", data: { items: [{ id: 1, text: "Frame", state: "pending" }, { id: 2, text: "Fan out", state: "pending" }], nextId: 3 } }]);
   await h.call({ op: "update", id: 1, state: "in_progress" });
   assert.equal(h.entries.length, 2);
   assert.equal(text(await h.call({ op: "get" })).split("\n")[0], "Todo: 0 done, 0 skipped, 1 in progress, 1 pending");
   assert.equal(h.entries.length, 2, "get persists nothing");
+});
+
+test("a resumed list keeps numbering after removed items, and older snapshots number from their highest item", async () => {
+  const h = harness();
+  await h.call({ op: "set", items: ["Frame", "Fan out"] });
+  await h.call({ op: "remove", id: 2 });
+  const resumed = harness({ branch: h.entries.map(entry => ({ type: "custom", ...entry })) });
+  await resumed.emit("session_start");
+  assert.match(text(await resumed.call({ op: "add", items: ["Report"] })), /^Added item 3\./);
+  const older = harness({ branch: [snapshot([{ id: 1, text: "Frame", state: "done" }, { id: 4, text: "Report", state: "pending" }] as never)] });
+  await older.emit("session_start");
+  assert.match(text(await older.call({ op: "add", items: ["Ship"] })), /^Added item 5\./);
 });
 
 test("a rejected operation is an error result that changes and persists nothing", async () => {
