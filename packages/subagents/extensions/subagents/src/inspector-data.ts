@@ -108,7 +108,7 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
   const delegator = (agent: AgentRecord) => agent.parentId && agents.find(candidate => candidate.id === agent.parentId);
   const indent = (agent: AgentRecord) => agent.parentId ? `${"  ".repeat(Math.max(0, (agent.depth ?? 2) - 2))}↳ ` : "";
   const agentRow = (agent: AgentRecord) => rows.push({ id: `agent:${agent.id}`,
-    text: `${mark(agent.status)} ${indent(agent)}${oneLine(agent.name).toLowerCase()} · ${label(agent.status)}${assignment(agent) ? ` · ${assignment(agent)!.status}` : ""}${unread(agent) ? " · parent review needed" : ""}${agent.hold ? ` · ${agent.hold.kind} ${agent.hold.outcome}` : ""}${delegator(agent) ? ` · from ${oneLine((delegator(agent) as AgentRecord).name).toLowerCase()}` : ""} · ${cost(agent)}`,
+    text: `${mark(agent.status)} ${indent(agent)}${oneLine(agent.name).toLowerCase()} · ${label(agent.status)}${assignment(agent) ? ` · ${assignment(agent)!.status}` : ""}${unread(agent) ? (agent.parentId ? " · unread by its coordinator" : " · parent review needed") : ""}${agent.hold ? ` · ${agent.hold.kind} ${agent.hold.outcome}` : ""}${delegator(agent) ? ` · from ${oneLine((delegator(agent) as AgentRecord).name).toLowerCase()}` : ""} · ${cost(agent)}`,
     tone: statusTone(agent.status), target: { kind: "agent", id: agent.id } });
   if (location.kind === "overview") {
     const runIds = new Set(runs.map(r => r.id));
