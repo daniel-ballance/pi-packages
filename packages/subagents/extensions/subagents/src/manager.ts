@@ -462,12 +462,15 @@ export class SubagentManager {
         if (this.children.get(record.id) !== child) throw new Error("Stale peer process");
         return this.peers.send(record.id, packet.recipient, packet.message);
       } : undefined,
-      manageRequest: config.selection?.tools.some(isProxiedTool) && !record.workflow ? async request => {
+      manageRequest: config.selection?.tools.some(isProxiedTool) && !record.workflow ? async (request, cancelled) => {
         if (this.children.get(record.id) !== child) throw new Error("Stale child process");
         if (!this.management) throw new Error("Delegation is not available from this parent");
         this.assertDelegationOpen(record);
         // A call outlives its caller only as a cancelled operation: nobody can receive its result.
         const controller = new AbortController();
+        // Also when the Child cancels the call itself (its tool was aborted or timed out).
+        if (cancelled.aborted) controller.abort(cancelled.reason);
+        else cancelled.addEventListener("abort", () => controller.abort(cancelled.reason), { once: true });
         const calls = this.callerCalls.get(record.id) ?? new Set<AbortController>();
         this.callerCalls.set(record.id, calls.add(controller));
         try { return await this.management(record.id, request, controller.signal); }
@@ -762,13 +765,23 @@ export class SubagentManager {
     try {
       const failures: string[] = [];
       for (const descendant of this.subtree(id)) {
-        if (this.children.has(descendant.id) && !this.aborting.has(descendant.id)) await this.abortOne(descendant).catch(error => { failures.push(`${descendant.id}: ${String(error)}`); });
+        // One already being aborted is awaited, so its outcome is reported too.
+        const run = this.abortRuns.get(descendant.id) ?? (this.children.has(descendant.id) ? this.abortOne(descendant) : undefined);
+        await run?.catch(error => { failures.push(`${descendant.id}: ${String(error)}`); });
       }
       const summary = await this.abortOne(record);
       return failures.length ? { ...summary, subtreeFailures: failures } : summary;
     } finally { this.unfence(id); }
   }
-  private async abortOne(record: AgentRecord) {
+  /** In-flight single-process aborts, so that a subtree abort can await one it did not start. */
+  private abortRuns = new Map<string, Promise<ReturnType<SubagentManager["summary"]>>>();
+  private abortOne(record: AgentRecord): Promise<ReturnType<SubagentManager["summary"]>> {
+    if (this.aborting.has(record.id)) return Promise.reject(new Error("Abort is already in progress"));
+    const run = this.abortProcess(record).finally(() => { if (this.abortRuns.get(record.id) === run) this.abortRuns.delete(record.id); });
+    this.abortRuns.set(record.id, run);
+    return run;
+  }
+  private async abortProcess(record: AgentRecord) {
     const id = record.id;
     const child = this.child(id);
     if (this.aborting.has(id)) throw new Error("Abort is already in progress");

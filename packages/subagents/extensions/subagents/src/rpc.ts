@@ -38,7 +38,7 @@ export class RpcChild {
     event: (packet: Packet) => void; stderr: (text: string) => void;
     exit: (error?: Error) => void;
     peerRequest?: (packet: Packet) => Promise<unknown>;
-    manageRequest?: (request: ManagementRequest) => Promise<unknown>;
+    manageRequest?: (request: ManagementRequest, signal: AbortSignal) => Promise<unknown>;
   }) {
     const env = { ...options.env };
     delete env.PI_SUBAGENT_PEER_FD;

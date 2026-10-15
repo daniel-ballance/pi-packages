@@ -162,3 +162,16 @@ test("a delegated reply always fits one pipe frame", () => {
   assert.equal(fitted.truncated, true);
   assert.ok(Buffer.byteLength(JSON.stringify({ id: 1, success: true, data: fitted })) < 64 * 1024);
 });
+
+test("a subtree abort awaits a descendant's abort already in flight and reports its failure", async () => {
+  const t = await tree();
+  const manager = t.manager as any;
+  try {
+    let fail!: (error: Error) => void;
+    manager.abortRuns.set(t.c, new Promise((_resolve, reject) => { fail = reject; }));
+    const aborting = t.manager.abort(t.a);
+    setTimeout(() => fail(new Error("abort timed out")), 20);
+    const aborted = await aborting as { subtreeFailures?: string[] };
+    assert.deepEqual(aborted.subtreeFailures, [`${t.c}: Error: abort timed out`]);
+  } finally { manager.abortRuns.clear(); await t.cleanup(); }
+});

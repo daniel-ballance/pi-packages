@@ -6,9 +6,13 @@ import { isManagementOp, type ManagementOp } from "./nesting.js";
 
 const MAX_FRAME = 64 * 1024;
 const MAX_PENDING = 8;
+class FrameTooLarge extends Error {}
 function write(socket: Duplex, packet: Packet) {
+  const frame = JSON.stringify(packet);
+  // The reader destroys the pipe on an oversized frame, so never send one.
+  if (Buffer.byteLength(frame) > MAX_FRAME) throw new FrameTooLarge(`Request too large for the private pipe (${Buffer.byteLength(frame)} bytes; limit ${MAX_FRAME}). Send less, or split it.`);
   if (socket.destroyed || socket.writableLength > MAX_FRAME) throw new Error("Peer transport unavailable or backpressured; acceptance may be unknown. Do not retry blindly.");
-  socket.write(JSON.stringify(packet) + "\n");
+  socket.write(frame + "\n");
 }
 export type ManagementRequest = { op: ManagementOp; args: Record<string, unknown> };
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -17,17 +21,25 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 /** Private inherited pipe: the owner supplies sender identity, never the packet.
  * Two request shapes share it: a peer message, and (for a Child allowed to
  * delegate) a management call that the root Manager scopes to the sender's subtree. */
-export function servePeer(socket: Duplex, receive?: (packet: Packet) => Promise<unknown>, manage?: (request: ManagementRequest) => Promise<unknown>) {
+export function servePeer(socket: Duplex, receive?: (packet: Packet) => Promise<unknown>, manage?: (request: ManagementRequest, signal: AbortSignal) => Promise<unknown>) {
   let active = 0;
   let sequence = 0;
+  // In-flight management calls, which the Child may cancel: { cancel: id }, no reply.
+  const cancellable = new Map<number, AbortController>();
   const decoder = new JsonlDecoder(packet => {
+    if (packet && Object.keys(packet).length === 1 && Number.isSafeInteger(packet.cancel)) {
+      cancellable.get(packet.cancel)?.abort(new Error("The Child cancelled this call"));
+      return;
+    }
     if (!packet || !Number.isSafeInteger(packet.id) || packet.id <= sequence) throw new Error("Invalid/replayed peer request ID");
     sequence = packet.id;
     if ("op" in packet) {
       if (!manage || Object.keys(packet).some(key => !["id", "op", "args"].includes(key)) || !isManagementOp(packet.op) || !isPlainObject(packet.args)) {
         write(socket, { id: packet.id, success: false, error: "Invalid management request, or delegation is not enabled for this Child." }); return;
       }
-      dispatch(packet, () => manage({ op: packet.op, args: packet.args }));
+      const controller = new AbortController();
+      cancellable.set(packet.id, controller);
+      dispatch(packet, () => manage({ op: packet.op, args: packet.args }, controller.signal), () => cancellable.delete(packet.id));
       return;
     }
     if (!receive || Object.keys(packet).some(key => !["id", "recipient", "message"].includes(key)) ||
@@ -37,16 +49,19 @@ export function servePeer(socket: Duplex, receive?: (packet: Packet) => Promise<
     }
     dispatch(packet, () => receive(packet));
   }, MAX_FRAME);
-  function dispatch(packet: Packet, run: () => Promise<unknown>) {
+  function dispatch(packet: Packet, run: () => Promise<unknown>, settled?: () => void) {
     if (active >= MAX_PENDING) {
+      settled?.();
       write(socket, { id: packet.id, success: false, error: "Too many pending requests (maximum 8)." }); return;
     }
     active++;
+    const fail = (error: unknown) => write(socket, { id: packet.id, success: false, error: String(error).slice(0, 2000) });
     void Promise.resolve().then(run).then(
-      data => write(socket, { id: packet.id, success: true, data }),
-      error => write(socket, { id: packet.id, success: false, error: String(error).slice(0, 2000) }),
-    ).catch(() => socket.destroy()).finally(() => active--);
+      data => { try { write(socket, { id: packet.id, success: true, data }); } catch (error) { if (error instanceof FrameTooLarge) fail(error); else throw error; } },
+      fail,
+    ).catch(() => socket.destroy()).finally(() => { active--; settled?.(); });
   }
+  socket.on("close", () => { for (const controller of cancellable.values()) controller.abort(new Error("The Child's pipe closed")); });
   socket.setEncoding("utf8");
   socket.on("data", chunk => { try { decoder.push(chunk); } catch { socket.destroy(); } });
   socket.on("error", () => socket.destroy());
@@ -117,15 +132,17 @@ export class PeerClient {
   }
   /** A delegation call to the root Manager; waits may take up to a minute. */
   manage(op: ManagementOp, args: Record<string, unknown>, signal?: AbortSignal, timeoutMs = 90000): Promise<unknown> {
-    return this.request({ op, args }, signal, timeoutMs, `subagent_${op} interrupted or timed out; its effect may be unknown. Inspect with subagent_list before retrying.`);
+    return this.request({ op, args }, signal, timeoutMs, `subagent_${op} interrupted or timed out; its effect may be unknown. Inspect with subagent_list before retrying.`, true);
   }
-  private request(body: Packet, signal: AbortSignal | undefined, timeoutMs: number, interrupted: string): Promise<unknown> {
+  /** cancellable: on abort or timeout, tell the server to stop the call (management calls only). */
+  private request(body: Packet, signal: AbortSignal | undefined, timeoutMs: number, interrupted: string, cancellable = false): Promise<unknown> {
     signal?.throwIfAborted();
     if (this.pending.size >= MAX_PENDING) throw new Error("Too many pending requests to the parent manager");
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
       const fail = () => {
         this.pending.delete(id); cleanup();
+        if (cancellable) try { write(this.socket, { cancel: id }); } catch { /* the pipe is gone; so is the call */ }
         reject(new Error(interrupted));
       };
       const timer = setTimeout(fail, timeoutMs);

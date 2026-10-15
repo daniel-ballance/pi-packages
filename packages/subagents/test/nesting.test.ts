@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parsePolicy, SubagentPolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
-import { servePeer } from "../extensions/subagents/src/peer-transport.js";
+import { PeerClient, servePeer } from "../extensions/subagents/src/peer-transport.js";
 import childGuard from "../extensions/subagents/src/child-guard.js";
 
 const base = { version: 1, models: [{ id: "p/m:off" }], tools: ["read", "subagent_spawn", "subagent_wait"] };
@@ -126,4 +126,38 @@ test("a Child gets proxies only for the delegation tools it was given, and only 
   const withoutPipe = guard({ PI_SUBAGENT: "1", PI_SUBAGENT_ALLOWED_TOOLS: JSON.stringify(["subagent_spawn"]) });
   assert.equal(withoutPipe.tools.size, 0);
   assert.equal(withoutPipe.blocked("subagent_spawn"), true);
+});
+
+async function socketPair() {
+  const server = createServer(); server.listen(0, "127.0.0.1"); await once(server, "listening");
+  const accept = once(server, "connection");
+  const address = server.address(); assert.ok(address && typeof address === "object");
+  const client = connect(address.port, "127.0.0.1");
+  const [remote] = await accept as [Socket];
+  return { client, remote, close: () => { client.destroy(); remote.destroy(); server.close(); } };
+}
+
+test("a cancelled delegated call is cancelled in the root too", async () => {
+  const sockets = await socketPair();
+  try {
+    let cancelled!: (reason: unknown) => void;
+    const seen = new Promise(resolve => { cancelled = resolve; });
+    servePeer(sockets.remote, undefined, (_request, signal) => new Promise(() => { signal.addEventListener("abort", () => cancelled(signal.reason)); }));
+    const client = new PeerClient(sockets.client), stop = new AbortController();
+    const call = client.manage("wait", { collect: true }, stop.signal);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    stop.abort();
+    await assert.rejects(call, /interrupted or timed out/);
+    assert.match(String(await seen), /cancelled this call/);
+  } finally { sockets.close(); }
+});
+
+test("an oversized delegated request is refused before it is sent, and the pipe stays usable", async () => {
+  const sockets = await socketPair();
+  try {
+    servePeer(sockets.remote, undefined, async request => ({ echoed: request.op }));
+    const client = new PeerClient(sockets.client);
+    await assert.rejects(client.manage("send", { id: "x", message: "漢".repeat(23000) }), /too large for the private pipe/);
+    assert.deepEqual(await client.manage("list", {}), { echoed: "list" });
+  } finally { sockets.close(); }
 });
