@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { SpawnOptions } from "./manager.js";
 import { BUILTINS, parseChildSettings, parseMcpPolicy, type Builtin, type ChildSettings, type McpPolicy } from "./child-policy.js";
 import { parseLoopPolicy, type LoopPolicy } from "./loop.js";
@@ -215,6 +215,18 @@ export class SubagentPolicy {
     return directory;
   }
   directory(cwd: string) { return this.checkedDirectory(cwd, this.catalog().workingDirectories); }
+  /** Check a directory that does not exist yet, through the real path of its nearest existing ancestor. */
+  newDirectory(path: string) {
+    if (!isAbsolute(path)) throw new Error("cwd must be absolute");
+    const missing: string[] = [];
+    let existing = path;
+    while (!existsSync(existing)) { missing.unshift(basename(existing)); existing = dirname(existing); }
+    const real = join(realpathSync(existing), ...missing);
+    if (!this.catalog().workingDirectories.some(root => {
+      const rel = relative(root, real); return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
+    })) throw new Error("cwd is outside allowed workingDirectories");
+    return real;
+  }
   commandDirectory(cwd: string) {
     if (!this.catalog().tools.includes("bash")) throw new Error("Workflow commands require bash in the subagent tool policy");
     return this.directory(cwd);

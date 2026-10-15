@@ -21,6 +21,7 @@ import { showInspector, type InspectorPanel } from "./src/inspector.js";
 import { HerdrStatus } from "./src/herdr.js";
 import { detectHost } from "./src/host.js";
 import { describeLoop, formatInterval, LoopController, loopTickMessage, parseInterval, type LoopState } from "./src/loop.js";
+import { createWorktree, planWorktree, removeWorktree, type Worktree } from "./src/worktree.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
 const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path or built-in extension identifier from subagent_catalog." })));
@@ -276,7 +277,8 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       "Consult subagent_catalog first. Compose an exact allowed provider/model:thinking and explicit tools/resources; catalog alwaysExtensions/alwaysTools are added automatically. " +
       "Optional systemPrompt replaces the default; appendSystemPrompt adds instructions; omit both to inherit Pi defaults/SYSTEM.md. " +
       "Discovery is disabled; recursive subagent tools are forbidden. Bash still grants full machine access: NOT a sandbox. " +
-      "Children stop on parent reload/exit, with saved conversations resumable. Output capped at 30KB/1000 lines; full overflow saved to a file.",
+      "Children stop on parent reload/exit, with saved conversations resumable. Output capped at 30KB/1000 lines; full overflow saved to a file. " +
+      "worktree: true (or {base, branch}) first creates a git worktree under <repository of cwd>/.pi/worktrees/ on a new branch and runs the child there; merging and removing it stay with you.",
     parameters: Type.Object({
       name: Type.String({ minLength: 1, maxLength: 120 }), task: message,
       cwd: Type.String({ description: "Absolute child working directory." }),
@@ -290,18 +292,37 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       mcpServers: Type.Optional(Type.Array(Type.String(), { description: "Explicit MCP server names from the policy catalog; requires builtin:mcp and a discovery tool." })),
       systemPrompt: Type.Optional(Type.String()), appendSystemPrompt: Type.Optional(Type.String()),
       contextFiles: Type.Optional(Type.Boolean({ description: "Load normal AGENTS.md context files if permitted. Defaults to policy allowance." })),
+      worktree: Type.Optional(Type.Union([Type.Boolean(), Type.Object({
+        base: Type.Optional(Type.String({ minLength: 1, description: "Branch, tag or commit to start from; default HEAD of cwd's repository." })),
+        branch: Type.Optional(Type.String({ minLength: 1, description: "New branch name; default subagent/<directory>." })),
+      }, { additionalProperties: false })], { description: "Run the child in a new git worktree under <repository of cwd>/.pi/worktrees/." })),
     }, { additionalProperties: false }),
     async execute(_call, args, signal, _update, ctx) {
       signal?.throwIfAborted();
-      const { name, task, cwd, coordination: declared, ...selection } = args;
+      const { name, task, cwd: requested, coordination: declared, worktree: wanted, ...selection } = args;
       const manager = get(ctx);
-      const config = getPolicy(ctx).compile(cwd, selection);
-      const coordination = normalizeCoordination(declared, cwd);
+      const policy = getPolicy(ctx);
+      let config = policy.compile(requested, selection);
       const capacity = manager.capacity();
       if (!capacity.available) throw new Error(`Live-child capacity reached. Inspect before closing idle workers; held work requires discussion. Recovery: ${JSON.stringify(recoverySummary(manager.list(), capacity))}`);
-      const child = await manager.spawn({ name, task, ...config, coordination });
-      const warnings = coordinationWarnings(coordination, manager.list(), child.id);
-      return result({ ...child, coordinationWarnings: warnings.slice(0, 25), coordinationWarningCount: warnings.length }, ctx);
+      if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
+      // Everything is checked before git writes anything, the destination included.
+      const plan = wanted ? planWorktree({ cwd: requested, name, ...(typeof wanted === "object" ? wanted : {}) }) : undefined;
+      if (plan) policy.newDirectory(plan.path);
+      normalizeCoordination(declared, plan?.path ?? requested);
+      let worktree: Worktree | undefined;
+      try {
+        if (plan) worktree = createWorktree(plan);
+        const cwd = worktree?.path ?? requested;
+        if (worktree) config = policy.compile(cwd, selection);
+        const coordination = normalizeCoordination(declared, cwd);
+        const child = await manager.spawn({ name, task, ...config, coordination });
+        const warnings = coordinationWarnings(coordination, manager.list(), child.id);
+        return result({ ...child, ...(worktree ? { worktree } : {}), coordinationWarnings: warnings.slice(0, 25), coordinationWarningCount: warnings.length }, ctx);
+      } catch (error) {
+        if (worktree) try { removeWorktree(worktree); } catch { /* report the spawn failure, not the cleanup */ }
+        throw error;
+      }
     },
   });
   pi.registerTool({
