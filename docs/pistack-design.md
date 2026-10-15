@@ -348,12 +348,29 @@ offers only identities the subagents allowlist permits (a command cannot call
 `subagent_catalog`, so subagents replies on the `subagents:catalog` event-bus
 channel), never above the chosen budget, and
 covers the common case (one code and one judgment model) and defers to
-`/skill:setup-pstack` under T3, whose catalog only the model can read. **Not
-done yet:** Layer 3 below (fan-out skills as codemode scripts, orchestrate as
-workflow definitions); the generated skills delegate through the capabilities
-reference instead.
+`/skill:setup-pstack` under T3, whose catalog only the model can read.
 
-**Layer 3, programs via codemode + workflows.** Fan-out skills (`swarm`,
+**Read-only delegates (decided 2026-10-15).** Upstream's `poteto-agent` recipe
+makes every Child read the full mode skill. In stress tests, small read-only
+workers spent their first turns on that 20 KB read and started playbooks of
+their own; a three-file nested audit took about 15 minutes. The brief prefix now
+gives a terminal Child with none of `edit`, `write` or `subagent_spawn` a short
+recipe instead: answer the brief with evidence, no playbook, no delegation.
+Editing Children and coordinators keep the full recipe. A T3 `delegate_task`
+carries no tool list, so its brief always keeps the full recipe.
+
+**Layer 3: not built (decided 2026-10-15).** The parent composes fan-outs
+itself from the tools (`subagent_*` or T3's, codemode where it helps) as the
+skills' prose directs, rather than from prebuilt programs. Stress tests on both
+hosts showed the prose versions working: arenas landed, swarms ran in waves
+under the live-Child limit, cross-family judges ran. Prebuilt programs would
+duplicate each skill in code, have to track two hosts' tool names, and stop
+upstream skill changes reaching pistack through the generator. Revisit if
+parent context runs out in real sessions (a TUI parent reached 59% of 500k
+after six stress tasks) or fan-outs prove inconsistent. The design below is
+kept for that case.
+
+**Layer 3, programs via codemode + workflows (not built; see above).** Fan-out skills (`swarm`,
 `arena`, `interrogate`) are expressed as codemode scripts: spawn N in
 `Promise.all`, wait, reduce N reports to a compact table in-script so raw
 worker output never reaches the model. Orchestrate compiles a track into a
