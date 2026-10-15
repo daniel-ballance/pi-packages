@@ -70,19 +70,23 @@ allowlist permits.
 
    Pi does not run npm for local paths, so run the repository's install first.
    Then restart Pi or run `/reload`.
-2. Write `~/.pi/agent/subagents.json`. Without it the built-in allowlist permits
-   one model, so every role shares it and the panels lose their mix of model
-   families. List every model the roles should use, and the tools Children
-   need: implementation roles edit, so a policy of only `read`, `grep`, `find`
-   and `ls` gives them Children that cannot change anything. The fields are in
-   subagents' [configuration reference](../subagents/skills/subagents/reference/configuration.md).
-3. A model from a provider that an extension adds, such as `claude-subscription`,
-   exists only in your session: Children start with `--no-extensions`. Allowlist
-   the provider's extension file and map it in `providerExtensions`, as in the
-   example below. The parent then selects it for those Children; to load it into
-   every Child instead, also list it in `alwaysExtensions`. Each provider also
-   needs its own sign-in.
-4. Turn on what the playbooks expect. Both are off by default:
+2. With no `subagents.json`, subagents' built-in policy already suits pistack:
+   it offers the models you can reach across the common providers (and the
+   collection's `claude-subscription` models, with their extension mapped),
+   gives Children the edit tools, `todo` and the delegation tools, and turns on
+   nesting (`maxDepth` 2) and bounded wake loops. Skip to step 5.
+3. Write `~/.pi/agent/subagents.json` only to choose differently. A file
+   replaces the built-in policy whole, and in a file every optional field is
+   off until you set it. List every model the roles should use, and the tools
+   Children need: implementation roles edit, so a policy of only `read`,
+   `grep`, `find` and `ls` gives them Children that cannot change anything. A
+   model from a provider that an extension adds, such as `claude-subscription`,
+   exists only in your session, because Children start with `--no-extensions`:
+   allowlist the provider's extension file and map it in `providerExtensions`,
+   as in the example below. Each provider also needs its own sign-in. The
+   fields are in subagents'
+   [configuration reference](../subagents/skills/subagents/reference/configuration.md).
+4. In your own file, turn on what the playbooks expect:
    - `"maxDepth": 2` lets a Child coordinate its own Children. Orchestrate,
      autopilot and nested swarms use it; without it, those skills run their
      fan-out from your session instead. A coordinator needs the delegation tools,
@@ -94,7 +98,7 @@ allowlist permits.
    `~/.pi/agent/pistack.json`.
 6. Turn the mode on with `/pistack-mode on`. It stays on for the session branch. In print mode, pass it and the task in one invocation (`pi -p "/pistack-mode on" "<task>"`): Pi saves nothing until the model replies, so a run with only the command forgets it.
 
-An example policy:
+An example file:
 
 ```json
 {
