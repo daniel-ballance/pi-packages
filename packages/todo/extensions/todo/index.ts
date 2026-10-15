@@ -30,6 +30,7 @@ const isOpen = (item: Item) => item.state === "pending" || item.state === "in_pr
 /** Turns without a todo call, while items are open, before a reminder. */
 const REMIND_AFTER_TURNS = 4;
 const SET_HINT = "Update items as you finish them: update with id, or ids for several at once; codemode scripts can call tools.todo. Nothing marks them for you.";
+const SETTLED = "That answers the todo check. End your turn now without writing anything: your last reply to the user stands.";
 // T3 names its tools mcp__t3-code__<name>; a todo tool there would duplicate this one.
 const isT3Todo = (name: string) => /^mcp__t3[-_]code__.*todo/i.test(name);
 
@@ -40,6 +41,9 @@ export default function todo(pi: ExtensionAPI) {
   // alike): nothing in their context mentions it again. So the extension does, once
   // after a few turns without a todo call, and once more before a run settles.
   let turnsSinceTodo = 0, reminded = false, usedThisRun = false, settleNudged = false;
+  // Whether the model used other tools after its last todo call: only then can the
+  // list have fallen behind the work.
+  let workSinceTodo = false;
 
   const showWidget = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
@@ -73,6 +77,8 @@ export default function todo(pi: ExtensionAPI) {
         pi.appendEntry(ENTRY, { items: list.items });
         showWidget(ctx);
       }
+      // Answering the end-of-run check: models otherwise follow the update with a recap.
+      if (settleNudged) return result(`${outcome.change}\n${SETTLED}`);
       return result(operation.op === "set" ? `${outcome.change}\n${SET_HINT}` : outcome.change);
     },
     renderCall(args, theme) {
@@ -122,34 +128,41 @@ export default function todo(pi: ExtensionAPI) {
     const resolved = list.items.length - open.length;
     return { open, line: `todo: ${resolved}/${list.items.length} resolved; next open: ${open[0] ? `${open[0].id}. ${open[0].text.slice(0, 120)}` : "none"}` };
   };
-  const note = (customType: string, content: string) => ({ type: "custom_message" as const, customType, content, display: false });
+  // Pi hands a custom message to the model as a user message. Unlabelled, these were
+  // answered as if the user had written them ("You asked for…"), so each says where it
+  // comes from and that it gets no reply.
+  const note = (customType: string, content: string) => ({
+    type: "custom_message" as const, customType, display: false,
+    content: `<todo-extension-note>\nAutomated note from the todo tool's extension, not from the user, who does not see it. Do not mention it or reply to it.\n${content}\n</todo-extension-note>`,
+  });
 
   // A new request from the user (or a T3 wake) starts a fresh check. The continuation this
   // extension asks for does not, so one request gets at most one nudge.
-  pi.on("before_agent_start", event => { if ((event as { messageType?: string }).messageType !== "custom") { usedThisRun = false; settleNudged = false; } });
+  pi.on("before_agent_start", event => { if ((event as { messageType?: string }).messageType !== "custom") { usedThisRun = false; settleNudged = false; workSinceTodo = false; } });
 
-  pi.on("turn_end", () => {
+  pi.on("turn_end", event => {
+    // Results come in call order, so work after a todo call in the same turn counts.
+    const names = event.toolResults.map(result => result.toolName);
+    const last = names.lastIndexOf(tool.name);
+    if (last >= 0) workSinceTodo = last < names.length - 1;
+    else if (names.length) workSinceTodo = true;
     turnsSinceTodo++;
-    if (reminded || turnsSinceTodo < REMIND_AFTER_TURNS || !list.items.some(isOpen)) return;
+    // A turn without tool calls ends the run; the end-of-run check covers that.
+    if (!names.length || reminded || turnsSinceTodo < REMIND_AFTER_TURNS || !list.items.some(isOpen)) return;
     reminded = true;
-    return { entries: [note("todo-reminder", `[${openSummary().line}] Mark items done or skipped as you finish them (ids for several at once).`)] };
+    return { entries: [note("todo-reminder", `${openSummary().line}. Mark items done or skipped as you finish them (ids for several at once), and carry on with the task.`)] };
   });
 
-  // Once per run, and only for a list this run used: open items get one more turn to be
-  // marked (the hidden message is what lets Pi continue; canContinue is false at a normal end), or a one-line reason they stay open (waiting on delegated work or the user).
+  // Once per run, for a list this run used and then worked past: open items get one more
+  // turn to be marked (the hidden message is what lets Pi continue; canContinue is false
+  // at a normal end). Each one costs a visible reply, so a run whose last tool call was
+  // todo itself, with the list as the model left it, is not checked.
   pi.on("agent_before_settle", event => {
-    if (settleNudged || !usedThisRun || event.outcome !== "completed") return;
+    if (settleNudged || !usedThisRun || !workSinceTodo || event.outcome !== "completed") return;
     const { open, line } = openSummary();
     if (open.length === 0) return;
     settleNudged = true;
     const names = open.map(item => `${item.id}. ${item.text.slice(0, 80)}`).join("; ");
-    return { continue: true, entries: [note("todo-settle", `[${line}] Before you finish, the todo list still has ${open.length} open item${open.length === 1 ? "" : "s"}: ${names}. Mark each one done, or skipped with the reason in note. If one stays open on purpose, for example waiting on delegated work or the user, say so in one line and stop.`)] };
-  });
-
-  pi.on("agent_end", (_event, ctx) => {
-    const active = list.items.filter(item => item.state === "in_progress");
-    if (active.length === 0 || !ctx.hasUI) return;
-    const names = active.map(item => `${item.id}. ${item.text}`).join(", ");
-    ctx.ui.notify(`Todo: ${active.length} item${active.length === 1 ? "" : "s"} still in progress: ${names}`, "warning");
+    return { continue: true, entries: [note("todo-settle", `${line}. The run is ending with ${open.length} open item${open.length === 1 ? "" : "s"}: ${names}. Mark any that are finished done, or skipped with the reason in note; leave any that stay open on purpose, for example waiting on delegated work or the user. Then end your turn without writing anything: your last reply to the user stands.`)] };
   });
 }
