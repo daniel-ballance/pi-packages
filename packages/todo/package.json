@@ -1,0 +1,48 @@
+{
+  "name": "todo",
+  "version": "0.1.0",
+  "description": "A todo tool for Pi: steps that are never deleted, only done or skipped with a reason, persisted per session branch, with a TUI widget and plain-text results that also work under T3 Code.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "todo"
+  ],
+  "files": [
+    "extensions",
+    "skills",
+    "prompts",
+    "themes",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/todo/index.ts"
+    ],
+    "skills": ["./skills"],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts && T3_MCP_URL=http://127.0.0.1:1/mcp tsx --test test/*.test.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.99.2",
+    "@earendil-works/pi-coding-agent": ">=0.99.2",
+    "@earendil-works/pi-tui": ">=0.99.2",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.99.2",
+    "@earendil-works/pi-coding-agent": "0.99.2",
+    "@earendil-works/pi-tui": "0.99.2",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typebox": "^1.0.0",
+    "typescript": "^5.9.3"
+  }
+}

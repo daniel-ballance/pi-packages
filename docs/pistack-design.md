@@ -225,6 +225,14 @@ structured results. An `agent_end` handler notifies on open `in_progress`
 items. Under T3, active (T3 has no Pi-side todo) unless a T3 todo tool is
 detected, in which case inactive per rule 2.
 
+**Implemented (workstream `todo`).** Two deviations, with reasons: (1) the
+"skipped requires a reason" rule is enforced when the call arrives, not in the
+schema, because providers require tool parameters to be one flat object; the
+error result names the rule and shows the unchanged list. (2) The package is
+opt-in, outside the collection manifest, like `pistack`. `appendEntry` is kept
+over tool-result `details` (Pi's own todo example) because codemode's nested
+calls write no transcript entries, so `details` would lose their changes.
+
 ### 4.3 `subagents` package changes
 
 **(a) Wake / loop.** Parent-side `subagent_loop` (and `/loop` command): on an
