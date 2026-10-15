@@ -140,6 +140,29 @@ test("while the mode is on, delegated briefs start with the poteto-agent recipe,
   } finally { h.dispose(); }
 });
 
+test("a Child with neither edit, write nor subagent_spawn gets the short read-only recipe instead of the full skill", async () => {
+  const h = harness();
+  try {
+    await h.command("pistack-mode", "on");
+    const reader: any = { toolName: "subagent_spawn", input: { task: "Audit stats.ts.", tools: ["read", "bash", "grep"] } };
+    await h.emit("tool_call", reader);
+    assert.match(reader.input.task, /^You are a read-only delegate in a poteto-mode run\. .*do not read the poteto-mode skill.*\n\nAudit stats\.ts\.$/s);
+    assert.doesNotMatch(reader.input.task, /poteto-agent\.md/);
+    const again = reader.input.task;
+    await h.emit("tool_call", reader);
+    assert.equal(reader.input.task, again, "not prefixed twice");
+    const writer: any = { toolName: "subagent_spawn", input: { task: "Fix it.", tools: ["read", "edit"] } };
+    await h.emit("tool_call", writer);
+    assert.match(writer.input.task, /^Before any work, read .*poteto-agent\.md/s, "an editing Child keeps the full recipe");
+    const coordinator: any = { toolName: "subagent_spawn", input: { task: "Coordinate the audit.", tools: ["read", "subagent_spawn", "subagent_wait"] } };
+    await h.emit("tool_call", coordinator);
+    assert.match(coordinator.input.task, /poteto-agent\.md/, "a coordinator delegates, so it keeps the full recipe");
+    const t3: any = { toolName: "mcp__t3-code__delegate_task", input: { task: "Audit it.", tools: ["read"] } };
+    await h.emit("tool_call", t3);
+    assert.match(t3.input.task, /poteto-agent\.md/, "T3 tasks have no tool list, so they keep the full recipe");
+  } finally { h.dispose(); }
+});
+
 test("ask_user asks through the UI, and without one says to apply the stated default", async () => {
   const h = harness({ answers: ["beta", "Other (type an answer)", "gamma", undefined] });
   try {
