@@ -83,14 +83,12 @@ test("the widget shows open work, clears when nothing is open, and no UI is touc
   assert.equal(headless.entries.length, 2);
 });
 
-test("a run that ends with work in progress says so", async () => {
+test("a run that ends with work in progress raises no warning: the widget already shows it", async () => {
   const h = harness();
   await h.call({ op: "set", items: ["Frame", "Fan out"] });
-  await h.emit("agent_end");
-  assert.deepEqual(h.ui.notices, []);
   await h.call({ op: "update", id: 2, state: "in_progress" });
   await h.emit("agent_end");
-  assert.deepEqual(h.ui.notices, [["Todo: 1 item still in progress: 2. Fan out", "warning"]]);
+  assert.deepEqual(h.ui.notices, []);
 });
 
 test("the tool is direct, and the feed shows each change once, as a one-line tool call", async () => {
@@ -142,39 +140,53 @@ test("in a terminal, a tool that merely looks like T3's changes nothing", async 
 });
 
 test("after a few turns without a todo call, open items get one hidden reminder", async () => {
-  const h = harness();
+  const h = harness(), idle = { toolResults: [{ toolName: "bash" }] };
   await h.emit("before_agent_start", { messageType: "user" });
   await h.call({ op: "set", items: ["Frame", "Fan out"] });
-  for (let turn = 1; turn < 4; turn++) assert.deepEqual(await h.emit("turn_end"), [], `turn ${turn}`);
-  const [reminder] = await h.emit("turn_end");
+  for (let turn = 1; turn < 4; turn++) assert.deepEqual(await h.emit("turn_end", idle), [], `turn ${turn}`);
+  const [reminder] = await h.emit("turn_end", idle);
   assert.equal(reminder.entries[0].display, false);
-  assert.match(reminder.entries[0].content, /^\[todo: 0\/2 resolved; next open: 1\. Frame\] Mark items done or skipped/);
-  assert.deepEqual(await h.emit("turn_end"), [], "once until the next todo call");
+  assert.match(reminder.entries[0].content, /^<todo-extension-note>\nAutomated note from the todo tool's extension, not from the user, who does not see it\. Do not mention it or reply to it\.\ntodo: 0\/2 resolved; next open: 1\. Frame\. Mark items done or skipped.*\n<\/todo-extension-note>$/);
+  assert.deepEqual(await h.emit("turn_end", idle), [], "once until the next todo call");
+  await h.call({ op: "get" });
+  for (let turn = 0; turn < 6; turn++) assert.deepEqual(await h.emit("turn_end", { toolResults: [] }), [], "a turn without tools ends the run: not reminded");
   await h.call({ op: "update", id: 1, state: "done" });
-  for (let turn = 1; turn < 4; turn++) await h.emit("turn_end");
-  assert.match((await h.emit("turn_end"))[0].entries[0].content, /1\/2 resolved; next open: 2\. Fan out/);
+  for (let turn = 1; turn < 4; turn++) await h.emit("turn_end", idle);
+  assert.match((await h.emit("turn_end", idle))[0].entries[0].content, /1\/2 resolved; next open: 2\. Fan out/);
   await h.call({ op: "update", id: 2, state: "done" });
-  for (let turn = 0; turn < 6; turn++) assert.deepEqual(await h.emit("turn_end"), [], "nothing open, nothing to say");
+  for (let turn = 0; turn < 6; turn++) assert.deepEqual(await h.emit("turn_end", idle), [], "nothing open, nothing to say");
 });
 
 test("a run that used the list and leaves items open gets one more turn to mark them", async () => {
   const settle = (outcome = "completed", canContinue = true) => ({ outcome, continue: false, entries: [], context: { canContinue } });
+  const turn = (...tools: string[]) => ({ toolResults: tools.map(toolName => ({ toolName })) });
   const h = harness();
   await h.emit("before_agent_start", { messageType: "user" });
   assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "no list: nothing to check");
   await h.call({ op: "set", items: ["Frame", "Report"] });
   await h.call({ op: "update", id: 1, state: "done" });
+  await h.emit("turn_end", turn("todo"));
+  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "the list is as the model last left it");
+  await h.emit("turn_end", turn("bash", "todo"));
+  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "work before the todo call in a turn is covered by it");
+  await h.emit("turn_end", turn("todo", "bash"));
+  await h.emit("turn_end", turn());
   const [nudge] = await h.emit("agent_before_settle", settle());
   assert.equal(nudge.continue, true);
   assert.equal(nudge.entries[0].display, false);
-  assert.match(nudge.entries[0].content, /still has 1 open item: 2\. Report\. Mark each one done, or skipped .*say so in one line and stop/);
+  assert.match(nudge.entries[0].content, /^<todo-extension-note>\nAutomated note from the todo tool's extension, not from the user/);
+  assert.match(nudge.entries[0].content, /ending with 1 open item: 2\. Report\. Mark any that are finished done, or skipped .*open on purpose.*Then end your turn without writing anything/);
   assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "once per request");
   await h.emit("agent_start");
-  await h.call({ op: "update", id: 2, state: "in_progress" });
+  const answer = await h.call({ op: "update", id: 2, state: "in_progress" });
+  assert.match(text(answer), /^Item 2 is in progress\.\nThat answers the todo check\. End your turn now without writing anything/, "the update answering the check says to stop there");
   assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "the continuation it asked for is not nudged again");
+  await h.emit("before_agent_start", { messageType: "user" });
+  assert.doesNotMatch(text(await h.call({ op: "get" })), /todo check/, "a new request is not answering it");
   await h.emit("before_agent_start", { messageType: "user" });
   assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "a later run that never touched the list is left alone");
   await h.call({ op: "get" });
+  await h.emit("turn_end", turn("read"));
   assert.deepEqual(await h.emit("agent_before_settle", settle("aborted")), [], "not after an abort");
   assert.equal((await h.emit("agent_before_settle", settle("completed", false))).length, 1, "a normal end has canContinue false; the hidden message is what continues");
 });

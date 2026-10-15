@@ -32,15 +32,19 @@ an error result with the unchanged list and changes nothing.
 
 Models tend to set the list and then forget it while they work, because nothing in
 their context mentions it again. The extension does, with hidden messages the user
-does not see:
+does not see. Pi gives a hidden message to the model as a user message, so each is
+labelled as the extension's, says the user does not see it, and asks for no reply.
 
-- **During a run:** after four turns without a `todo` call while items are open,
-  one short reminder of the count and the next open item. It repeats only after
-  the next `todo` call.
-- **At the end of a request:** if the request used the list and items are still
-  open, one more turn to mark them done, skip them with a reason, or say in one
-  line why they stay open, for example while waiting on delegated work. This
-  happens once per request, never for the continuation it starts.
+- **During a run:** after four turns with tool calls but no `todo` call while
+  items are open, one short reminder of the count and the next open item. It
+  repeats only after the next `todo` call.
+- **At the end of a request:** if the request used the list, then used other
+  tools after its last `todo` call, and items are still open, one more turn to
+  mark them done or skipped. Items left open on purpose, for example waiting on
+  delegated work, stay as they are, and the model is asked to end without
+  writing anything, so the user's last answer stands. This happens once per
+  request, never for the continuation it starts. A run whose last tool call was
+  `todo` is not checked: the list is as the model left it.
 
 `set`'s result also says to update items as they finish, and that codemode
 scripts can call `tools.todo`.
@@ -66,8 +70,8 @@ same way.
   items at most: past that, resolved items give way first and a last line
   counts what is left out. Notes stay in the tool result. In the transcript
   each change is one tool-call line, such as `Item 3 is done. · 3/7 resolved`;
-  expand it to see the whole list in number order, with notes. When a run ends
-  with an item still `in_progress`, a warning names it.
+  expand it to see the whole list in number order, with notes. Items still in
+  progress when a run ends stay in the widget; there is no separate warning.
 - **T3 Code and other RPC clients:** the tool result text is complete on its
   own; the widget and the compact rendering are additions a client may ignore.
 - **Without UI** (print mode), nothing touches the UI; results are unchanged.
