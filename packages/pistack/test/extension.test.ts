@@ -43,10 +43,12 @@ function harness({ hasUI = true, answers = [] as (string | undefined)[], files =
     events: { emit: (channel: string, data: { reply(value: unknown): void }) => { if (channel === "subagents:catalog" && subagents && subagents !== "old") data.reply(subagents); } },
   } as never);
   const emit = async (name: string, event: any = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); return event; };
+  // What before_agent_start handlers return as messages beside the request.
+  const reminders = async (event: any) => { const out = []; for (const handler of handlers.get("before_agent_start") ?? []) { const result = await handler(event, ctx); if (result?.message) out.push(result.message); } return out; };
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
   const dispose = () => { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; rmSync(root, { recursive: true, force: true }); };
-  return { root, cwd, agentDir, tools, commands, emit, call, command, entries, notices, statuses, asked, dispose };
+  return { root, cwd, agentDir, tools, commands, emit, reminders, call, command, entries, notices, statuses, asked, dispose };
 }
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
 
@@ -97,11 +99,19 @@ test("the mode toggle persists, adds a prompt section while on, and shows status
     await h.command("pistack-mode", "on");
     assert.deepEqual(h.entries.at(-1), { customType: "pistack-mode", data: { on: true } });
     assert.deepEqual(h.statuses.at(-1), ["pistack", "poteto-mode"]);
-    const event = await h.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
-    assert.match(event.systemPromptOptions.sections["pistack-mode"], /poteto-mode is on.*skills\/poteto-mode\/SKILL\.md/s);
+    const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
+    const section = event.systemPromptOptions.sections["pistack-mode"];
+    assert.match(section, /poteto-mode is on.*skills\/poteto-mode\/SKILL\.md/s);
+    assert.match(section, /Role models \(no role defaults file.*\n- bug-fix: grok-4\.7-xhigh-fast/s, "the role table rides along");
+    const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
+    assert.equal(reminders.length, 1, "each user turn gets a reminder beside the request");
+    assert.equal(reminders[0].display, false);
+    assert.match(reminders[0].content, /^\[poteto-mode is on\] Before anything else, route this request: read .*poteto-mode\/SKILL\.md/);
+    assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
     await h.command("pistack-mode", "off");
     const off = await h.emit("before_agent_start", { systemPromptOptions: { sections: { "pistack-mode": "stale" } } });
     assert.equal(off.systemPromptOptions.sections["pistack-mode"], undefined);
+    assert.deepEqual(await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } }), [], "no reminder while off");
     assert.deepEqual(h.statuses.at(-1), ["pistack", undefined]);
   } finally { h.dispose(); }
   const resumed = harness({ hasUI: false, branch: [{ type: "custom", customType: "pistack-mode", data: { on: true } }] });

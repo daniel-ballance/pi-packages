@@ -59,40 +59,65 @@ pistack tells the hosts apart by `T3_MCP_URL`, which T3 sets when it launches Pi
 Delegation comes from the `subagents` package, and pistack can only use what its
 allowlist permits.
 
-1. Install the collection (it includes `subagents`), then `todo` and `pistack`:
-   `pi install /path/to/pi-packages/packages/todo` and the same for `pistack`.
-2. Write `~/.pi/agent/subagents.json` listing every model pistack's roles should
-   use. **Without it, the built-in allowlist permits one model**, and most roles
-   cannot spawn. The fields are in subagents'
-   [configuration reference](../subagents/skills/subagents/reference/configuration.md).
-3. Turn on what the playbooks expect. Both are off by default:
+1. Install the collection, which includes `subagents`, then `todo` and `pistack`,
+   following the repository's [install steps](../../README.md#install-in-pi):
+
+   ```sh
+   pi install /path/to/pi-packages
+   pi install /path/to/pi-packages/packages/todo
+   pi install /path/to/pi-packages/packages/pistack
+   ```
+
+   Pi does not run npm for local paths, so run the repository's install first.
+   Then restart Pi or run `/reload`.
+2. Write `~/.pi/agent/subagents.json`. Without it the built-in allowlist permits
+   one model, so every role shares it and the panels lose their mix of model
+   families. List every model the roles should use, and the tools Children
+   need: implementation roles edit, so a policy of only `read`, `grep`, `find`
+   and `ls` gives them Children that cannot change anything. The fields are in
+   subagents' [configuration reference](../subagents/skills/subagents/reference/configuration.md).
+3. A model from a provider that an extension adds, such as `claude-subscription`,
+   exists only in your session: Children start with `--no-extensions`. Allowlist
+   the provider's extension file and map it in `providerExtensions`, as in the
+   example below. The parent then selects it for those Children; to load it into
+   every Child instead, also list it in `alwaysExtensions`. Each provider also
+   needs its own sign-in.
+4. Turn on what the playbooks expect. Both are off by default:
    - `"maxDepth": 2` lets a Child coordinate its own Children. Orchestrate,
      autopilot and nested swarms use it; without it, those skills run their
-     fan-out from your session instead.
+     fan-out from your session instead. A coordinator needs the delegation tools,
+     `subagent_catalog` included, in `tools`.
    - `"loops": {"enabled": true, "minIntervalMs": 60000, "maxIterations": 50, "maxDurationMs": 28800000}`
      enables `subagent_loop`, which babysit, shipping and the autopilot audit tick
      use for wake-ups. Without it they fall back to a watcher Child.
-4. Run `/pistack-setup`. It offers only models the allowlist permits and writes
+5. Run `/pistack-setup`. It offers only models the allowlist permits and writes
    `~/.pi/agent/pistack.json`.
+6. Turn the mode on with `/pistack-mode on`. It stays on for the session branch.
 
-A minimal policy:
+An example policy:
 
 ```json
 {
   "version": 1,
   "models": [
     { "id": "claude-subscription/claude-opus-5-5:xhigh" },
-    { "id": "xai/grok-4.7:xhigh" }
+    { "id": "xai/grok-4.7:xhigh" },
+    { "id": "openai-codex/gpt-6-luna:medium" }
   ],
-  "tools": ["read", "grep", "find", "ls", "bash", "edit", "write",
-            "subagent_spawn", "subagent_wait", "subagent_read", "subagent_close"],
+  "tools": ["read", "grep", "find", "ls", "bash", "edit", "write", "todo",
+            "subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read",
+            "subagent_close", "subagent_list", "subagent_send"],
+  "extensions": ["/path/to/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts"],
+  "providerExtensions": {
+    "claude-subscription": "/path/to/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts"
+  },
   "maxDepth": 2,
   "loops": { "enabled": true, "minIntervalMs": 60000, "maxIterations": 50, "maxDurationMs": 28800000 }
 }
 ```
 
-The `subagent_*` entries are needed only with `maxDepth` above 1. Each tick of a
-loop starts a turn and so costs model usage.
+The `subagent_*` entries matter only with `maxDepth` above 1. Each tick of a loop
+starts a turn and so costs model usage.
 
 ### Under T3 Code
 
@@ -102,8 +127,13 @@ applies.
 
 1. Install `todo` and `pistack` as above. T3 launches Pi with your Pi
    configuration, so the same installs load.
-2. Run `/skill:setup-pstack`. It reads T3's model catalog, which only the model
-   can do; `/pistack-setup` points you there.
+2. T3 runs Pi in RPC mode, which cannot show Pi's project-trust prompt. A
+   project's `.pi/settings.json` and `.pi/pistack.json` load only if you saved a
+   trust decision for it: run `/trust` once from that project in a terminal Pi.
+3. Run `/skill:setup-pstack` in a T3 thread. It reads T3's model catalog, which
+   only the model can do; `/pistack-setup` points you there. It asks its
+   questions as T3 pending requests.
+4. Turn the mode on in each thread with `/pistack-mode on`.
 
 ### What differs
 
@@ -116,12 +146,12 @@ applies.
 | Watch a pull request | `gh` polling, or a watcher Child | `watch_pull_request`, from the top-level thread only; a delegated task polls with `gh` |
 | Model setup | `/pistack-setup` | `/skill:setup-pstack` |
 | `ask_user` | Terminal dialog | Shown in T3 as a pending request |
-| Todo widget, poteto-mode status | Shown | Not shown: T3 ignores widgets and status. Tool results carry the same text. |
+| Todo widget, poteto-mode status | Shown | Not shown: T3 ignores widgets and status. Tool results carry the same text; `/pistack-mode status` reports the mode. |
 
 ### One role file for both hosts
 
-Both hosts read `~/.pi/agent/pistack.json` (or `.pi/pistack.json` in a trusted
-project). It holds whatever the last setup wrote: Pi identities such as
+Both hosts read `~/.pi/agent/pistack.json`, or `.pi/pistack.json` in a trusted
+project. While the mode is on, the resolved table is in the model's prompt. It holds whatever the last setup wrote: Pi identities such as
 `xai/grok-4.7:xhigh` from a terminal, or T3 targets from T3. On the other host a
 value is treated as a hint: the model picks the closest offered model of the same
 family and thinking level, and says when it substitutes. If you mostly use one

@@ -15,7 +15,7 @@ Every candidate gets the same prompt, so the prompt is the contract.
 1. State the artifact each candidate is producing.
 2. Derive the rubric, 3-6 concrete gradeable criteria for what success looks like on *this* task. It is the picker's tool in Phase D. Candidates only see the task.
 3. Pick the runners. Use the `arena runners` role in the role defaults. If no role default is set, default to one each on `claude-opus-5-5-xhigh` and `grok-4.7-xhigh-fast`. An `auto` or `inherit-parent` entry in this role or the cross-judge role means your own model (**Parent model** under **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md)). Resolve each entry per **Models and role defaults**. If the catalog does not offer a configured entry, run that seat on its family's default and say so. With no family match, use `claude-opus-5-5-xhigh`. If the catalog does not offer a default, follow the fallback in **Models and role defaults**. Spawn more runners when the arena covers multiple design directions. Use the same model N times when the work is generation-bound rather than judgment-sensitive. Pick each subagent's reasoning level for the job, per the Subagents section of the **poteto-mode** skill.
-4. Give each candidate its own output location (a git worktree where possible, otherwise `/tmp/arena-<slug>/candidate-<n>/`), per the **separate-before-serializing-shared-state** principle skill.
+4. Give each candidate its own output location (a git worktree where possible, made per **Isolation** in the [host capabilities](../poteto-mode/references/host-capabilities.md), otherwise `/tmp/arena-<slug>/candidate-<n>/`), per the **separate-before-serializing-shared-state** principle skill.
 
 ## Phase B: Fan out
 
