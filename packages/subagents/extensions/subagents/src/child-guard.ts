@@ -6,6 +6,8 @@ import { Type } from "typebox";
 import { PeerClient } from "./peer-transport.js";
 import { BUILTINS, parseChildSettings, parseMcpPolicy, type ChildPolicy } from "./child-policy.js";
 import { installManagedBuiltins } from "./managed-builtins.js";
+import { isProxiedTool, opOf, type ProxiedTool } from "./nesting.js";
+import { TOOL_SPECS } from "./tool-schemas.js";
 
 function callText(value: unknown, limit = 80): string {
   const text = typeof value === "string"
@@ -19,6 +21,9 @@ export default function childGuard(pi: ExtensionAPI) {
   const configured: unknown = JSON.parse(process.env.PI_SUBAGENT_ALLOWED_TOOLS ?? "[]");
   if (!Array.isArray(configured) || configured.some(v => typeof v !== "string")) throw new Error("Invalid child tool policy");
   const allowed = new Set<string>(configured.filter(name => !name.startsWith("subagent_")));
+  // Delegation tools the parent selected for this Child. They exist only as proxies
+  // to the root Manager over the private pipe, which also decides their scope.
+  const proxied = new Set<ProxiedTool>(process.env.PI_SUBAGENT_PEER_FD === "3" ? configured.filter(isProxiedTool) : []);
   const policy: ChildPolicy | undefined = process.env.PI_SUBAGENT_POLICY ? JSON.parse(process.env.PI_SUBAGENT_POLICY) : undefined;
   if (policy) {
     if (policy.version !== 1 || !Array.isArray(policy.builtins) || policy.builtins.some(b => !BUILTINS.includes(b)) || !policy.toolSources || typeof policy.model !== "string") throw new Error("Invalid managed child policy");
@@ -27,7 +32,7 @@ export default function childGuard(pi: ExtensionAPI) {
   const ownPath = fileURLToPath(import.meta.url);
   let managed: ReturnType<typeof installManagedBuiltins> | undefined;
   const permits = (name: string) => {
-    if (name.startsWith("subagent_")) return false;
+    if (name.startsWith("subagent_")) return isProxiedTool(name) && proxied.has(name) && pi.getAllTools().find(t => t.name === name)?.sourceInfo?.path === ownPath;
     const nativeMcp = managed?.mcpTools.get(name);
     if (nativeMcp === false || (nativeMcp === undefined && !allowed.has(name))) return false;
     const source = nativeMcp ? ownPath : policy?.toolSources[name];
@@ -66,11 +71,24 @@ export default function childGuard(pi: ExtensionAPI) {
       },
     });
   }
+  for (const name of proxied) {
+    const spec = TOOL_SPECS[name];
+    pi.registerTool({
+      name, label: name.replace("subagent_", "Subagent "),
+      description: `${spec.description} Runs through your parent's manager and acts only on Children you spawned and their descendants.`,
+      parameters: spec.parameters,
+      async execute(_call, args, signal) {
+        peer ??= PeerClient.fromEnvironment();
+        const data = await peer.manage(opOf(name), args as Record<string, unknown>, signal);
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], details: data };
+      },
+    });
+  }
   pi.on("session_shutdown", () => { peer?.close(); peer = undefined; });
   const apply = () => pi.setActiveTools(pi.getActiveTools().filter(permits));
   pi.on("session_start", () => {
     // No CLI name ceiling for dynamic MCP tools. The guard owns the active set.
-    if (policy) pi.setActiveTools([...allowed].filter(name => permits(name) && pi.getAllTools().some(t => t.name === name && t.exposure !== "hidden")));
+    if (policy) pi.setActiveTools([...allowed, ...proxied].filter(name => permits(name) && pi.getAllTools().some(t => t.name === name && t.exposure !== "hidden")));
     else apply();
   });
   pi.on("before_agent_start", apply);

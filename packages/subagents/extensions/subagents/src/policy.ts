@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import type { SpawnOptions } from "./manager.js";
 import { BUILTINS, parseChildSettings, parseMcpPolicy, type Builtin, type ChildSettings, type McpPolicy } from "./child-policy.js";
 import { parseLoopPolicy, type LoopPolicy } from "./loop.js";
+import { isProxiedTool } from "./nesting.js";
 
 export interface Composition {
   model: string; tools: string[];
@@ -26,6 +27,8 @@ export interface PolicyConfig {
   mcp?: McpPolicy;
   /** Parent wake loops; absent means disabled. */
   loops?: LoopPolicy;
+  /** How deep the Child tree may grow; absent means 1, Children that cannot delegate. */
+  maxDepth?: number;
 }
 export interface LocalModel {
   provider: string; id: string; input: readonly string[]; contextWindow: number; maxTokens: number;
@@ -43,7 +46,7 @@ export const DEFAULT_POLICY: PolicyConfig = {
   maxChildren: 4, workingDirectories: ["."], peerMessageLimit: 0,
 };
 const RESOURCES = ["extensions", "skills", "promptTemplates", "themes"] as const;
-const KNOWN = new Set([...Object.keys(DEFAULT_POLICY), "providerExtensions", "childSettings", "mcp", "loops"]);
+const KNOWN = new Set([...Object.keys(DEFAULT_POLICY), "providerExtensions", "childSettings", "mcp", "loops", "maxDepth"]);
 export function splitModel(value: string) {
   const slash = value.indexOf("/");
   const colon = value.lastIndexOf(":");
@@ -82,6 +85,10 @@ export function parsePolicy(value: unknown): PolicyConfig {
   for (const extension of alwaysExtensions) if (!extensions.includes(extension)) throw new Error(`alwaysExtensions entry must also be listed in extensions: ${extension}`);
   const alwaysTools = strings(v.alwaysTools ?? [], "alwaysTools");
   for (const tool of alwaysTools) if (!tools.includes(tool)) throw new Error(`alwaysTools entry must also be listed in tools: ${tool}`);
+  // Delegation is chosen per Child; a leaf at maxDepth must never receive it.
+  for (const tool of alwaysTools) if (isProxiedTool(tool)) throw new Error(`alwaysTools cannot include delegation tools: ${tool}`);
+  const maxDepth = v.maxDepth ?? 1;
+  if (typeof maxDepth !== "number" || !Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > 4) throw new Error("maxDepth must be an integer from 1 to 4");
   let providerExtensions: Record<string, string> = {};
   if (v.providerExtensions !== undefined) {
     if (!v.providerExtensions || typeof v.providerExtensions !== "object" || Array.isArray(v.providerExtensions)) throw new Error("providerExtensions must map provider IDs to resource files");
@@ -93,6 +100,7 @@ export function parsePolicy(value: unknown): PolicyConfig {
     extensions, alwaysExtensions, skills: strings(v.skills ?? [], "skills"),
     providerExtensions, childSettings: parseChildSettings(v.childSettings), mcp: parseMcpPolicy(v.mcp),
     ...(v.loops === undefined ? {} : { loops: parseLoopPolicy(v.loops) }),
+    ...(v.maxDepth === undefined ? {} : { maxDepth }),
     promptTemplates: strings(v.promptTemplates ?? [], "promptTemplates"), themes: strings(v.themes ?? [], "themes"),
     systemPrompt: flags.systemPrompt, appendSystemPrompt: flags.appendSystemPrompt, contextFiles: flags.contextFiles,
     maxChildren, workingDirectories: strings(v.workingDirectories ?? ["."], "workingDirectories"), peerMessageLimit,
@@ -126,7 +134,7 @@ export class SubagentPolicy {
     this.diagnostics = this.ignoredProject ? [this.ignoredProject] : [];
     if (!this.config) {
       this.diagnostics.push(`${this.source}: ${this.error}`);
-      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: 0, peerMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false };
+      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: 0, peerMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
     }
     const config = this.config;
     const available = this.environment.models();
@@ -158,7 +166,11 @@ export class SubagentPolicy {
         if (config.peerMessageLimit > 0) return true;
         this.diagnostics.push("peer_send requires a positive peerMessageLimit (ignored)"); return false;
       }
-      if (tool.startsWith("subagent_")) { this.diagnostics.push(`Forbidden recursive tool (ignored): ${tool}`); return false; }
+      if (tool.startsWith("subagent_")) {
+        if (isProxiedTool(tool) && (config.maxDepth ?? 1) > 1) return true;
+        this.diagnostics.push(isProxiedTool(tool) ? `Forbidden recursive tool (ignored; delegation needs maxDepth above 1): ${tool}` : `Forbidden recursive tool (ignored): ${tool}`);
+        return false;
+      }
       if (!knownTools.has(tool)) { this.diagnostics.push(`Tool not locally known (ignored): ${tool}`); return false; }
       return true;
     });
@@ -200,6 +212,7 @@ export class SubagentPolicy {
       providerExtensions: config.providerExtensions, childSettings: config.childSettings,
       mcp: config.mcp,
       loops: config.loops ?? { enabled: false },
+      maxDepth: config.maxDepth ?? 1,
       notes: ["Built-ins require explicit extension and tool selections; classifiers and virtual models are denied.",
         config.childSettings?.cacheWarming === "off" ? "Child cache warming suppressed by decision hook." : "Cache warming inherits GLOBAL Pi settings (may cost money); project off is insufficient.",
         "Unspecified codemode mode/budget inherit Pi settings; mcp.autoEnableCodemode never grants tools.",
@@ -231,7 +244,8 @@ export class SubagentPolicy {
     if (!this.catalog().tools.includes("bash")) throw new Error("Workflow commands require bash in the subagent tool policy");
     return this.directory(cwd);
   }
-  compile(cwd: string, requested: Composition): Omit<SpawnOptions, "name" | "task"> {
+  /** depth: the new Child's depth, 1 for a Child of the root Parent. */
+  compile(cwd: string, requested: Composition, depth = 1): Omit<SpawnOptions, "name" | "task"> {
     const catalog = this.catalog();
     if (!catalog.spawnEnabled) throw new Error("No spawnable configuration. Inspect subagent_catalog; user diagnostics: /subagents diagnostics.");
     // Always-on entries become part of the saved composition, so resume revalidates them like explicit choices.
@@ -240,7 +254,10 @@ export class SubagentPolicy {
     if (selection.extensions === undefined) delete selection.extensions;
     const directory = this.checkedDirectory(cwd, catalog.workingDirectories);
     if (!catalog.models.some(m => m.id === selection.model)) throw new Error("Model/thinking selection is not currently allowed and usable; use subagent_catalog.");
-    for (const tool of selection.tools) if (tool.startsWith("subagent_") || !catalog.tools.includes(tool)) throw new Error(`Tool not allowed: ${tool}`);
+    for (const tool of selection.tools) if (!catalog.tools.includes(tool) || (tool.startsWith("subagent_") && !isProxiedTool(tool))) throw new Error(`Tool not allowed: ${tool}`);
+    const maxDepth = this.config!.maxDepth ?? 1;
+    if (depth > maxDepth) throw new Error(`No Child may run at depth ${depth}: maxDepth is ${maxDepth}.`);
+    if (selection.tools.some(isProxiedTool) && depth >= maxDepth) throw new Error(`A Child at depth ${depth} cannot delegate: maxDepth is ${maxDepth}.`);
     const relativeToProject = relative(this.path(this.environment.cwd), directory);
     const withinProject = !isAbsolute(relativeToProject) && relativeToProject !== ".." && !relativeToProject.startsWith(`..${sep}`);
     const cliArgs = ["--no-skills", "--no-prompt-templates", "--no-themes", this.environment.projectTrusted && withinProject ? "--approve" : "--no-approve"];
@@ -267,7 +284,8 @@ export class SubagentPolicy {
     const parentSources = this.environment.toolSources?.() ?? {};
     for (const tool of selection.tools) {
       const builtin = ({ codemode: "builtin:codemode", tool_search: "builtin:tool-search" } as Record<string, Builtin>)[tool];
-      let source = builtin && builtins.includes(builtin) ? this.environment.guardPath : parentSources[tool];
+      // The mandatory guard registers the proxied delegation tools inside the Child.
+      let source = (builtin && builtins.includes(builtin)) || isProxiedTool(tool) ? this.environment.guardPath : parentSources[tool];
       if (source && source !== this.environment.guardPath && !source.startsWith("builtin:")) source = this.path(source);
       if (builtin && this.config!.extensions.includes(builtin) && !builtins.includes(builtin)) throw new Error(`${tool} requires selecting ${builtin}`);
       if (source && source !== this.environment.guardPath) {

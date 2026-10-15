@@ -77,13 +77,38 @@ function latestResult(a: AgentRecord) {
   return update ? `${update.kind}: ${update.text}` : "no result reported yet.";
 }
 
+/** Each agent after its nearest ancestor in the same list, otherwise in list order. */
+export function treeOrder(list: readonly AgentRecord[], everyone: readonly AgentRecord[] = list): AgentRecord[] {
+  const byId = new Map(list.map(agent => [agent.id, agent]));
+  const all = new Map(everyone.map(agent => [agent.id, agent]));
+  const anchor = (agent: AgentRecord) => {
+    const seen = new Set<string>();
+    for (let id = agent.parentId; id && !seen.has(id); id = all.get(id)?.parentId) { seen.add(id); if (byId.has(id)) return id; }
+    return undefined;
+  };
+  const below = new Map<string, AgentRecord[]>();
+  const roots: AgentRecord[] = [];
+  for (const agent of list) {
+    const parent = anchor(agent);
+    if (parent) below.set(parent, [...(below.get(parent) ?? []), agent]); else roots.push(agent);
+  }
+  const ordered: AgentRecord[] = [];
+  const visit = (agent: AgentRecord) => { ordered.push(agent); for (const child of below.get(agent.id) ?? []) visit(child); };
+  roots.forEach(visit);
+  return ordered;
+}
+
 /** Pure presentation projection. In particular, never call inspect(id) or read(id). */
 export function inspectorPage(source: InspectorSource, location: Location, now = Date.now(), width = 80): Page {
   const agents = source.agents(), runs = source.workflows();
   const rows: Row[] = [];
   const add = (id: string, text: string, tone: Tone = "text", wrap = true) => rows.push({ id, text, tone, wrap });
+  // Rows are grouped by state; within a group a nested Child follows its delegator,
+  // indented by depth, and always names who delegated it.
+  const delegator = (agent: AgentRecord) => agent.parentId && agents.find(candidate => candidate.id === agent.parentId);
+  const indent = (agent: AgentRecord) => agent.parentId ? `${"  ".repeat(Math.max(0, (agent.depth ?? 2) - 2))}↳ ` : "";
   const agentRow = (agent: AgentRecord) => rows.push({ id: `agent:${agent.id}`,
-    text: `${mark(agent.status)} ${oneLine(agent.name).toLowerCase()} · ${label(agent.status)}${assignment(agent) ? ` · ${assignment(agent)!.status}` : ""}${unread(agent) ? " · parent review needed" : ""}${agent.hold ? ` · ${agent.hold.kind} ${agent.hold.outcome}` : ""} · ${cost(agent)}`,
+    text: `${mark(agent.status)} ${indent(agent)}${oneLine(agent.name).toLowerCase()} · ${label(agent.status)}${assignment(agent) ? ` · ${assignment(agent)!.status}` : ""}${unread(agent) ? " · parent review needed" : ""}${agent.hold ? ` · ${agent.hold.kind} ${agent.hold.outcome}` : ""}${delegator(agent) ? ` · from ${oneLine((delegator(agent) as AgentRecord).name).toLowerCase()}` : ""} · ${cost(agent)}`,
     tone: statusTone(agent.status), target: { kind: "agent", id: agent.id } });
   if (location.kind === "overview") {
     const runIds = new Set(runs.map(r => r.id));
@@ -100,19 +125,19 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
     };
     if (location.history) {
       if (displayedRuns.length || displayedAgents.length) add("history-group", "history · reviewed / idle", "dim");
-      displayedRuns.forEach(runRow); displayedAgents.forEach(agentRow);
+      displayedRuns.forEach(runRow); treeOrder(displayedAgents, agents).forEach(agentRow);
     } else {
       const attentionRuns = displayedRuns.filter(r => attentionRun(r, agents)), attentionAgents = displayedAgents.filter(attentionAgent);
       if (attentionRuns.length || attentionAgents.length) add("attention", "attention · intervention / approval", "warning");
-      attentionRuns.forEach(runRow); attentionAgents.forEach(agentRow);
+      attentionRuns.forEach(runRow); treeOrder(attentionAgents, agents).forEach(agentRow);
       const workingRuns = displayedRuns.filter(r => !attentionRun(r, agents) && !["succeeded", "cancelled"].includes(r.status));
       const workingAgents = displayedAgents.filter(a => !attentionAgent(a) && !["idle", "stopped"].includes(a.status));
       if (workingRuns.length || workingAgents.length) add("working", "working", "dim");
-      workingRuns.forEach(runRow); workingAgents.forEach(agentRow);
+      workingRuns.forEach(runRow); treeOrder(workingAgents, agents).forEach(agentRow);
       const resultRuns = displayedRuns.filter(r => !attentionRun(r, agents) && !workingRuns.includes(r));
       const resultAgents = displayedAgents.filter(a => !attentionAgent(a) && !workingAgents.includes(a));
       if (resultRuns.length || resultAgents.length) add("results", "results · parent review needed", "warning");
-      resultRuns.forEach(runRow); resultAgents.forEach(agentRow);
+      resultRuns.forEach(runRow); treeOrder(resultAgents, agents).forEach(agentRow);
     }
     if (orphans.length) { add("orphans", "workers · workflow record unavailable", "warning"); orphans.forEach(agentRow); }
     if (!rows.length) add("empty", location.history ? "no completed work." : "no current background work.", "dim");
