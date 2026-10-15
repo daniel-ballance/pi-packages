@@ -22,14 +22,16 @@
   ],
   "scripts": {
     "sync": "git -C ../.. submodule update --init packages/pistack/vendor/pstack && node generator/generate.mjs",
-    "check": "node generator/generate.mjs --check && node generator/lint-skills.mjs && tsc --noEmit -p skills/poteto-mode/scripts/watch-pr/tsconfig.json",
-    "test": "node --test test/*.test.mjs && cd skills/poteto-mode/scripts && node --test check-plan.test.ts watch-pr/*.test.ts orch/*.test.ts"
+    "check": "node generator/generate.mjs --check && node generator/lint-skills.mjs && tsc --noEmit -p skills/poteto-mode/scripts/watch-pr/tsconfig.json && tsc --noEmit -p tsconfig.json",
+    "test": "npm run test:once && T3_MCP_URL=http://127.0.0.1:1/mcp npm run test:once",
+    "test:once": "node --test test/*.test.mjs test/*.test.ts && cd skills/poteto-mode/scripts && node --test check-plan.test.ts watch-pr/*.test.ts orch/*.test.ts"
   },
   "dependencies": {
     "commander": "14.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "typebox": "^1.0.0",
     "typescript": "^5.9.3"
   },
   "pi": {

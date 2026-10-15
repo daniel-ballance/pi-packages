@@ -1,3 +1,6 @@
 {
-  "host.ts": ["packages/subagents/extensions/subagents/src/host.ts"]
+  "host.ts": [
+    "packages/subagents/extensions/subagents/src/host.ts",
+    "packages/pistack/extensions/pistack/src/host.ts"
+  ]
 }
