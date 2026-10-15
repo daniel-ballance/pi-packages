@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
@@ -7,7 +7,7 @@ import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type Ext
 import { Type } from "typebox";
 import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
-import { SubagentPolicy } from "./src/policy.js";
+import { builtInPolicy, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
 import { collectReports } from "./src/collection.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
@@ -37,6 +37,9 @@ const noticeKeys = (details: unknown): string[] => {
 
 /** Event-bus channel: emit `{ reply(catalog) }`; replies synchronously with `{ spawnEnabled, models: ["provider/model:thinking", ...] }`. */
 export const CATALOG_CHANNEL = "subagents:catalog";
+
+/** The collection installs claude-subscription beside this package; the built-in policy offers it when present. */
+const claudeSubscription = fileURLToPath(new URL("../../../claude-subscription/extensions/claude-subscription/index.ts", import.meta.url));
 
 export default function subagents(pi: ExtensionAPI) {
   // Explicitly loading this package in a child still does not enable recursion.
@@ -76,6 +79,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     cwd: ctx.cwd, agentDir: getAgentDir(), projectTrusted: ctx.isProjectTrusted(),
     guardPath: fileURLToPath(new URL("./src/child-guard.ts", import.meta.url)),
     models: () => ctx.modelRegistry.getAvailable().map(model => ({ ...model, thinkingLevels: getSupportedThinkingLevels(model) })),
+    builtIn: builtInPolicy(existsSync(claudeSubscription) && (ctx.modelRegistry as { getRegisteredProviderIds?: () => readonly string[] }).getRegisteredProviderIds?.().includes("claude-subscription") ? claudeSubscription : undefined),
     // Undocumented but present in 0.99.2 and 1.2.0; without it the check is skipped.
     extensionProviders: () => (ctx.modelRegistry as { getRegisteredProviderIds?: () => readonly string[] }).getRegisteredProviderIds?.() ?? [],
     toolSources: () => Object.fromEntries(pi.getAllTools().filter(tool => tool.sourceInfo?.path).map(tool => [tool.name, tool.sourceInfo!.path])),

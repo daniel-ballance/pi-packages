@@ -55,18 +55,26 @@ The highest-priority existing configuration wins, as a **whole-file replacement*
 
 No merging or upward directory search. Reload Pi to pick up configuration edits. Resource/model availability is rechecked on catalog requests, spawn and resume. An invalid selected file disables new spawning/resumption instead of falling back to broader defaults. Listing, reading, aborting and closing tracked children remain available. Untrusted project configuration is ignored with a user-facing diagnostic.
 
-The built-in policy supplies one exact fallback model, not a ranked menu. It is equivalent to the following:
+The built-in policy applies only when no `subagents.json` exists. It is a menu across the common providers, so that multi-model workflows such as pistack's roles and cross-family review work with no setup; entries you cannot reach are dropped without a diagnostic. Unlike your own file, where `maxDepth` and `loops` stay off until you set them, it turns on nesting (`maxDepth` 2) and bounded wake loops. When the collection's `claude-subscription` package is installed beside this one and its provider is registered, it also offers that provider's Claude models and allowlists its extension through `providerExtensions`. Without that, it is equivalent to the following:
 
 ```json
 {
   "version": 1,
   "models": [
-    {
-      "id": "openai-codex/gpt-6-luna:medium",
-      "description": "Default execution model; verify availability in subagent_catalog."
-    }
+    {"id": "openai-codex/gpt-6-luna:medium", "description": "Fast and cheap: lookups, triage, routine edits."},
+    {"id": "openai-codex/gpt-6-luna:high", "description": "Fast, more thorough."},
+    {"id": "openai-codex/gpt-6.1-sol:medium", "description": "Strong general model."},
+    {"id": "openai-codex/gpt-6.1-sol:high", "description": "Strong general model, more thinking."},
+    {"id": "openai-codex/gpt-6.1-sol:xhigh", "description": "Hardest code and judgment."},
+    {"id": "openai/gpt-6.1-sol:high", "description": "Strong general model (API key)."},
+    {"id": "xai/grok-4.7:high", "description": "Code work."},
+    {"id": "xai/grok-4.7:xhigh", "description": "Code work, more thinking."},
+    {"id": "anthropic/claude-opus-5-5:high", "description": "Judgment and prose."},
+    {"id": "anthropic/claude-opus-5-5:xhigh", "description": "Judgment and prose, hardest tasks."},
+    {"id": "anthropic/claude-sonnet-5-5:high", "description": "Cheaper Claude reviewer."},
+    {"id": "google/gemini-3.1-pro-preview:high", "description": "Another family for review panels."}
   ],
-  "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
+  "tools": ["read", "bash", "edit", "write", "grep", "find", "ls", "todo", "subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_close", "subagent_list", "subagent_send"],
   "extensions": [],
   "skills": [],
   "promptTemplates": [],
@@ -76,9 +84,11 @@ The built-in policy supplies one exact fallback model, not a ranked menu. It is 
   "systemPrompt": true,
   "appendSystemPrompt": true,
   "contextFiles": true,
-  "maxChildren": 4,
+  "maxChildren": 6,
+  "workingDirectories": ["."],
   "peerMessageLimit": 0,
-  "workingDirectories": ["."]
+  "maxDepth": 2,
+  "loops": {"enabled": true, "minIntervalMs": 60000, "maxIterations": 50, "maxDurationMs": 28800000}
 }
 ```
 
@@ -101,7 +111,7 @@ No user configuration files are generated or overwritten automatically.
 
 `subagent_catalog` exposes only usable options: allowed exact models with configured authentication and supported thinking levels, their guidance, modalities, context/output limits and registry pricing; locally known tools; existing resource files; prompt permissions; and allowed directories. Descriptions are user guidance, not measured model benchmarks. Registry prices may not reflect subscription billing or your actual provider bill.
 
-The built-in fallback requires that exact model to be registered, authenticated and available with the requested thinking level. It makes no task-quality, cost or subscription-capacity claim. To permit other exact combinations, supply a complete global or trusted-project policy. Existing policies replace the fallback and are not rewritten by this package.
+Each built-in entry is offered only if that exact model is registered, authenticated and available with the requested thinking level. The descriptions are rough guidance, not task-quality, cost or subscription-capacity claims. To permit other exact combinations, supply a complete global or trusted-project policy. Existing policies replace the fallback and are not rewritten by this package.
 
 Custom policies can supply advisory descriptions, which the catalog passes through without interpreting them as routing rules or additional permissions. Registry metadata and actual child usage remain available for execution supervision; model rankings and research analysis are outside this package.
 
