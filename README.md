@@ -85,7 +85,7 @@ vulnerable `brace-expansion` and `undici`; npm honors it even when our outer
 lock or overrides name patched releases. This explicit step copies the separately
 integrity-verified `brace-expansion` 5.0.12 and `undici` 8.10.2 development
 dependencies into affected local SDKs and updates only their shrinkwrap entries.
-It preflights all eight development hosts, accepts already-patched versions on
+It preflights all nine development hosts, accepts already-patched versions on
 the reviewed 5.x and 8.x lines, and leaves those dependencies unchanged. Each
 SDK's replacements are staged together with one merged shrinkwrap; a failed
 promotion restores that SDK's installed libraries. Successful patches clear
