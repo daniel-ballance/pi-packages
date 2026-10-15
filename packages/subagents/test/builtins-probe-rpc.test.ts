@@ -71,9 +71,10 @@ for (const wrapped of [false, true]) {
       }
       const search = await run("SEARCH");
       assert.deepEqual(search.find(event => event.type === "tool_execution_end" && event.toolName === "tool_search")?.result.details.loaded, ["forbidden"]);
-      const metered = await run('CODE text(typeof models); if (typeof models !== "undefined") text(await models.classify(await models.getModelOfType("classifier", "builtin-probe", "classifier"), {state:{},questions:{}})); await tools.metered({});');
+      const metered = await run('CODE text(typeof models); if (typeof models !== "undefined") text(await models.classify(await models.getModelOfType("classifier", "builtin-probe", "classifier"), {state:{},questions:{probe:{type:"bool",instructions:"Is this a probe?",criteria:{true:"yes",false:"no"}}}})); await tools.metered({});');
       const output = metered.find(event => event.type === "tool_execution_end" && event.toolName === "codemode")?.result.content;
-      assert.ok(output.some((block: Packet) => block.text === (wrapped ? "undefined" : "object")));
+      // Pi 1.x packs script output into fewer blocks; match the line, not the block.
+      assert.ok(output.some((block: Packet) => String(block.text).split("\n").includes(wrapped ? "undefined" : "object")), JSON.stringify(output));
       const calls = metered.filter(event => event.entry?.customType === "builtin-probe-call").map(event => event.entry.data.name);
       assert.deepEqual(calls, ["codemode", "metered"], "classifier does not emit a tool_call");
       const stats = await child.request({ type: "get_session_stats" });

@@ -24,8 +24,10 @@ export default async function (pi) {
       { type: "classifier", id: "classifier", name: "Classifier", api: "probe-classifier", input: ["text"],
         cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000 },
     ],
-    classifiers: { "probe-classifier": { classify: async () => ({
-      api: "probe-classifier", provider: "builtin-probe", model: "classifier", answers: {}, stopReason: "stop", timestamp: Date.now(),
+    // Answers every yes/no question; Pi 1.x validates questions and answers.
+    classifiers: { "probe-classifier": { classify: async (_model, context) => ({
+      api: "probe-classifier", provider: "builtin-probe", model: "classifier", stopReason: "stop", timestamp: Date.now(),
+      answers: Object.fromEntries(Object.keys(context?.questions ?? {}).map(id => [id, { type: "bool", probability: 1 }])),
       usage: { input: 10, output: 5, totalTokens: 15, cost: { total: 0.25 } },
     }) } },
     streamSimple(model, context, options) {

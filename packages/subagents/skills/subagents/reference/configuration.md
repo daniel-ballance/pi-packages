@@ -34,6 +34,9 @@ A project override must restate every capability it needs from the global config
 | `providerExtensions` | Optional provider ID → explicit allowlisted extension file; composition must also select that file. |
 | `childSettings` | Optional codemode mode/budget overrides and cache-warming suppression; see [built-ins](reference/builtins.md). |
 | `mcp` | Optional native MCP server/raw-tool grants and explicit credential inheritance consent; see [built-ins](reference/builtins.md). |
+| `loops` | Optional parent wake loops (`subagent_loop`, `/loop`); omitted means disabled. When present, all four fields are required: `enabled` (boolean), `minIntervalMs` (1000–86400000), `maxIterations` (1–10000) and `maxDurationMs` (60000–604800000). They are ceilings: a loop may ask for fewer ticks or a shorter run, never more, and its interval may not exceed its run's duration. |
+
+Example loop ceilings: `"loops": { "enabled": true, "minIntervalMs": 60000, "maxIterations": 50, "maxDurationMs": 28800000 }` permits one loop at a time, ticking at most once a minute, 50 times, for up to eight hours. Each tick starts a parent turn and so costs model usage.
 
 Unknown policy fields fail validation. There are no `profiles`, per-model tool permissions, routing rules, cost ceilings, benchmark-score fields or automatic escalation settings. Peer-message counts bound exchanges, not token/cost usage; parent-only renewal can grant further exchanges. Descriptions are optional advisory text, not executable policy.
 

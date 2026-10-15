@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { SubagentPolicy } from "./src/policy.js";
-import { NoticeScheduler } from "./src/notifications.js";
+import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
 import { collectReports } from "./src/collection.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { formatAgentListing, summarizeAgents } from "./src/usage.js";
@@ -20,6 +20,7 @@ import { inspectorSource } from "./src/inspector-data.js";
 import { showInspector, type InspectorPanel } from "./src/inspector.js";
 import { HerdrStatus } from "./src/herdr.js";
 import { detectHost } from "./src/host.js";
+import { describeLoop, formatInterval, LoopController, loopTickMessage, parseInterval, type LoopState } from "./src/loop.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
 const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path or built-in extension identifier from subagent_catalog." })));
@@ -54,6 +55,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   let policy: SubagentPolicy | undefined;
   let workflows: Workflows | undefined;
   let inspector: InspectorPanel | undefined;
+  let loops: LoopController | undefined;
   const getPolicy = (ctx: ExtensionContext) => policy ??= new SubagentPolicy({
     cwd: ctx.cwd, agentDir: getAgentDir(), projectTrusted: ctx.isProjectTrusted(),
     guardPath: fileURLToPath(new URL("./src/child-guard.ts", import.meta.url)),
@@ -100,6 +102,44 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     }
     notifications?.wake();
   });
+  const showLoop = () => {
+    const state = loops?.status();
+    if (context?.hasUI) context.ui.setStatus("loop", state ? `loop ${state.iteration}/${state.maxIterations} · every ${formatInterval(state.intervalMs)}` : undefined);
+  };
+  // A human intervention reaches the parent before any autonomous tick.
+  const supervisionPending = () => [...manager?.pendingNotices() ?? [], ...workflows?.pendingNotices() ?? []].some(isSupervisoryNotice);
+  const getLoops = (ctx: ExtensionContext) => loops ??= new LoopController({
+    policy: () => getPolicy(ctx).config?.loops,
+    idle: () => context?.isIdle() === true && !supervisionPending(),
+    send: tick => {
+      pi.sendMessage({ customType: "subagent-loop-tick", content: loopTickMessage(tick), display: true, details: tick }, { triggerTurn: true, deliverAs: "followUp" });
+      showLoop();
+    },
+    ended: (reason, state, requested) => {
+      // A bound ended it: tell the model at its next turn without starting one.
+      if (!requested) pi.sendMessage({ customType: "subagent-loop-end", content: `LOOP ENDED — ${JSON.stringify(state.task)} ${reason}.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+      if (!requested && context?.hasUI) context.ui.notify(`Loop ended: ${reason}`, "info");
+      showLoop();
+    },
+  });
+  // Shared by subagent_loop and /loop, so both answer the same way.
+  const loopAction = (ctx: ExtensionContext, request: { op: "start"; task: string; intervalMs: number; maxIterations?: number; maxDurationMs?: number } | { op: "stop"; by: string } | { op: "status" }) => {
+    const controller = getLoops(ctx);
+    let text: string, state: LoopState | undefined;
+    if (request.op === "start") {
+      const { op: _op, ...loop } = request;
+      state = controller.start(loop);
+      text = `Started a loop: ${describeLoop(state)}.`;
+    } else if (request.op === "stop") {
+      state = controller.stop(`stopped by the ${request.by}`);
+      text = state ? `Stopped the loop after ${state.iteration} of ${state.maxIterations} ticks.` : "No loop is running.";
+    } else {
+      state = controller.status();
+      text = state ? `Loop running: ${describeLoop(state)}.` : "No loop is running.";
+    }
+    showLoop();
+    return { text, state };
+  };
   const result = (data: unknown, ctx: ExtensionContext) => {
     const text = JSON.stringify(data, null, 2);
     const truncated = truncateHead(text, { maxBytes: 30000, maxLines: 1000 });
@@ -152,6 +192,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   pi.on("agent_start", () => { notifications?.busy(); herdr?.parent(true); });
   pi.on("agent_settled", (_event, ctx) => {
     notifications?.wake();
+    loops?.settled();
     if (ctx.isIdle()) herdr?.parent(false);
   });
   pi.on("message_end", event => {
@@ -165,6 +206,8 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     }
   });
   pi.on("session_shutdown", async () => {
+    loops?.dispose();
+    loops = undefined;
     inspector?.close();
     inspector = undefined;
     notifications?.dispose();
@@ -203,6 +246,28 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     description: "Discover currently usable, allowlisted model/thinking combinations with guidance, registry capabilities/pricing, tools, resources, always-loaded extensions/tools, prompt permissions and working-directory roots. Consult before composing a child. Unavailable entries are omitted; user diagnostics are in /subagents diagnostics. Configuration reloads with /reload. Output capped at 30KB/1000 lines.",
     parameters: Type.Object({}),
     async execute(_call, _args, _signal, _update, ctx) { return result(getPolicy(ctx).catalog(), ctx); },
+  });
+  pi.registerTool({
+    name: "subagent_loop", label: "Subagent Loop",
+    ...render("loop"),
+    description: "Wake this parent on an interval to repeat a task until its stop condition holds. op start (task, intervalSeconds, optional maxIterations and maxDurationMinutes), stop, or status. " +
+      "A tick starts a parent turn only when the parent is idle; one that falls due during a turn waits for it to settle. The loop also ends at the policy's iteration and duration bounds. " +
+      "Disabled unless the subagents policy has a loops field; subagent_catalog shows the bounds. One loop at a time; a reload stops it.",
+    parameters: Type.Object({
+      op: Type.Union([Type.Literal("start"), Type.Literal("stop"), Type.Literal("status")]),
+      task: Type.Optional(Type.String({ minLength: 1, maxLength: 4000, description: "start: what each tick should do, including its stop condition." })),
+      intervalSeconds: Type.Optional(Type.Integer({ minimum: 1, description: "start: seconds between ticks; at least the policy minimum." })),
+      maxIterations: Type.Optional(Type.Integer({ minimum: 1, description: "start: at most this many ticks; defaults to the policy maximum." })),
+      maxDurationMinutes: Type.Optional(Type.Integer({ minimum: 1, description: "start: stop after this long; defaults to the policy maximum." })),
+    }, { additionalProperties: false }),
+    async execute(_call, args, _signal, _update, ctx) {
+      if (args.op === "start" && (args.task === undefined || args.intervalSeconds === undefined)) throw new Error("start needs task and intervalSeconds");
+      const { text, state } = loopAction(ctx, args.op === "start"
+        ? { op: "start", task: args.task!, intervalMs: args.intervalSeconds! * 1000, maxIterations: args.maxIterations,
+            maxDurationMs: args.maxDurationMinutes === undefined ? undefined : args.maxDurationMinutes * 60_000 }
+        : args.op === "stop" ? { op: "stop", by: "parent" } : { op: "status" });
+      return { content: [{ type: "text" as const, text }], details: state ?? {} };
+    },
   });
   pi.registerTool({
     name: "subagent_spawn", label: "Spawn Subagent",
@@ -384,6 +449,20 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     async execute(_call, { id, requestId, ...response }, _signal, _update, ctx) {
       if (Object.values(response).filter(v => v !== undefined).length !== 1) throw new Error("Supply exactly one of value, confirmed, cancelled");
       return result(await get(ctx).respond(id, requestId, response), ctx);
+    },
+  });
+  pi.registerCommand("loop", {
+    description: "Wake this session on an interval: /loop <30s|5m|1h> <task>, /loop stop, or /loop for status. Needs a loops policy.",
+    handler: async (args, ctx) => {
+      const say = (text: string, kind: "info" | "warning" = "info") => { if (ctx.hasUI) ctx.ui.notify(text, kind); };
+      const [first = "", ...rest] = args.trim().split(/\s+/);
+      try {
+        if (!first) { say(loopAction(ctx, { op: "status" }).text); return; }
+        if (first === "stop") { say(loopAction(ctx, { op: "stop", by: "user" }).text); return; }
+        const intervalMs = parseInterval(first);
+        if (intervalMs === undefined || !rest.length) { say("Usage: /loop <30s|5m|1h> <task> | /loop stop | /loop", "warning"); return; }
+        say(`${loopAction(ctx, { op: "start", task: rest.join(" "), intervalMs }).text} Stop it with /loop stop.`);
+      } catch (error) { say(error instanceof Error ? error.message : String(error), "warning"); }
     },
   });
   pi.registerCommand("subagents", {

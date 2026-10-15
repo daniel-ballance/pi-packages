@@ -22,7 +22,7 @@ function render(action: Action, details: unknown, expanded = false, width = 120)
 
 test("all subagent tools register call/result renderers without changing execution schemas", () => {
   const tools = nativeTools();
-  assert.equal(tools.length, 18);
+  assert.equal(tools.length, 19);
   for (const tool of tools) {
     assert.equal(typeof tool.renderCall, "function", tool.name);
     assert.equal(typeof tool.renderResult, "function", tool.name);
