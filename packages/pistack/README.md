@@ -47,6 +47,9 @@ in its lists, for example:
 }
 ```
 
+That pattern also loads pistack's own `tdd`. If the list selects `agent-skills`' `tdd`
+too, add `"!packages/pistack/skills/tdd/SKILL.md"` so only one loads.
+
 ## Extension
 
 The package also loads a small hand-written extension:
