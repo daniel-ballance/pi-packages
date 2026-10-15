@@ -109,3 +109,26 @@ test("the plan names the destination before anything is created, keeping whitesp
     assert.equal(createWorktree(plan).path, plan.path);
   } finally { rmSync(parent, { recursive: true, force: true }); }
 });
+
+test("cleanup removes only what this attempt created, never another process's branch or checkout", () => {
+  const { root, git, dispose } = repo();
+  try {
+    const plan = planWorktree({ cwd: root, name: "raced", branch: "work/raced" });
+    git("branch", "work/raced"); // another process wins the race for the branch
+    assert.throws(() => createWorktree(plan), /work\/raced/);
+    assert.equal(git("branch", "--list", "work/raced").trim(), "work/raced", "their branch survives");
+    const other = planWorktree({ cwd: root, name: "occupied" });
+    git("worktree", "add", "-b", "theirs", other.path); // and for the checkout path
+    writeFileSync(join(other.path, "uncommitted.txt"), "theirs\n");
+    assert.throws(() => createWorktree(other));
+    assert.equal(existsSync(join(other.path, "uncommitted.txt")), true, "their checkout survives");
+  } finally { dispose(); }
+});
+
+test("branch shorthand that git would expand is refused", () => {
+  const { root, git, dispose } = repo();
+  try {
+    git("checkout", "-q", "-b", "old"); git("checkout", "-q", "main"); git("branch", "-D", "old");
+    for (const branch of ["@{-1}", "@", "feature@{1}"]) assert.throws(() => createWorktree({ cwd: root, name: "x", branch }), /branch/, branch);
+  } finally { dispose(); }
+});

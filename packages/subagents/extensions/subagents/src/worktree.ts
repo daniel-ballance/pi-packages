@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 export interface WorktreeRequest { cwd: string; name: string; base?: string; branch?: string }
@@ -32,7 +31,8 @@ export function planWorktree(request: WorktreeRequest): WorktreePlan {
   catch { throw new Error(`Cannot create a worktree: ${request.cwd} is not inside a git repository.`); }
   const directory = `${slug(request.name)}-${randomBytes(3).toString("hex")}`;
   const branch = request.branch ?? `subagent/${directory}`;
-  if (branch.startsWith("-") || !succeeds(() => git(root, "check-ref-format", "--branch", branch))) throw new Error(`Invalid worktree branch name: ${JSON.stringify(branch)}`);
+  // A literal full ref: `--branch` would expand shorthand such as @{-1} to another branch.
+  if (branch.startsWith("-") || branch.includes("@{") || branch === "@" || !succeeds(() => git(root, "check-ref-format", `refs/heads/${branch}`))) throw new Error(`Invalid worktree branch name: ${JSON.stringify(branch)}`);
   if (succeeds(() => git(root, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`))) throw new Error(`Worktree branch ${branch} already exists; choose another.`);
   const base = request.base ?? "HEAD";
   let commit: string;
@@ -52,16 +52,24 @@ export function createWorktree(request: WorktreeRequest | WorktreePlan): Worktre
     const ignored = succeeds(() => git(plan.root, "check-ignore", "-q", plan.path));
     return { ...plan, head: git(plan.path, "rev-parse", "HEAD"), ignored };
   } catch (error) {
-    removeWorktree(plan);
+    // Only what this attempt made: a checkout registered at the planned path on the
+    // planned branch. A branch or checkout another process created stays.
+    if (registeredBranch(plan) === `refs/heads/${plan.branch}`) removeWorktree(plan);
     throw new Error(`Cannot create a worktree on branch ${plan.branch} from ${plan.base}: ${gitError(error)}`);
   }
 }
 
-/** Undo createWorktree: the checkout and the branch it created, whatever exists of them. */
+/** The branch git has registered for a checkout at the plan's path, if any. */
+function registeredBranch(plan: WorktreePlan): string | undefined {
+  let listing: string;
+  try { listing = git(plan.root, "worktree", "list", "--porcelain"); } catch { return undefined; }
+  const entry = listing.split("\n\n").map(block => block.split("\n")).find(lines => lines[0] === `worktree ${plan.path}`);
+  return entry?.find(line => line.startsWith("branch "))?.slice("branch ".length);
+}
+
+/** Undo a creation this package made: the checkout and its branch. */
 export function removeWorktree(worktree: WorktreePlan): void {
-  if (existsSync(worktree.path) || git(worktree.root, "worktree", "list", "--porcelain").includes(`worktree ${worktree.path}\n`)) {
-    succeeds(() => git(worktree.root, "worktree", "remove", "--force", "--force", worktree.path));
-    succeeds(() => git(worktree.root, "worktree", "prune"));
-  }
+  succeeds(() => git(worktree.root, "worktree", "remove", "--force", "--force", worktree.path));
+  succeeds(() => git(worktree.root, "worktree", "prune"));
   if (succeeds(() => git(worktree.root, "show-ref", "--verify", "--quiet", `refs/heads/${worktree.branch}`))) git(worktree.root, "branch", "-D", worktree.branch);
 }
