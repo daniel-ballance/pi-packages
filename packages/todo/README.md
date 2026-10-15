@@ -11,7 +11,7 @@ One tool, `todo`, with three operations:
 | Operation | Parameters | Effect |
 |---|---|---|
 | `set` | `items`: the steps, in order | Replaces the list; items are numbered from 1 and start `pending`. |
-| `update` | `id`, `state`, `note?` | Moves one item to `pending`, `in_progress`, `done` or `skipped`. `skipped` requires a reason in `note`. |
+| `update` | `id` or `ids`, `state`, `note?` | Moves one item (`id`) or several (`ids`, all or none) to `pending`, `in_progress`, `done` or `skipped`. `skipped` requires a reason in `note`. |
 | `get` | | Returns the list. |
 
 Every result is the complete list as plain text, for example:
@@ -27,6 +27,23 @@ Todo: 1 done, 1 skipped, 1 in progress, 0 pending
 Results also carry `structuredContent` (`items`, `counts`) for codemode scripts.
 An invalid operation, such as a skip without a reason or an unknown id, returns
 an error result with the unchanged list and changes nothing.
+
+## Keeping the list current
+
+Models tend to set the list and then forget it while they work, because nothing in
+their context mentions it again. The extension does, with hidden messages the user
+does not see:
+
+- **During a run:** after four turns without a `todo` call while items are open,
+  one short reminder of the count and the next open item. It repeats only after
+  the next `todo` call.
+- **At the end of a request:** if the request used the list and items are still
+  open, one more turn to mark them done, skip them with a reason, or say in one
+  line why they stay open, for example while waiting on delegated work. This
+  happens once per request, never for the continuation it starts.
+
+`set`'s result also says to update items as they finish, and that codemode
+scripts can call `tools.todo`.
 
 Provider tool schemas must be a single flat object, so the rule that a skip
 needs a reason cannot be expressed in the schema itself; the tool enforces it
