@@ -73,7 +73,7 @@ model newer than Pi's catalog has no known price and counts as `$0`.
 
 ## Requirements
 
-- Pi 0.99.2 or newer (tested with 0.99.2 and 1.2.0), Node.js 22+.
+- Pi 1.3.0 or newer, Node.js 22+.
 - A Claude subscription.
 
 ## Install

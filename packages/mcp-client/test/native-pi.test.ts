@@ -211,9 +211,8 @@ test('native Pi: schemas, deferred tools, commands, TTL freshness, and subscript
     );
     const beforeLists = lists;
     await (session as any)._extensionRunner.emitBeforeAgentStart(
-      'probe',
-      undefined,
-      session.agent.state.systemPrompt,
+      { messageType: 'user', prompt: 'probe', images: undefined },
+      { customPrompt: session.agent.state.systemPrompt },
     );
     assert.ok(lists > beforeLists);
     await session.prompt('/mcp subscribe {"server":"fixture","uri":"test:notes"}');

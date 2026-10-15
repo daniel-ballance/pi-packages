@@ -69,6 +69,6 @@ first (see the root README).
 
 ## Development
 
-`npm run check` type-checks against the pinned Pi 0.99.2 development copy.
+`npm run check` type-checks against the pinned Pi 1.3.0 development copy.
 `npm test` runs the suite twice: as a terminal launch and with a fake
 `T3_MCP_URL`, so host-specific behaviour is covered on both hosts.

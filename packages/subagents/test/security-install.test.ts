@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const execute = promisify(execFile);
 const script = fileURLToPath(new URL("../../../scripts/patch-pi-host-security.mts", import.meta.url));
 const sdkName = "@earendil-works/pi-coding-agent";
-const packageNames = ["claude-subscription", "computer-use", "durable-subagents", "mcp-client", "self-reload", "subagents", "todo", "web-search"];
+const packageNames = ["claude-subscription", "computer-use", "mcp-client", "self-reload", "subagents", "todo", "web-search"];
 
 const undiciIntegrity = "sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==";
 const undiciResolution = {
@@ -24,7 +24,7 @@ async function json(path: string, data: unknown): Promise<void> {
   await writeFile(path, JSON.stringify(data));
 }
 
-async function host(directory: string, alias: string, version: string = "0.99.2"): Promise<string> {
+async function host(directory: string, alias: string, version: string = "1.3.0"): Promise<string> {
   const sdk = join(directory, "node_modules", alias);
   await json(join(sdk, "package.json"), { name: sdkName, version, main: "index.js" });
   await writeFile(join(sdk, "index.js"), "");
@@ -68,10 +68,9 @@ async function fixture(root: string): Promise<Fixture> {
   await cp(script, join(root, "scripts/patch-pi-host-security.mts"));
   const sdkDirectories: string[] = [];
   for (const name of packageNames) {
-    const version = ["mcp-client", "self-reload", "web-search"].includes(name) ? "0.85.1" : "0.99.2";
+    const version = "1.3.0";
     sdkDirectories.push(await host(join(root, "packages", name), sdkName, version));
   }
-  sdkDirectories.push(await host(join(root, "packages/durable-subagents"), "pi-host-1", "1.0.0"));
   return { root, sdkDirectories, braceDirectories: sdkDirectories.map((sdk: string): string => join(sdk, "node_modules/brace-expansion")) };
 }
 
@@ -141,7 +140,7 @@ async function installedVersion(sdk: string, dependency: string, version: string
 test("explicit install step patches all seven SDKs, preserves their code/other entries, and is idempotent", async (): Promise<void> => {
   await withFixture(async (value: Fixture): Promise<void> => {
     const manifests = await Promise.all(value.sdkDirectories.map((sdk: string): Promise<string> => readFile(join(sdk, "package.json"), "utf8")));
-    assert.match(await run(value), /9 checked, 9 patched/);
+    assert.match(await run(value), /7 checked, 7 patched/);
     assert.deepEqual(await Promise.all(value.sdkDirectories.map((sdk: string): Promise<string> => readFile(join(sdk, "package.json"), "utf8"))), manifests);
     for (const sdk of value.sdkDirectories) {
       assert.equal(await readFile(join(sdk, "node_modules/brace-expansion/index.cjs"), "utf8"), "module.exports = 'patched';\n");
@@ -156,7 +155,7 @@ test("explicit install step patches all seven SDKs, preserves their code/other e
     }
     const before = await snapshot(value.root);
     const metadataStats = await Promise.all(value.sdkDirectories.map(metadataIdentity));
-    assert.match(await run(value), /9 checked, 0 patched/);
+    assert.match(await run(value), /7 checked, 0 patched/);
     assert.deepEqual(await snapshot(value.root), before);
     assert.deepEqual(await Promise.all(value.sdkDirectories.map(metadataIdentity)), metadataStats);
   });
@@ -226,7 +225,7 @@ syncBuiltinESMExports();\n`);
     assert.equal(await readFile(join(sdk, "node_modules/brace-expansion/index.cjs"), "utf8"), "module.exports = 'old';\n");
     assert.equal(await readFile(join(sdk, "npm-shrinkwrap.json"), "utf8"), original);
     assert.deepEqual(await snapshot(join(value.root, "packages")), before);
-    assert.match(await run(value), /9 checked, 9 patched/);
+    assert.match(await run(value), /7 checked, 7 patched/);
   });
 });
 
@@ -243,13 +242,13 @@ test("partial combinations preserve patched dependencies and update both entries
     const unchangedBrace = await snapshot(join(undiciOnly, "node_modules/brace-expansion"));
     const unchangedUndici = await snapshot(join(braceOnly, "node_modules/undici"));
     const unchangedHost = await snapshot(both);
-    assert.match(await run(value), /9 checked, 8 patched/);
+    assert.match(await run(value), /7 checked, 6 patched/);
     assert.deepEqual(await snapshot(join(undiciOnly, "node_modules/brace-expansion")), unchangedBrace);
     assert.deepEqual(await snapshot(join(braceOnly, "node_modules/undici")), unchangedUndici);
     assert.deepEqual(await snapshot(both), unchangedHost);
     assert.equal(await readFile(join(undiciOnly, "node_modules/undici/index.js"), "utf8"), "module.exports = 'patched undici';\n");
     assert.equal(await readFile(join(braceOnly, "node_modules/brace-expansion/index.cjs"), "utf8"), "module.exports = 'patched';\n");
-    assert.match(await run(value), /9 checked, 0 patched/);
+    assert.match(await run(value), /7 checked, 0 patched/);
   });
 });
 
@@ -259,14 +258,14 @@ test("shared local SDK symlinks are patched once and retain both shrinkwrap upda
     assert.ok(first && shared);
     await rm(shared, { recursive: true });
     await symlink(first, shared, "dir");
-    assert.match(await run(value), /9 checked, 8 patched/);
+    assert.match(await run(value), /7 checked, 6 patched/);
     assert.equal(await readlink(shared), first);
     for (const name of ["brace-expansion", "undici"]) {
       const parsed: unknown = JSON.parse(await readFile(join(shared, "npm-shrinkwrap.json"), "utf8"));
       const entry = record(record(record(parsed).packages)[`node_modules/${name}`]);
       assert.equal(entry.version, name === "undici" ? "8.10.2" : "5.0.12");
     }
-    assert.match(await run(value), /9 checked, 0 patched/);
+    assert.match(await run(value), /7 checked, 0 patched/);
   });
 });
 
@@ -409,7 +408,7 @@ syncBuiltinESMExports();\n`);
         cwd: value.root, env: { ...process.env, TEST_UNDICI_PATH: join(sdk, "node_modules/undici") }, timeout: 10_000, maxBuffer: 65_536,
       }), /fixture undici failure/);
       assert.deepEqual(await snapshot(value.root), before);
-      assert.match(await run(value), /9 checked, 9 patched/);
+      assert.match(await run(value), /7 checked, 7 patched/);
     });
   });
 }
@@ -451,7 +450,7 @@ test("nested matcher replacement updates its actual shrinkwrap key, not the root
     assert.equal(record(entries["node_modules/minimatch/node_modules/brace-expansion"]).version, "5.0.12");
     assert.equal(await readFile(join(nested, "index.cjs"), "utf8"), "module.exports = 'patched';\n");
     assert.deepEqual(await snapshot(join(sdk, "node_modules/brace-expansion")), rootBefore);
-    assert.match(await run(value), /9 checked, 0 patched/);
+    assert.match(await run(value), /7 checked, 0 patched/);
   });
 });
 
@@ -472,6 +471,6 @@ syncBuiltinESMExports();\n`);
       cwd: value.root, env: { ...process.env, TEST_SOURCE_PATH: join(value.root, "node_modules/undici") }, timeout: 10_000, maxBuffer: 65_536,
     }), /Security source changed during staging/);
     assert.deepEqual(await snapshot(value.root), before);
-    assert.match(await run(value), /9 checked, 9 patched/);
+    assert.match(await run(value), /7 checked, 7 patched/);
   });
 });

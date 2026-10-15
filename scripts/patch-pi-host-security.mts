@@ -10,9 +10,8 @@ const sourceRoot = await realpath(resolve(dirname(fileURLToPath(import.meta.url)
 const root = await realpath(resolve(process.argv[2] ?? sourceRoot));
 const sdkName = "@earendil-works/pi-coding-agent";
 const hosts: readonly { packageName: string; alias: string }[] = [
-  ...["claude-subscription", "computer-use", "durable-subagents", "mcp-client", "self-reload", "subagents", "todo", "web-search"]
+  ...["claude-subscription", "computer-use", "mcp-client", "self-reload", "subagents", "todo", "web-search"]
     .map((packageName: string): { packageName: string; alias: string } => ({ packageName, alias: sdkName })),
-  { packageName: "durable-subagents", alias: "pi-host-1" },
 ];
 
 type Dependency = {
@@ -124,7 +123,7 @@ for (const dependency of dependencies) {
 }
 const scope = await json(join(root, "package.json"));
 const standaloneNames: Record<string, string> = {
-  "@daniel-ballance/durable-subagents": "durable-subagents", "claude-subscription": "claude-subscription",
+  "claude-subscription": "claude-subscription",
   "computer-use": "computer-use",
   "mcp-client": "mcp-client", "self-reload": "self-reload", "subagents": "subagents",
   "todo": "todo", "web-search": "web-search",

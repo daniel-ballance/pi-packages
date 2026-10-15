@@ -10,7 +10,7 @@ Use this skill in the **parent** Pi session. This package manages persistent chi
 Resolve file links relative to this skill directory, not the working directory. Read only the references relevant to the task:
 
 - **Set up or change policy:** [configuration reference](reference/configuration.md), including complete global, project and local-provider examples.
-- **Grant codemode, tool-search or native MCP:** [built-in policy reference](reference/builtins.md), including credential consent and per-child settings. Use Pi 0.99.2+; select both the resource and its tool. The codemode `models` namespace is disabled in managed children.
+- **Grant codemode, tool-search or native MCP:** [built-in policy reference](reference/builtins.md), including credential consent and per-child settings. Select both the resource and its tool. The codemode `models` namespace is disabled in managed children.
 - **Full implementation contract:** [package README](../../README.md). If behavior has changed, inspect the installed package rather than inventing policy keys.
 
 Model-selection research is maintained separately in Pareto. This skill covers execution configuration and supervision, not rankings or research workflows.
