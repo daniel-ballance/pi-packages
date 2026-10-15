@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { SpawnOptions } from "./manager.js";
 import { BUILTINS, parseChildSettings, parseMcpPolicy, type Builtin, type ChildSettings, type McpPolicy } from "./child-policy.js";
+import { parseLoopPolicy, type LoopPolicy } from "./loop.js";
 
 export interface Composition {
   model: string; tools: string[];
@@ -23,6 +24,8 @@ export interface PolicyConfig {
   providerExtensions?: Record<string, string>;
   childSettings?: ChildSettings;
   mcp?: McpPolicy;
+  /** Parent wake loops; absent means disabled. */
+  loops?: LoopPolicy;
 }
 export interface LocalModel {
   provider: string; id: string; input: readonly string[]; contextWindow: number; maxTokens: number;
@@ -40,7 +43,7 @@ export const DEFAULT_POLICY: PolicyConfig = {
   maxChildren: 4, workingDirectories: ["."], peerMessageLimit: 0,
 };
 const RESOURCES = ["extensions", "skills", "promptTemplates", "themes"] as const;
-const KNOWN = new Set([...Object.keys(DEFAULT_POLICY), "providerExtensions", "childSettings", "mcp"]);
+const KNOWN = new Set([...Object.keys(DEFAULT_POLICY), "providerExtensions", "childSettings", "mcp", "loops"]);
 export function splitModel(value: string) {
   const slash = value.indexOf("/");
   const colon = value.lastIndexOf(":");
@@ -89,6 +92,7 @@ export function parsePolicy(value: unknown): PolicyConfig {
     version: 1, models, tools, alwaysTools,
     extensions, alwaysExtensions, skills: strings(v.skills ?? [], "skills"),
     providerExtensions, childSettings: parseChildSettings(v.childSettings), mcp: parseMcpPolicy(v.mcp),
+    ...(v.loops === undefined ? {} : { loops: parseLoopPolicy(v.loops) }),
     promptTemplates: strings(v.promptTemplates ?? [], "promptTemplates"), themes: strings(v.themes ?? [], "themes"),
     systemPrompt: flags.systemPrompt, appendSystemPrompt: flags.appendSystemPrompt, contextFiles: flags.contextFiles,
     maxChildren, workingDirectories: strings(v.workingDirectories ?? ["."], "workingDirectories"), peerMessageLimit,
@@ -195,6 +199,7 @@ export class SubagentPolicy {
       omittedEntries: this.diagnostics.length,
       providerExtensions: config.providerExtensions, childSettings: config.childSettings,
       mcp: config.mcp,
+      loops: config.loops ?? { enabled: false },
       notes: ["Built-ins require explicit extension and tool selections; classifiers and virtual models are denied.",
         config.childSettings?.cacheWarming === "off" ? "Child cache warming suppressed by decision hook." : "Cache warming inherits GLOBAL Pi settings (may cost money); project off is insufficient.",
         "Unspecified codemode mode/budget inherit Pi settings; mcp.autoEnableCodemode never grants tools.",
@@ -210,6 +215,18 @@ export class SubagentPolicy {
     return directory;
   }
   directory(cwd: string) { return this.checkedDirectory(cwd, this.catalog().workingDirectories); }
+  /** Check a directory that does not exist yet, through the real path of its nearest existing ancestor. */
+  newDirectory(path: string) {
+    if (!isAbsolute(path)) throw new Error("cwd must be absolute");
+    const missing: string[] = [];
+    let existing = path;
+    while (!existsSync(existing)) { missing.unshift(basename(existing)); existing = dirname(existing); }
+    const real = join(realpathSync(existing), ...missing);
+    if (!this.catalog().workingDirectories.some(root => {
+      const rel = relative(root, real); return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
+    })) throw new Error("cwd is outside allowed workingDirectories");
+    return real;
+  }
   commandDirectory(cwd: string) {
     if (!this.catalog().tools.includes("bash")) throw new Error("Workflow commands require bash in the subagent tool policy");
     return this.directory(cwd);

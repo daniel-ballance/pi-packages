@@ -120,6 +120,7 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 | Tool | Purpose |
 |---|---|
 | `subagent_catalog` | Discover allowed, currently usable ingredients |
+| `subagent_loop` | Wake this parent on an interval until a stop condition holds; `start`, `stop`, `status`. Disabled unless the policy has `loops` |
 | `subagent_spawn` | Compose and start a child; returns prompt acceptance, not completion |
 | `subagent_list` | `{ totals, agents }`: aggregate reported cost/live counts plus child status, unread counts, usage and paths |
 | `subagent_send` | Prompt an idle child, or explicitly steer/queue a follow-up for a working child; returns the observed input `disposition` |
@@ -151,7 +152,11 @@ Example composition, after consulting the catalog:
 }
 ```
 
-`tools` is required; `[]` disables tools. Resource arrays are optional and empty by default. Optional `coordination: { owns: ["src/auth.ts"], outputs: ["reports/auth.md"] }` declares work areas and expected outputs. Paths resolve against the child cwd; overlap warnings are advisory, not locks, permissions or a sandbox. They do not create worktrees or merge changes. There are **no executable, raw CLI argument, environment, separate thinking-level or resource-discovery overrides** in the parent-facing spawn tool. The manager compiles validated selections into CLI arguments. It always loads its own child guard, regardless of configuration.
+`tools` is required; `[]` disables tools. Resource arrays are optional and empty by default. Optional `coordination: { owns: ["src/auth.ts"], outputs: ["reports/auth.md"] }` declares work areas and expected outputs. Paths resolve against the child cwd; overlap warnings are advisory, not locks, permissions or a sandbox. They do not create worktrees or merge changes.
+
+Optional `worktree: true`, or `worktree: { base, branch }`, gives the child its own git checkout: the manager runs `git worktree add -b <branch> <repository of cwd>/.pi/worktrees/<name>-<random> <base>` (defaults: `HEAD` and `subagent/<directory>`) and spawns the child there. Everything is validated before git writes anything: the composition, the branch name (a valid new branch, never option-shaped), the base (resolved to a commit, so git only sees a commit ID), and the destination, which must lie inside `workingDirectories` through the real path of its nearest existing directory. If anything fails after git starts, including a failing checkout hook or a child that does not launch, the checkout and branch this attempt created are removed; a branch or checkout that another process created in the meantime is left alone. The destination check and git's own path resolution are separate steps, so a process that can write to the repository could still swap a directory for a symlink between them. That is within this package's stated limit: it is not a sandbox against processes with write access (every child with `bash` has it), and the child is still refused if its checkout ends up outside `workingDirectories`. The result carries `worktree: { path, branch, base, head, ignored }`; `ignored: false` means the repository does not ignore `.pi/worktrees/`, so the parent checkout shows the new one as untracked. Creation only: merging the branch and removing the checkout stay with the parent, and closing the child leaves both in place. It is a separate checkout, not a sandbox.
+
+There are **no executable, raw CLI argument, environment, separate thinking-level or resource-discovery overrides** in the parent-facing spawn tool. The manager compiles validated selections into CLI arguments. It always loads its own child guard, regardless of configuration.
 
 All normal extension, skill, prompt-template and theme discovery is disabled; only explicitly selected resources load. Context files and normal system prompts follow their own permitted settings. Parent project trust is propagated only within that project's directory tree; child directories outside it do not automatically inherit trust. Children still use normal Pi global settings and credentials, so this is a spawn-composition boundary rather than a hermetic configuration or sandbox.
 
@@ -214,6 +219,12 @@ Delivery uses RPC `prompt` with `streamingBehavior: "steer"`: working recipients
 `subagent_peers({ id?, since? })` shows links and up to five messages per page from the last 200 retained. Follow `nextCursor` while `hasMore`; `gap` reports evicted history. These are message-creation cursors, not status-change cursors: replay a page to refresh statuses. Message bodies are capped at 4000 characters. Counts outlive body eviction. Reading peer history does not acknowledge ordinary child reports. This is bounded audit history, not a durable delivery inbox or an exactly-once messaging guarantee.
 
 See [the design note](PEER-MESSAGING.md) for scope, failure semantics and acceptance tests.
+
+## Wake loops
+
+`subagent_loop` (and the `/loop` command for the human) repeats a task on an interval: each tick is a custom message, `subagent-loop-tick`, that starts a parent turn. A tick reaches only an idle parent with no pending human-intervention notice; one that falls due during a turn waits until the turn settles, and ticks never stack. The interval may not exceed the run's duration, and the deadline is enforced on time, even while a tick waits. The loop ends when the parent calls `subagent_loop({op: "stop"})`, when the human runs `/loop stop`, or at the policy's iteration or duration bound; a bound adds a `subagent-loop-end` message without starting a turn. One loop runs per parent, and a reload stops it.
+
+Loops are off by default. The policy's `loops` field enables them and caps the interval, tick count and duration (see the [configuration reference](skills/subagents/reference/configuration.md)). Under T3 Code this package is inactive; T3's `schedule_task` and `watch_pull_request` cover the same need. A watcher child whose task is "watch X and report" also wakes the parent, through its completion notice, without a loop.
 
 ## Non-recursion: invariant, not policy
 

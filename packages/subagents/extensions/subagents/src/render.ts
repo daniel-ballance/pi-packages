@@ -6,7 +6,7 @@ import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-wor
 import { formatFooterStats, reportedCost } from "./usage.js";
 
 type Data = Record<string, unknown>;
-type Action = "catalog" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "release-hold" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow" | "workflow-start" | "workflow-inspect" | "workflow-control";
+type Action = "catalog" | "loop" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "release-hold" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow" | "workflow-start" | "workflow-inspect" | "workflow-control";
 type Color = Parameters<Theme["fg"]>[0];
 export type NameLookup = (kind: "child" | "workflow", id: string) => string | undefined;
 const workflowAction = (action: Action) => action === "workflow" || action.startsWith("workflow-");
@@ -209,6 +209,9 @@ function formatCall(action: Action, data: Data, theme: Theme, complete: boolean,
   switch (action) {
     case "catalog":
       return command(theme, "catalog");
+    case "loop":
+      return command(theme, "loop") + (typeof data.op === "string" ? " " + theme.fg("accent", inline(data.op)) : "") +
+        (typeof data.task === "string" ? " " + theme.fg("toolOutput", clip(inline(data.task))) : "");
     case "list":
       return command(theme, "list") + (data.includeRejected === true ? output("rejected") : "");
     case "spawn": {
@@ -351,6 +354,7 @@ export function subagentRenderers(action: Action, names?: NameLookup): Required<
           lines = [theme.fg("warning", "result truncated · full output saved to file"), ...preview(data.fullResult, width, theme, "dim", 3)];
         } else if (!data) lines = preview(raw || "no result data.", width, theme);
         else if (action === "catalog") lines = catalogLines(data, theme);
+        else if (action === "loop") lines = preview(raw, width, theme);
         else if (workflowAction(action)) lines = workflowLines(data, theme);
         else if (action === "list" || action === "wait") {
           lines = groupLines(data, theme);
