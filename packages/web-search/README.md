@@ -4,7 +4,7 @@ Zero-configuration DuckDuckGo web search for Pi. Adds one native `web_search` to
 
 ## Install
 
-Requires Node.js 22+; developed and tested against Pi 0.85.1.
+Requires Node.js 22+ and Pi 1.3.0+.
 
 From the repository root:
 

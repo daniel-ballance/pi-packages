@@ -1,6 +1,6 @@
 # mcp-client for Pi
 
-A Pi package connecting MCP servers to native Pi tools, resource access, and user-selected prompts. Requires **Pi 0.85.1+ and Node.js 22+**.
+A Pi package connecting MCP servers to native Pi tools, resource access, and user-selected prompts. Requires **Pi 1.3.0+ and Node.js 22+**.
 
 Supports the original **2024-11-05** specification, the **2025-03-26**, **2025-06-18**, and **2025-11-25** revisions, and the distinct **2026-07-28** protocol. This is a practical client implementation, **not a claim of exhaustive specification conformance**. See the [version-by-feature matrix](CONFORMANCE.md) and limitations below.
 

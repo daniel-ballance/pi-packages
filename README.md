@@ -4,7 +4,6 @@ A collection of Pi packages that extend the harness with capabilities it does no
 ship. Each package lives under [`packages/`](packages/).
 
 - [subagents](packages/subagents/README.md) — persistent RPC child agents with composable `subagents.json` allowlists, peer messaging, bounded workflows, supervision, and saved-session recovery. For Pi run directly; inside T3 Code it stays inactive and T3's own delegated tasks take over.
-- [durable-subagents](packages/durable-subagents/README.md) — opt-in Pi extension backed by native Durable conversations, with persistent collaborators, scoped peers, human holds and parent result notifications. Install this local package separately; the original subagents package remains unchanged.
 - [self-reload](packages/self-reload/README.md) — agent-requested runtime reload with automatic continuation, for rapid extension development.
 - [web-search](packages/web-search/README.md) — zero-configuration DuckDuckGo web search with titles, URLs, and snippets; no API key required.
 - [computer-use](packages/computer-use/README.md) — ordinary Pi tools for OpenAI's installed macOS Computer Use Companion, with automatic session consent. Quietly inactive on other platforms or when the apps are missing.
@@ -100,11 +99,10 @@ Choose one manager per checkout. Before switching, remove only the root and
 `packages/*/node_modules` directories, then reinstall with the chosen manager;
 do not delete either committed lockfile. pnpm disables automatic peer installs
 and dependency lifecycle scripts. The workspace's release-age exceptions name
-only the eight explicitly requested Pi 0.99.2 packages and four pinned native
-Durable 1.0.0 packages; all other versions and
+only the seven Pi 1.3.0 packages; all other versions and
 packages retain pnpm's normal quarantine. Cold-cache CI verifies that policy.
 Script execution does not implicitly reinstall
-dependencies, so CI's runtime overrides remain intact.
+dependencies.
 
 Runtime imports belong in
 that package's `dependencies`; Pi-provided APIs remain `peerDependencies`, with
@@ -201,18 +199,9 @@ Pi executable, credentials, or live web-search results.
 ## CI support and limits
 
 CI runs the complete root check with both npm and pnpm 12.6.0 on Node.js
-22.19.0 against two explicit dependency layouts:
-
-- **locked** — committed package lockfiles: subagents pins Pi **0.99.2**;
-  the other stable extension packages retain their existing development pins.
-  The opt-in `durable-subagents` package independently pins Durable 1.0.0 and tests its extension adapter on Pi 0.99.2 and 1.0.0.
-- **Pi 0.99.2** — Stable Pi dependencies below 1.0 are overridden in an
-  isolated CI job after baseline installation; committed manifests, workspace
-  configuration, and lockfiles remain unchanged. The native Durable 1.0 stack is
-  kept separate from these stable Pi overrides.
-
-The collection now requires Pi 0.99.2 for subagents. The matrix is not evidence
-for every intervening Pi release or older Node.js runtime. Tests use local deterministic providers and fixtures;
+22.19.0 against the committed lockfiles. Every package develops and tests against
+**Pi 1.3.0**, the one supported runtime; `scripts/ci-install.sh` refuses any
+other. Older Pi releases are not tested. Tests use local deterministic providers and fixtures;
 live search/MCP services and optional installed-Pi executable overrides are
 outside the root gate. Packaging fixtures may download registry dependencies as
 noted above.

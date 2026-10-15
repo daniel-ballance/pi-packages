@@ -10,13 +10,12 @@ permissions:
 
 jobs:
   check:
-    name: check (${{ matrix.package-manager }}, Pi ${{ matrix.pi-version }})
+    name: check (${{ matrix.package-manager }}, Pi 1.3.0)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        pi-version: ["locked", "0.99.2"]
         package-manager: [npm, pnpm]
     env:
       PACKAGE_MANAGER: ${{ matrix.package-manager }}
@@ -45,41 +44,7 @@ jobs:
         run: node --version && npm --version && "$PACKAGE_MANAGER" --version
 
       - name: Install package dependencies
-        run: ./scripts/ci-install.sh "${{ matrix.pi-version }}"
+        run: ./scripts/ci-install.sh locked
 
       - name: Run root check
         run: ./scripts/check.sh
-
-  # Development stays pinned to Pi 0.99.2; this job also proves subagents on the
-  # current Pi (design brief §5 item 2). Other packages keep their own pins.
-  subagents-pi-1-2:
-    name: subagents (npm, Pi 1.2.0)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      PACKAGE_MANAGER: npm
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Initialize submodules
-        run: git submodule update --init --recursive
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.19.0
-
-      - name: Install package dependencies
-        run: ./scripts/ci-install.sh locked
-
-      - name: Use Pi 1.2.0 for subagents only
-        run: |
-          npm --prefix packages/subagents install --ignore-scripts --no-save --package-lock=true --no-audit --no-fund \
-            @earendil-works/pi-ai@1.2.0 @earendil-works/pi-coding-agent@1.2.0 @earendil-works/pi-tui@1.2.0
-          node scripts/patch-pi-host-security.mts
-
-      - name: Check and test subagents
-        run: |
-          npm --prefix packages/subagents run check
-          npm --prefix packages/subagents test

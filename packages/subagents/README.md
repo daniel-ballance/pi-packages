@@ -10,7 +10,7 @@ npm ci --ignore-scripts
 pi install ./packages/subagents
 ```
 
-Reload the parent manually or with `self_reload`. Requires Pi 0.99.2 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). TUI and RPC parents are supported.
+Reload the parent manually or with `self_reload`. Requires Pi 1.3.0 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). TUI and RPC parents are supported.
 
 ## Disable native startup for one launch
 
@@ -123,7 +123,7 @@ Configured credentials do not guarantee a successful request: expired authentica
 
 ## Managed built-in extensions
 
-Pi 0.99.2 supplies the client and executors: this package adds policy checks, not another MCP client. Select exact `builtin:codemode`, `builtin:tool-search`, or `builtin:mcp` identifiers from the catalog. Existing policies gain nothing implicitly; unknown built-ins and `builtin:llama.cpp` are rejected. Codemode classifiers and virtual model selection are not supported.
+Pi supplies the client and executors: this package adds policy checks, not another MCP client. Select exact `builtin:codemode`, `builtin:tool-search`, or `builtin:mcp` identifiers from the catalog. Existing policies gain nothing implicitly; unknown built-ins and `builtin:llama.cpp` are rejected. Codemode classifiers and virtual model selection are not supported.
 
 See [built-in grants and settings](skills/subagents/reference/builtins.md) for the exact fields, credential consent, configuration eligibility, limitations and minimal migration snippets. The legacy `mcp-client` package remains unchanged and is not needed for this integration.
 

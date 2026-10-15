@@ -12,7 +12,7 @@ pi install ./packages/self-reload
 
 Run `/reload` **once in an already-running session** to discover the package. Future sessions load it automatically. Local installation references this directory directly, so subsequent edits are picked up on reload.
 
-Tested with Pi 0.85.1 and 0.87.1. Requires interactive (TUI) or RPC mode; print/JSON invocations are intentionally rejected by the tool.
+Requires Pi 1.3.0+, and interactive (TUI) or RPC mode; print/JSON invocations are intentionally rejected by the tool.
 
 ## Usage
 

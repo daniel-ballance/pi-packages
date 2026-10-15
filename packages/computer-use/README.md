@@ -29,7 +29,7 @@ node scripts/patch-pi-host-security.mts
 pi install "$PWD/packages/computer-use"
 ```
 
-Requires **Pi 0.99.2+ and Node.js 22.19.0+**. Install either the collection or
+Requires **Pi 1.3.0+ and Node.js 22.19.0+**. Install either the collection or
 the individual package, then restart Pi or `/reload`.
 
 ## Mac setup and detection

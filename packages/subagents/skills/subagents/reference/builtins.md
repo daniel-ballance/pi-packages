@@ -1,4 +1,4 @@
-# Managed Pi built-ins (Pi 0.99.2+)
+# Managed Pi built-ins
 
 This is the policy contract for the native Pi client/executors. See [configuration](reference/configuration.md) for whole-file precedence and path bases. The `mcp-client` package is separate and is not used here.
 
