@@ -56,7 +56,7 @@ The package also loads a small hand-written extension:
 
 | Piece | Does |
 |---|---|
-| `/pistack-mode on\|off\|status` | Keeps poteto-mode on across turns: while on, a prompt section tells the model to read `skills/poteto-mode/SKILL.md` and follow its playbooks, and every `subagent_spawn` or T3 `delegate_task` brief starts with the [poteto-agent recipe](agents/poteto-agent.md), which has the Child read the mode skill. A terminal Child given none of `edit`, `write` or `subagent_spawn` only investigates, so it gets a short read-only recipe instead: answer the brief with evidence, no playbook, no delegation. The setting follows the session branch; the status bar shows it where there is a UI. |
+| `/pistack-mode on\|off\|status` | Keeps poteto-mode on across turns: while on, a prompt section tells the model to read `skills/poteto-mode/SKILL.md` and follow its playbooks, and every `subagent_spawn` or T3 `delegate_task` brief starts with the [poteto-agent recipe](agents/poteto-agent.md), which has the Child read the mode skill. A terminal Child given none of `edit`, `write` or `subagent_spawn` only investigates, so it gets a short read-only recipe instead: answer the brief with evidence, no playbook, no delegation. The setting follows the session branch. In the terminal a 🥔 before the working directory on the footer's first row shows it is on. |
 | `ask_user` | Asks the human a product or preference question, with choices or free text. Works in a terminal and under T3 Code (T3 shows Pi's dialogs as pending requests); without a UI it tells the model to apply its stated default and say so. |
 | `pistack_roles` | Returns the model for every pistack role, from `.pi/pistack.json` in a trusted project, else `~/.pi/agent/pistack.json`, else the skills' default hints. |
 | `/pistack-setup` | In a terminal: pick a thinking budget, a code model and a judgment model, and write `~/.pi/agent/pistack.json` for every role. Each model is offered at the highest thinking level it supports within the budget, or not at all. With subagents loaded, only identities its allowlist permits are offered (read over Pi's event bus; an older subagents that cannot answer gets a pointer to the skill). Under T3 it points to `/skill:setup-pstack`, which can read T3's catalog. |
@@ -166,7 +166,7 @@ applies.
 | Watch a pull request | `gh` polling, or a watcher Child | `watch_pull_request`, from the top-level thread only; a delegated task polls with `gh` |
 | Model setup | `/pistack-setup` | `/skill:setup-pstack` |
 | `ask_user` | Terminal dialog | Shown in T3 as a pending request |
-| Todo widget, poteto-mode status | Shown | Not shown: T3 ignores widgets and status. Tool results carry the same text; `/pistack-mode status` reports the mode. |
+| Todo widget, poteto-mode 🥔 in the footer | Shown | Not shown: T3 ignores widgets and has no footer. Tool results carry the same text; `/pistack-mode status` reports the mode. |
 
 ### One role file for both hosts
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import pistack from "../extensions/pistack/index.ts";
+import { installFooterPrefix, prefixFooter } from "../extensions/pistack/src/footer.ts";
 import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/pistack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
@@ -13,7 +14,7 @@ const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", me
 
 // subagents: absent, loaded but too old to reply on the bus, or replying with this catalog.
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
-function harness({ hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents } = {}) {
+function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents } = {}) {
   const root = mkdtempSync(join(tmpdir(), "pistack-ext-")), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
@@ -29,7 +30,7 @@ function harness({ hasUI = true, answers = [] as (string | undefined)[], files =
     setStatus: (key: string, text?: string) => statuses.push([key, text]),
   };
   const ctx = {
-    cwd, hasUI, isProjectTrusted: () => trusted,
+    cwd, hasUI, mode, isProjectTrusted: () => trusted,
     get ui() { if (!hasUI) throw new Error("touched ui without UI"); return ui; },
     modelRegistry: { getAvailable: () => [opus, grok] },
     sessionManager: { getBranch: () => branch },
@@ -93,12 +94,12 @@ test("a trusted project's file wins over the personal one, and a broken file is 
   } finally { broken.dispose(); }
 });
 
-test("the mode toggle persists, adds a prompt section while on, and shows status only with a UI", async () => {
+test("the mode toggle persists, adds a prompt section while on, and shows only in the terminal", async () => {
   const h = harness();
   try {
     await h.command("pistack-mode", "on");
     assert.deepEqual(h.entries.at(-1), { customType: "pistack-mode", data: { on: true } });
-    assert.deepEqual(h.statuses.at(-1), ["pistack", "poteto-mode"]);
+    assert.deepEqual(h.statuses, [], "T3 shows no status, so none is set outside the terminal");
     const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
     const section = event.systemPromptOptions.sections["pistack-mode"];
     assert.match(section, /poteto-mode is on.*skills\/poteto-mode\/SKILL\.md/s);
@@ -112,14 +113,53 @@ test("the mode toggle persists, adds a prompt section while on, and shows status
     const off = await h.emit("before_agent_start", { systemPromptOptions: { sections: { "pistack-mode": "stale" } } });
     assert.equal(off.systemPromptOptions.sections["pistack-mode"], undefined);
     assert.deepEqual(await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } }), [], "no reminder while off");
-    assert.deepEqual(h.statuses.at(-1), ["pistack", undefined]);
   } finally { h.dispose(); }
+  // Pi's footer only loads inside Pi; here the terminal falls back to a status row.
+  const tui = harness({ mode: "tui" });
+  try {
+    await tui.emit("session_start");
+    await tui.command("pistack-mode", "on");
+    assert.deepEqual(tui.statuses.at(-1), ["pistack", "poteto-mode"]);
+    await tui.command("pistack-mode", "off");
+    assert.deepEqual(tui.statuses.at(-1), ["pistack", undefined]);
+  } finally { tui.dispose(); }
   const resumed = harness({ hasUI: false, branch: [{ type: "custom", customType: "pistack-mode", data: { on: true } }] });
   try {
     await resumed.emit("session_start");
     const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
     assert.ok(event.systemPromptOptions.sections["pistack-mode"], "rebuilt from the branch");
   } finally { resumed.dispose(); }
+});
+
+// Pi-tui's width rules for these cases: the potato and the ellipsis glyphs are 2 and 1 wide.
+const measure = {
+  visibleWidth: (line: string) => [...line.replace(/\x1b\[[0-9;]*m/g, "")].reduce((width, char) => width + (char === "🥔" ? 2 : 1), 0),
+  truncateToWidth: (line: string, width: number, ellipsis = "") => { let out = ""; for (const char of line) { if (measure.visibleWidth(out + char + ellipsis) > width) break; out += char; } return out + ellipsis; },
+};
+
+test("the potato goes before the working directory without widening the footer", () => {
+  assert.deepEqual(prefixFooter(["~/code (main)", "stats", "statuses"], 40, "🥔 ", measure), ["🥔 ~/code (main)", "stats", "statuses"]);
+  assert.deepEqual(prefixFooter(["~/code", "stats"], 40, "", measure), ["~/code", "stats"], "no potato while the mode is off");
+  const labelled = "~/code" + " ".repeat(10) + "subagents: 1/2"; // 30 wide, as subagents right-aligns it
+  assert.equal(prefixFooter([labelled, "stats"], 30, "🥔 ", measure)[0], "🥔 ~/code" + " ".repeat(7) + "subagents: 1/2", "a right-aligned label keeps its place");
+  assert.equal(prefixFooter(["~/a/very/long/project/path", "stats"], 20, "🥔 ", measure)[0], "🥔 ~/a/very/long/...");
+});
+
+test("the footer hook decorates Pi's renderer until it is removed, and leaves later wrappers alone", () => {
+  class Footer { render(width: number) { return [`~/code ${width}`, "stats"]; } }
+  let on = true;
+  const remove = installFooterPrefix(Footer.prototype, () => on ? "🥔 " : "", measure);
+  assert.deepEqual(new Footer().render(40), ["🥔 ~/code 40", "stats"]);
+  on = false;
+  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"]);
+  on = true;
+  remove();
+  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"], "removed");
+  const removeAgain = installFooterPrefix(Footer.prototype, () => { throw new Error("broken"); }, measure);
+  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"], "a failing decoration keeps the stock footer");
+  const later = Footer.prototype.render = function (this: Footer, width: number) { return [`later ${width}`]; };
+  removeAgain();
+  assert.equal(Footer.prototype.render, later, "another extension's later wrapper is not overwritten");
 });
 
 test("while the mode is on, delegated briefs start with the poteto-agent recipe, once", async () => {

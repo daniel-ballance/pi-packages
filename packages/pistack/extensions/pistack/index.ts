@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
+import { installFooterPrefix, type Measure } from "./src/footer.ts";
 import { detectHost, registerHostAware } from "./src/host.ts";
 import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, resolveRoles, type Budget, type ModelInfo } from "./src/roles.ts";
 
@@ -17,7 +18,7 @@ interface Ui {
   setStatus(key: string, text: string | undefined): void;
 }
 interface Context {
-  cwd: string; hasUI: boolean; ui: Ui; isProjectTrusted(): boolean;
+  cwd: string; hasUI: boolean; mode?: string; ui: Ui; isProjectTrusted(): boolean;
   modelRegistry: { getAvailable(): ModelInfo[] };
   sessionManager: { getBranch(): { type: string; customType?: string; data?: unknown }[] };
 }
@@ -42,6 +43,18 @@ const OTHER = "Other (type an answer)";
 const CATALOG_CHANNEL = "subagents:catalog";
 const text = (body: string, structuredContent?: unknown) => ({ content: [{ type: "text", text: body }], details: structuredContent ?? {}, ...(structuredContent ? { structuredContent } : {}) });
 const format = (value: string | string[]) => Array.isArray(value) ? value.join(", ") : value;
+const POTATO = "🥔 ";
+
+/** Marks the mode on Pi's own footer; undefined where Pi's modules don't load. */
+async function potatoFooter(on: () => boolean): Promise<(() => void) | undefined> {
+  try {
+    // Pi provides both modules to extensions at runtime. Non-literal specifiers keep
+    // this package type-checking without a Pi SDK of its own.
+    const names = ["@earendil-works/pi-coding-agent", "@earendil-works/pi-tui"];
+    const [agent, tui] = await Promise.all(names.map(name => import(name)));
+    return installFooterPrefix(agent.FooterComponent.prototype, () => on() ? POTATO : "", tui as Measure);
+  } catch { return undefined; }
+}
 
 /** The role defaults as the model should use them: one line per role, and where they came from. */
 function roleTable(ctx: Context) {
@@ -53,15 +66,24 @@ function roleTable(ctx: Context) {
 
 export default function pistack(pi: Pi) {
   let modeOn = false;
+  let restoreFooter: (() => void) | undefined;
 
-  const showMode = (ctx: Context) => { if (ctx.hasUI) ctx.ui.setStatus("pistack", modeOn ? "poteto-mode" : undefined); };
-  const rebuild = (_event: unknown, ctx: Context) => {
+  // In the terminal a potato before the working directory shows the mode. The status
+  // row is the fallback if the footer can't be decorated; T3 shows neither.
+  const showMode = (ctx: Context) => {
+    if (ctx.mode !== "tui") return;
+    // Clearing a status is also how an extension gets Pi to redraw the footer.
+    ctx.ui.setStatus("pistack", modeOn && !restoreFooter ? "poteto-mode" : undefined);
+  };
+  const rebuild = async (_event: unknown, ctx: Context) => {
     modeOn = false;
     for (const entry of ctx.sessionManager.getBranch()) if (entry.type === "custom" && entry.customType === MODE) modeOn = (entry.data as { on?: boolean } | undefined)?.on === true;
+    if (ctx.mode === "tui") restoreFooter ??= await potatoFooter(() => modeOn);
     showMode(ctx);
   };
   pi.on("session_start", rebuild);
   pi.on("session_tree", rebuild);
+  pi.on("session_shutdown", () => { restoreFooter?.(); restoreFooter = undefined; });
 
   // A named prompt section, so Pi records a delta rather than a new system prompt. It
   // carries the resolved role table, because skills say "use the role defaults" and a
