@@ -33,9 +33,14 @@ identical; only the tool that satisfies it changes.
 
 1. One shared host helper (`cli` / `t3`) used by every package, instead of
    each extension re-reading `T3_MCP_URL`.
-2. Under T3, a tool that duplicates a T3 primitive is registered **inactive**
-   (`defaultActive: false`), not omitted: discoverable through `tool_search`
-   and codemode, never competing in the prompt.
+2. Under T3, a tool that duplicates a T3 primitive is registered with
+   **`exposure: "deferred"`**, not omitted: discoverable through `tool_search`
+   and callable from codemode, never competing in the prompt. (Revised from
+   `defaultActive: false`: an inactive `direct` tool is callable only while
+   active, so neither codemode nor `tool_search` reaches it. Pi 1.2.0
+   `docs/mcp.md`, "Tools with `codemode` or `deferred` exposure can be reached
+   through either indirect mechanism"; `docs/extensions.md` "Tool exposure".
+   T3's own Pi bridge registers its optional tools as `deferred`.)
 3. Every tool result is complete as plain text. `renderCall`, `renderResult`,
    widgets and message renderers are additive, because T3 shows raw results.
 4. Every `ctx.ui` call guards on `hasUI`. Without UI, apply a stated default
@@ -91,8 +96,8 @@ Relevant deltas, all verified in that changelog and `docs/codemode.md`:
   `registerToolRenderer()` for tools not yet registered, `reachesTools` on
   tool definitions, `durationMs` on `tool_execution_end`.
 - **Removed**: the experimental server/client/plugin stack and the
-  `@earendil-works/chord` dependency. `durable-subagents` documents a Chord
-  `Context` parameter; its 1.2 compatibility is unverified (§5).
+  `@earendil-works/chord` dependency. `durable-subagents` is out of scope
+  (§5.2).
 
 ## 3. Capability contract
 
@@ -102,7 +107,7 @@ Relevant deltas, all verified in that changelog and `docs/codemode.md`:
 | Isolation | `worktree` option on spawn (**to add**, §4.3) | `isolation: "worktree"` | "in its own checkout under `.pi/worktrees/`" |
 | Nesting | policy `maxDepth` (**to add**, §4.3) | native; `task_cancel` cascades | "a child may delegate within its subtree; cancel cascades" |
 | Wake / loop | `subagent_loop` (**to add**, §4.3) or a watcher child | `schedule_task`, `watch_pull_request` | "wake me on event E or every N minutes until predicate P, bounded" |
-| Ask the human | `ask_user` tool via `ctx.ui` (**to add**, §4.4) | the same tool if T3 services Pi's extension-UI dialogs (§5.1); else `t3_pending_request_*` | "ask only for product or preference calls; otherwise apply a default and report" |
+| Ask the human | `ask_user` tool via `ctx.ui` (**to add**, §4.4) | the same tool: T3 services Pi's dialogs as pending requests (§5.1, verified) | "ask only for product or preference calls; otherwise apply a default and report" |
 | Todo | `todo` package (**to add**, §4.2) with TUI widget | same tool, plain-text result | "copy playbook steps verbatim; `done` or `skip: <reason>`" |
 | Visuals | widget / rendered tool result | `html_render` | "show it" |
 | Status | `ui.setStatus`, OSC 7501 program status (Pi 1.1) | thread status | n/a |
@@ -273,7 +278,7 @@ while the parent idles." Depth is allowed; the orchestrate playbook opts in.
 
 **(d) Compatibility.** Before any of the above, run the package checks
 against Pi 1.2.0 (it pins 0.99.2 for development) and decide whether to bump
-the pin.
+the pin. Done (§5.2): one characterization fixture to fix, pin kept.
 
 ### 4.4 `pistack` package: generated skills plus a hand-written extension
 
@@ -338,8 +343,54 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
    (`docs/rpc-extension-ui.md`)? If yes, `ask_user` and `/playbooks-setup`
    work unchanged under T3 and several §3 rows collapse. Test with a trivial
    `ctx.ui.confirm` tool inside a T3 thread.
+
+   **Resolved 2026-10-15: yes.** Live probe: a throwaway project extension
+   registered `ui_probe` (calls `ctx.ui.confirm`, `select`, `input`); a T3
+   delegated task on the Pi provider (T3 0.0.46-nightly.20261014, Pi 1.2.0,
+   `openai-codex/gpt-6-luna`) called it. Result: `mode: "rpc"`,
+   `hasUI: true`, `T3_MCP_URL` set; the confirm surfaced as a T3
+   `approval_request`, select and input as `user_input_request` items, all
+   answered in the T3 UI and returned to the tool (`true`, `"alpha"`, `""`).
+   Static confirmation in T3's bundled Pi adapter
+   (`handleExtensionUiRequest`): `select`/`confirm`/`input`/`editor` become
+   runtime requests answered with `extension_ui_response`; `notify` becomes a
+   transcript item; `setStatus`, `setWidget`, `setTitle` are ignored
+   ("Ignoring pi extension UI update"). T3's injected Pi extension itself
+   routes tool approvals through `ctx.ui.confirm`. Consequences: the §3 "Ask
+   the human" row collapses to one backend (the `ask_user` tool, active on
+   both hosts); `/pistack-setup` dialogs work under T3. `t3_pending_request_list`
+   excludes approval requests, so a parent agent can answer `select`/`input`
+   programmatically but not `confirm`. Status and widgets are invisible
+   under T3, which is why rule 3 (plain-text-complete results) matters.
+   An earlier attempt failed at launch with "pi process exited with code 1";
+   T3's trace shows the same failure in `discoverPiCommandsForCwd` before the
+   probe existed, and an immediate retry succeeded, so it is a transient T3
+   launch issue, not a probe result.
 2. **`subagents` and `durable-subagents` on Pi 1.2.0.** Run both packages'
    checks on 1.2.0; check `durable-subagents` after the `chord` removal.
+
+   **Resolved 2026-10-15.** Method: `npm ci`, then `npm install --no-save`
+   of `@earendil-works/pi-{ai,coding-agent,tui}@1.2.0` into
+   `packages/subagents`, the same override shape `scripts/ci-install.sh`
+   uses for its 0.99.2 job.
+   - `subagents`: `tsc --noEmit` passes on 1.2.0. Tests: 264 pass, 12 skipped
+     (herdr end-to-end, as on 0.99.2), **1 fail**:
+     `builtins-probe-rpc.test.ts` "stock built-ins". It characterizes Pi
+     itself, not the package: its fixture calls `models.classify()` with
+     `questions: {}`, which 1.2.0 rejects ("context.questions must map
+     question IDs to questions"), and 1.2.0 packs codemode output into a
+     different text block. Fix the fixture to pass a valid question and match
+     on block content; no package code change. Decision for 4.3(d): keep the
+     0.99.2 development pin for now (CI and both lockfiles are built on it)
+     and add a 1.2.0 job; new code uses only APIs present in both
+     (`exposure`, `defaultActive`, `outputSchema`, `appendEntry`,
+     `sendMessage` with `deliverAs` all exist in the 0.99.2 and 1.2.0
+     `types.d.ts`).
+   - `durable-subagents`: **out of scope** (an experiment, not in regular
+     use). For the record only: it pins its own `@earendil-works/chord@1.0.0`,
+     so Pi's chord removal does not affect it, but its extension entry point
+     refuses any Pi other than 0.99.2 and 1.0.x. pistack does not depend on
+     it.
 3. **Thinking levels per provider.** Confirm the enum each provider exposes
    (`LocalModel.thinkingLevels` in `policy.ts`) before writing the budget
    ladder.
@@ -347,6 +398,14 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
    privacy rule (this project only).
 5. **Does T3 inject a todo tool for Pi?** Decides the todo tool's T3
    activation.
+
+   **Resolved 2026-10-15: no.** The §5.1 probe listed every registered tool
+   in a T3 Pi session: built-ins, `mcp__t3-code__*` (preview, orchestration,
+   threads, queue, PR, device, html), the user's own extensions and MCP
+   servers; nothing todo-shaped. The todo tool is therefore `direct` under
+   both hosts. Keep the detection (a registered tool named like a todo
+   primitive switches ours to `deferred`) so a later T3 release that adds
+   one does not create a duplicate.
 6. **Concurrency defaults.** `maxChildren` is 4; `swarm` must read the cap
    from `subagent_catalog` and shape N to it rather than fail.
 7. **Package naming**: `pistack` is decided. `host` helper as a package or a
