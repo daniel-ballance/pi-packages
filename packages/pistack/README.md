@@ -43,7 +43,7 @@ The package also loads a small hand-written extension:
 | `/pistack-mode on\|off\|status` | Keeps poteto-mode on across turns: while on, a prompt section tells the model to read `skills/poteto-mode/SKILL.md` and follow its playbooks, and every `subagent_spawn` or T3 `delegate_task` brief starts with the [poteto-agent recipe](agents/poteto-agent.md). The setting follows the session branch; the status bar shows it where there is a UI. |
 | `ask_user` | Asks the human a product or preference question, with choices or free text. Works in a terminal and under T3 Code (T3 shows Pi's dialogs as pending requests); without a UI it tells the model to apply its stated default and say so. |
 | `pistack_roles` | Returns the model for every pistack role, from `.pi/pistack.json` in a trusted project, else `~/.pi/agent/pistack.json`, else the skills' default hints. |
-| `/pistack-setup` | In a terminal: pick a thinking budget, a code model and a judgment model from Pi's model registry, and write `~/.pi/agent/pistack.json` for every role (levels clamped to what each model offers). Under T3 it points to `/skill:setup-pstack`, which can read T3's catalog. |
+| `/pistack-setup` | In a terminal: pick a thinking budget, a code model and a judgment model, and write `~/.pi/agent/pistack.json` for every role. Each model is offered at the highest thinking level it supports within the budget, or not at all. With subagents loaded, only identities its allowlist permits are offered (read over Pi's event bus; an older subagents that cannot answer gets a pointer to the skill). Under T3 it points to `/skill:setup-pstack`, which can read T3's catalog. |
 
 `/loop` and the todo list come from the `subagents` and `todo` packages, not from here.
 

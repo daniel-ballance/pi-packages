@@ -325,6 +325,9 @@ and the child brief prefix for `subagent_spawn` and T3 `delegate_task`. Choices:
 the extension is written against the subset of Pi's API it uses, so pistack needs
 only `typebox` and no Pi SDK of its own (no tenth host for the security patch);
 the package-layout test loads it through Pi's real loader. `/pistack-setup`
+offers only identities the subagents allowlist permits (a command cannot call
+`subagent_catalog`, so subagents replies on the `subagents:catalog` event-bus
+channel), never above the chosen budget, and
 covers the common case (one code and one judgment model) and defers to
 `/skill:setup-pstack` under T3, whose catalog only the model can read. **Not
 done yet:** Layer 3 below (fan-out skills as codemode scripts, orchestrate as

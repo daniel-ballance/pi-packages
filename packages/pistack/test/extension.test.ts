@@ -4,14 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import pistack from "../extensions/pistack/index.ts";
-import { DEFAULT_ROLES, thinkingFor } from "../extensions/pistack/src/roles.ts";
+import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/pistack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
   ({ provider, id, reasoning, thinkingLevelMap: levels });
 const opus = model("claude-subscription", "claude-opus-5-5", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" });
 const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: null });
 
-function harness({ hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[] } = {}) {
+// subagents: absent, loaded but too old to reply on the bus, or replying with this catalog.
+type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
+function harness({ hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents } = {}) {
   const root = mkdtempSync(join(tmpdir(), "pistack-ext-")), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
@@ -37,6 +39,8 @@ function harness({ hasUI = true, answers = [] as (string | undefined)[], files =
     registerCommand: (name: string, command: any) => commands.set(name, command),
     on: (name: string, handler: Function) => handlers.set(name, [...handlers.get(name) ?? [], handler]),
     appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
+    getAllTools: () => [...tools.values(), ...subagents ? [{ name: "subagent_catalog" }] : []],
+    events: { emit: (channel: string, data: { reply(value: unknown): void }) => { if (channel === "subagents:catalog" && subagents && subagents !== "old") data.reply(subagents); } },
   } as never);
   const emit = async (name: string, event: any = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); return event; };
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
@@ -51,6 +55,15 @@ test("a budget sets each model's thinking level, clamped to what that model offe
   assert.equal(thinkingFor("unlimited", grok), "xhigh", "Grok tops out at xhigh");
   assert.equal(thinkingFor("small", grok), "medium");
   assert.equal(thinkingFor("large", model("p", "plain", undefined, false)), "off", "a model without reasoning stays off");
+  const highOnly = model("p", "deep", { off: null, minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null });
+  assert.equal(thinkingFor("small", highOnly), undefined, "never above the budget");
+  assert.deepEqual(candidates("small", [opus, highOnly]), ["claude-subscription/claude-opus-5-5:medium"]);
+});
+
+test("with a subagents catalog, only its identities are offered, at the highest level within the budget", () => {
+  const catalog = ["xai/grok-4.7:high", "xai/grok-4.7:low", "p/deep:xhigh", "malformed"];
+  assert.deepEqual(candidates("medium", [opus, grok], catalog), ["xai/grok-4.7:high"]);
+  assert.deepEqual(candidates("unlimited", [], catalog), ["xai/grok-4.7:high", "p/deep:xhigh"]);
 });
 
 test("pistack_roles answers with the role table as text, from the file or the default hints", async () => {
@@ -140,7 +153,7 @@ function asTerminal() {
 
 test("/pistack-setup maps a budget and two models onto every role and writes the file", async () => {
   const restore = asTerminal();
-  const h = harness({ answers: ["unlimited — max thinking", "xai/grok-4.7", "claude-subscription/claude-opus-5-5"] });
+  const h = harness({ answers: ["unlimited — max thinking", "xai/grok-4.7:xhigh", "claude-subscription/claude-opus-5-5:max"] });
   try {
     await h.command("pistack-setup");
     const written = JSON.parse(readFileSync(join(h.agentDir, "pistack.json"), "utf8"));
@@ -163,4 +176,30 @@ test("/pistack-setup defers to the skill under T3 and does nothing without a UI"
   } finally { h.dispose(); if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
   const headless = harness({ hasUI: false });
   try { await headless.command("pistack-setup"); } finally { headless.dispose(); }
+});
+
+test("/pistack-setup offers only models the subagents policy permits, and never writes one it cannot check", async () => {
+  const restore = asTerminal();
+  // Harnesses own PI_CODING_AGENT_DIR, so one at a time.
+  const run = async (subagents: Subagents, answers: string[], check: (h: ReturnType<typeof harness>, written: unknown) => void) => {
+    const h = harness({ subagents, answers });
+    try {
+      await h.command("pistack-setup");
+      let written: unknown;
+      try { written = JSON.parse(readFileSync(join(h.agentDir, "pistack.json"), "utf8")); } catch { written = undefined; }
+      check(h, written);
+    } finally { h.dispose(); }
+  };
+  try {
+    await run({ spawnEnabled: true, models: ["xai/grok-4.7:high", "xai/grok-4.7:xhigh"] }, ["large — xhigh thinking", "xai/grok-4.7:xhigh", "xai/grok-4.7:xhigh"], (h, written) => {
+      assert.match(h.asked[1]!, /\[xai\/grok-4\.7:xhigh\]$/, "Opus is authenticated but not permitted");
+      assert.equal((written as { roles: Record<string, string> }).roles["bug-fix"], "xai/grok-4.7:xhigh");
+    });
+    await run("old", [], (h, written) => { assert.match(h.notices.at(-1)![0], /\/skill:setup-pstack/); assert.equal(written, undefined); });
+    await run({ spawnEnabled: false, models: [] }, [], (h, written) => { assert.match(h.notices.at(-1)![0], /permits no usable model/); assert.equal(written, undefined); });
+    await run({ spawnEnabled: true, models: ["xai/grok-4.7:xhigh"] }, ["small — medium thinking"], (h, written) => {
+      assert.match(h.notices.at(-1)![0], /No permitted model offers thinking at or below medium/);
+      assert.equal(written, undefined);
+    });
+  } finally { restore(); }
 });

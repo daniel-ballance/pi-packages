@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { detectHost, registerHostAware } from "./src/host.ts";
-import { agentDir, BUDGETS, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, resolveRoles, thinkingFor, type Budget, type ModelInfo } from "./src/roles.ts";
+import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, resolveRoles, type Budget, type ModelInfo } from "./src/roles.ts";
 
 interface Ui {
   select(title: string, options: string[]): Promise<string | undefined>;
@@ -26,6 +26,8 @@ interface Pi {
   registerCommand(name: string, command: { description: string; handler: (args: string, ctx: Context) => Promise<void> }): void;
   on(event: string, handler: (event: any, ctx: Context) => unknown): void;
   appendEntry(customType: string, data: unknown): void;
+  getAllTools(): { name: string }[];
+  events: { emit(channel: string, data: unknown): void };
 }
 
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -33,6 +35,8 @@ const modeSkill = join(packageDir, "skills", "poteto-mode", "SKILL.md");
 const agentRecipe = join(packageDir, "agents", "poteto-agent.md");
 const MODE = "pistack-mode";
 const OTHER = "Other (type an answer)";
+// The subagents package replies synchronously on this channel; see its README.
+const CATALOG_CHANNEL = "subagents:catalog";
 const text = (body: string, structuredContent?: unknown) => ({ content: [{ type: "text", text: body }], details: structuredContent ?? {}, ...(structuredContent ? { structuredContent } : {}) });
 const format = (value: string | string[]) => Array.isArray(value) ? value.join(", ") : value;
 
@@ -117,30 +121,45 @@ export default function pistack(pi: Pi) {
     },
   }, { duplicatesT3: false });
 
+  const readCatalog = () => {
+    let catalog: { spawnEnabled: boolean; models: string[] } | undefined;
+    pi.events.emit(CATALOG_CHANNEL, { reply: (value: typeof catalog) => { catalog = value; } });
+    return catalog as typeof catalog;
+  };
+
   pi.registerCommand("pistack-setup", {
     description: "Choose a thinking budget, a code model and a judgment model, and write ~/.pi/agent/pistack.json for every pistack role",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) return;
       // Under T3, roles name T3 targets that only the model can list; the skill does that.
       if (detectHost() === "t3") { ctx.ui.notify("Under T3 Code, run /skill:setup-pstack: it reads T3's model catalog.", "info"); return; }
+      // With subagents loaded, roles must name identities its allowlist permits. A command
+      // cannot call subagent_catalog, so ask over the event bus; no reply means an older subagents.
+      const withSubagents = pi.getAllTools().some(tool => tool.name === "subagent_catalog");
+      const catalog = withSubagents ? readCatalog() : undefined;
+      if (withSubagents) {
+        if (!catalog) { ctx.ui.notify("This subagents version cannot share its catalog with a command. Run /skill:setup-pstack: it reads subagent_catalog.", "info"); return; }
+        if (!catalog.spawnEnabled) { ctx.ui.notify("Your subagents policy permits no usable model, so no role can run. Check subagent_catalog or /subagents diagnostics.", "warning"); return; }
+      }
       const models = ctx.modelRegistry.getAvailable();
-      if (!models.length) { ctx.ui.notify("No models are available to Pi; configure one first.", "warning"); return; }
+      if (!catalog && !models.length) { ctx.ui.notify("No models are available to Pi; configure one first.", "warning"); return; }
       const budgetLabel = await ctx.ui.select("Thinking budget for pistack roles", BUDGETS.map(budget => budget.label));
       const budget = BUDGETS.find(entry => entry.label === budgetLabel);
-      const names = models.map(model => `${model.provider}/${model.id}`);
-      const code = budget && await ctx.ui.select("Model for code roles (feature, bug-fix, swarm workers, explorers)", names);
+      if (!budget) { ctx.ui.notify("Setup cancelled; nothing written.", "info"); return; }
+      const names = candidates(budget.name as Budget, models, catalog?.models);
+      if (!names.length) { ctx.ui.notify(`No ${catalog ? "permitted " : ""}model offers thinking at or below ${budget.level}. Choose a larger budget${catalog ? " or permit more models in subagents.json" : ""}.`, "warning"); return; }
+      const code = await ctx.ui.select("Model for code roles (feature, bug-fix, swarm workers, explorers)", names);
       const judgment = code && await ctx.ui.select("Model for judgment and prose roles (a different family suits review panels)", names);
-      if (!budget || !code || !judgment) { ctx.ui.notify("Setup cancelled; nothing written.", "info"); return; }
-      const exact = (name: string) => `${name}:${thinkingFor(budget.name as Budget, models[names.indexOf(name)]!)}`;
+      if (!code || !judgment) { ctx.ui.notify("Setup cancelled; nothing written.", "info"); return; }
       const roles = Object.fromEntries([
-        ...CODE_ROLES.map(role => [role, exact(code)]), ...JUDGMENT_ROLES.map(role => [role, exact(judgment)]),
-        ...PANEL_ROLES.map(role => [role, [exact(judgment), exact(code)]]),
+        ...CODE_ROLES.map(role => [role, code]), ...JUDGMENT_ROLES.map(role => [role, judgment]),
+        ...PANEL_ROLES.map(role => [role, [judgment, code]]),
       ]);
       const path = join(agentDir(), "pistack.json");
       if (existsSync(path) && !await ctx.ui.confirm("Replace the role defaults?", `${path} exists; setup rewrites it whole.`)) { ctx.ui.notify("Kept the existing file.", "info"); return; }
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, JSON.stringify({ budget: `${budget.name} (${budget.level})`, roles }, null, 2) + "\n");
-      ctx.ui.notify(`Wrote ${path}: code roles on ${exact(code)}, judgment roles on ${exact(judgment)}. Children can use only models your subagents policy allows; check subagent_catalog.`, "info");
+      ctx.ui.notify(`Wrote ${path}: code roles on ${code}, judgment roles on ${judgment}.${catalog ? " Both are permitted by your subagents policy." : ""}`, "info");
     },
   });
 }

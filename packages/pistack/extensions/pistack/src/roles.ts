@@ -35,11 +35,34 @@ export function supportedLevels(model: ModelInfo): string[] {
   });
 }
 
-/** The budget's level, or the closest level the model offers below it. */
-export function thinkingFor(budget: Budget, model: ModelInfo): string {
-  const target = LEVELS.indexOf(BUDGETS.find(entry => entry.name === budget)!.level);
-  const offered = supportedLevels(model);
-  return [...offered].reverse().find(level => LEVELS.indexOf(level) <= target) ?? offered[0]!;
+const budgetLevel = (budget: Budget) => LEVELS.indexOf(BUDGETS.find(entry => entry.name === budget)!.level);
+const highestWithin = (budget: Budget, levels: string[]) =>
+  [...levels].sort((a, b) => LEVELS.indexOf(b) - LEVELS.indexOf(a)).find(level => LEVELS.includes(level) && LEVELS.indexOf(level) <= budgetLevel(budget));
+
+/** The budget's level, or the closest level the model offers below it; none if every level exceeds the budget. */
+export function thinkingFor(budget: Budget, model: ModelInfo): string | undefined {
+  return highestWithin(budget, supportedLevels(model));
+}
+
+/**
+ * The exact `provider/model:thinking` identities setup may offer within a budget, one per model.
+ * With a subagents catalog only its identities count: a role naming anything else fails to spawn.
+ */
+export function candidates(budget: Budget, models: ModelInfo[], catalog?: string[]): string[] {
+  if (!catalog) return models.flatMap(model => {
+    const level = thinkingFor(budget, model);
+    return level ? [`${model.provider}/${model.id}:${level}`] : [];
+  });
+  const levels = new Map<string, string[]>();
+  for (const id of catalog) {
+    const at = id.lastIndexOf(":");
+    if (at <= 0) continue;
+    levels.set(id.slice(0, at), [...levels.get(id.slice(0, at)) ?? [], id.slice(at + 1)]);
+  }
+  return [...levels].flatMap(([name, offered]) => {
+    const level = highestWithin(budget, offered);
+    return level ? [`${name}:${level}`] : [];
+  });
 }
 
 export const agentDir = () => process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
