@@ -4,7 +4,7 @@ export interface Item { readonly id: number; readonly text: string; readonly sta
 export interface TodoList { readonly items: readonly Item[] }
 export type Operation =
   | { readonly op: "set"; readonly items: readonly string[] }
-  | { readonly op: "update"; readonly id: number; readonly state: ItemState; readonly note?: string }
+  | { readonly op: "update"; readonly ids: readonly number[]; readonly state: ItemState; readonly note?: string }
   | { readonly op: "get" };
 
 export const STATES: readonly ItemState[] = ["pending", "in_progress", "done", "skipped"];
@@ -26,13 +26,18 @@ export function parseOperation(params: unknown): Operation | Failure {
       return { op: "set", items };
     }
     case "update": {
-      const { id, state, note } = params;
-      if (typeof id !== "number" || !Number.isInteger(id) || id < 1) return { error: "update needs the item id, a positive integer" };
+      const { id, ids, state, note } = params;
+      if ((id === undefined) === (ids === undefined)) return { error: "update needs either id or ids" };
+      const wanted = ids === undefined ? [id] : ids;
+      if (!Array.isArray(wanted) || wanted.length === 0 || !wanted.every(value => typeof value === "number" && Number.isInteger(value) && value >= 1)) {
+        return { error: "update needs id, or ids: positive integers" };
+      }
       if (typeof state !== "string" || !STATES.includes(state as ItemState)) return { error: `update needs a state: ${STATES.join(", ")}` };
       if (note !== undefined && typeof note !== "string") return { error: "note must be text" };
       const trimmed = typeof note === "string" && note.trim() !== "" ? note.trim() : undefined;
       if (state === "skipped" && trimmed === undefined) return { error: "a skipped item needs a reason in note; items are never deleted" };
-      return trimmed === undefined ? { op: "update", id, state: state as ItemState } : { op: "update", id, state: state as ItemState, note: trimmed };
+      const unique = [...new Set(wanted as number[])];
+      return trimmed === undefined ? { op: "update", ids: unique, state: state as ItemState } : { op: "update", ids: unique, state: state as ItemState, note: trimmed };
     }
     default: return { error: "op must be set, update or get" };
   }
@@ -47,11 +52,17 @@ export function apply(list: TodoList, operation: Operation): { readonly list: To
       return { list: { items }, change: `Set ${items.length} items${open ? `, replacing a list with ${open} open` : ""}.` };
     }
     case "update": {
-      const target = list.items.find(item => item.id === operation.id);
-      if (!target) return { error: `no item ${operation.id}; the list has ${list.items.length}` };
-      const { note: _previous, ...rest } = target;
-      const updated: Item = operation.note === undefined ? { ...rest, state: operation.state } : { ...rest, state: operation.state, note: operation.note };
-      return { list: { items: list.items.map(item => item.id === target.id ? updated : item) }, change: `Item ${target.id} is ${operation.state.replace("_", " ")}.` };
+      const missing = operation.ids.filter(id => !list.items.some(item => item.id === id));
+      if (missing.length) return { error: `no item ${missing.join(", ")}; the list has ${list.items.length}` };
+      const targets = new Set(operation.ids);
+      const items = list.items.map(item => {
+        if (!targets.has(item.id)) return item;
+        const { note: _previous, ...rest } = item;
+        return operation.note === undefined ? { ...rest, state: operation.state } : { ...rest, state: operation.state, note: operation.note };
+      });
+      const state = operation.state.replace("_", " ");
+      const change = operation.ids.length === 1 ? `Item ${operation.ids[0]} is ${state}.` : `Items ${operation.ids.join(", ")} are ${state}.`;
+      return { list: { items }, change };
     }
   }
 }

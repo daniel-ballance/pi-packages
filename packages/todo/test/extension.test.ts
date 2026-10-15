@@ -26,7 +26,7 @@ function harness({ hasUI = true, branch = [] as unknown[] } = {}) {
   todo(pi as never);
   const tool = () => tools.at(-1)!;
   const call = (params: unknown) => tool().execute("call-1", params, undefined, undefined, ctx);
-  const emit = async (name: string, event: unknown = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); };
+  const emit = async (name: string, event: unknown = {}) => { const out: any[] = []; for (const handler of handlers.get(name) ?? []) out.push(await handler(event, ctx)); return out.filter(Boolean); };
   return { tools, tool, call, emit, entries, renderers, ui, setAllTools: (names: string[]) => { allTools = names.map(name => ({ name })); } };
 }
 
@@ -37,7 +37,7 @@ test("each change answers with the complete list as text and as structured conte
   const h = harness();
   const result = await h.call({ op: "set", items: ["Frame", "Fan out"] });
   assert.equal(result.isError, undefined);
-  assert.match(text(result), /Set 2 items\.\nTodo: 0 done, 0 skipped, 0 in progress, 2 pending\n\[ \] 1\. Frame\n\[ \] 2\. Fan out/);
+  assert.match(text(result), /^Set 2 items\.\nUpdate items as you finish them: .*ids for several.*tools\.todo.*\nTodo: 0 done, 0 skipped, 0 in progress, 2 pending\n\[ \] 1\. Frame\n\[ \] 2\. Fan out/s);
   assert.deepEqual(result.structuredContent.counts, { pending: 2, in_progress: 0, done: 0, skipped: 0 });
   assert.equal(result.structuredContent.items.length, 2);
   assert.deepEqual(h.entries, [{ customType: "todo", data: { items: [{ id: 1, text: "Frame", state: "pending" }, { id: 2, text: "Fan out", state: "pending" }] } }]);
@@ -136,4 +136,42 @@ test("in a terminal, a tool that merely looks like T3's changes nothing", async 
   } finally {
     if (previous !== undefined) process.env.T3_MCP_URL = previous;
   }
+});
+
+test("after a few turns without a todo call, open items get one hidden reminder", async () => {
+  const h = harness();
+  await h.emit("before_agent_start", { messageType: "user" });
+  await h.call({ op: "set", items: ["Frame", "Fan out"] });
+  for (let turn = 1; turn < 4; turn++) assert.deepEqual(await h.emit("turn_end"), [], `turn ${turn}`);
+  const [reminder] = await h.emit("turn_end");
+  assert.equal(reminder.entries[0].display, false);
+  assert.match(reminder.entries[0].content, /^\[todo: 0\/2 resolved; next open: 1\. Frame\] Mark items done or skipped/);
+  assert.deepEqual(await h.emit("turn_end"), [], "once until the next todo call");
+  await h.call({ op: "update", id: 1, state: "done" });
+  for (let turn = 1; turn < 4; turn++) await h.emit("turn_end");
+  assert.match((await h.emit("turn_end"))[0].entries[0].content, /1\/2 resolved; next open: 2\. Fan out/);
+  await h.call({ op: "update", id: 2, state: "done" });
+  for (let turn = 0; turn < 6; turn++) assert.deepEqual(await h.emit("turn_end"), [], "nothing open, nothing to say");
+});
+
+test("a run that used the list and leaves items open gets one more turn to mark them", async () => {
+  const settle = (outcome = "completed", canContinue = true) => ({ outcome, continue: false, entries: [], context: { canContinue } });
+  const h = harness();
+  await h.emit("before_agent_start", { messageType: "user" });
+  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "no list: nothing to check");
+  await h.call({ op: "set", items: ["Frame", "Report"] });
+  await h.call({ op: "update", id: 1, state: "done" });
+  const [nudge] = await h.emit("agent_before_settle", settle());
+  assert.equal(nudge.continue, true);
+  assert.equal(nudge.entries[0].display, false);
+  assert.match(nudge.entries[0].content, /still has 1 open item: 2\. Report\. Mark each one done, or skipped .*say so in one line and stop/);
+  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "once per request");
+  await h.emit("agent_start");
+  await h.call({ op: "update", id: 2, state: "in_progress" });
+  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "the continuation it asked for is not nudged again");
+  await h.emit("before_agent_start", { messageType: "user" });
+  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "a later run that never touched the list is left alone");
+  await h.call({ op: "get" });
+  assert.deepEqual(await h.emit("agent_before_settle", settle("aborted")), [], "not after an abort");
+  assert.equal((await h.emit("agent_before_settle", settle("completed", false))).length, 1, "a normal end has canContinue false; the hidden message is what continues");
 });

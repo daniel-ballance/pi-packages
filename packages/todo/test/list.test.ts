@@ -34,17 +34,28 @@ test("skipping requires a non-empty reason", () => {
 
 test("items are never deleted, and unknown ids and malformed operations are errors", () => {
   const { list } = ok(apply(emptyList, { op: "set", items: ["Frame"] }));
-  assert.match((apply(list, { op: "update", id: 7, state: "done" }) as { error: string }).error, /no item 7/);
+  assert.match((apply(list, { op: "update", ids: [7], state: "done" }) as { error: string }).error, /no item 7/);
   for (const params of [{ op: "delete", id: 1 }, { op: "set", items: [] }, { op: "set", items: ["", "x"] }, { op: "update", id: 1, state: "finished" }, { op: "update", state: "done" }, {}]) {
+    assert.ok("error" in parseOperation(params), JSON.stringify(params));
+  }
+});
+
+test("update takes several ids at once, all or nothing", () => {
+  const { list } = ok(apply(emptyList, { op: "set", items: ["Frame", "Fan out", "Report"] }));
+  const both = ok(apply(list, ok(parseOperation({ op: "update", ids: [1, 2], state: "done" }))));
+  assert.equal(both.change, "Items 1, 2 are done.");
+  assert.deepEqual(both.list.items.map(item => item.state), ["done", "done", "pending"]);
+  assert.match((apply(list, ok(parseOperation({ op: "update", ids: [2, 9], state: "done" }))) as { error: string }).error, /no item 9/);
+  for (const params of [{ op: "update", id: 1, ids: [2], state: "done" }, { op: "update", ids: [], state: "done" }, { op: "update", ids: [0], state: "done" }]) {
     assert.ok("error" in parseOperation(params), JSON.stringify(params));
   }
 });
 
 test("the plain-text list carries every item, its state and its note", () => {
   let { list } = ok(apply(emptyList, { op: "set", items: ["Frame", "Fan out", "Report"] }));
-  ({ list } = ok(apply(list, { op: "update", id: 1, state: "done" })));
-  ({ list } = ok(apply(list, { op: "update", id: 2, state: "skipped", note: "single slice" })));
-  ({ list } = ok(apply(list, { op: "update", id: 3, state: "in_progress" })));
+  ({ list } = ok(apply(list, { op: "update", ids: [1], state: "done" })));
+  ({ list } = ok(apply(list, { op: "update", ids: [2], state: "skipped", note: "single slice" })));
+  ({ list } = ok(apply(list, { op: "update", ids: [3], state: "in_progress" })));
   assert.equal(formatList(list), [
     "Todo: 1 done, 1 skipped, 1 in progress, 0 pending",
     "[x] 1. Frame",
