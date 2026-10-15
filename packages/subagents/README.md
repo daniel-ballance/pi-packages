@@ -120,6 +120,7 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 | Tool | Purpose |
 |---|---|
 | `subagent_catalog` | Discover allowed, currently usable ingredients |
+| `subagent_loop` | Wake this parent on an interval until a stop condition holds; `start`, `stop`, `status`. Disabled unless the policy has `loops` |
 | `subagent_spawn` | Compose and start a child; returns prompt acceptance, not completion |
 | `subagent_list` | `{ totals, agents }`: aggregate reported cost/live counts plus child status, unread counts, usage and paths |
 | `subagent_send` | Prompt an idle child, or explicitly steer/queue a follow-up for a working child; returns the observed input `disposition` |
@@ -214,6 +215,12 @@ Delivery uses RPC `prompt` with `streamingBehavior: "steer"`: working recipients
 `subagent_peers({ id?, since? })` shows links and up to five messages per page from the last 200 retained. Follow `nextCursor` while `hasMore`; `gap` reports evicted history. These are message-creation cursors, not status-change cursors: replay a page to refresh statuses. Message bodies are capped at 4000 characters. Counts outlive body eviction. Reading peer history does not acknowledge ordinary child reports. This is bounded audit history, not a durable delivery inbox or an exactly-once messaging guarantee.
 
 See [the design note](PEER-MESSAGING.md) for scope, failure semantics and acceptance tests.
+
+## Wake loops
+
+`subagent_loop` (and the `/loop` command for the human) repeats a task on an interval: each tick is a custom message, `subagent-loop-tick`, that starts a parent turn. A tick reaches only an idle parent with no pending human-intervention notice; one that falls due during a turn waits until the turn settles, and ticks never stack. The interval may not exceed the run's duration, and the deadline is enforced on time, even while a tick waits. The loop ends when the parent calls `subagent_loop({op: "stop"})`, when the human runs `/loop stop`, or at the policy's iteration or duration bound; a bound adds a `subagent-loop-end` message without starting a turn. One loop runs per parent, and a reload stops it.
+
+Loops are off by default. The policy's `loops` field enables them and caps the interval, tick count and duration (see the [configuration reference](skills/subagents/reference/configuration.md)). Under T3 Code this package is inactive; T3's `schedule_task` and `watch_pull_request` cover the same need. A watcher child whose task is "watch X and report" also wakes the parent, through its completion notice, without a loop.
 
 ## Non-recursion: invariant, not policy
 
