@@ -41,6 +41,31 @@ and the working directory. Each request names this package to Anthropic as
 How Anthropic classifies a request is theirs to decide and may change. An error
 from them reaches Pi unaltered.
 
+### HTTP 400 when running Pi through T3 Code
+
+If standalone Pi works but T3 returns `400 Third-party apps now draw from your
+extra usage`, explicitly load this extension in T3's Pi provider **launch arguments**:
+
+```text
+--extension /absolute/path/to/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts
+```
+
+Put it before other launch arguments and keep any existing arguments. T3 appends
+its own extension afterwards. Pi deduplicates the same extension path when it is
+also installed as a package. Restart the affected Pi provider session so the new
+load order takes effect; retry in a fresh conversation if it retains a previous
+forced prompt.
+
+T3's current prompt hook returns a full system prompt. When that hook runs first,
+it freezes Pi's stock prompt and this provider correctly respects the resulting
+`forceSystemPrompt`. Loading this provider first lets it choose its prompt before
+T3 appends its instructions. A T3-side fix is to add those instructions through
+`event.systemPromptOptions.sections` instead of returning a full `systemPrompt`.
+
+Both approaches passed live Haiku, Sonnet and Opus 5.5 tests on 2026-10-15.
+See the [investigation](../../docs/claude-subscription-t3-400.md) for the evidence,
+policy-source discrepancy and limits of this workaround.
+
 Pi prices each turn at the API's list prices from its own Claude catalog, as
 it does for other subscription providers, so the footer shows what the same
 tokens would cost on the API. That is not what your subscription is charged. A

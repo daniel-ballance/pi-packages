@@ -7,6 +7,9 @@ It is not part of `npm test` (that runs `test/*.test.ts`, which does not reach t
 
 ```sh
 npm run test:live          # tsx --test test/live/*.live.ts
+# Repeat against the other current models:
+CS_LIVE_MODEL=claude-subscription/claude-sonnet-5-5 npm run test:live
+CS_LIVE_MODEL=claude-subscription/claude-opus-5-5 npm run test:live
 ```
 
 ## What it needs
@@ -38,7 +41,8 @@ requests count against your plan limits.
 
 ## What it checks
 
-1. A plain prompt: text answer, stop reason `stop`, non-zero token usage, zero cost.
+1. A plain prompt: text answer, stop reason `stop`, non-zero token usage and an API
+   list-price estimate. This estimate does not establish how Anthropic billed the request.
 2. A file read: Pi runs its own `read` tool, the answer holds the file's content, and one
    Claude Code process served both requests of the turn.
 3. Two `read` calls in one assistant message both run and both results are used.

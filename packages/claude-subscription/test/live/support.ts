@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 /** Pi's event and SDK message shapes are not worth modelling here; the tests read only the fields they assert on. */
 export type Loose = any;
 
-/** Haiku 5.5 is the cheapest model the plan offers; every test uses it. */
-export const MODEL = "claude-subscription/claude-haiku-5-5";
+/** Use a full provider/model id to repeat the suite on another subscription model. */
+export const MODEL = process.env.CS_LIVE_MODEL ?? "claude-subscription/claude-haiku-5-5";
 
 const EXTENSION = fileURLToPath(new URL("../../extensions/claude-subscription/index.ts", import.meta.url));
 const RECORDER = fileURLToPath(new URL("./record-sdk-messages.ts", import.meta.url));

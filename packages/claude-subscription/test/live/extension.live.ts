@@ -39,7 +39,7 @@ function succeeded(run: { code: number | null; stderr: string }): void {
 }
 
 describe("claude-subscription against the real Claude Code", { skip: skip ? `live suite skipped: ${skip}` : false }, () => {
-  it("answers a plain prompt with text, a normal stop, token usage and no cost", { timeout: TEST_TIMEOUT_MS }, async t => {
+  it("answers a plain prompt with text, a normal stop, token usage and an API price estimate", { timeout: TEST_TIMEOUT_MS }, async t => {
     const ws = workspace(t);
     const run = await runPi(ws, ws.piArgs("--no-session"), "Reply with the single word kumquat.");
     succeeded(run);
@@ -51,7 +51,7 @@ describe("claude-subscription against the real Claude Code", { skip: skip ? `liv
     assert.equal(message.provider, "claude-subscription");
     assert.ok(message.usage.totalTokens > 0, "token usage is reported");
     assert.ok(message.usage.input + message.usage.output + message.usage.cacheRead + message.usage.cacheWrite > 0);
-    assert.equal(message.usage.cost.total, 0, "nothing is billed per token to Pi");
+    assert.ok(message.usage.cost.total > 0, "catalog models report an API list-price estimate, not a subscription charge");
   });
 
   it("runs Pi's own read tool and serves both requests of the turn from one Claude Code process", { timeout: TEST_TIMEOUT_MS }, async t => {

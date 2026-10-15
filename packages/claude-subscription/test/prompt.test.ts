@@ -113,3 +113,37 @@ test("another provider still gets Pi's default prompt", () => {
   assert.match(prompt, /<skills>[\s\S]*<name>review<\/name>/);
   assert.match(prompt, /<cwd>\n\/work\/pi-packages\n<\/cwd>/);
 });
+
+test("host guidance composes with the provider prompt when sections or provider-first ordering are used", () => {
+  const guidance = "Use the host's orchestration tools for delegated work.";
+  // This is the full-prompt return used by T3's before_agent_start handler.
+  const freeze = (input: PromptInput): void => {
+    input.forceSystemPrompt = `${buildSystemPrompt(input)}\n\n${guidance}`;
+  };
+
+  const hostFirst = options();
+  freeze(hostFirst);
+  useOwnSystemPrompt(hostFirst, "claude-subscription");
+  assert.match(buildSystemPrompt(hostFirst), new RegExp(escape(STOCK)), "an earlier forced prompt is intentionally respected");
+
+  const providerFirst = options();
+  useOwnSystemPrompt(providerFirst, "claude-subscription");
+  freeze(providerFirst);
+  const rendered = buildSystemPrompt(providerFirst);
+  assert.ok(rendered.startsWith(SYSTEM_PROMPT));
+  assert.ok(rendered.endsWith(guidance));
+  assert.match(rendered, /This repository is pi-packages/);
+
+  for (const hostFirst of [true, false]) {
+    const input = options();
+    const addSection = (): void => { (input.sections ??= {}).t3_orchestration = guidance; };
+    if (hostFirst) addSection();
+    useOwnSystemPrompt(input, "claude-subscription");
+    if (!hostFirst) addSection();
+    const prompt = buildSystemPrompt(input);
+    assert.ok(prompt.startsWith(SYSTEM_PROMPT));
+    assert.ok(prompt.includes(`<t3_orchestration>\n${guidance}\n</t3_orchestration>`));
+    assert.match(prompt, /This repository is pi-packages/);
+    assert.equal(input.forceSystemPrompt, undefined);
+  }
+});
