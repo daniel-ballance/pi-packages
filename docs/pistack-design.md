@@ -453,7 +453,9 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
    **Measured 2026-10-15 (first full generation):** 118 token rules (34 global,
    84 scoped to one file's sentence), 5 section overlays, **0 patches**. Of 112
    emitted upstream files, 55 are translated and 57 pass verbatim; the coupling
-   lint and `lint-skill` (0 errors) are clean. The file-scoped count is the cost
+   lint and `lint-skill` (0 errors) are clean. **After review and the scripts
+   port:** 160 token rules, 5 overlays, **1 patch** (`worktree-audit.sh`, whose
+   multi-line shell changes have no sentence to anchor a token rule). The file-scoped count is the cost
    of upstream restating Cursor mechanics in prose; each such rule is a tripwire,
    so an upstream rewording fails loudly instead of leaking a Cursor-ism.
    `make-bot-ui` (Cursor's Grok Bot routines) is excluded with `automations/benny`.

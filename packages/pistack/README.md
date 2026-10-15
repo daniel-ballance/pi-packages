@@ -6,12 +6,19 @@ skills for rigorous, parallel agent work. pistack is generated from the vendored
 upstream and translated for Pi in a terminal and for Pi launched by T3 Code.
 Maintainers: see [AGENTS.md](AGENTS.md).
 
-**Status:** every upstream skill, playbook, principle and agent recipe is
-generated, except `make-bot-ui` (Cursor's Grok Bot routines). Not yet included:
-the helper scripts under `skills/poteto-mode/scripts/` (`orch`, `watch-pr`,
-`check-plan`, `worktree-audit`), upstream's `docs/guide` and `automations/benny`.
-Until they are, playbooks that run one (orchestrate, babysit, shipping,
-multi-phase plan, worktree cleanup) name a file this package does not ship.
+**Status:** every upstream skill, playbook, principle, agent recipe and helper
+script is generated, except `make-bot-ui` (Cursor's Grok Bot routines).
+Upstream's `docs/guide` and `automations/benny` are not included; skills link to
+the pinned upstream guide instead.
+
+## Helper scripts
+
+The playbooks' scripts (`orch`, `watch-pr`, `check-plan`, `worktree-audit`) run
+under Node 22.19 or newer, which runs TypeScript directly. Node does not do that
+for files inside `node_modules`, so use pistack from a local path or a Git
+install, not from an npm-installed copy. After a local-path install, run
+`npm install --omit=dev` in the package for `commander`. `watch-pr` needs `gh`;
+`worktree-audit.sh` needs `git`, `jq` and `gh`, and works on Linux and macOS.
 
 ## Install
 

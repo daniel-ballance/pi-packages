@@ -29,7 +29,7 @@ Open a todolist with one entry per phase before launching anything.
 
 Delegate all N workers at once per **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md), on the step 4 model (your own model for `auto` or `inherit-parent`). Give each worker that writes its own checkout per **Isolation**.
 
-When a worker must start from a non-default branch, create its checkout from that branch.
+When a worker must start from a non-default branch, start its checkout from that branch (**Isolation**).
 
 Every brief stands alone. Include the goal, scope, exact slice or race arm, how to verify, and what to report. Reports use `PASS`, `ISSUES`, or `BLOCKED` with evidence. A worker that can prove a defect reports `ISSUES` and lists every issue it can prove, not only the first.
 

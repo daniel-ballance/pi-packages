@@ -10,37 +10,56 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const readJson = (path, fallback) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
 
+// Code-unit order, so output and patch order never depend on the machine's locale.
+const byName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+
+// Files and symlinks under dir. Symlinks are listed, never followed, so a stray
+// link in a generated root shows up as drift.
 function walk(dir) {
-  if (!existsSync(dir)) return [];
-  if (statSync(dir).isFile()) return [""];
+  if (!existsSync(dir) && !isLink(dir)) return [];
+  if (!lstatSync(dir).isDirectory()) return [""];
   const files = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort(byName)) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) files.push(...walk(path).map(file => join(entry.name, file)));
-    else if (entry.isFile()) files.push(entry.name);
+    else if (entry.isFile() || entry.isSymbolicLink()) files.push(entry.name);
   }
   return files;
 }
 
-const isText = bytes => !bytes.includes(0);
+function isLink(path) {
+  try { return lstatSync(path).isSymbolicLink(); } catch { return false; }
+}
+
+const utf8 = new TextDecoder("utf-8", { fatal: true });
+function decode(bytes) {
+  if (bytes.includes(0)) return undefined;
+  try { return utf8.decode(bytes); } catch { return undefined; }
+}
+
+const isExecutable = path => (statSync(path).mode & 0o111) !== 0;
 
 // Map upstream paths to output paths; the first matching `from` prefix wins.
-function collect(vendor, manifest) {
+// Text files are strings, which rules may rewrite; anything else stays bytes.
+function collect(vendor, manifest, executables, problems) {
   const exclude = (manifest.exclude ?? []).map(source => new RegExp(source));
   const files = new Map();
   for (const path of walk(vendor).map(file => file.split("\\").join("/"))) {
     if (exclude.some(pattern => pattern.test(path))) continue;
     const entry = manifest.map.find(({ from }) => from.endsWith("/") ? path.startsWith(from) : path === from);
     if (!entry) continue;
+    const output = entry.to + path.slice(entry.from.length);
+    if (isLink(join(vendor, path))) { problems.push(`${path}: upstream symlinks are not supported; exclude it or add a rule`); continue; }
     const bytes = readFileSync(join(vendor, path));
-    files.set(entry.to + path.slice(entry.from.length), isText(bytes) ? bytes.toString("utf8") : bytes);
+    files.set(output, decode(bytes) ?? bytes);
+    if (isExecutable(join(vendor, path))) executables.add(output);
   }
   return files;
 }
@@ -62,17 +81,35 @@ function applyTokens(files, rules, problems) {
   }
 }
 
+// Whether each line sits inside fenced code. A fence opens with three or more
+// backticks or tildes, indented at most three spaces, and closes with a line of
+// at least as many of the same character (CommonMark).
+function fencedLines(lines) {
+  let fence;
+  return lines.map(line => {
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (!fence) {
+      if (marker && !(marker[1][0] === "`" && marker[2].includes("`"))) { fence = marker[1]; return true; }
+      return false;
+    }
+    if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && marker[2].trim() === "") fence = undefined;
+    return true;
+  });
+}
+
+const headingLevel = line => line.match(/^ {0,3}(#{1,6})(?:[ \t]|$)/)?.[1].length;
+
 // A section runs from its heading to the next heading of the same or a higher
-// level, ignoring headings inside fenced code.
+// level. Headings inside fenced code neither start nor end one.
 function findSection(lines, heading) {
-  const starts = lines.flatMap((line, index) => line === heading ? [index] : []);
+  const fenced = fencedLines(lines);
+  const starts = lines.flatMap((line, index) => line === heading && !fenced[index] ? [index] : []);
   if (starts.length !== 1) return { error: starts.length === 0 ? "not found" : `found ${starts.length} times` };
-  const start = starts[0], level = heading.match(/^#+/)?.[0].length ?? 0;
-  let end = lines.length, fence;
-  for (let index = 0; index < lines.length; index++) {
-    const marker = lines[index].match(/^\s*(```|~~~)/)?.[1];
-    if (marker) fence = fence === marker ? undefined : fence ?? marker;
-    else if (!fence && index > start && /^#+\s/.test(lines[index]) && lines[index].match(/^#+/)[0].length <= level) { end = index; break; }
+  const start = starts[0], level = headingLevel(heading) ?? 0;
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index++) {
+    const found = fenced[index] ? undefined : headingLevel(lines[index]);
+    if (found !== undefined && found <= level) { end = index; break; }
   }
   return { start, end };
 }
@@ -104,14 +141,19 @@ function applySections(files, upstream, sections, overlaysDir, problems) {
 
 // Hand-written files under extra/ join the output as they are: they are already
 // written for Pi, so only the coupling lint applies to them.
-function addExtras(files, extraDir) {
-  for (const path of walk(extraDir)) files.set(path.split("\\").join("/"), readFileSync(join(extraDir, path)));
+function addExtras(files, extraDir, executables) {
+  for (const path of walk(extraDir)) {
+    const output = path.split("\\").join("/");
+    files.set(output, readFileSync(join(extraDir, path)));
+    if (isExecutable(join(extraDir, path))) executables.add(output);
+  }
 }
 
-function writeFiles(files, outDir) {
+function writeFiles(files, executables, outDir) {
   for (const [path, contents] of files) {
     mkdirSync(dirname(join(outDir, path)), { recursive: true });
     writeFileSync(join(outDir, path), contents);
+    chmodSync(join(outDir, path), executables.has(path) ? 0o755 : 0o644);
   }
 }
 
@@ -129,9 +171,9 @@ function applyPatches(patchesDir, outDir, problems) {
 
 function lint(outDir, deny, problems) {
   for (const path of walk(outDir)) {
-    const bytes = readFileSync(join(outDir, path));
-    if (!isText(bytes)) continue;
-    bytes.toString("utf8").split("\n").forEach((line, index) => {
+    const text = decode(readFileSync(join(outDir, path)));
+    if (text === undefined) continue;
+    text.split("\n").forEach((line, index) => {
       for (const token of deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
     });
   }
@@ -140,16 +182,18 @@ function lint(outDir, deny, problems) {
 export function generate({ packageDir, outDir }) {
   const rules = join(packageDir, "rules");
   const manifest = readJson(join(rules, "manifest.json"));
-  const problems = [];
-  const files = collect(join(packageDir, manifest.vendor), manifest);
+  const problems = [], executables = new Set();
+  const files = collect(join(packageDir, manifest.vendor), manifest, executables, problems);
   const upstream = new Map(files);
   applyTokens(files, readJson(join(rules, "tokens.json"), []), problems);
   applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), problems);
-  addExtras(files, join(packageDir, "extra"));
+  addExtras(files, join(packageDir, "extra"), executables);
   if (problems.length) throw new Error(problems.join("\n"));
-  writeFiles(files, outDir);
+  writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));
+  // Patches are rewritten under the caller's umask; keep only the executable bit.
+  for (const path of walk(outDir)) chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
   const lintProblems = [];
   lint(outDir, readJson(join(rules, "lint.json"), { deny: [] }).deny, lintProblems);
   if (lintProblems.length) throw new Error(`Coupling lint: Cursor-only tokens remain; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
@@ -165,12 +209,25 @@ function drift(packageDir, outDir) {
     const expected = new Set(walk(join(outDir, root)).map(file => join(root, file)));
     const actual = new Set(walk(join(packageDir, root)).map(file => join(root, file)));
     for (const path of [...new Set([...expected, ...actual])].sort()) {
+      const committed = join(packageDir, path), fresh = join(outDir, path);
       if (!actual.has(path)) problems.push(`${path}: missing`);
       else if (!expected.has(path)) problems.push(`${path}: not generated`);
-      else if (!readFileSync(join(outDir, path)).equals(readFileSync(join(packageDir, path)))) problems.push(`${path}: differs`);
+      else if (isLink(committed)) problems.push(`${path}: is a symlink`);
+      else if (!readFileSync(fresh).equals(readFileSync(committed))) problems.push(`${path}: differs`);
+      else if (isExecutable(fresh) !== isExecutable(committed)) problems.push(`${path}: mode differs`);
     }
   }
   return problems;
+}
+
+// The upstream pin the generated tree comes from, as recorded in package.json:
+// "<repository>@<commit> <plugin name> <plugin version>".
+function upstreamPin(packageDir) {
+  const { vendor, upstream } = readJson(join(packageDir, "rules/manifest.json"));
+  if (!upstream) return undefined;
+  const commit = execFileSync("git", ["-C", join(packageDir, upstream.checkout), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const plugin = readJson(join(packageDir, vendor, "plugin.json"));
+  return `${upstream.repository}@${commit} ${plugin.name} ${plugin.version}`;
 }
 
 function main(args) {
@@ -182,8 +239,11 @@ function main(args) {
   const outDir = mkdtempSync(join(tmpdir(), "pistack-"));
   try {
     generate({ packageDir, outDir });
+    const pin = upstreamPin(packageDir), manifestPath = join(packageDir, "package.json");
     if (args[0] === "--check") {
       const problems = drift(packageDir, outDir);
+      const recorded = pin === undefined ? undefined : readJson(manifestPath).pistack?.upstream;
+      if (recorded !== pin) problems.push(`package.json pistack.upstream is "${recorded}", expected "${pin}"`);
       if (problems.length === 0) return 0;
       console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs.\n  ${problems.join("\n  ")}`);
       return 1;
@@ -191,6 +251,11 @@ function main(args) {
     for (const root of generatedRoots(packageDir)) {
       rmSync(join(packageDir, root), { recursive: true, force: true });
       if (existsSync(join(outDir, root))) cpSync(join(outDir, root), join(packageDir, root), { recursive: true });
+    }
+    if (pin !== undefined) {
+      const manifest = readJson(manifestPath);
+      manifest.pistack = { ...manifest.pistack, upstream: pin };
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
     }
     return 0;
   } catch (error) {

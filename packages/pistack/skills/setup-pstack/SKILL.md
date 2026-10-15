@@ -11,7 +11,7 @@ Write `~/.pi/agent/pistack.json`, the role defaults file that sets pistack's mod
 
 ### 1. Detect available models
 
-List the models you can delegate to from the model catalog (**Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md)). That list is the dependable source. Record each model's exact identity and the thinking levels it offers. If you cannot list any, ask the user to paste the exact model ids they have access to. Never write a model you have not confirmed is available. The aliases `inherit-parent` and `auto` are always valid even though they are not detected models.
+List the models you can delegate to from the model catalog (**Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md)). That list is the dependable source. Record each model's exact identity and the thinking levels it offers. If you cannot list any, ask the user to paste the exact model ids they have access to. Never write a model you have not confirmed is available. The aliases `inherit-parent` and `auto` mean the parent chat's model; they are valid when that model is in the detected set (a terminal allowlist may exclude it).
 
 ### 2. Load current state
 
@@ -32,7 +32,7 @@ The default role-to-model mapping is the file shape shown in step 5 below. If `.
 
 ### 4. Validate
 
-Every real model written must be in the detected set, with a thinking level it offers. `inherit-parent` and `auto` always pass. If a chosen model is not available, stop and ask again.
+Every real model written must be in the detected set, with a thinking level it offers. `inherit-parent` and `auto` pass when the parent chat's model is in the detected set; otherwise mark the role as needing a choice. If a chosen model is not available, stop and ask again.
 
 ### 5. Write the file
 

@@ -2,7 +2,7 @@
 
 **You own the skill's voice.**
 
-1. Use the `writing-for-agents` skill and `lint-skill` (agent-skills package, when installed; otherwise Pi's skill format).
+1. Use the skill-authoring procedure (**Author a skill** in the host capabilities).
 2. Validate the skill: frontmatter has `name` and `description`, referenced files exist, cross-skill links resolve.
 3. Test cases if structural. Skip if subjective.
 4. Run **Opening a PR**.

@@ -18,7 +18,7 @@ Before fanning out, find this conversation's Pi session file in this project's s
 ls -t <session-dir>/*.jsonl 2>/dev/null | head -10
 ```
 
-Pi writes one file per session. Its first line is a `session` header; conversation turns are `message` entries. For each candidate, find the first `message` entry whose `message.role` is `user`, and take the file whose text contains the conversation's opening user prompt. If none matches, pass a tight digest of the session instead.
+Pi writes one file per session. Its first line is a `session` header; conversation turns are `message` entries. For each candidate, find the first `message` entry whose `message.role` is `user`, and take the file whose text contains the conversation's opening user prompt. Forks and clones share that prompt, so when several match, take the newest. One file can hold several branches: follow `parentId` back from the latest entry and read only that branch. If none matches, pass a tight digest of the session instead.
 
 ## 2. Spawn three reviewers in parallel
 
@@ -51,9 +51,9 @@ File each Backlog item to your team's devex or backlog tracker without waiting. 
 Follow each approved row's Routing exactly:
 
 - Trivial existing-skill edit (a one-line bullet, a tightened sentence, a stale fact corrected): the parent does it directly.
-- Substantive existing-skill edit (a new section, a new pattern table, more than ~10 lines): hand to the `writing-for-agents` skill and `lint-skill` (agent-skills package, when installed; otherwise Pi's skill format) and run its draft / test / iterate loop.
-- `tune description: <skill path>` (the skill exists but didn't trigger when it should have): hand to `writing-for-agents` and run its description-optimization loop.
-- `new skill via writing-for-agents: <kebab-name>`: hand creation to `writing-for-agents`. Do not invent the shape ad hoc.
+- Substantive existing-skill edit (a new section, a new pattern table, more than ~10 lines): hand to the skill-authoring procedure (**Author a skill** in the host capabilities) and run its draft, test and iterate loop.
+- `tune description: <skill path>` (the skill exists but didn't trigger when it should have): revise the description and rerun the trigger test from **Author a skill**.
+- `new skill: <kebab-name>`: create it per **Author a skill**. Do not invent the shape ad hoc.
 
 If your environment ships a SKILL.md validator, run it on every touched skill before declaring done.
 

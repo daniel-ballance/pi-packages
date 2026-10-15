@@ -62,6 +62,19 @@ Applied in this order; the same upstream and rules give byte-identical output.
 `rules/lint.json` and fails with `file:line: token`. The fix is always a new or
 corrected rule, never an edit to the output.
 
+## Helper scripts
+
+Upstream's scripts under `skills/poteto-mode/scripts/` target Bun. Token rules
+turn them into Node scripts that Node 22.19's built-in type stripping runs:
+shebangs, `import.meta.dir`/`main`, the dependency bootstrap (dropped; `commander`
+is a package dependency), and `bun:test` imports, which point at the hand-written
+shims `extra/skills/poteto-mode/scripts/bun-test.ts` (Bun's `expect` on
+`node:test`) and `bun-compat.ts` (`Bun.spawn`/`spawnSync`). Code Node cannot strip
+(a TypeScript parameter property) gets a rule that rewrites it to erasable
+syntax. `worktree-audit.sh` is the one patch: it reads Pi sessions instead of
+Cursor transcripts and runs on Linux as well as macOS. `npm test` runs upstream's
+own script tests; `npm run check` typechecks `watch-pr`.
+
 ## Writing rules
 
 - Skills name capabilities, never backend tools. Map a Cursor mechanism to a
@@ -90,5 +103,6 @@ node generator/generate.mjs     # a failure names the rule, section or patch to 
 git diff skills/                # review the semantic delta
 ```
 
-Update the pin in `package.json` (`pistack.upstream`). Review `git diff skills/`
-for upstream changing a decision, not just a sentence.
+`node generator/generate.mjs` also records the new pin in `package.json`
+(`pistack.upstream`), and `--check` fails while they disagree. Review
+`git diff skills/` for upstream changing a decision, not just a sentence.

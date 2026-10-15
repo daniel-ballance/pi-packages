@@ -20,7 +20,7 @@ Every role below is delegated per the [host capabilities](references/host-capabi
 
 #### Store layout
 
-Create `~/.pi/agent/pistack/orchestrate/<project-slug>/`. Every file has exactly one writer. Owners publish facts, readers aggregate at read time. Use `node scripts/orch/orch.ts` for bookkeeping, written below as `orch`, while its canonical plain TSV and JSON stay readable without the CLI.
+Create `orchestrate/<project-slug>/` in the store (**Store** in the [host capabilities](references/host-capabilities.md)). Every file has exactly one writer. Owners publish facts, readers aggregate at read time. Use `node scripts/orch/orch.ts` for bookkeeping, written below as `orch`, while its canonical plain TSV and JSON stay readable without the CLI.
 
 - `preferences.md` is the standing-orders register: numbered lines, one constraint each (model policy, stack shape and count, verification bar, forbidden paths, escalation policy). Paste it verbatim into every spawn and every resume. Directives decay across resumes, and each dropped one costs a human turn. When you catch yourself restating an instruction, append the line before you act (principle-encode-lessons-in-structure).
 - `overview.md` is the durable PR and issue DB. Append. Never rewrite wholesale per event.

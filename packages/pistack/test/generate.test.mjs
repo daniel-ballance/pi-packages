@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { generate } from "../generator/generate.mjs";
+import { generate, sectionHash } from "../generator/generate.mjs";
 
 const cli = fileURLToPath(new URL("../generator/generate.mjs", import.meta.url));
 
@@ -166,5 +166,78 @@ test("a section rule matches the heading after token rewrites, and hashes the up
   try {
     generate({ packageDir: root, outDir: out });
     assert.match(read("skills/demo/SKILL.md"), /## Subagents\n\nPi delegation\.\n$/);
+  } finally { dispose(); }
+});
+
+test("headings inside fenced code neither start nor end a section, whatever the fence length", () => {
+  const body = "## Subagents\n\nCursor-only text.\n\n````md\n```\n## Next\n````\n\n   ## Indented end\n\nKept.\n";
+  const upstream = "---\nname: Demo\n---\n\nUse the Task tool.\n\n```md\n## Subagents\n```\n\n" + body;
+  const hash = sectionHash(upstream, "## Subagents");
+  const { root, out, read, dispose } = fixture({
+    "vendor/up/skills/demo/SKILL.md": upstream,
+    "rules/sections.json": JSON.stringify([{ file: "skills/demo/SKILL.md", heading: "## Subagents", overlay: "demo/subagents.md", upstream: hash }]),
+  });
+  try {
+    assert.equal(hash, sectionHash("## Subagents\n\nCursor-only text.\n\n````md\n```\n## Next\n````\n", "## Subagents"));
+    generate({ packageDir: root, outDir: out });
+    assert.equal(read("skills/demo/SKILL.md"), "---\nname: demo\n---\n\nUse a child.\n\n```md\n## Subagents\n```\n\n## Subagents\n\nPi delegation.\n\n   ## Indented end\n\nKept.\n");
+  } finally { dispose(); }
+});
+
+test("files that are not valid UTF-8 are copied byte for byte, and executable bits survive", () => {
+  const { root, out, dispose } = fixture({});
+  try {
+    writeFileSync(join(root, "vendor/up/skills/demo/logo.bin"), Buffer.from([0xff, 0xfe, 0x80, 0x41]));
+    chmodSync(join(root, "vendor/up/skills/demo/scripts/run.sh"), 0o755);
+    generate({ packageDir: root, outDir: out });
+    assert.deepEqual([...readFileSync(join(out, "skills/demo/logo.bin"))], [0xff, 0xfe, 0x80, 0x41]);
+    assert.equal(statSync(join(out, "skills/demo/scripts/run.sh")).mode & 0o111, 0o111);
+    assert.equal(statSync(join(out, "skills/demo/SKILL.md")).mode & 0o111, 0);
+  } finally { dispose(); }
+});
+
+test("check mode reports a lost executable bit and any symlink in the generated roots", () => {
+  const { root, dispose } = fixture({});
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, PISTACK_PACKAGE_DIR: root } });
+  try {
+    chmodSync(join(root, "vendor/up/skills/demo/scripts/run.sh"), 0o755);
+    assert.equal(run().status, 0);
+    chmodSync(join(root, "skills/demo/scripts/run.sh"), 0o644);
+    symlinkSync("missing.md", join(root, "skills/demo/link.md"));
+    const drift = run("--check");
+    assert.equal(drift.status, 1);
+    assert.match(drift.stderr, /skills\/demo\/scripts\/run\.sh: mode differs/);
+    assert.match(drift.stderr, /skills\/demo\/link\.md: not generated/);
+  } finally { dispose(); }
+});
+
+test("patches apply in code-unit order, independent of locale", () => {
+  const first = ["--- a/skills/demo/SKILL.md", "+++ b/skills/demo/SKILL.md", "@@ -13 +13 @@", "-Kept.", "+B.", ""].join("\n");
+  const second = ["--- a/skills/demo/SKILL.md", "+++ b/skills/demo/SKILL.md", "@@ -13 +13 @@", "-B.", "+C.", ""].join("\n");
+  const { root, out, read, dispose } = fixture({ "patches/Z.patch": first, "patches/a.patch": second });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.match(read("skills/demo/SKILL.md"), /\nC\.\n$/);
+  } finally { dispose(); }
+});
+
+test("sync records the upstream commit and version in package.json, and check fails when they drift", () => {
+  const { root, dispose } = fixture({
+    "vendor/up/plugin.json": JSON.stringify({ name: "up", version: "1.2.3" }),
+    "package.json": JSON.stringify({ name: "demo", pistack: { upstream: "stale" } }, null, 2) + "\n",
+    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", upstream: { repository: "acme/plugins", checkout: "vendor/up" }, map: [{ from: "skills/", to: "skills/" }], exclude: [] }),
+  });
+  const git = (...args) => spawnSync("git", ["-C", join(root, "vendor/up"), ...args], { encoding: "utf8" });
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, PISTACK_PACKAGE_DIR: root } });
+  try {
+    git("init", "-q"); git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x");
+    const sha = git("rev-parse", "HEAD").stdout.trim();
+    assert.equal(run().status, 0);
+    assert.equal(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).pistack.upstream, `acme/plugins@${sha} up 1.2.3`);
+    assert.equal(run("--check").status, 0);
+    writeFileSync(join(root, "vendor/up/plugin.json"), JSON.stringify({ name: "up", version: "1.2.4" }));
+    const drift = run("--check");
+    assert.equal(drift.status, 1);
+    assert.match(drift.stderr, /package\.json pistack\.upstream/);
   } finally { dispose(); }
 });
