@@ -326,6 +326,22 @@ append, persisted with `appendEntry`, `ui.setStatus`), `ask_user` tool, child
 preamble helper (prepend the mode skill path to brokered tasks, replacing
 `poteto-agent`). `/loop` and todo come from 4.3 and 4.2, not here.
 
+**Implemented (workstream `pistack-extension`).** `/pistack-mode on|off|status`
+(a `before_agent_start` prompt section rather than a replaced system prompt, so
+Pi records a delta), `ask_user` (`model-only`), `pistack_roles`, `/pistack-setup`
+and the child brief prefix for `subagent_spawn` and T3 `delegate_task`. Choices:
+the extension is written against the subset of Pi's API it uses, so pistack needs
+only `typebox` and no Pi SDK of its own (no tenth host for the security patch);
+the package-layout test loads it through Pi's real loader. `/pistack-setup`
+offers only identities the subagents allowlist permits (a command cannot call
+`subagent_catalog`, so subagents replies on the `subagents:catalog` event-bus
+channel), never above the chosen budget, and
+covers the common case (one code and one judgment model) and defers to
+`/skill:setup-pstack` under T3, whose catalog only the model can read. **Not
+done yet:** Layer 3 below (fan-out skills as codemode scripts, orchestrate as
+workflow definitions); the generated skills delegate through the capabilities
+reference instead.
+
 **Layer 3, programs via codemode + workflows.** Fan-out skills (`swarm`,
 `arena`, `interrogate`) are expressed as codemode scripts: spawn N in
 `Promise.all`, wait, reduce N reports to a compact table in-script so raw

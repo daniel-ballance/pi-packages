@@ -25,7 +25,7 @@ Role defaults: call `pistack_roles` when it exists. Otherwise read `.pi/pistack.
 
 ## Nesting
 
-- **Terminal.** A child cannot delegate. So never delegate a coordinator, a child whose job is to run a skill that itself delegates (`how`, `why`, `swarm`, `arena`, `architect`, `interrogate`, `reflect`, `teach`): run that skill yourself, so its subagents are your children. A child told to run such a skill runs its steps itself, one after another, and says so in its report. Express deeper sub-coordination as a workflow with `subagent_workflow_start`, or keep one level.
+- **Terminal.** `subagent_catalog` says whether a child you spawn may delegate: as a child, read its `delegation.childrenMayDelegate`; as the root (no `delegation` block), check that `maxDepth` is above 1. When it may, you may give a coordinator child the delegation tools the catalog lists (`subagent_spawn`, `subagent_wait`, `subagent_read`, `subagent_close`, and others as needed): it manages only its own children, you are not told about them except their questions for the human, and closing or halting it does the same to everything below it. Otherwise, or when the catalog reports neither (an older subagents), a child you spawn cannot delegate. Then never delegate a coordinator, a child whose job is to run a skill that itself delegates (`how`, `why`, `swarm`, `arena`, `architect`, `interrogate`, `reflect`, `teach`): run that skill yourself, so its subagents are your children. A child told to run such a skill runs its steps itself, one after another, and says so in its report. Express deeper sub-coordination as a workflow with `subagent_workflow_start`, or keep one level.
 - **T3.** A child may delegate. `mcp__t3-code__task_cancel` also stops everything the task delegated.
 
 ## Store

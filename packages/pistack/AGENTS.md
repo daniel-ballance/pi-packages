@@ -19,6 +19,7 @@ Design and decisions: [`docs/pistack-design.md`](../../docs/pistack-design.md)
 | `rules/lint.json` | coupling lint deny-list | hand-written |
 | `extra/` | Pi-native files added to the output as they are | hand-written |
 | `generator/` | the generator and the lint wrapper | hand-written |
+| `extensions/pistack/` | mode toggle, `ask_user`, `pistack_roles`, `/pistack-setup` | hand-written |
 | `skills/`, `LICENSE` | generated | `generator/generate.mjs` |
 
 ## Commands
