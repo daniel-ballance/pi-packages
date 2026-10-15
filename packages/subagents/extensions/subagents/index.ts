@@ -35,6 +35,9 @@ const noticeKeys = (details: unknown): string[] => {
   return details.noticeKeys.filter((key): key is string => typeof key === "string");
 };
 
+/** Event-bus channel: emit `{ reply(catalog) }`; replies synchronously with `{ spawnEnabled, models: ["provider/model:thinking", ...] }`. */
+export const CATALOG_CHANNEL = "subagents:catalog";
+
 export default function subagents(pi: ExtensionAPI) {
   // Explicitly loading this package in a child still does not enable recursion.
   if (process.env.PI_SUBAGENT === "1") return;
@@ -81,6 +84,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   let restoreFooter: (() => void) | undefined;
   let herdr: HerdrStatus | undefined;
   let stopHerdrEvents: (() => void) | undefined;
+  let stopCatalogEvents: (() => void) | undefined;
   const runningWorkflows = () => workflows ? (workflows.inspect() as { runs: { status: string; name: string }[] }).runs.filter(r => ["running", "pausing"].includes(r.status)) : [];
   const reportActivity = () => herdr?.subagents({
     children: manager ? summarizeAgents(manager.list()).active : 0, workflows: runningWorkflows().length,
@@ -195,6 +199,14 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
 
   const startSession = (ctx: ExtensionContext) => {
     context = ctx;
+    // Other extensions (pistack's setup) read which models a Child may use. Commands
+    // cannot call tools, so the bus carries a synchronous reply; nothing else is shared.
+    stopCatalogEvents ??= pi.events.on(CATALOG_CHANNEL, request => {
+      const reply = (request as { reply?: unknown } | undefined)?.reply;
+      if (typeof reply !== "function" || !context) return;
+      const catalog = getPolicy(context).catalog();
+      reply({ spawnEnabled: catalog.spawnEnabled, models: catalog.models.map(model => model.id) });
+    });
     restoreFooter?.();
     if (ctx.mode === "tui") {
       restoreFooter = installFooterDecoration(FooterComponent.prototype,
@@ -260,6 +272,8 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     herdr = undefined;
     stopHerdrEvents?.();
     stopHerdrEvents = undefined;
+    stopCatalogEvents?.();
+    stopCatalogEvents = undefined;
     try { await workflows?.shutdown(); await manager?.shutdown(); }
     finally {
       await herdrCleared;

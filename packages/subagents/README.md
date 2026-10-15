@@ -105,6 +105,8 @@ The built-in fallback requires that exact model to be registered, authenticated 
 
 Custom policies can supply advisory descriptions, which the catalog passes through without interpreting them as routing rules or additional permissions. Registry metadata and actual child usage remain available for execution supervision; model rankings and research analysis are outside this package.
 
+Other extensions can read the usable models without a tool call: emit `{ reply }` on the `pi.events` channel `subagents:catalog`, and `reply` is called synchronously with `{ spawnEnabled, models }`, where `models` lists exact `provider/model:thinking` identities. pistack's `/pistack-setup` uses this so that it offers only models a Child may use. Nothing replies under T3 or before the session starts.
+
 Unavailable entries are omitted, never silently substituted. Their names/reasons are shown to the **user** through `/subagents diagnostics`; the model-facing catalog contains only an omitted-entry count. If no model is usable, spawning is disabled until configuration/availability is fixed.
 
 Configured credentials do not guarantee a successful request: expired authentication, provider outages, remote entitlement problems, and resource load errors can still surface at launch/use. Custom provider models must also be configured in the child environment or supplied by an explicitly selected extension. The child must resolve the exact requested model/thinking selection; fallback is rejected before sending the task.

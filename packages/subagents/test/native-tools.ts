@@ -11,6 +11,7 @@ export function nativeTools(): ToolDefinition[] {
       registerFlag() {}, getFlag() { return false; },
       on(name: string, handler: Function) { if (name === "session_start" && !start) start = handler; },
       registerCommand() {}, registerTool(tool: ToolDefinition) { tools.push(tool); },
+      events: { on: () => () => {} },
     } as unknown as ExtensionAPI);
     start!({}, { mode: "print" } as ExtensionContext);
   });
