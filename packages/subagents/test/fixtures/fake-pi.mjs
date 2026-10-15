@@ -4,6 +4,7 @@ const file = args[args.lastIndexOf('--session') + 1];
 let history = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
 let timer;
 let working = false;
+let pendingStart = false;
 let pendingUI = false;
 let assistantMessages = history.length;
 let extraCost = 0;
@@ -47,8 +48,13 @@ process.stdin.on('data', chunk => {
       if (cmd.message === 'crash') process.exit(2);
       if (cmd.message === 'malformed') { process.stdout.write('NOT JSON\n'); continue; }
       if (cmd.message === 'accept-before-start') {
+        pendingStart = true;
         respond(cmd);
+        // Cancellation tests release this start through abort, so a delayed
+        // parent cannot accidentally close an already completed task.
+        if (process.env.TEST_HOLD_RUN_START === '1') continue;
         timer = setTimeout(() => {
+          pendingStart = false;
           working = true; emit({ type: 'agent_start' });
           timer = setTimeout(() => settle('late start finished'), 50);
         }, 80);
@@ -88,7 +94,8 @@ process.stdin.on('data', chunk => {
       respond(cmd, { steering: [], followUp: [] });
     }
     else if (cmd.type === 'abort') {
-      if (!working && history.at(-1) === 'accept-before-start') {
+      if (pendingStart) {
+        pendingStart = false;
         clearTimeout(timer); working = true; emit({ type: 'agent_start' });
       }
       if (working) {

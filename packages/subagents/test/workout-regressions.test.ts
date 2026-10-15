@@ -26,7 +26,8 @@ for (const task of ["slow-codex", "slow-native", "slow-on-clear", "accept-before
   test(`${task}: explicit abort is idle/cancelled, not failed; next run has no inherited intent`, async () => {
     const s = await setup();
     try {
-      const a = await s.manager.spawn({ ...s.options, task });
+      const a = await s.manager.spawn({ ...s.options, task, env: { TEST_HOLD_RUN_START: "1" } });
+      if (task === "accept-before-start") assert.equal(s.manager.get(a.id).runRevision ?? 0, 0);
       const cancelled = await s.manager.abort(a.id);
       assert.equal(cancelled.status, "idle");
       assert.equal(cancelled.aborted, true);
@@ -117,13 +118,33 @@ test("explicit close dismisses unread notices through reload but leaves results;
 for (const task of ["slow-codex", "accept-before-start"]) test(`close of ${task} classifies cancellation without a stale error or late notice`, async () => {
   const s = await setup();
   try {
-    const a = await s.manager.spawn({ ...s.options, task });
+    const a = await s.manager.spawn({ ...s.options, task, env: { TEST_HOLD_RUN_START: "1" } });
+    if (task === "accept-before-start") {
+      assert.equal(a.status, "working");
+      assert.equal(s.manager.get(a.id).runRevision ?? 0, 0, "accepted work has not started before close");
+    }
     const result = await s.manager.close(a.id);
     assert.equal(result.status, "stopped");
     assert.equal(result.aborted, true);
     assert.equal(result.error, undefined);
     assert.equal(result.lastError, undefined);
     assert.deepEqual(s.manager.pendingNotices(), []);
+  } finally { await s.cleanup(); }
+});
+
+for (const ending of ["abort", "close"] as const) test(`${ending} after accept-before-start completes does not start or cancel another run`, async () => {
+  const s = await setup();
+  try {
+    const a = await s.manager.spawn({ ...s.options, task: "accept-before-start" });
+    assert.equal((await s.manager.wait([a.id], "all", 2000)).timedOut, false);
+    const result = await s.manager[ending](a.id);
+    assert.equal(result.status, ending === "abort" ? "idle" : "stopped");
+    assert.equal(result.aborted, false);
+    assert.equal(result.error, undefined);
+    assert.equal(result.lastError, undefined);
+    const packets = (await readFile(s.manager.get(a.id).logFile, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+    assert.equal(packets.filter(packet => packet.type === "agent_start").length, 1);
+    assert.ok(!s.manager.read(a.id).updates.some(update => ["aborted", "error"].includes(update.kind)));
   } finally { await s.cleanup(); }
 });
 
