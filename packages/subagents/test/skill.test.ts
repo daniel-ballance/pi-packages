@@ -52,7 +52,10 @@ test("skill and reference relative links resolve inside the shipped package", ()
   for (const doc of docs) {
     for (const match of readFileSync(doc, "utf8").matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
       if (/^https?:/.test(match[1])) continue;
-      const target = resolve(dirname(doc), match[1].split("#")[0]);
+      // Pi resolves every skill resource link from its SKILL.md directory,
+      // including links in nested references. Package docs use Markdown paths.
+      const base = doc.startsWith(skill + "/") ? skill : dirname(doc);
+      const target = resolve(base, match[1].split("#")[0]);
       assert.ok(target.startsWith(root + "/"), `${doc}: outside package: ${target}`);
       assert.ok(existsSync(target), `${doc}: missing link: ${target}`);
     }

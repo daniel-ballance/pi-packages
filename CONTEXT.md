@@ -144,6 +144,38 @@ A validation only a person can decide, recorded through `/workflows approve|reje
 There is deliberately no model-callable approval operation.
 _Avoid_: manual gate, approval step
 
+### Host parity
+
+**Host**:
+What launched Pi: a terminal (`cli`) or T3 Code (`t3`, detected by `T3_MCP_URL`).
+Packages ask the shared host helper, never the environment directly.
+_Avoid_: mode (Pi's `--mode rpc` is a transport; T3 also runs Pi over RPC), platform
+
+**Contract**:
+The host-neutral capability a skill is written against: delegate, wait, cancel,
+isolate in a worktree, wake, ask the human, track a todo. Skills name contracts and
+resolve them through one lookup reference, never a backend tool name inline.
+_Avoid_: interface, API
+
+**Backend**:
+The host-native tool that satisfies a Contract on one Host, such as `subagent_spawn`
+in a terminal or T3's `delegate_task` under T3. Each Contract has one Backend per
+Host; a gap on one Host is stated in the skill, not papered over.
+_Avoid_: adapter, driver, provider (Pi uses that word for model providers)
+
+**Duplicated primitive**:
+A tool whose Contract T3 already satisfies natively. Under T3 it is registered with
+`deferred` exposure: reachable through tool search and codemode, absent from the
+prompt. Under the CLI it is registered as usual.
+_Avoid_: hidden, disabled (both mean unreachable, which deferred is not)
+
+**Role default**:
+The model, with thinking level, that one pistack role uses unless the skill or the
+human says otherwise, kept in `pistack.json`. A hint for choosing a Composition's
+model, not a Composition: tools, resources and directories are still chosen per
+Child, and the Allowlist still bounds the model.
+_Avoid_: profile, preset (see Composition)
+
 ### Boundaries
 
 **Not a sandbox**:
@@ -168,5 +200,7 @@ _Avoid_: results, findings (use those for what the Parent has verified)
   inside a workflow Run. A manually spawned Child is a Child.
 - **"profile" / "role"** were considered and rejected. Composing a fixed profile
   caps what the Parent can build. The concept is **Composition**, chosen per Child.
+  pistack's **Role default** is narrower: a model hint per role, never a whole
+  Composition.
 - **"done"** conflated three different facts. Resolved: **Settled** (turn ended),
   **Accepted** (RPC queued), **Validated** (a Check passed). Say which one.

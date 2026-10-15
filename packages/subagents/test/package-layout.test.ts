@@ -140,6 +140,8 @@ test("individual packages still discover their public resources", async () => {
     assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
   }
   assert.deepEqual((await load(join(root, "packages/agent-skills"))).skills, engineeringSkills);
+  // Opt-in packages outside the collection manifest still load on their own.
+  assert.deepEqual((await load(join(root, "packages/todo"))).extensions, ["packages/todo/extensions/todo/index.ts"]);
 });
 
 test("every package has resource directories and packs its declared extension implementation", async () => {
