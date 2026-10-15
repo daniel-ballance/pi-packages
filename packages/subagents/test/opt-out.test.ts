@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
+import { asHost } from "./host-env.js";
 
 test("parsed opt-out prevents all native initialization, not just tool exposure", () => {
   const hooks = new Map<string, Function[]>();
@@ -24,9 +25,7 @@ test("parsed opt-out prevents all native initialization, not just tool exposure"
 });
 
 test("a T3-launched session prevents native initialization without the flag", () => {
-  const previous = process.env.T3_MCP_URL;
-  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
-  try {
+  asHost("t3", () => {
     const hooks = new Map<string, Function[]>();
     const tools: unknown[] = [], commands: string[] = [];
     subagents({
@@ -40,10 +39,7 @@ test("a T3-launched session prevents native initialization without the flag", ()
     assert.deepEqual(tools, []);
     assert.deepEqual(commands, []);
     assert.deepEqual([...hooks.keys()], ["session_start"]);
-  } finally {
-    if (previous === undefined) delete process.env.T3_MCP_URL;
-    else process.env.T3_MCP_URL = previous;
-  }
+  });
 });
 
 test("unflagged startup registers the existing tools once", () => {
@@ -57,7 +53,7 @@ test("unflagged startup registers the existing tools once", () => {
   } as unknown as ExtensionAPI);
   const start = hooks.get("session_start")![0];
   const ctx = { mode: "print" } as ExtensionContext;
-  start({}, ctx); start({}, ctx);
+  asHost("cli", () => { start({}, ctx); start({}, ctx); });
   assert.equal(tools.length, 18);
   assert.ok(tools.includes("subagent_spawn"));
   assert.ok(tools.includes("subagent_workflow_start"));

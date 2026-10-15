@@ -33,7 +33,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts && T3_MCP_URL=http://127.0.0.1:1/mcp tsx --test test/*.test.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": ">=0.99.2",

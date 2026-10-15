@@ -56,7 +56,18 @@ packages/<package-name>/
 ```
 
 Unused directories contain only `.gitkeep`. Package manifests declare their own
-resources; the root manifest exposes the collection. Only public `index.ts`
+resources; the root manifest exposes the collection.
+
+Code several packages need lives once under [`shared/`](shared/) and is copied
+into each consumer listed in `shared/copies.json` (Pi loads every package from
+its own module root, so a package cannot import from outside itself). The copies
+are generated: edit `shared/<file>`, run `node scripts/sync-shared.mjs`, and
+commit both. The root check fails on drift. `shared/host.ts` is the host helper:
+`detectHost()` returns `"t3"` for a Pi launched by T3 Code (`T3_MCP_URL` set)
+and `"cli"` otherwise, and `registerHostAware()` registers a tool that
+duplicates a T3 primitive with `exposure: "deferred"` under T3, so the model
+reaches it only through `tool_search` or codemode. A package that consumes it
+runs its tests twice, the second time with a fake `T3_MCP_URL`. Only public `index.ts`
 entry points are extensions, not supporting modules such as the child guard.
 
 The root supports both npm and pnpm workspaces. Use `npm ci --ignore-scripts`
@@ -166,7 +177,7 @@ The canonical root check is:
 The gate detects pnpm from the invoking manager or installed layout; set
 `PACKAGE_MANAGER=npm` or `PACKAGE_MANAGER=pnpm` to select explicitly. The check validates
 tracked repository configuration JSON while leaving example/proposal fixture data
-alone, runs the `subagents` package's `parsePolicy` through its local `tsx` when
+alone, checks the generated `shared/` copies and runs their tests, runs the `subagents` package's `parsePolicy` through its local `tsx` when
 `.pi/subagents.json` is present, then delegates to every package's `check` and
 `test` scripts, and runs the existing `mcp-client` `format:check`.
 The `agent-skills` package owns its scripts for generated-output drift and tests;

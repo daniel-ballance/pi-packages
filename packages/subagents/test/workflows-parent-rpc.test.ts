@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
+import { cliEnv } from "./host-env.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const parentFixture = fileURLToPath(new URL("./fixtures/workflow-parent-provider.mjs", import.meta.url));
 const childFixture = fileURLToPath(new URL("./fixtures/workflow-provider.mjs", import.meta.url));
@@ -22,7 +23,7 @@ test("real parent launches autonomous workflow, gets one completion notice, and 
   const events: Packet[] = []; let stderr = "";
   const parent = new RpcChild({ executable: process.env.PEER_TEST_EXECUTABLE ?? process.execPath,
     args: [...(process.env.PEER_TEST_EXECUTABLE ? [] : [cli]), "--offline", "--no-extensions", "--no-skills", "--no-context-files", "--no-prompt-templates", "--no-themes", "--approve", "-e", extension, "-e", parentFixture, "--model", "workflow-parent/stub", "--mode", "rpc", "--session", join(root, "parent.jsonl")],
-    cwd: root, env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PATH: `${bin}:${process.env.PATH}`, WORKFLOW_SMOKE_OUTPUT: proof, WORKFLOW_SMOKE_DEFINITION: definition },
+    cwd: root, env: { ...cliEnv(), PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PATH: `${bin}:${process.env.PATH}`, WORKFLOW_SMOKE_OUTPUT: proof, WORKFLOW_SMOKE_DEFINITION: definition },
     event: e => events.push(e), stderr: text => { stderr += text; }, exit: () => {},
   });
   try {

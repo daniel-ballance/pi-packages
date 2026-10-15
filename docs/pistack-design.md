@@ -50,7 +50,10 @@ identical; only the tool that satisfies it changes.
    never backend tool names inline.
 6. A semantics-parity list lives in the docs (§3). When one backend gains a
    behaviour, the other gets it or the skill states the gap.
-7. Each package's tests run twice, with and without a fake `T3_MCP_URL`.
+7. Each package that uses the host helper runs its tests twice, with and
+   without a fake `T3_MCP_URL`; tests of host-specific behaviour pin their
+   host. (Narrowed from "each package": a package with no host-dependent
+   code gains nothing from the second pass.)
 8. Env detection is the zero-config default. T3's
    `providerInstances.pi.config.launchArgs` (see
    [claude-subscription-t3-400.md](claude-subscription-t3-400.md)) is the
@@ -410,6 +413,21 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
    from `subagent_catalog` and shape N to it rather than fail.
 7. **Package naming**: `pistack` is decided. `host` helper as a package or a
    vendored file is open.
+
+   **Resolved 2026-10-15 (workstream `host`): a generated copy.** One source,
+   `shared/host.ts`, copied by `scripts/sync-shared.mjs` into each package
+   listed in `shared/copies.json`, with a drift check in `./scripts/check.sh`.
+   A workspace package was rejected: Pi loads each package from its own module
+   root (`docs/packages.md`), so a copied-out or individually installed package
+   would need the helper published as a runtime dependency, and adding a
+   workspace dependency means the seeded lockfile refresh for both managers.
+   A copy costs neither. `subagents` keeps omitting its tools under T3 instead
+   of registering them `deferred` (the user's decision: under T3, use T3's
+   native delegation only). Rule 2 is for a tool that duplicates a T3
+   primitive, while `subagents` duplicates the whole delegation system
+   (Manager, Children, workflows, footer, herdr status), and a deferred
+   `subagent_spawn` would let a T3 session spawn Children outside T3's task
+   tree.
 8. **Generator rule budget.** How many per-file patches (rule kind 3) does the
    first full generation need? If it is most files, the section-replacement
    rules are too coarse and need refining before the tree is committed; the

@@ -19,6 +19,7 @@ import { registerWorkflowUI } from "./src/workflow-ui.js";
 import { inspectorSource } from "./src/inspector-data.js";
 import { showInspector, type InspectorPanel } from "./src/inspector.js";
 import { HerdrStatus } from "./src/herdr.js";
+import { detectHost } from "./src/host.js";
 
 const id = Type.String({ description: "Stable subagent ID returned by subagent_spawn." });
 const resources = Type.Optional(Type.Array(Type.String({ description: "Exact resource file path or built-in extension identifier from subagent_catalog." })));
@@ -37,11 +38,11 @@ export default function subagents(pi: ExtensionAPI) {
   });
   // Pi applies parsed CLI flags after factories load. Register nothing else
   // until session_start, including on reload with the same launch flags.
-  // Inside T3 Code, T3's own delegated tasks are the subagent system; T3 sets
-  // T3_MCP_URL for the Pi sessions it launches with its MCP bridge.
+  // Inside T3 Code, T3's own delegated tasks are the subagent system. The whole
+  // manager duplicates it, so nothing registers, not even deferred tools.
   let initialized = false;
   pi.on("session_start", (_event, ctx) => {
-    if (initialized || pi.getFlag("disable-native-subagents") === true || process.env.T3_MCP_URL) return;
+    if (initialized || pi.getFlag("disable-native-subagents") === true || detectHost() === "t3") return;
     initialized = true;
     initializeSubagents(pi, ctx);
   });
