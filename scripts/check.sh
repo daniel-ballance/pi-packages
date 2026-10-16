@@ -17,6 +17,11 @@ unset PEER_TEST_EXECUTABLE PEER_TEST_CLI
 unset PI_CODING_AGENT_DIR PI_CODING_AGENT_SESSION_DIR PI_PACKAGE_DIR
 unset PI_SUBAGENT PI_SUBAGENT_ALLOWED_TOOLS PI_SUBAGENT_PEER_FD PI_SUBAGENT_POLICY
 unset T3_MCP_URL T3_MCP_BEARER_TOKEN T3_PI_RUNTIME_MODE T3_PI_MCP_EXTENSION_PATH
+# Git hooks export repository variables such as GIT_DIR. Left set, every git
+# command in a check (submodule pins, git apply) would act on this repository
+# instead of the directory it names.
+# shellcheck disable=SC2046
+unset $(git rev-parse --local-env-vars)
 
 printf '%s\n' '== repository configuration =='
 node scripts/check-json.mjs
