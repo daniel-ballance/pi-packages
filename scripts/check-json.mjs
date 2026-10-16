@@ -19,6 +19,7 @@ function isConfigurationJson(file) {
     name === ".prettierrc.json" ||
     file === ".pi/settings.json" ||
     file === ".pi/subagents.json" ||
+    (file.startsWith("global/") && file.endsWith(".json")) ||
     (file.startsWith(".github/") && file.endsWith(".json"))
   );
 }

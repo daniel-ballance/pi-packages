@@ -1,0 +1,12 @@
+# pi credentials, transcripts, and the pi-managed model cache live in
+# ~/.pi/agent. They must never be committed. This guard catches a wholesale
+# copy of that tree into this folder.
+auth.json
+mcp-auth/
+sessions/
+subagents/
+models-store.json
+themes/omarchy-system.json
+*.bak.*
+pi-config-backup.*/
+__pycache__/

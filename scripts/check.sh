@@ -44,6 +44,18 @@ if [[ -f "$ROOT/.pi/subagents.json" ]]; then
   )
 fi
 
+printf '\n%s\n' '== global Pi configuration =='
+python3 -B -m unittest discover -s global/tests
+(
+  cd "$ROOT/packages/subagents"
+  POLICY_PATH="$ROOT/global/subagents.json" node --import tsx --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    import { parsePolicy } from "./extensions/subagents/src/policy.ts";
+    parsePolicy(JSON.parse(readFileSync(process.env.POLICY_PATH, "utf8")));
+    console.log(`parsePolicy accepted ${process.env.POLICY_PATH}`);
+  '
+)
+
 # Packages lint their skills with this repository tool, so test it first.
 printf '\n%s\n' '== lint-skill: test =='
 "$PACKAGE_MANAGER" --prefix scripts/lint-skill run test
