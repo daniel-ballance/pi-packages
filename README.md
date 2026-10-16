@@ -180,7 +180,9 @@ tracked repository configuration JSON while leaving example/proposal fixture dat
 alone, checks the generated `shared/` copies and runs their tests, runs the `subagents` package's `parsePolicy` through its local `tsx` when
 `.pi/subagents.json` is present, then delegates to every package's `check` and
 `test` scripts, and runs the existing `mcp-client` `format:check`.
-The `pi-pocock-skills` package owns its scripts for generated-output drift and tests;
+Before the package scripts it runs the tests of [`lint-skill`](scripts/lint-skill/README.md),
+the repository's skill linter, which package checks use to lint their skills. The
+`pi-pocock-skills` package owns its scripts for generated-output drift and tests;
 the root check only invokes those package scripts.
 
 Packaging regressions exercise Pi's real loader for the root and individual

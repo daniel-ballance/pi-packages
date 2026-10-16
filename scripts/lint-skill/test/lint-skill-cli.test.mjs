@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const cli = join(packageRoot, "scripts", "lint-skill.mjs");
+const cli = join(packageRoot, "lint-skill.mjs");
 
 function run(args, options = {}) {
   return runExecutable(cli, args, options);

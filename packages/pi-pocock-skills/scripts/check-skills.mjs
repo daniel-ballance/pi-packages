@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Package maintenance adapter; the public CLI intentionally has no discovery mode.
+// Package maintenance adapter for the repository's lint-skill CLI, which
+// intentionally has no discovery mode.
 import { readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +26,7 @@ if (directories.length === 0) {
   process.exitCode = 2;
 } else {
   const result = spawnSync(process.execPath, [
-    join(root, 'scripts/lint-skill.mjs'), '--resource-root', skills, ...directories,
+    join(root, '../../scripts/lint-skill/lint-skill.mjs'), '--resource-root', skills, ...directories,
   ], { stdio: 'inherit' });
   if (result.error) console.error(result.error.message);
   process.exitCode = result.status ?? 2;

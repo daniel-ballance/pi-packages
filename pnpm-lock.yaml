@@ -117,14 +117,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  packages/pi-pocock-skills:
-    dependencies:
-      mdast-util-from-markdown:
-        specifier: 2.0.3
-        version: 2.0.3
-      yaml:
-        specifier: 2.9.1
-        version: 2.9.1
+  packages/pi-pocock-skills: {}
 
   packages/pistack:
     dependencies:
@@ -235,6 +228,15 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  scripts/lint-skill:
+    dependencies:
+      mdast-util-from-markdown:
+        specifier: 2.0.3
+        version: 2.0.3
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
 
 packages:
 

@@ -112,7 +112,7 @@ the gap.
 | Todo list | Not a Pi built-in. `ui.setWidget` can render one; a `todo` tool with `appendEntry` persistence is ~100 lines. | Small extension tool, or accept a markdown checklist in the reply. |
 | Transcript mining (`recall`, `reflect`, `automate-me`, trail audit) | Pi sessions are JSONL under the agent dir's `sessions/` ([docs/sessions.md, session-format.md](#sources)); `ctx.sessionManager` exposes the current session path. | Rewrite path discovery; confirm per-cwd layout before shipping. Privacy rule "do not glob other projects" still applies. |
 | MCP discovery for `why` | `mcp-client` package registers MCP tools; `mcp_servers_change` event; `getAllTools()`. | Rewrite the "inspect `mcps/`" step to "list tools whose namespace is an MCP server". |
-| `create-skill` built-in | `pi-pocock-skills` ships `writing-for-agents` and the `lint-skill` CLI. | Point to those. |
+| `create-skill` built-in | `pi-pocock-skills` ships `writing-for-agents`; the repository ships the `lint-skill` CLI (`scripts/lint-skill`). | Point to those. |
 | `deslop`, `control-ui`, `control-cli` (external) | No equivalent. `computer-use` (macOS only) and T3 `preview_*` tools cover some UI driving. | Leave as "verification skill is project-local" (pstack's own `create-verification-skill` already assumes this). |
 | PR watching (`watch-pr`) | T3: `watch_pull_request` native. Plain Pi: port the script to run under `tsx` (packages already depend on it) or drop bun. | The script is ~2.5k lines with tests; porting is mechanical (`import.meta.dir` → `import.meta.dirname`, bun lock → npm). Decide whether plain-Pi babysit is in scope. |
 | Orchestrate store CLI (`orch.ts`) | `subagents` workflows retain artifact/validation history and expose `subagent_workflow_inspect`; the plain-file store (`units.tsv`, `ledger.tsv`) can be workflow artifacts. | Either port `orch.ts` (bun → tsx) or re-express as workflow definitions. The plain-file idea ("every file has exactly one writer, readers aggregate at read time") is worth keeping regardless. |
@@ -222,7 +222,7 @@ All of these are ordinary extension APIs confirmed in `types.d.ts`
 |---|---|
 | `subagents` | The delegation backend for plain Pi. `subagent_catalog` feeds setup; `subagent_spawn` with exact model and tools does what pstack asks of `Task`; `subagent_wait` replaces `run_in_background` polling; workflows carry layer 3. No change needed for layer 1. Possible later change: a `worktree` option on spawn (today "does not create worktrees"). |
 | `durable-subagents` | Same contract, native Durable hosts. Nothing pstack-specific. |
-| `pi-pocock-skills` | `writing-for-agents` + `lint-skill` stand in for `create-skill`; `tdd`/`code-review`/`research`/`diagnosing-bugs` can be routed from playbooks instead of duplicated; `references/CHILD-DELEGATION.md` is the delegation abstraction. The sync/drift pattern is a template if §3.1 option 2 is chosen. |
+| `pi-pocock-skills` | `writing-for-agents` + the repository's `lint-skill` stand in for `create-skill`; `tdd`/`code-review`/`research`/`diagnosing-bugs` can be routed from playbooks instead of duplicated; `references/CHILD-DELEGATION.md` is the delegation abstraction. The sync/drift pattern is a template if §3.1 option 2 is chosen. |
 | `mcp-client` | Evidence sources for `why`/`recall`. |
 | `claude-subscription`, other providers | Supplies the model diversity the review panels depend on. |
 | `self-reload` | Already there for the "fix the broken skill mid-task" rule. |
