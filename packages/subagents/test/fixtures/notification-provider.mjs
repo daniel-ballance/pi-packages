@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 export default function (pi) {
@@ -38,11 +39,13 @@ export default function (pi) {
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
       };
       const stream = createAssistantMessageEventStream();
-      const delay = process.env.PI_SUBAGENT === "1" && ["message", "abort"].includes(process.env.NOTICE_TEST_MODE) ? 3000 : 0;
-      setTimeout(() => {
+      const release = process.env.PI_SUBAGENT === "1" ? process.env.NOTICE_TEST_RELEASE : undefined;
+      const poll = setInterval(() => {
+        if (release && !existsSync(release)) return;
+        clearInterval(poll);
         stream.push({ type: "start", partial: output });
         stream.push({ type: "done", reason: stopReason, message: output }); stream.end();
-      }, delay);
+      }, 20);
       return stream;
     },
   });
