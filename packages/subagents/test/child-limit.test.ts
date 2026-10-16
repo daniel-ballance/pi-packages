@@ -163,7 +163,6 @@ test("maxChildren 0 and an empty model list both fail resume through compile", {
     const closed = await spawn("closed");
     await until(() => manager.get(closed.id).status === "idle");
     await manager.close(closed.id);
-    // Only this saved child carries a selection, so only its resume goes through compile.
     manager.get(closed.id).config.selection = { model: "test/model:high", tools: ["read"] };
     const live = await spawn("live");
     await until(() => manager.get(live.id).status === "idle");

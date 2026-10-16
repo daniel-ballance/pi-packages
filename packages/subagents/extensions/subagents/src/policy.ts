@@ -31,7 +31,6 @@ export interface PolicyConfig {
   /** How deep the Child tree may grow; absent means 1, Children that cannot delegate. */
   maxDepth?: number;
 }
-/** On-disk policy. maxChildren stays a wire number so the built-in file still stringifies as 6. */
 export type PolicyFile = Omit<PolicyConfig, "maxChildren"> & { maxChildren: number };
 export interface LocalModel {
   provider: string; id: string; input: readonly string[]; contextWindow: number; maxTokens: number;
@@ -156,7 +155,6 @@ export class SubagentPolicy {
   readonly base: string;
   diagnostics: string[] = [];
   private ignoredProject?: string;
-  /** Off when the file did not parse. The error field, not this value, says whether that was deliberate. */
   get childLimit(): ChildLimit {
     return this.config?.maxChildren ?? { kind: "off" };
   }

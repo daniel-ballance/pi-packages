@@ -308,7 +308,6 @@ export class SubagentManager {
   private get occupied(): number {
     return this.children.size + this.reservedSlots;
   }
-  /** Why this count can never be admitted. Undefined when a later free slot could fit it. */
   private permanentRefusal(count: number): string | undefined {
     if (allows(this.limit, count)) return undefined;
     return allows(this.limit, 1)
