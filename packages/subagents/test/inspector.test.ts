@@ -427,6 +427,6 @@ test("a nested Child's row names the Child that delegated it", () => {
   const agents = [...source.agents(), nested];
   const page = inspectorPage({ ...source, agents: () => agents }, { kind: "overview", history: true }, Date.now(), 100);
   const row = [...page.rows, ...inspectorPage({ ...source, agents: () => agents }, { kind: "overview" }, Date.now(), 100).rows].find(r => r.id === "agent:nested")!;
-  assert.match(row.text, new RegExp(`^  ▎ ● nested worker \\[local off\\] .* · from ${coordinator!.name.toLowerCase()}$`));
+  assert.match(row.text, new RegExp(`^  ▎ ● nested worker \\[opus-5-5 xhigh\\] .* · from ${coordinator!.name.toLowerCase()}$`));
   assert.doesNotMatch(row.text, /parent review needed/, "a nested report is its coordinator's to read");
 });
