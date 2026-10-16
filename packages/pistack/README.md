@@ -31,10 +31,10 @@ pi install /path/to/pi-packages/packages/pistack
 Skills arrive as `/skill:<name>`. pstack's workflow skills set
 `disable-model-invocation: true`, so they cost no prompt space until invoked.
 
-pistack ships its own `tdd` skill. The collection leaves it out, so `pi-pocock-skills`'
-`tdd` is the one that loads there; poteto-mode refers to the skill only by name.
-Installed on its own, pistack loads its own `tdd`. Don't also enable
-`pi-pocock-skills`' `tdd` in that case: Pi keeps whichever it discovers first and warns.
+pistack ships its own `tdd` skill, and poteto-mode refers to the skill only by name.
+The collection leaves out `pi-pocock-skills`' `tdd`, so pistack's is the one that loads.
+If you install both packages yourself, exclude `pi-pocock-skills`' `tdd`
+(`"!skills/tdd/SKILL.md"` in its entry). Pi keeps whichever it discovers first and warns.
 
 A collection install that filters resources needs pistack's and todo's entries
 in its lists, for example:
@@ -47,8 +47,8 @@ in its lists, for example:
 }
 ```
 
-That pattern also loads pistack's own `tdd`. If the list selects `pi-pocock-skills`' `tdd`
-too, add `"!packages/pistack/skills/tdd/SKILL.md"` so only one loads.
+That pattern also loads pistack's own `tdd`. If the list also selects `pi-pocock-skills`' skills,
+add `"!packages/pi-pocock-skills/skills/tdd/SKILL.md"` so only pistack's loads.
 
 ## Extension
 
