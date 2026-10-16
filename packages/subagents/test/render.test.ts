@@ -5,6 +5,7 @@ import { initTheme, ToolExecutionComponent, type Theme } from "@earendil-works/p
 import { visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import { nativeTools } from "./native-tools.js";
 import { subagentRenderers } from "../extensions/subagents/src/render.js";
+import { WAKE_REASONS, type WakeReason } from "../extensions/subagents/src/wait.js";
 
 type Action = Parameters<typeof subagentRenderers>[0];
 type RenderContext = Parameters<ReturnType<typeof subagentRenderers>["renderResult"]>[3];
@@ -106,9 +107,31 @@ test("catalog summarizes capabilities without dumping policy guidance", () => {
   assert.match(render("catalog", { spawnEnabled: false, error: "Invalid policy" }), /spawning disabled[\s\S]*Invalid policy/);
 });
 
-test("wait and list distinguish timeouts, input needs and missing aggregate costs", () => {
-  assert.match(render("wait", { timedOut: true, agents: [{ ...child, status: "working" }] }), /wait timed out[\s\S]*working/);
-  assert.match(render("wait", { timedOut: false, needsInput: true, agents: [{ ...child, status: "waiting_input" }] }), /input required[\s\S]*waiting/);
+test("each wake reason but settled draws its banner above the children", () => {
+  const banners: { [W in WakeReason]: RegExp | undefined } = {
+    hold: /human hold/, input: /input required/, settled: undefined, message: /message queued/, timeout: /wait timed out/,
+  };
+  const working = { id: child.id, name: child.name, status: "working", activity: "Tool: bash", unread: 0 };
+  for (const wake of WAKE_REASONS) {
+    const text = render("wait", { wake, agents: [working] });
+    assert.match(text, /footer-smoke-test working/, wake);
+    for (const [other, banner] of Object.entries(banners)) if (banner) assert.equal(banner.test(text), other === wake, `${wake}: ${other}`);
+  }
+});
+
+test("a wait draws returned reports as reviewed with a preview, and counts the reports it did not show", () => {
+  const done = { id: "sa-1", name: "review-types", status: "idle", unread: 0, resultReview: { status: "reviewed" },
+    reports: [{ kind: "assistant", text: "Two findings." }] };
+  const text = render("wait", { wake: "settled", agents: [done, { id: "sa-2", name: "docs", status: "idle", unread: 2, resultReview: { status: "unreviewed" } }] });
+  assert.match(text, /✓ review-types reviewed/);
+  assert.match(text, /review-types: Two findings\./);
+  assert.match(text, /\* docs unread/);
+  assert.match(text, /2 report\(s\) not shown · subagent_read/);
+  assert.doesNotMatch(render("wait", { wake: "settled", agents: [done] }), /not shown/);
+});
+
+test("a wait result from before wake reasons still draws its children, and list shows missing aggregate costs", () => {
+  assert.match(render("wait", { timedOut: true, agents: [{ ...child, status: "working" }] }), /footer-smoke-test working/);
   assert.match(render("list", { totals: { active: 1, tracked: 2, reportedCost: 0.125, missingCost: 1 }, agents: [child] }), /1 active \/ 2 tracked · \$0.125 · 1 cost unknown/);
   assert.match(render("list", { agents: [] }), /no subagents tracked/);
   const agents = [...Array.from({ length: 4 }, () => child), { ...child, status: "failed" }];
@@ -152,7 +175,8 @@ test("call rows identify the package, then the thing, action and parameters", ()
   assert.equal(line("read", { id: "subagent-1", since: 12 }), "subagents • footer-smoke-test • read (since 12)");
   assert.equal(line("wait", { ids: ["subagent-1"], timeoutSeconds: 10 }), "subagents • footer-smoke-test • wait 10s");
   assert.equal(line("wait", { ids: ["subagent-1", "subagent-2"], timeoutSeconds: 10 }), "subagents • wait footer-smoke-test worker-b 10s");
-  assert.equal(line("wait", {}), "subagents • wait");
+  assert.equal(line("wait", {}), "subagents • wait until news");
+  assert.equal(line("wait", { timeoutSeconds: 30 }), "subagents • wait 30s");
   assert.equal(line("connect", { a: "subagent-1", b: "subagent-2", limit: 5 }), "subagents • footer-smoke-test • connect worker-b (limit 5)");
   assert.equal(line("peers", {}), "subagents • peers");
   assert.equal(line("respond", { id: "subagent-1", requestId: "ui-1", confirmed: true }), "subagents • footer-smoke-test • respond confirmed");
