@@ -42,14 +42,14 @@ test("peer renderers show directional budgets and receipt state with bounded wid
   for (const line of render("peers", data, false, 30).split("\n")) assert.ok(visibleWidth(line) <= 30);
 });
 
-test("spawn shows a compact identity, status, model, usage and task instead of raw JSON", () => {
+test("spawn shows a two-line card with state, model, effort, turns and cost, then the task, instead of raw JSON", () => {
   const rendered = render("spawn", { ...child, status: "working" });
-  assert.match(rendered, /● working  footer-smoke-test  subagent-12345678/);
-  assert.match(rendered, /gpt-5.6-luna:high · 1 turn/);
-  assert.match(rendered, /↑484 ↓9 \$0.125 0.2%\/272k \(auto\)/);
+  assert.match(rendered, /^● footer-smoke-test working {2,}gpt-5\.6-luna · high$/m);
+  assert.match(rendered, /^↳ 1 turn · \$0\.125$/m);
+  assert.doesNotMatch(rendered, /↑484/);
   assert.match(rendered, /task: Return a short answer/);
   assert.doesNotMatch(rendered, /sessionFile|\/private|"usage"/);
-  assert.ok(rendered.split("\n").length <= 5);
+  assert.ok(rendered.split("\n").length <= 4);
   assert.match(rendered, /expand for details/);
 });
 
@@ -65,12 +65,13 @@ test("expanded output retains full raw diagnostics and does not mutate the tool 
 });
 
 test("read foregrounds the latest assistant reply, not lifecycle and sent echoes", () => {
-  const details = { id: child.id, name: child.name, status: "idle", sessionFile: child.sessionFile, updates: [
+  const details = { id: child.id, name: child.name, status: "idle", model: child.model, thinking: child.thinking, sessionFile: child.sessionFile, updates: [
     { kind: "lifecycle", text: "Child ready: internal metadata" },
     { kind: "sent", text: "Return a short answer" },
     { kind: "assistant", text: "Ready for footer inspection." },
   ] };
   const collapsed = render("read", details);
+  assert.match(collapsed, /^· footer-smoke-test stopped {2,}gpt-5\.6-luna · high$/m);
   assert.match(collapsed, /Ready for footer inspection\./);
   assert.doesNotMatch(collapsed, /internal metadata|Return a short answer|sessionFile/);
   assert.match(render("read", details, true), /internal metadata/);
@@ -82,11 +83,12 @@ test("read keeps failures, pending dialogs, history gaps and pagination visible"
     uiRequests: [{ id: "ui-1", method: "confirm", title: "Approve?" }],
     updates: [{ kind: "error", text: "Provider quota exceeded" }, { kind: "assistant", text: "Partial reply" }],
   });
-  for (const value of ["needs input", "pending input", "history gap", "more unread", "Provider quota exceeded", "Partial reply"]) assert.ok(text.includes(value), value);
+  for (const value of ["needs input: Approve?", "history gap", "more unread", "Provider quota exceeded", "Partial reply"]) assert.ok(text.includes(value), value);
   const failed = render("abort", { ...child, status: "failed", aborted: true, error: "Unrelated provider failure" });
-  assert.match(failed, /✗ failed/);
+  assert.match(failed, /! footer-smoke-test failed/);
+  assert.match(failed, /↳ Unrelated provider failure/);
   assert.doesNotMatch(failed, /cancelled/);
-  assert.match(render("abort", { ...child, aborted: true }), /cancelled/);
+  assert.match(render("abort", { ...child, aborted: true }), /↳ cancelled · 1 turn/);
 });
 
 test("catalog summarizes capabilities without dumping policy guidance", () => {
@@ -103,11 +105,12 @@ test("catalog summarizes capabilities without dumping policy guidance", () => {
 
 test("wait and list distinguish timeouts, input needs and missing aggregate costs", () => {
   assert.match(render("wait", { timedOut: true, agents: [{ ...child, status: "working" }] }), /wait timed out[\s\S]*working/);
-  assert.match(render("wait", { timedOut: false, needsInput: true, agents: [{ ...child, status: "waiting_input" }] }), /input required[\s\S]*needs input/);
+  assert.match(render("wait", { timedOut: false, needsInput: true, agents: [{ ...child, status: "waiting_input" }] }), /input required[\s\S]*waiting/);
   assert.match(render("list", { totals: { active: 1, tracked: 2, reportedCost: 0.125, missingCost: 1 }, agents: [child] }), /1 active \/ 2 tracked · \$0.125 · 1 cost unknown/);
   assert.match(render("list", { agents: [] }), /no subagents tracked/);
   const agents = [...Array.from({ length: 4 }, () => child), { ...child, status: "failed" }];
   assert.match(render("list", { agents }), /1 more children \(1 need attention\)/);
+  assert.match(render("list", { agents: [...agents.slice(0, 4), { ...child, hold: { kind: "halt" } }] }), /1 more children \(1 need attention\)/);
 });
 
 test("plain errors, partial results and spilled results remain intelligible", () => {
@@ -181,13 +184,15 @@ test("chrome and display names are lowercase without altering payloads, identifi
   const data = { ...child, name: "AX Helpers", task: "Check README.md and MyAPI", id: "Agent-ABC" };
   const call = subagentRenderers("spawn").renderCall(data, theme, context()).render(160).join("\n");
   assert.match(call, /subagents • ax helpers • spawn Check README.md and MyAPI/);
-  assert.match(render("spawn", data), /ax helpers  Agent-ABC/);
+  assert.match(render("spawn", data), /· ax helpers stopped/);
+  assert.match(render("spawn", data, true), /"id": "Agent-ABC"/);
   assert.match(render("spawn", data), /task: Check README.md and MyAPI/);
   assert.match(render("spawn", data, true), /"name": "AX Helpers"/);
   const unknown = subagentRenderers("read").renderCall({ id: "Agent-ABC" }, theme, context()).render(100).join("\n");
   assert.match(unknown, /Agent-ABC/);
   assert.doesNotMatch(render("read", child), /✓ idle/);
-  assert.match(render("read", { ...child, hold: { kind: "halt" } }), /held by user \(halt\)/);
+  assert.match(render("read", { ...child, hold: { kind: "halt" } }), /= footer-smoke-test held/);
+  assert.match(render("read", { ...child, hold: { kind: "halt" } }), /↳ halt · 1 turn/);
 });
 
 test("overlap warning owner names are lowercase while paths and expanded payloads retain case", () => {

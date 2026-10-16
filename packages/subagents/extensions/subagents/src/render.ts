@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
 import { sep } from "node:path";
-import { stripVTControlCharacters } from "node:util";
 import { keyText, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
-import { formatFooterStats, reportedCost } from "./usage.js";
+import { cardLines, cardsFromDetails, inline, paint, plain, STATES } from "./card.js";
+import { reportedCost } from "./usage.js";
 
 type Data = Record<string, unknown>;
 type Action = "catalog" | "loop" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "release-hold" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow" | "workflow-start" | "workflow-inspect" | "workflow-control";
@@ -15,10 +15,6 @@ const object = (value: unknown): Data | undefined =>
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const count = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-// Child names, tasks and output are untrusted terminal text, not ANSI styling.
-const plain = (value: unknown): string => typeof value === "string"
-  ? stripVTControlCharacters(value).replace(/\r\n?/g, "\n").replace(/\t/g, "  ").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "") : "";
-const inline = (value: unknown): string => plain(value).replace(/\s+/g, " ").trim();
 
 /** Stateless layout: re-evaluate theme and terminal width on every render. */
 function component(layout: (width: number) => string[]): Component {
@@ -38,36 +34,9 @@ function preview(text: string, width: number, theme: Theme, color: Color = "tool
   return shown;
 }
 
-function childLines(child: Data, theme: Theme): string[] {
-  const status = inline(child.status) || "unknown";
-  const failed = status === "failed" || !!child.error;
-  const waiting = status === "waiting_input";
-  const active = status === "working" || status === "starting";
-  const hold = object(child.hold), assignment = object(child.assignment);
-  const completed = assignment?.status === "completed";
-  const color: Color = hold ? "warning" : failed ? "error" : waiting || child.aborted === true ? "warning" : active ? "accent" : "dim";
-  const label = hold ? `held by user (${inline(hold.kind)})` : child.aborted === true && !failed ? "cancelled" : waiting ? "needs input" : status;
-  const icon = hold ? "◇" : failed ? "✗" : waiting ? "?" : active ? "●" : "○";
-  const lines = [theme.fg(color, `${icon} ${label}`) + "  " + theme.bold(child.name ? inline(child.name).toLowerCase() : inline(child.id) || "subagent") +
-    (child.name && child.id ? theme.fg("dim", `  ${inline(child.id)}`) : "")];
-  const usage = object(child.usage);
-  const turns = count(usage?.assistantMessages);
-  const model = inline(child.model);
-  const metadata = [model ? `${model}${child.thinking ? `:${inline(child.thinking)}` : ""}` : "",
-    turns === undefined ? "" : `${turns} ${turns === 1 ? "turn" : "turns"}`].filter(Boolean);
-  if (metadata.length) lines.push(theme.fg("dim", metadata.join(" · ")));
-  if (usage) {
-    const cost = reportedCost(usage);
-    const stats = formatFooterStats(usage) || (cost === undefined ? "" : `$${cost.toFixed(3)}`);
-    lines.push(theme.fg("muted", `${stats}${cost === undefined ? `${stats ? " · " : ""}cost unknown` : ""}`));
-  }
-  if (assignment) lines.push(theme.fg(completed ? "muted" : "dim", `assignment: ${inline(assignment.status)} · ${inline(assignment.task)}`));
-  if (child.error) lines.push(theme.fg("error", inline(child.error)));
-  for (const warning of array(child.coordinationWarnings).slice(0, 3)) lines.push(theme.fg("warning", `work-area overlap: ${inline(object(warning)?.path) || inline(object(warning)?.requestedPath)} · ${(inline(object(warning)?.name) || inline(object(warning)?.ownerName)).toLowerCase()}`));
-  if (count(child.unread)) lines.push(theme.fg("accent", `${child.unread} unread report(s)`));
-  const requests = array(child.uiRequests);
-  if (requests.length) lines.push(theme.fg("warning", `${requests.length} pending input request(s)`));
-  return lines;
+function overlapLines(child: Data, theme: Theme): string[] {
+  return array(child.coordinationWarnings).slice(0, 3).map(object).map(warning => theme.fg("warning",
+    `work-area overlap: ${inline(warning?.path) || inline(warning?.requestedPath)} · ${(inline(warning?.name) || inline(warning?.ownerName)).toLowerCase()}`));
 }
 
 function catalogLines(data: Data, theme: Theme): string[] {
@@ -86,8 +55,8 @@ function catalogLines(data: Data, theme: Theme): string[] {
   return lines;
 }
 
-function groupLines(data: Data, theme: Theme): string[] {
-  const children = array(data.agents).map(object).filter((child): child is Data => !!child);
+function groupLines(data: Data, width: number, theme: Theme): string[] {
+  const children = cardsFromDetails(array(data.agents), "summary");
   const lines: string[] = [];
   if (data.needsInput === true) lines.push(theme.fg("warning", "input required · waiting stopped"));
   if (data.needsHold === true) lines.push(theme.fg("warning", "human hold · discuss before releasing work"));
@@ -102,10 +71,10 @@ function groupLines(data: Data, theme: Theme): string[] {
       (count(totals.missingCost) ? ` · ${totals.missingCost} cost unknown` : "")));
   }
   if (!children.length) lines.push(theme.fg("dim", "no subagents tracked."));
-  for (const child of children.slice(0, 4)) lines.push(...childLines(child, theme));
+  for (const child of children.slice(0, 4)) lines.push(...cardLines(child, width).map(line => paint(theme, line.spans)));
   if (children.length > 4) {
     const hidden = children.slice(4);
-    const attention = hidden.filter(child => child.error || child.status === "failed" || child.status === "waiting_input" || array(child.uiRequests).length).length;
+    const attention = hidden.filter(child => STATES[child.state].group === "attention").length;
     lines.push(theme.fg(attention ? "warning" : "dim", `… ${hidden.length} more children${attention ? ` (${attention} need attention)` : ""}`));
   }
   return lines;
@@ -145,7 +114,8 @@ function peerLines(data: Data, theme: Theme): string[] {
 }
 
 function readLines(data: Data, width: number, theme: Theme): string[] {
-  const lines = childLines(data, theme);
+  const [card] = cardsFromDetails([data], "read");
+  const lines = card ? cardLines(card, width).map(line => paint(theme, line.spans)) : [];
   if (data.gap === true) lines.push(theme.fg("warning", "history gap · some older updates are no longer retained"));
   if (data.hasMore === true) lines.push(theme.fg("warning", "more unread updates available · read again"));
   const updates = array(data.updates).map(object).filter((update): update is Data => !!update);
@@ -357,7 +327,7 @@ export function subagentRenderers(action: Action, names?: NameLookup): Required<
         else if (action === "loop") lines = preview(raw, width, theme);
         else if (workflowAction(action)) lines = workflowLines(data, theme);
         else if (action === "list" || action === "wait") {
-          lines = groupLines(data, theme);
+          lines = groupLines(data, width, theme);
           for (const report of array(data.reports).map(object).filter((r): r is Data => !!r).slice(0, 2)) {
             const reply = array(report.updates).map(object).findLast(update => update?.kind === "assistant");
             if (reply) lines.push(...preview(`${inline(report.name).toLowerCase()}: ${plain(reply.text)}`, width, theme, "toolOutput", 2));
@@ -366,7 +336,8 @@ export function subagentRenderers(action: Action, names?: NameLookup): Required<
         else if (action === "read") lines = readLines(data, width, theme);
         else if (["connect", "disconnect", "renew", "peers"].includes(action)) lines = peerLines(data, theme);
         else {
-          lines = childLines(data, theme);
+          const [card] = cardsFromDetails([data], "summary");
+          lines = [...card ? cardLines(card, width).map(line => paint(theme, line.spans)) : preview(raw, width, theme), ...overlapLines(data, theme)];
           if (action === "spawn" && data.task) lines.push(theme.fg("dim", `task: ${inline(data.task)}`));
         }
         if (expanded && raw) {
