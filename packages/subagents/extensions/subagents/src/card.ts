@@ -7,12 +7,10 @@ import type { WorkflowRun } from "./workflows.js";
 import { formatFooterStats, reportedCost } from "./usage.js";
 
 export type CardState = "starting" | "working" | "waiting" | "held" | "failed" | "unread" | "reviewed" | "stopped";
-/** Inspector overview sections. `history` rows live on the history page. */
 export type Group = "attention" | "working" | "results" | "history";
 export type StateRole = "accent" | "warning" | "error" | "success" | "dim";
 export interface StateStyle { readonly glyph: string; readonly word: string; readonly role: StateRole; readonly group: Group }
 
-/** The package's one glyph table. Glyph, word, colour and overview group of a state are one row, so they cannot disagree. */
 export const STATES: { readonly [S in CardState]: StateStyle } = {
   starting: { glyph: "○", word: "starting", role: "accent", group: "working" },
   working: { glyph: "●", word: "working", role: "accent", group: "working" },
@@ -25,7 +23,6 @@ export const STATES: { readonly [S in CardState]: StateStyle } = {
 };
 export const LEGEND = Object.values(STATES).map(style => `${style.glyph} ${style.word}`).join(" · ");
 
-/** Whether the reader of a child's reports has seen its latest result. One field, so "unread and reviewed" cannot be expressed. */
 export type Review = "unread" | "reviewed" | "none";
 
 interface StateFacts { readonly status: Status; readonly held: boolean; readonly errored: boolean; readonly review: Review }
@@ -46,53 +43,41 @@ const WORK_STATES = new Map<string, CardState>([
   ["paused", "held"], ["pausing", "held"],
   ["failed", "failed"], ["error", "failed"], ["exhausted", "failed"], ["interrupted", "failed"],
 ]);
-/** Glyph and colour for workflow step, attempt and tool statuses, whose own status word stays in their row text. */
-export function workState(status: string): CardState {
-  return WORK_STATES.get(status) ?? "stopped";
+export function workStyle(status: string): StateStyle {
+  return STATES[WORK_STATES.get(status) ?? "stopped"];
 }
 
 export interface ModelBadge {
-  /** `provider/id`, as the child reported it. */
   readonly full: string;
-  /** Provider and family noise dropped, for badges. */
   readonly short: string;
   readonly effort?: string;
 }
 export interface Elapsed {
   readonly ms: number;
-  /** The run finished without a finish time, so the end is the last observed update. */
   readonly lastObserved: boolean;
 }
 
-/** One child as every surface sees it. Every string is sanitized single-line text. */
 export interface AgentCard {
   readonly kind: "agent";
   readonly id: string;
-  /** Lowercased, at most 120 cells, falling back to the id. */
   readonly name: string;
-  /** 0 for a child of the root parent. */
-  readonly depth: number;
+  readonly indent: number;
   readonly parentId?: string;
   readonly delegator?: string;
   readonly state: CardState;
   readonly review: Review;
   readonly model?: ModelBadge;
-  /** What the child is doing, or what its last run came to. "" when nothing beyond the state word is known. */
   readonly activity: string;
   readonly elapsed?: Elapsed;
-  /** Assistant responses, tool-calling ones included. */
   readonly turns?: number;
-  /** Absent, never zero, when unknown. */
   readonly cost?: number;
-  /** Pi footer-style usage, "" when unavailable. */
   readonly stats: string;
 }
-/** A workflow run in the inspector overview. It has no model, metrics or delegator. */
 export interface RunCard {
   readonly kind: "workflow";
   readonly id: string;
   readonly name: string;
-  readonly depth: 0;
+  readonly indent: 0;
   readonly state: CardState;
   readonly activity: string;
 }
@@ -100,7 +85,6 @@ export type Card = AgentCard | RunCard;
 
 export interface RecordView {
   readonly live?: LiveActivity;
-  /** Display name of the record's parent, when that record is in view. */
   readonly delegator?: string;
   readonly now: number;
 }
@@ -123,29 +107,22 @@ interface AgentFacts {
   readonly phase?: string;
   readonly requests: readonly Request[];
   readonly outcome?: string;
-  /** First line of the latest result. Live records only. */
   readonly result?: string;
   readonly elapsed?: Elapsed;
   readonly usage?: unknown;
 }
 
 const REPORT_KINDS = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
-const NOTICE_KINDS = new Set(["error", "extension_error", "input_requested", "human_intervention"]);
+const REOPENING_KINDS = new Set(["error", "extension_error", "input_requested", "human_intervention"]);
 const RESULT_KINDS = new Set(["assistant", "error", "failure", "aborted", "completed"]);
 const STATUSES: ReadonlySet<string> = new Set<Status>(["starting", "working", "waiting_input", "idle", "stopping", "stopped", "failed"]);
 const OUTCOMES: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);
 
-/** Live AgentRecord → card, for the inspector. Reads the record and never mutates it. */
 export function cardFromRecord(record: AgentRecord, view: RecordView): AgentCard {
-  const pending = record.updates.filter(update => update.cursor > record.readCursor);
-  // A review settles the routine reports; anything that needs the parent's attention reopens it.
-  const review: Review = record.resultReview
-    ? record.resultReview.status === "unreviewed" || pending.some(update => NOTICE_KINDS.has(update.kind)) ? "unread" : "reviewed"
-    : pending.some(update => REPORT_KINDS.has(update.kind)) ? "unread" : "none";
   const result = resultUpdate(record);
   return agentCard({
     id: record.id, name: record.name, depth: record.depth, parentId: record.parentId, delegator: view.delegator,
-    status: record.status, hold: record.hold, error: record.error, review,
+    status: record.status, hold: record.hold, error: record.error, review: reviewOf(record),
     model: record.model ?? record.config.model, thinking: record.thinking ?? record.config.thinking,
     activity: record.activity, phase: view.live?.phase, requests: record.uiRequests,
     outcome: outcomeOf(record.assignment, record.aborted),
@@ -155,11 +132,6 @@ export function cardFromRecord(record: AgentRecord, view: RecordView): AgentCard
   });
 }
 
-/**
- * Tool-result JSON → cards. `summary` is list()/summary() items, `read` one read() page. Items without a known
- * status are skipped, so the caller falls back to its raw preview. No clock and no live lookup: a tool-result
- * card is a snapshot.
- */
 export function cardsFromDetails(items: readonly unknown[], shape: "summary" | "read"): AgentCard[] {
   const names = new Map(items.map(object).map(item => [inline(item?.id), item?.name] as const));
   return items.flatMap(raw => {
@@ -167,8 +139,6 @@ export function cardsFromDetails(items: readonly unknown[], shape: "summary" | "
     if (!item || !isStatus(item.status)) return [];
     const assignment = object(item.assignment), resultReview = object(item.resultReview);
     const parentId = inline(item.parentId) || undefined;
-    // The read page is pre-acknowledgement, but subagent_read acknowledges it right after this render
-    // unless the result spilled, and a spilled result draws no card.
     const review: Review = shape === "read"
       ? item.hasMore === true ? "unread" : resultReview ? "reviewed" : "none"
       : count(item.unread) || resultReview?.status === "unreviewed" ? "unread" : resultReview?.status === "reviewed" ? "reviewed" : "none";
@@ -181,7 +151,6 @@ export function cardsFromDetails(items: readonly unknown[], shape: "summary" | "
   });
 }
 
-/** Workflow run → card, so run rows share the agent glyph table and overview grouping. */
 export function runCard(run: WorkflowRun, workers: readonly AgentRecord[]): RunCard {
   const steps = Object.values(run.steps);
   const approval = steps.some(step => step.status === "approval");
@@ -191,7 +160,13 @@ export function runCard(run: WorkflowRun, workers: readonly AgentRecord[]): RunC
     `${steps.filter(step => step.status === "passed").length}/${run.definition.steps.length} steps · ` +
     `${active} active worker${active === 1 ? "" : "s"}${run.unread ? " · parent review needed" : ""}`;
   return { kind: "workflow", id: run.id, name: fit(inline(run.definition.name).toLowerCase(), 120) || inline(run.id),
-    depth: 0, state: runState(run, held, approval), activity: fit(inline(activity), 160) };
+    indent: 0, state: runState(run, held, approval), activity: fit(inline(activity), 160) };
+}
+
+function reviewOf(record: AgentRecord): Review {
+  const pending = record.updates.filter(update => update.cursor > record.readCursor);
+  if (record.resultReview) return record.resultReview.status === "unreviewed" || pending.some(update => REOPENING_KINDS.has(update.kind)) ? "unread" : "reviewed";
+  return pending.some(update => REPORT_KINDS.has(update.kind)) ? "unread" : "none";
 }
 
 function runState(run: WorkflowRun, held: boolean, approval: boolean): CardState {
@@ -206,7 +181,6 @@ function runState(run: WorkflowRun, held: boolean, approval: boolean): CardState
   }
 }
 
-/** The record's latest result as `kind: text`, or a placeholder sentence. */
 export function latestResult(record: AgentRecord): string {
   const update = resultUpdate(record);
   if (update) return `${update.kind}: ${update.text}`;
@@ -227,7 +201,7 @@ function agentCard(facts: AgentFacts): AgentCard {
   const usage = object(facts.usage);
   return {
     kind: "agent", id: inline(facts.id), name: fit(inline(facts.name).toLowerCase(), 120) || inline(facts.id) || "subagent",
-    depth: Math.max(0, (facts.depth ?? 1) - 1), parentId: facts.parentId,
+    indent: Math.max(0, (facts.depth ?? 1) - 1), parentId: facts.parentId,
     delegator: fit(inline(facts.delegator).toLowerCase(), 120) || undefined,
     state, review: facts.review,
     model: model ? { full: model, short: shortModel(model), effort: inline(facts.thinking) || undefined } : undefined,
@@ -251,7 +225,6 @@ function activityOf(state: CardState, facts: AgentFacts): string {
     }
   })();
   const line = fit(inline(text), 160);
-  // The manager's coarse `Working` only repeats the state word.
   return line.toLowerCase() === STATES[state].word ? "" : line;
 }
 
@@ -260,11 +233,6 @@ function outcomeOf(assignment: { status?: unknown } | undefined, aborted: unknow
   return typeof assignment?.status === "string" && OUTCOMES.has(assignment.status) ? assignment.status : undefined;
 }
 
-/**
- * From assignment.at ?? startedAt ?? createdAt. A settled assignment ends at its finish (else the last
- * observed update), a running one at `clock` when given, else at the last observed update. A read page
- * carries no record times, so only a finished assignment gets a duration there.
- */
 function elapsedOf(assignment: { at?: unknown; status?: unknown; finishedAt?: unknown } | undefined,
   record: { startedAt?: unknown; createdAt?: unknown; updatedAt?: unknown }, clock?: number): Elapsed | undefined {
   const settled = !!assignment && assignment.status !== "running";
@@ -273,34 +241,27 @@ function elapsedOf(assignment: { at?: unknown; status?: unknown; finishedAt?: un
   return Number.isFinite(ms) ? { ms: Math.max(0, ms), lastObserved: settled && !assignment.finishedAt } : undefined;
 }
 
-const MODEL_SUFFIXES = [/-(?:next|latest|preview)$/, /-\d{8}$/, /-[wa]\d+b$/i];
-/** `claude-subscription/claude-opus-5-5` → `opus-5-5`. Size suffixes (`-70b`) stay: they name a different model. */
+const MODEL_SUFFIXES = { release: /-(?:next|latest|preview)$/, date: /-\d{8}$/, activeParams: /-[wa]\d+b$/i };
 function shortModel(full: string): string {
   let id = full.slice(full.lastIndexOf("/") + 1).replace(/^claude-/, "");
   for (let changed = true; changed;) {
     changed = false;
-    for (const suffix of MODEL_SUFFIXES) if (suffix.test(id)) { id = id.replace(suffix, ""); changed = true; }
+    for (const suffix of Object.values(MODEL_SUFFIXES)) if (suffix.test(id)) { id = id.replace(suffix, ""); changed = true; }
   }
   return fit(id || full, 24);
 }
 
 export type Role = "text" | "dim" | "muted" | "accent" | "success" | "warning" | "error";
 export interface Span { readonly text: string; readonly role: Role; readonly bold?: true }
-/** One laid-out line. `text` is the spans' concatenation, so plain text cannot drift from what is painted. */
 export interface Line { readonly text: string; readonly spans: readonly Span[] }
 
 const MIN_NAME = 8;
 const MIN_TAIL = 8;
 const MIN_HEAD = 12;
 
-/**
- * Inspector row: `<indent>▎ <glyph> <name> [<model> <effort>] <activity> · from <delegator>`. `metrics` adds turns
- * and cost after the activity, for the agent page header. Casualties, first to last: the delegator drops whole,
- * the activity shrinks to 8 cells and then drops, the name shrinks to 8 cells, then the badge drops whole.
- */
 export function railLine(card: Card, columns: number, metrics = false): Line {
   const style = STATES[card.state];
-  const indent = "  ".repeat(card.depth);
+  const indent = "  ".repeat(card.indent);
   const fixed = visibleWidth(`${indent}▎ ${style.glyph} `);
   const badge = card.kind === "workflow" ? "[workflow]" : card.model ? `[${badgeText(card.model, " ")}]` : "";
   const head = [card.activity, ...(metrics && card.kind === "agent" ? [turnsText(card.turns), moneyText(card.cost)] : [])].filter(Boolean).join(" · ");
@@ -318,14 +279,9 @@ export function railLine(card: Card, columns: number, metrics = false): Line {
   ], columns);
 }
 
-/**
- * Tool-result card: `<glyph> <name> <word>   <model> · <effort>`, then `↳ from <delegator> · <activity> · <elapsed> ·
- * N turns · $cost` when there is anything to say. Line 1 shrinks the name to 8 cells, then drops the badge whole.
- * Line 2 drops the delegator, shrinks the activity to 12 cells, then drops elapsed and turns. Cost goes last.
- */
 export function cardLines(card: AgentCard, columns: number): Line[] {
   const style = STATES[card.state];
-  const indent = "  ".repeat(card.depth);
+  const indent = "  ".repeat(card.indent);
   const fixed = visibleWidth(`${indent}${style.glyph}  ${style.word}`);
   const { name, badge } = nameAndBadge(card.name, card.model ? badgeText(card.model, " · ") : "", columns - fixed, 2);
   const first = line([
@@ -348,7 +304,6 @@ export function cardLines(card: AgentCard, columns: number): Line[] {
   return [first, line([{ text: lead + [head, ...metrics].filter(Boolean).join(" · "), role: "dim" }], columns)];
 }
 
-/** `/subagents list` line: no width handling and no colour. Unknown turns and cost are labelled, unlike on cards. */
 export function listingLine(card: AgentCard): Line {
   const style = STATES[card.state];
   const usage = card.stats ? card.cost === undefined ? `${card.stats} · cost unknown` : card.stats : moneyText(card.cost) || "cost unknown";
@@ -357,10 +312,6 @@ export function listingLine(card: AgentCard): Line {
     card.elapsed ? duration(card.elapsed.ms) : "", turnsText(card.turns) || "turns unknown", usage].filter(Boolean).join(" · "), role: "text" }]);
 }
 
-/**
- * The one painter. `highlight` recolours spans whose role is `text` or `dim`, so state and badge colours survive
- * selection. Span text is stripped of controls again here, so a span is safe even if its builder forgot.
- */
 export function paint(theme: Pick<Theme, "fg" | "bold">, spans: readonly Span[], highlight?: Role): string {
   return spans.map(span => {
     const styled = theme.fg(highlight && (span.role === "text" || span.role === "dim") ? highlight : span.role, plain(span.text).replace(/\n/g, " "));
@@ -368,7 +319,6 @@ export function paint(theme: Pick<Theme, "fg" | "bold">, spans: readonly Span[],
   }).join("");
 }
 
-/** `30s`, `2m 0s`, `1h 5m`. */
 export function duration(ms: number): string {
   if (!Number.isFinite(ms)) return "unknown";
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -377,7 +327,6 @@ export function duration(ms: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.floor(seconds / 60) % 60}m`;
 }
 
-// Child names, tasks and output are untrusted terminal text, not ANSI styling.
 export const plain = (value: unknown): string => typeof value === "string"
   ? stripVTControlCharacters(value).replace(/\r\n?/g, "\n").replace(/\t/g, "  ").replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "") : "";
 export const inline = (value: unknown): string => plain(value).replace(/\s+/g, " ").trim();

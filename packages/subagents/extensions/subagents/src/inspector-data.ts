@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { LiveActivity } from "./activity.js";
-import { cardFromRecord, duration, latestResult, LEGEND, railLine, runCard, STATES, workState, type Card, type Group, type Span } from "./card.js";
+import { cardFromRecord, duration, latestResult, LEGEND, railLine, runCard, STATES, workStyle, type Card, type Group, type Span } from "./card.js";
 import type { AgentRecord, SubagentManager } from "./manager.js";
 import { dependencies } from "./workflow-definition.js";
 import { workflowMap } from "./workflow-map.js";
@@ -33,7 +33,6 @@ export type Location = { kind: "overview"; history?: boolean } | { kind: "agent"
   | { kind: "workflow"; id: string } | { kind: "step"; id: string; step: string }
   | { kind: "attempt"; id: string; step: string; attempt: number };
 export type Tone = "text" | "dim" | "accent" | "warning" | "error" | "success";
-/** A row with `spans` is one painted line; its `text` is the spans' text. */
 export interface Row { id: string; text: string; tone?: Tone; target?: Location; wrap?: boolean; prefix?: string; spans?: readonly Span[] }
 export interface Page { title: string | readonly Span[]; subtitle: string; rows: Row[]; live?: boolean }
 // Worker output and task names are untrusted terminal content, not ANSI or OSC links.
@@ -83,7 +82,6 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
     target: card.kind === "workflow" ? { kind: "workflow", id: card.id } : { kind: "agent", id: card.id } });
   const rule = (id: string, label: string, tone: Tone) => add(id, `── ${label} ${"─".repeat(Math.max(0, width - visibleWidth(label) - 4))}`, tone, false);
   if (location.kind === "overview") {
-    // Workflow workers are reached through their run. Within a group a nested Child follows its delegator.
     const runIds = new Set(runs.map(r => r.id));
     const runCards = runs.map(run => runCard(run, agents.filter(a => a.workflow === run.id)));
     const agentCards = agents.filter(a => !a.workflow).map(agent => agentCard(agent));
@@ -163,7 +161,7 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
       id: `update:${u.cursor}`, time: u.time, text: `[${u.time.slice(11, 19)}] ${u.kind}\n${u.text}`, tone: ["error", "failure", "extension_error"].includes(u.kind) ? "error" : "text",
     }));
     for (const tool of live.tools) events.push({ id: `tool:${tool.id}`, time: tool.time,
-      text: `[${tool.time.slice(11, 19)}] ${STATES[workState(tool.status)].glyph} ${tool.name} · ${tool.status}\n${tool.args}${tool.output ? `\n${tool.output}` : ""}`, tone: STATES[workState(tool.status)].role });
+      text: `[${tool.time.slice(11, 19)}] ${workStyle(tool.status).glyph} ${tool.name} · ${tool.status}\n${tool.args}${tool.output ? `\n${tool.output}` : ""}`, tone: workStyle(tool.status).role });
     events.sort((a, b) => a.time.localeCompare(b.time));
     for (const event of events.slice(-100)) add(event.id, event.text, event.tone);
     if (live.text) add("stream", `writing…\n${live.text}`);
@@ -177,7 +175,7 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
     if (run.interventionHold) add("intervention-hold", `intervention hold at ${run.interventionHold.at}: ${run.interventionHold.reason} · parent recovery required`, "warning");
     add("id", `${run.id} · ${run.definition.cwd}`, "dim");
     add("limits", `${run.usedAttempts}/${run.definition.limits.maxAttempts} attempts · concurrency ${run.definition.limits.concurrency} · deadline ${new Date(run.deadline).toISOString()}`, "dim");
-    if (run.reason) add("reason", run.reason, STATES[workState(run.status)].role);
+    if (run.reason) add("reason", run.reason, workStyle(run.status).role);
     const map = workflowMap(run.definition.steps, width);
     add("graph", map.mode === "graph" ? `workflow ↓ · select a step to inspect${map.crossings ? " · ╪ crosses without joining" : ""}` : "prerequisites · compact view · ← names every input", "dim");
     for (const row of map.rows) {
@@ -185,7 +183,7 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
       if (!step) { rows.push({ id: row.key, text: row.prefix, tone: "dim" }); continue; }
       const state = run.steps[step.id];
       const detail = step.kind === "loop" ? `${step.mode} loop ${state.iteration}/${step.maxIterations}` : step.kind === "check" ? `${step.validator.kind} check` : "task";
-      const style = STATES[workState(state.status)];
+      const style = workStyle(state.status);
       rows.push({ id: row.key, text: `${map.mode === "list" ? `${style.glyph} ` : ""}${step.id} · ${label(state.status)} · ${detail}`,
         prefix: map.mode === "graph" ? row.prefix.replace("●", style.glyph) + "  " : undefined,
         tone: style.role, target: { kind: "step", id: run.id, step: step.id } });
@@ -213,8 +211,8 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
     }
     add("attempts", "attempts", "dim");
     for (const attempt of state.attempts) rows.push({ id: `attempt:${attempt.number}`,
-      text: `${STATES[workState(attempt.status)].glyph} #${attempt.number} ${attempt.kind} · ${attempt.status}${attempt.verdict ? ` · ${attempt.verdict.verdict}` : ""}${attempt.decision ? ` · ${attempt.decision}` : ""} · ${attempt.children.length} workers`,
-      tone: STATES[workState(attempt.status)].role, target: { kind: "attempt", id: run.id, step: step.id, attempt: attempt.number } });
+      text: `${workStyle(attempt.status).glyph} #${attempt.number} ${attempt.kind} · ${attempt.status}${attempt.verdict ? ` · ${attempt.verdict.verdict}` : ""}${attempt.decision ? ` · ${attempt.decision}` : ""} · ${attempt.children.length} workers`,
+      tone: workStyle(attempt.status).role, target: { kind: "attempt", id: run.id, step: step.id, attempt: attempt.number } });
     if (!state.attempts.length) add("no-attempts", "not attempted yet.", "dim");
     return { title: `${run.definition.name.toLowerCase()} / ${step.id}`, subtitle: `${step.kind} · ${label(state.status)}`, rows };
   }
