@@ -12,12 +12,12 @@ const root = fileURLToPath(new URL("../../..", import.meta.url));
 const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "pistack", "self-reload", "subagents", "todo", "web-search"];
 const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
 const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
-// pistack's generated skills join the collection, except its tdd: pi-pocock-skills' tdd
-// already has that name, and poteto-mode refers to the skill only by name.
+// pistack wins a shared name: the collection leaves out pi-pocock-skills' tdd, because
+// poteto-mode's playbooks refer to the skill only by name and expect pistack's.
 const pistackSkills = readdirSync(join(root, "packages/pistack/skills"), { withFileTypes: true })
-  .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/pistack/skills", entry.name, "SKILL.md")) && entry.name !== "tdd")
+  .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/pistack/skills", entry.name, "SKILL.md")))
   .map(entry => entry.name);
-const expectedSkills = [...engineeringSkills, "subagents", "workflows", ...pistackSkills].sort();
+const expectedSkills = [...engineeringSkills.filter(name => name !== "tdd"), "subagents", "workflows", ...pistackSkills].sort();
 
 async function load(source: string, base = root) {
   const temp = await mkdtemp(join(tmpdir(), "pi-package-discovery-"));
@@ -33,6 +33,8 @@ async function load(source: string, base = root) {
     return {
       extensions: loader.getExtensions().extensions.map(extension => relative(base, extension.path)).sort(),
       skills: loader.getSkills().skills.map(skill => skill.name).sort(),
+      skillPaths: Object.fromEntries(loader.getSkills().skills.map(skill => [skill.name, relative(base, skill.filePath)])),
+      skillDiagnostics: loader.getSkills().diagnostics,
     };
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
@@ -59,6 +61,15 @@ test("repository root discovers exactly the public extensions and both skill col
   const result = await load(root);
   assert.deepEqual(result.extensions, expectedPaths);
   assert.deepEqual(result.skills, expectedSkills);
+  assert.equal(result.skillPaths.tdd, "packages/pistack/skills/tdd/SKILL.md");
+  assert.deepEqual(result.skillDiagnostics, []);
+});
+
+test("project settings leave pi-pocock-skills to the user's filter", async () => {
+  // A project entry for the same package replaces the user entry, so pocock's tdd would beat pistack's here.
+  const settings = JSON.parse(await readFile(join(root, ".pi/settings.json"), "utf8"));
+  const sources = (settings.packages ?? []).map((entry: string | { source: string }) => typeof entry === "string" ? entry : entry.source);
+  assert.deepEqual(sources.filter((source: string) => source.includes("pi-pocock-skills")), []);
 });
 
 test("Pi Git installation resolves every extension without development dependencies or bundled Pi peers", async () => {
