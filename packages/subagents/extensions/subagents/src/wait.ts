@@ -1,4 +1,8 @@
+import type { Static } from "typebox";
 import { REPORT_KINDS, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
+import type { TOOL_SPECS } from "./tool-schemas.js";
+
+export type WaitArgs = Static<typeof TOOL_SPECS.subagent_wait.parameters>;
 
 /** Why a wait returned, in precedence order: the first that holds wins.
  *  Abort is not a reason. The wait throws, and the tool call ends aborted. */
@@ -20,6 +24,45 @@ export function messageLatch(): (pending: boolean) => boolean {
     if (reported) return false;
     return reported = true;
   };
+}
+
+/** Seconds per root wait in a relayed wait, inside PeerClient.manage's 90 s per-call budget. */
+export const RELAY_SEGMENT_SECONDS = 60;
+
+const wakeOf = (reply: unknown) => {
+  const wake = typeof reply === "object" && reply !== null ? (reply as { wake?: unknown }).wake : undefined;
+  return isWakeReason(wake) ? wake : undefined;
+};
+
+/** A Child's proxied wait: root waits of at most a segment that collect nothing, then one zero-second
+ *  wait with the caller's collect. Only that last call acknowledges, so a segment cancelled for a queued
+ *  message loses no report. Only the Child sees its own queue, so it alone can say "message". */
+export async function relayWait(manage: (args: WaitArgs, signal?: AbortSignal) => Promise<unknown>,
+  args: WaitArgs, signal: AbortSignal | undefined, messageQueued: () => boolean): Promise<unknown> {
+  const deadline = args.timeoutSeconds === undefined ? Infinity : Date.now() + args.timeoutSeconds * 1000;
+  let queued = false;
+  while (Date.now() < deadline && !(queued = messageQueued())) {
+    const segment = new AbortController();
+    const follow = () => segment.abort(signal?.reason);
+    signal?.addEventListener("abort", follow, { once: true });
+    const poll = setInterval(() => { if (messageQueued()) { queued = true; segment.abort(); } }, 250);
+    let reply: unknown;
+    try {
+      reply = await manage({ ...args, collect: false,
+        timeoutSeconds: Math.min(RELAY_SEGMENT_SECONDS, Math.ceil((deadline - Date.now()) / 1000)) }, segment.signal);
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (!queued) throw error;
+    } finally {
+      clearInterval(poll);
+      signal?.removeEventListener("abort", follow);
+    }
+    // A truncated reply has no wake: treat it as news rather than wait blind.
+    if (queued || wakeOf(reply) !== "timeout") break;
+  }
+  signal?.throwIfAborted();
+  const final = await manage({ ...args, timeoutSeconds: 0 }, signal);
+  return queued && wakeOf(final) === "timeout" ? { ...final as object, wake: "message" } : final;
 }
 
 export interface Report { readonly kind: string; readonly text: string }

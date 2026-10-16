@@ -9,6 +9,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parsePolicy, SubagentPolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
 import { PeerClient, servePeer } from "../extensions/subagents/src/peer-transport.js";
 import childGuard from "../extensions/subagents/src/child-guard.js";
+import { relayWait, type WaitArgs } from "../extensions/subagents/src/wait.js";
 
 const base = { version: 1, models: [{ id: "p/m:off" }], tools: ["read", "subagent_spawn", "subagent_wait"] };
 
@@ -150,6 +151,62 @@ test("a cancelled delegated call is cancelled in the root too", async () => {
     await assert.rejects(call, /interrupted or timed out/);
     assert.match(String(await seen), /cancelled this call/);
   } finally { sockets.close(); }
+});
+
+/** A Child relaying waits to a fake root that records each wait it is asked for. */
+async function relay(answer: (args: WaitArgs, signal: AbortSignal) => Promise<unknown>) {
+  const sockets = await socketPair(), calls: WaitArgs[] = [];
+  servePeer(sockets.remote, undefined, (request, signal) => { calls.push(request.args as WaitArgs); return answer(request.args as WaitArgs, signal); });
+  const client = new PeerClient(sockets.client);
+  const wait = (args: WaitArgs, signal?: AbortSignal, messageQueued = () => false) =>
+    relayWait((relayed, segment) => client.manage("wait", relayed, segment), args, signal, messageQueued);
+  return { calls, wait, close: sockets.close };
+}
+
+test("a Child's unbounded wait relays bounded segments that collect nothing, then collects once", async () => {
+  let segments = 0;
+  const r = await relay(async args => args.timeoutSeconds === 0
+    ? { wake: "settled", agents: [{ id: "w", reports: [{ kind: "assistant", text: "done" }] }] }
+    : { wake: ++segments <= 2 ? "timeout" : "settled", agents: [] });
+  try {
+    assert.deepEqual(await r.wait({ ids: ["w"] }), { wake: "settled", agents: [{ id: "w", reports: [{ kind: "assistant", text: "done" }] }] });
+    const [final, ...rest] = [...r.calls].reverse();
+    assert.deepEqual(final, { ids: ["w"], timeoutSeconds: 0 }, "one last call with the caller's collect");
+    assert.equal(rest.length, 3);
+    for (const segment of rest) {
+      assert.equal(segment.collect, false);
+      assert.ok(segment.timeoutSeconds! > 0 && segment.timeoutSeconds! <= 60, String(segment.timeoutSeconds));
+    }
+  } finally { r.close(); }
+});
+
+test("a message queued for the Child cancels the segment in the root and ends its wait with message", async () => {
+  let cancelled!: (reason: unknown) => void;
+  const seen = new Promise(resolve => { cancelled = resolve; });
+  const r = await relay((args, signal) => args.timeoutSeconds === 0
+    ? Promise.resolve({ wake: "timeout", agents: [] })
+    : new Promise(() => { signal.addEventListener("abort", () => cancelled(signal.reason)); }));
+  try {
+    let queued = false;
+    setTimeout(() => { queued = true; }, 50);
+    assert.deepEqual(await r.wait({}, undefined, () => queued), { wake: "message", agents: [] });
+    assert.match(String(await seen), /cancelled this call/);
+    assert.deepEqual(r.calls.map(call => call.collect), [false, undefined]);
+  } finally { r.close(); }
+});
+
+test("timeoutSeconds 0 makes exactly one relayed call, and aborting a relayed wait collects nothing", async () => {
+  const r = await relay((args, signal) => args.timeoutSeconds === 0
+    ? Promise.resolve({ wake: "timeout", agents: [] })
+    : new Promise(() => { signal.addEventListener("abort", () => {}); }));
+  try {
+    assert.deepEqual(await r.wait({ timeoutSeconds: 0, collect: false }), { wake: "timeout", agents: [] });
+    assert.deepEqual(r.calls, [{ timeoutSeconds: 0, collect: false }]);
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 50);
+    await assert.rejects(r.wait({}, stop.signal), /abort/i);
+    assert.deepEqual(r.calls.slice(1).map(call => call.collect), [false], "no collecting call for a caller that is gone");
+  } finally { r.close(); }
 });
 
 test("an oversized delegated request is refused before it is sent, and the pipe stays usable", async () => {
