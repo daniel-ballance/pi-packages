@@ -65,6 +65,13 @@ test("repository root discovers exactly the public extensions and both skill col
   assert.deepEqual(result.skillDiagnostics, []);
 });
 
+test("project settings leave pi-pocock-skills to the user's filter", async () => {
+  // A project entry for the same package replaces the user entry, so pocock's tdd would beat pistack's here.
+  const settings = JSON.parse(await readFile(join(root, ".pi/settings.json"), "utf8"));
+  const sources = (settings.packages ?? []).map((entry: string | { source: string }) => typeof entry === "string" ? entry : entry.source);
+  assert.deepEqual(sources.filter((source: string) => source.includes("pi-pocock-skills")), []);
+});
+
 test("Pi Git installation resolves every extension without development dependencies or bundled Pi peers", async () => {
   const temp = await mkdtemp(join(tmpdir(), "pi-production-install-"));
   const source = join(temp, "repo.git");

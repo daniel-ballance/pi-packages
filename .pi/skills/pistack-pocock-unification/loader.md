@@ -4,7 +4,7 @@ These facts describe Pi 1.3.0 and T3 Code nightly 20261016. `scripts/skill-repor
 
 **Packages.** Each package declares `pi.skills: ["./skills"]`. A settings entry narrows that set with a `skills` list of paths, globs, and `!` exclusions. A filter cannot add a path the package did not declare. A filter matches paths, not frontmatter names.
 
-**Pattern matching.** A `!` pattern is compared with the path relative to the package root, with no leading `./`. `!./packages/x/skills/tdd` matches nothing. `!packages/x/skills/tdd` works.
+**Pattern matching.** A `!` pattern is a glob compared with the path relative to the base it belongs to, and a leading `./` is kept, so it matches nothing. In the root `package.json` manifest the base is the repository root, so `!packages/pi-pocock-skills/skills/tdd` works and `!./packages/pi-pocock-skills/skills/tdd` does not. In a settings entry the base is the package root, so the form is `!skills/tdd/SKILL.md`. Exact `+` and `-` patterns do strip a leading `./`.
 
 **Package identity.** Pi identifies a local package by its absolute path. It reads project settings (`<cwd>/.pi/settings.json`, only for a trusted project) before user settings (`~/.pi/agent/settings.json`). When both list the same package, the project entry wins and the user entry is dropped. The two filters do not merge. Project settings load only from the exact working directory.
 
