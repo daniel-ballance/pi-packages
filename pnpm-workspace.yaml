@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
+  - 'scripts/lint-skill'
 
 # Pi supplies runtime peers. Development copies are explicitly declared.
 autoInstallPeers: false

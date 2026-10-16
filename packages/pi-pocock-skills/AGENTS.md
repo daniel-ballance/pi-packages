@@ -1,14 +1,13 @@
 # pi-pocock-skills
 
-Matt Pocock's engineering skills, translated for the Pi harness, plus the
-hand-maintained `lint-skill` authoring CLI. The skill collection is a **generated
-vendor overlay**, not a hand-maintained fork.
+Matt Pocock's engineering skills, translated for the Pi harness. The skill
+collection is a **generated vendor overlay**, not a hand-maintained fork.
 
-The CLI lives in `scripts/lint-skill*.mjs` and `lib/`; its contract and usage are in
-[docs/lint-skill.md](docs/lint-skill.md). Run `npm ci --ignore-scripts` in this package
-before `npm run check` and `npm test`. The checks keep translation drift and lint
-separate. The public CLI intentionally takes explicit skill directories; the
-package-only `scripts/check-skills.mjs` adapter selects this collection.
+`npm run check` checks translation drift, then lints the collection with the
+repository's [`lint-skill`](../../scripts/lint-skill/README.md) through the
+`scripts/check-skills.mjs` adapter, which selects this collection. Install from
+the repository root first (`./scripts/ci-install.sh`); the package itself has no
+dependencies.
 
 `skills/` is generated. Never edit it by hand. Edit the rules in
 `scripts/sync.sh`, then re-run.

@@ -1,20 +1,22 @@
 # lint-skill
 
 Read-only linting for Agent Skills used in Pi. Requires Node.js 22.19 or newer.
-The command ships with `pi-pocock-skills`; it does not require a running Pi session.
+It is a repository tool, not part of any Pi package, so any package here can
+lint its skills with it. It does not require a running Pi session.
 
 ## Run
 
-From a checkout, install this package's dependencies once:
+Install the repository once from its root (`./scripts/ci-install.sh`, or
+`npm ci --ignore-scripts`). This directory is a workspace member, so its
+dependencies install with the rest and its binary is linked into the root
+`node_modules/.bin`:
 
 ```sh
-npm ci --ignore-scripts
-node scripts/lint-skill.mjs /path/to/my-skill
+node scripts/lint-skill/lint-skill.mjs /path/to/my-skill
+npx lint-skill /path/to/my-skill   # from the repository root
 ```
 
-With an npm installation that exposes package binaries, use `lint-skill` directly.
-Pi package installation does not necessarily put that binary on your shell PATH;
-you can always invoke the installed `scripts/lint-skill.mjs` with Node.
+The examples below use the bare `lint-skill` name:
 
 ```sh
 lint-skill /path/to/my-skill
@@ -177,7 +179,10 @@ incomplete-check status. JSON stdout is a versioned envelope with `complete`,
 skill result contains findings, external dependencies with verification status,
 and applied exceptions. Paths are absolute; output ordering is deterministic.
 
-Run `npm test` for fixture/CLI/packed-package tests and sync regression tests.
-`npm run check` checks generated drift, then lints the package's skill directories
-with the package `skills/` directory as the resource root. Warnings remain visible;
-strict mode is opt-in. Fix generated skills in `scripts/sync.sh`, never by hand.
+Run `npm test` in this directory for the fixture and CLI tests; the root
+`./scripts/check.sh` runs them before any package check. Packages call the CLI
+from their own `check` script with explicit skill directories and their
+`skills/` directory as the resource root (see
+`packages/pi-pocock-skills/scripts/check-skills.mjs` and
+`packages/pistack/generator/lint-skills.mjs`). Warnings remain visible; strict
+mode is opt-in.

@@ -1,8 +1,8 @@
 # `lint-skill`: research and design choices
 
-Status: research history. V1 is implemented in `packages/pi-pocock-skills`.
+Status: research history. V1 was implemented in `packages/pi-pocock-skills` and now lives in `scripts/lint-skill`.
 See [the v1 design](lint-skill-design.md) for the consolidated contract and the
-[command guide](../packages/pi-pocock-skills/docs/lint-skill.md) for usage. Earlier
+[command guide](../scripts/lint-skill/README.md) for usage. Earlier
 alternatives below remain as research history, not current implementation choices.
 
 ## Confirmed scope after discussion

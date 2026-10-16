@@ -3,6 +3,11 @@
 Status: implemented v1 contract. The user approved implementation after the
 product decisions below. The final defaults in the next section resolve the
 remaining implementation choices.
+
+Later move: the tool left the skills package and is now the repository tool
+[`scripts/lint-skill`](../scripts/lint-skill/README.md) (`lint-skill.mjs`,
+`lib/lint-skill.mjs`, `lib/config.mjs`). Paths and packaging below describe v1
+as first shipped; the rule contract is unchanged.
 Evidence and alternatives: [research notes](lint-skill-research.md).
 
 ## Frozen implementation details

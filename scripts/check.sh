@@ -39,6 +39,10 @@ if [[ -f "$ROOT/.pi/subagents.json" ]]; then
   )
 fi
 
+# Packages lint their skills with this repository tool, so test it first.
+printf '\n%s\n' '== lint-skill: test =='
+"$PACKAGE_MANAGER" --prefix scripts/lint-skill run test
+
 shopt -s nullglob
 package_jsons=(packages/*/package.json)
 if ((${#package_jsons[@]} == 0)); then

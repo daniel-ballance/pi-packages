@@ -7,7 +7,7 @@ import {
   LintSkillConfigError,
   exceptionsForSkill,
   readLintSkillConfig,
-} from "./lint-skill-config.mjs";
+} from "./lib/config.mjs";
 
 const USAGE = `Usage: lint-skill <directory>... [options]
 
@@ -347,9 +347,9 @@ async function execute(argv) {
 
   let lintSkill;
   try {
-    const core = await import("../lib/lint-skill.mjs");
+    const core = await import("./lib/lint-skill.mjs");
     lintSkill = core.lintSkill;
-    if (typeof lintSkill !== "function") throw new Error("../lib/lint-skill.mjs does not export lintSkill");
+    if (typeof lintSkill !== "function") throw new Error("./lib/lint-skill.mjs does not export lintSkill");
   } catch (error) {
     const envelope = emptyEnvelope([`unable to load linter: ${error.message}`]);
     if (jsonWasRequested(parsed.format)) {
