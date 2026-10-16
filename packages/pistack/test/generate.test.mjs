@@ -241,3 +241,13 @@ test("sync records the upstream commit and version in package.json, and check fa
     assert.match(drift.stderr, /package\.json pistack\.upstream/);
   } finally { dispose(); }
 });
+
+test("{{upstream.commit}} without an upstream checkout fails with the rule that uses it", () => {
+  const { root, out, dispose } = fixture({
+    "rules/tokens.json": JSON.stringify([{ id: "pinned-link", min: 1, find: "the Task tool", replace: "a child ({{upstream.commit}})" }]),
+    "rules/sections.json": "[]",
+  });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /token rule pinned-link: uses \{\{upstream\.commit\}\}/);
+  } finally { dispose(); }
+});

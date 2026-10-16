@@ -1,6 +1,6 @@
 # pistack
 
-The Pi edition of [pstack](https://github.com/cursor/plugins/tree/e5136d82418d2db3165ea1050d17577cd618cc05/pstack),
+The Pi edition of [pstack](https://github.com/cursor/plugins/tree/main/pstack),
 Lauren Tan's Cursor plugin: a router mode, playbooks, principles and routed
 skills for rigorous, parallel agent work. pistack is generated from the vendored
 upstream and translated for Pi in a terminal and for Pi launched by T3 Code.
@@ -179,5 +179,5 @@ host, run setup there.
 
 ## License
 
-MIT, from upstream; see [LICENSE](LICENSE). Upstream pin: `cursor/plugins`
-`e5136d8`, pstack 0.15.25.
+MIT, from upstream; see [LICENSE](LICENSE). Upstream pin:
+<!-- pistack:upstream -->`cursor/plugins` [`f713f14`](https://github.com/cursor/plugins/tree/f713f14203cd6420cec13cd7c55c32d598dbab68/pstack), pstack 0.15.25<!-- /pistack:upstream -->.

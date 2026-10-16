@@ -18,7 +18,7 @@ Design and decisions: [`docs/pistack-design.md`](../../docs/pistack-design.md)
 | `patches/*.patch` | per-file patches, the escape hatch | hand-written |
 | `rules/lint.json` | coupling lint deny-list | hand-written |
 | `extra/` | Pi-native files added to the output as they are | hand-written |
-| `generator/` | the generator and the lint wrapper | hand-written |
+| `generator/` | the generator, the upstream updater and the lint wrapper | hand-written |
 | `extensions/pistack/` | mode toggle, `ask_user`, `pistack_roles`, `/pistack-setup` | hand-written |
 | `skills/`, `LICENSE` | generated | `generator/generate.mjs` |
 
@@ -27,6 +27,7 @@ Design and decisions: [`docs/pistack-design.md`](../../docs/pistack-design.md)
 ```sh
 node generator/generate.mjs           # regenerate skills/ and LICENSE
 node generator/generate.mjs --check   # fail on drift; writes nothing
+npm run update-upstream [-- <ref>]    # move the upstream pin and regenerate
 npm run check                         # drift check, then lint-skill on every skill
 npm test                              # generator tests on fixtures
 ```
@@ -84,6 +85,10 @@ own script tests; `npm run check` typechecks `watch-pr`.
 - Prefer a sentence-level token rule scoped with `files` over a section
   replacement: untouched upstream sentences around it keep flowing in.
 - A recurring upstream sentence gets one global rule, not one per skill.
+- Never write an upstream commit into a rule. A link into upstream uses
+  `{{upstream.commit}}` in a token `replace` or an overlay, and the generator
+  fills in the pinned commit. The README states the pin between
+  `<!-- pistack:upstream -->` markers, which the generator rewrites.
 - Default model hints such as `claude-opus-5-5-xhigh` stay as written; the
   capabilities reference explains how to resolve them on Pi.
 - A file-specific rule must come before any global rule that rewrites part of
@@ -98,12 +103,28 @@ own script tests; `npm run check` typechecks `watch-pr`.
 ## Updating upstream
 
 ```sh
-git -C vendor/pstack fetch origin main
-git -C vendor/pstack checkout <sha>
-node generator/generate.mjs     # a failure names the rule, section or patch to fix
-git diff skills/                # review the semantic delta
+npm run update-upstream             # the tip of upstream main
+npm run update-upstream -- <ref>    # or a commit or tag
 ```
 
-`node generator/generate.mjs` also records the new pin in `package.json`
-(`pistack.upstream`), and `--check` fails while they disagree. Review
-`git diff skills/` for upstream changing a decision, not just a sentence.
+It fetches `vendor/pstack`, moves it to the ref, lists upstream's commits to
+`pstack/`, and regenerates. Generation records the pin in `package.json`
+(`pistack.upstream`) and the README markers and fills `{{upstream.commit}}`;
+`--check` fails while any of them disagree with the checkout.
+
+When it fails, each line names a token rule, section or patch upstream no
+longer fits, and the checkout stays at the new commit. Read the upstream commit
+that broke it (`git -C vendor/pstack show <sha>`), then fix the rule:
+
+- **Token rule, 0 matches**: upstream reworded the text, so update `find`; or
+  upstream deleted it, so delete the rule. If the rule added Pi-specific
+  meaning, decide whether that meaning still belongs somewhere.
+- **Section changed upstream**: review the overlay against the upstream change,
+  then set the new hash the message prints.
+- **Patch no longer applies**: rebase it against the new output.
+- **Coupling lint**: upstream added Cursor-only text; add a rule.
+
+Rerun `node generator/generate.mjs` until it passes, then review
+`git diff -- skills agents` for upstream changing a decision, not just a
+sentence. Run `npm run check` and `npm test`, and commit `vendor/pstack` with
+the regenerated output and rule changes.
