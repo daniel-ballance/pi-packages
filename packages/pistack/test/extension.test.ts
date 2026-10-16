@@ -269,7 +269,7 @@ test("/pistack-setup offers only models the subagents policy permits, and never 
       assert.equal((written as { roles: Record<string, string> }).roles["bug-fix"], "xai/grok-4.7:xhigh");
     });
     await run("old", [], (h, written) => { assert.match(h.notices.at(-1)![0], /\/skill:setup-pstack/); assert.equal(written, undefined); });
-    await run({ spawnEnabled: false, models: [] }, [], (h, written) => { assert.match(h.notices.at(-1)![0], /permits no usable model/); assert.equal(written, undefined); });
+    await run({ spawnEnabled: false, models: [] }, [], (h, written) => { assert.match(h.notices.at(-1)![0], /does not permit spawning/); assert.equal(written, undefined); });
     await run({ spawnEnabled: true, models: ["xai/grok-4.7:xhigh"] }, ["small — medium thinking"], (h, written) => {
       assert.match(h.notices.at(-1)![0], /No permitted model offers thinking at or below medium/);
       assert.equal(written, undefined);

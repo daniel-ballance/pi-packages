@@ -43,7 +43,7 @@ One workflow executes per parent at a time; paused/blocked runs can be retained 
 
 Model IDs and paths in examples are placeholders. `worker` uses the same model/tools/resources/prompt/context-file composition as `subagent_spawn`; there are no profiles or inherited worker tools. Unknown definition fields fail validation. Model/resource availability is rechecked on start, resume and execution.
 
-- `limits.concurrency`: 1–64, no higher than policy `maxChildren`. Counts running steps, including checks; a connected peer task group occupies one slot per worker.
+- `limits.concurrency`: 1–64. It must fit a positive `maxChildren`. It is rejected when `maxChildren` is 0. It is not compared when `maxChildren` is -1. Counts running steps, including checks; a connected peer task group occupies one slot per worker.
 - `limits.maxAttempts`: 1–1000 across the whole run. **Every worker and every check** consumes one attempt, including baseline evaluation and human checkpoints. A repair iteration normally costs two attempts. New children, retries and resume do not reset the count.
 - `limits.timeoutSeconds`: 1–86400, a wall-clock deadline starting at creation. Pausing does not extend it. Cleanup uses the existing bounded child shutdown and command termination grace, so termination is not instantaneous.
 - `steps`: 1–64, unique alphanumeric/dash/underscore IDs starting with a letter.

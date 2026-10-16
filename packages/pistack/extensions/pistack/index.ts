@@ -187,7 +187,7 @@ export default function pistack(pi: Pi) {
       const catalog = withSubagents ? readCatalog() : undefined;
       if (withSubagents) {
         if (!catalog) { ctx.ui.notify("This subagents version cannot share its catalog with a command. Run /skill:setup-pstack: it reads subagent_catalog.", "info"); return; }
-        if (!catalog.spawnEnabled) { ctx.ui.notify("Your subagents policy permits no usable model, so no role can run. Check subagent_catalog or /subagents diagnostics.", "warning"); return; }
+        if (!catalog.spawnEnabled) { ctx.ui.notify("Your subagents policy does not permit spawning, so no role can run. Check subagent_catalog or /subagents diagnostics.", "warning"); return; }
       }
       const models = ctx.modelRegistry.getAvailable();
       if (!catalog && !models.length) { ctx.ui.notify("No models are available to Pi; configure one first.", "warning"); return; }
