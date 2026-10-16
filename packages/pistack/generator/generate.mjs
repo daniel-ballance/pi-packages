@@ -7,6 +7,9 @@
 // Never edit generated output. Change a rule (rules/, overlays/, patches/) and
 // re-run. Rule kinds apply in order: token rewrites, section replacements,
 // per-file patches. The coupling lint then runs over every emitted file.
+//
+// Token `replace` strings and overlays may name the pinned upstream commit as
+// {{upstream.commit}}, so links to upstream follow the pin instead of going stale.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -64,9 +67,21 @@ function collect(vendor, manifest, executables, problems) {
   return files;
 }
 
+const COMMIT = "{{upstream.commit}}";
+
+// Fill the pinned commit into hand-written rule text.
+function expander(commit, problems) {
+  return (text, where) => {
+    if (!text.includes(COMMIT)) return text;
+    if (commit === undefined) { problems.push(`${where}: uses ${COMMIT}, but rules/manifest.json has no upstream checkout`); return text; }
+    return text.replaceAll(COMMIT, commit);
+  };
+}
+
 // Count, then apply, per rule in order: later rules may rewrite earlier output.
-function applyTokens(files, rules, problems) {
+function applyTokens(files, rules, expand, problems) {
   for (const rule of rules) {
+    const replace = expand(rule.replace, `token rule ${rule.id}`);
     const scope = rule.files ? new RegExp(rule.files) : undefined;
     const pattern = new RegExp(rule.find, `g${rule.flags ?? ""}`);
     let count = 0;
@@ -75,7 +90,7 @@ function applyTokens(files, rules, problems) {
       const matches = text.match(pattern)?.length ?? 0;
       if (matches === 0) continue;
       count += matches;
-      files.set(path, text.replace(pattern, rule.replace));
+      files.set(path, text.replace(pattern, replace));
     }
     if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min}. Upstream reworded it.`);
   }
@@ -123,7 +138,7 @@ export function sectionHash(text, heading) {
   return createHash("sha256").update(body).digest("hex").slice(0, 12);
 }
 
-function applySections(files, upstream, sections, overlaysDir, problems) {
+function applySections(files, upstream, sections, overlaysDir, expand, problems) {
   for (const { file, heading, upstreamHeading = heading, overlay, upstream: expected } of sections) {
     const text = files.get(file);
     if (typeof text !== "string") { problems.push(`section rule: ${file} is not an emitted text file`); continue; }
@@ -134,7 +149,8 @@ function applySections(files, upstream, sections, overlaysDir, problems) {
       problems.push(`section rule: ${file}: section "${heading}" changed upstream (was ${expected}, now ${actual}). Review the overlay, then update its hash.`);
       continue;
     }
-    lines.splice(section.start, section.end - section.start, ...readFileSync(join(overlaysDir, overlay), "utf8").trimEnd().split("\n"), "");
+    const replacement = expand(readFileSync(join(overlaysDir, overlay), "utf8"), `overlay ${overlay}`);
+    lines.splice(section.start, section.end - section.start, ...replacement.trimEnd().split("\n"), "");
     files.set(file, lines.join("\n"));
   }
 }
@@ -184,9 +200,9 @@ export function generate({ packageDir, outDir }) {
   const manifest = readJson(join(rules, "manifest.json"));
   const problems = [], executables = new Set();
   const files = collect(join(packageDir, manifest.vendor), manifest, executables, problems);
-  const upstream = new Map(files);
-  applyTokens(files, readJson(join(rules, "tokens.json"), []), problems);
-  applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), problems);
+  const upstream = new Map(files), expand = expander(upstreamInfo(packageDir)?.commit, problems);
+  applyTokens(files, readJson(join(rules, "tokens.json"), []), expand, problems);
+  applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
   addExtras(files, join(packageDir, "extra"), executables);
   if (problems.length) throw new Error(problems.join("\n"));
   writeFiles(files, executables, outDir);
@@ -220,14 +236,26 @@ function drift(packageDir, outDir) {
   return problems;
 }
 
-// The upstream pin the generated tree comes from, as recorded in package.json:
-// "<repository>@<commit> <plugin name> <plugin version>".
-function upstreamPin(packageDir) {
+// The upstream checkout's commit and plugin, when the manifest names a checkout.
+export function upstreamInfo(packageDir) {
   const { vendor, upstream } = readJson(join(packageDir, "rules/manifest.json"));
   if (!upstream) return undefined;
   const commit = execFileSync("git", ["-C", join(packageDir, upstream.checkout), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-  const plugin = readJson(join(packageDir, vendor, "plugin.json"));
-  return `${upstream.repository}@${commit} ${plugin.name} ${plugin.version}`;
+  const { name, version } = readJson(join(packageDir, vendor, "plugin.json"));
+  const subtree = relative(upstream.checkout, vendor).split("\\").join("/");
+  return { repository: upstream.repository, commit, subtree, name, version };
+}
+
+// The upstream pin the generated tree comes from, as recorded in package.json:
+// "<repository>@<commit> <plugin name> <plugin version>".
+const pinOf = info => info && `${info.repository}@${info.commit} ${info.name} ${info.version}`;
+
+// The README states the pin between these markers; the generator keeps it current.
+const README_PIN = /(<!-- pistack:upstream -->)[\s\S]*?(<!-- \/pistack:upstream -->)/g;
+const readmePin = info =>
+  `\`${info.repository}\` [\`${info.commit.slice(0, 7)}\`](https://github.com/${info.repository}/tree/${info.commit}${info.subtree ? `/${info.subtree}` : ""}), ${info.name} ${info.version}`;
+function pinnedReadme(text, info) {
+  return info === undefined ? text : text.replace(README_PIN, (_, open, close) => `${open}${readmePin(info)}${close}`);
 }
 
 function main(args) {
@@ -239,11 +267,13 @@ function main(args) {
   const outDir = mkdtempSync(join(tmpdir(), "pistack-"));
   try {
     generate({ packageDir, outDir });
-    const pin = upstreamPin(packageDir), manifestPath = join(packageDir, "package.json");
+    const info = upstreamInfo(packageDir), pin = pinOf(info), manifestPath = join(packageDir, "package.json");
+    const readmePath = join(packageDir, "README.md"), readme = existsSync(readmePath) ? readFileSync(readmePath, "utf8") : undefined;
     if (args[0] === "--check") {
       const problems = drift(packageDir, outDir);
       const recorded = pin === undefined ? undefined : readJson(manifestPath).pistack?.upstream;
       if (recorded !== pin) problems.push(`package.json pistack.upstream is "${recorded}", expected "${pin}"`);
+      if (readme !== undefined && pinnedReadme(readme, info) !== readme) problems.push("README.md: the upstream pin between the pistack:upstream markers is stale");
       if (problems.length === 0) return 0;
       console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs.\n  ${problems.join("\n  ")}`);
       return 1;
@@ -257,6 +287,7 @@ function main(args) {
       manifest.pistack = { ...manifest.pistack, upstream: pin };
       writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
     }
+    if (readme !== undefined && pinnedReadme(readme, info) !== readme) writeFileSync(readmePath, pinnedReadme(readme, info));
     return 0;
   } catch (error) {
     console.error(error.message);
