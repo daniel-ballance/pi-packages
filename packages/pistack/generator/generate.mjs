@@ -92,7 +92,7 @@ function applyTokens(files, rules, expand, problems) {
       count += matches;
       files.set(path, text.replace(pattern, replace));
     }
-    if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min}. Upstream reworded it.`);
+    if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min}. Upstream reworded or removed its text.`);
   }
 }
 
