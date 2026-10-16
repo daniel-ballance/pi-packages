@@ -1,6 +1,7 @@
 import type { Static } from "typebox";
 import { REPORT_KINDS, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
 import type { TOOL_SPECS } from "./tool-schemas.js";
+import { MANAGE_TIMEOUT_MS } from "./peer-transport.js";
 
 export type WaitArgs = Static<typeof TOOL_SPECS.subagent_wait.parameters>;
 
@@ -21,7 +22,8 @@ export function messageLatch(): (pending: boolean) => boolean {
   };
 }
 
-export const RELAY_SEGMENT_SECONDS = 60;
+const RELAY_REPLY_HEADROOM_SECONDS = 30;
+export const RELAY_SEGMENT_SECONDS = MANAGE_TIMEOUT_MS / 1000 - RELAY_REPLY_HEADROOM_SECONDS;
 
 const wakeOf = (reply: unknown) => {
   const wake = typeof reply === "object" && reply !== null ? (reply as { wake?: unknown }).wake : undefined;
@@ -48,7 +50,8 @@ export async function relayWait(manage: (args: WaitArgs, signal?: AbortSignal) =
       clearInterval(poll);
       signal?.removeEventListener("abort", follow);
     }
-    if (queued || wakeOf(reply) !== "timeout") break;
+    const rootStillWaiting = wakeOf(reply) === "timeout";
+    if (queued || !rootStillWaiting) break;
   }
   signal?.throwIfAborted();
   const final = await manage({ ...args, timeoutSeconds: 0 }, signal);
@@ -79,8 +82,10 @@ const printed = (value: unknown) => {
   const text = JSON.stringify(value, null, 2);
   return { bytes: Buffer.byteLength(text), lines: text.split("\n").length };
 };
-const REPORTS_KEY = { bytes: 32, lines: 2 };
-const reportCost = (report: Report) => ({ bytes: printed(report).bytes + 4 * 8 + 2, lines: 4 });
+const REPORTS_KEY_COST = { bytes: 32, lines: 2 };
+const REPORT_LINES = 4, REPORT_INDENT_BYTES = 8, REPORT_SEPARATOR_BYTES = 2;
+const reportCost = (report: Report) => ({
+  bytes: printed(report).bytes + REPORT_LINES * REPORT_INDENT_BYTES + REPORT_SEPARATOR_BYTES, lines: REPORT_LINES });
 
 export function waitReport(manager: SubagentManager, end: WaitEnd, collect: boolean, callerId?: string,
   limits: ReportLimits = { bytes: 24_000, lines: 750 }): { readonly report: WaitReport; readonly receipts: readonly ReadReceipt[] } {
@@ -107,7 +112,7 @@ export function waitReport(manager: SubagentManager, end: WaitEnd, collect: bool
     for (const update of page.updates) {
       if (REPORT_KINDS.has(update.kind)) {
         const report = { kind: update.kind, text: update.text };
-        const cost = reportCost(report), key = reports.length ? { bytes: 0, lines: 0 } : REPORTS_KEY;
+        const cost = reportCost(report), key = reports.length ? { bytes: 0, lines: 0 } : REPORTS_KEY_COST;
         if (cost.bytes + key.bytes > bytes || cost.lines + key.lines > lines) break;
         bytes -= cost.bytes + key.bytes; lines -= cost.lines + key.lines;
         reports.push(report);

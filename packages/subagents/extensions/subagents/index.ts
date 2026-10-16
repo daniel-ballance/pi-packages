@@ -460,9 +460,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     ...TOOL_SPECS.subagent_wait,
     async execute(_call, args, signal, _update, ctx) {
       const manager = get(ctx), callerId = delegation.getStore()?.callerId;
-      const messageQueued = callerId ? undefined : () => rootLatch(ctx.hasPendingMessages());
+      const operatorMessageQueued = callerId ? undefined : () => rootLatch(ctx.hasPendingMessages());
       const end = await manager.wait(args.ids ?? [], args.mode ?? "all",
-        args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, messageQueued);
+        args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued);
       signal?.throwIfAborted();
       const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId);
       const output = result(report, ctx);
