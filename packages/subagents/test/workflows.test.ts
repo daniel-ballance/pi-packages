@@ -286,7 +286,7 @@ test("manager host refuses held child at spawn acceptance and while waiting", as
     const fakeManager = {
       reserveSlots: () => ({ id: Symbol("reservation") }), releaseSlots: () => { releases++; },
       spawn: async () => ({ id: "early-child" }), get: () => ({ id: "early-child", hold: held ? { kind: "halt" } : undefined }),
-      send: async () => { sends++; return { id: "early-child", disposition: "started" }; }, wait: async () => { held = true; return { timedOut: true }; },
+      send: async () => { sends++; return { id: "early-child", disposition: "started" }; }, wait: async () => { held = true; return { wake: "timeout", ids: [] }; },
       close: async () => { closes++; }, peers: { connect() {}, disconnect() {} },
     } as unknown as Parameters<typeof managerWorkflowHost>[0];
     const policy = (() => ({ compile: () => ({}) })) as unknown as Parameters<typeof managerWorkflowHost>[1];

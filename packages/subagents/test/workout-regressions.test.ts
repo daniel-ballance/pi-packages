@@ -137,7 +137,7 @@ for (const ending of ["abort", "close"] as const) test(`${ending} after accept-b
   const s = await setup();
   try {
     const a = await s.manager.spawn({ ...s.options, task: "accept-before-start" });
-    assert.equal((await s.manager.wait([a.id], "all", 2000)).timedOut, false);
+    assert.equal((await s.manager.wait([a.id], "all", 2000)).wake, "settled");
     const result = await s.manager[ending](a.id);
     assert.equal(result.status, ending === "abort" ? "idle" : "stopped");
     assert.equal(result.aborted, false);
@@ -229,6 +229,6 @@ test("legacy never-started cap records are hidden by default, but inspectable ex
     assert.equal(restored.overview(true).totals.tracked, 1);
     assert.equal(restored.summary("legacy-cap").rejected, true);
     assert.equal(restored.read("legacy-cap").id, "legacy-cap");
-    assert.equal((await restored.wait([], "all", 0)).agents.length, 1);
+    assert.equal((await restored.wait([], "all", 0)).ids.length, 1);
   } finally { await restored?.shutdown(); await s.cleanup(); }
 });

@@ -459,10 +459,11 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     ...TOOL_SPECS.subagent_wait,
     async execute(_call, args, signal, _update, ctx) {
       const manager = get(ctx);
-      const state = await manager.wait(args.ids ?? [], args.mode ?? "all", (args.timeoutSeconds ?? 30) * 1000, signal);
+      const end = await manager.wait(args.ids ?? [], args.mode ?? "all", (args.timeoutSeconds ?? 30) * 1000, signal);
       signal?.throwIfAborted(); // Never collect for a caller that is gone.
+      const state = { wake: end.wake, agents: end.ids.map(id => manager.summary(id)) };
       if (!args.collect) return result(state, ctx);
-      const collected = collectReports(manager, state.agents.map(agent => agent.id));
+      const collected = collectReports(manager, [...end.ids]);
       const data = { ...state, ...collected };
       const output = result(data, ctx);
       if (output.details === data) for (const report of collected.reports) manager.acknowledgeRead(report, true, !delegation.getStore());

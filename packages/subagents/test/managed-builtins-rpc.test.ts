@@ -42,7 +42,7 @@ function setup(options: { project?: boolean; trusted?: boolean; credentials?: bo
   const run = async (id: string, text: string) => {
     const start = events(id).length;
     await manager.send(id, text); const settled = await manager.wait([id], "all", 5000);
-    assert.equal(settled.timedOut, false);
+    assert.equal(settled.wake, "settled");
     assert.equal(manager.get(id).error, undefined);
     return events(id).slice(start);
   };
