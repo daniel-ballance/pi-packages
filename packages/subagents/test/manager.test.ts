@@ -82,8 +82,8 @@ test("parallel children, incremental read, follow-up and usage", async () => {
     const [a, b] = await Promise.all([s.spawn("alpha"), s.spawn("beta")]);
     assert.notEqual(a.id, b.id);
     const settled = await s.manager.wait([a.id, b.id], "all", 2000);
-    assert.equal(settled.timedOut, false);
-    assert.equal(settled.agents.every(a => a.status === "idle"), true);
+    assert.equal(settled.wake, "settled");
+    assert.equal(settled.ids.every(id => s.manager.get(id).status === "idle"), true);
     const first = s.manager.read(a.id);
     assert.ok(first.updates.some(u => u.text === "1:alpha"));
     assert.equal(s.manager.read(a.id).updates.length, 0);
@@ -104,7 +104,7 @@ test("consumed input restores assignment state and does not leave phantom work",
     assert.equal(a.lastSubmission?.disposition, "handled");
     assert.equal(a.assignment, undefined);
     assert.equal(a.status, "idle");
-    assert.equal((await s.manager.wait([a.id], "all", 0)).timedOut, false);
+    assert.equal((await s.manager.wait([a.id], "all", 0)).wake, "settled");
     await s.manager.send(a.id, "complete");
     await s.manager.wait([a.id], "all", 2000);
     const assignment = structuredClone(s.manager.get(a.id).assignment);
@@ -171,7 +171,7 @@ test("acceptance before agent_start cannot cause a premature idle result", async
   try {
     const a = await s.spawn("accept-before-start");
     assert.equal(a.status, "working");
-    assert.equal((await s.manager.wait([a.id], "all", 0)).timedOut, true);
+    assert.equal((await s.manager.wait([a.id], "all", 0)).wake, "timeout");
     await s.manager.wait([a.id], "all", 2000);
     assert.ok(s.manager.read(a.id).updates.some(u => u.text === "late start finished"));
   } finally { await s.cleanup(); }
@@ -184,7 +184,7 @@ test("abort retains process, redirection works; resuming a live child must not c
     const pid = a.pid;
     await assert.rejects(s.manager.resume(a.id), /already has a process/);
     assert.equal(s.manager.get(a.id).pid, pid);
-    assert.equal((await s.manager.wait([a.id], "all", 0)).timedOut, true);
+    assert.equal((await s.manager.wait([a.id], "all", 0)).wake, "timeout");
     await assert.rejects(s.manager.send(a.id, "unqualified"), /Already working/);
     await s.manager.abort(a.id);
     assert.equal(s.manager.get(a.id).status, "idle");
@@ -280,7 +280,7 @@ test("human kill uses immediate SIGKILL, retains a failed hold on cancellation e
     await attempt;
     assert.equal(s.manager.get(b.id).hold?.outcome, "failed");
     assert.equal(s.manager.get(b.id).assignment?.status, "running");
-    assert.equal((await s.manager.wait([b.id], "all", 0)).needsHold, true);
+    assert.equal((await s.manager.wait([b.id], "all", 0)).wake, "hold");
     assert.match(s.manager.pendingNotices().findLast(n => n.id === b.id && n.kind === "human_intervention")!.text, /failed.*simulated kill failure/);
     failing.kill = original;
     await s.manager.intervene(b.id, "kill");
@@ -369,7 +369,7 @@ test("read detaches UI packets and hold details without changing acknowledgement
   const s = await setup();
   try {
     const a = await s.spawn("ui");
-    assert.equal((await s.manager.wait([a.id], "all", 2000)).needsInput, true);
+    assert.equal((await s.manager.wait([a.id], "all", 2000)).wake, "input");
     const peek = s.manager.read(a.id, undefined, false);
     assert.equal(s.manager.get(a.id).readCursor, 0);
     peek.uiRequests[0].title = "tampered";
@@ -529,7 +529,7 @@ test("held prompt acceptance cannot revive state or create a post-halt assignmen
     };
     const sending = s.manager.send(a.id, "late work");
     await s.manager.intervene(a.id, "halt");
-    assert.equal((await s.manager.wait([a.id], "all", 0)).needsHold, true);
+    assert.equal((await s.manager.wait([a.id], "all", 0)).wake, "hold");
     assert.throws(() => s.manager.releaseHold(a.id), /in flight/);
     release();
     await assert.rejects(sending, /held while prompt acceptance was pending/);
@@ -708,7 +708,7 @@ test("dialog responses mutate pending UI only after transport queues the write",
   try {
     const a = await s.spawn("ui");
     const state = await s.manager.wait([a.id], "all", 2000);
-    assert.equal(state.needsInput, true);
+    assert.equal(state.wake, "input");
     assert.equal(s.manager.read(a.id).uiRequests[0].id, "ui-1");
     const child = (s.manager as unknown as { children: Map<string, { respond(packet: Record<string, unknown>): Promise<void> }> }).children.get(a.id)!;
     const originalRespond = child.respond.bind(child);
@@ -743,6 +743,50 @@ test("failed runs stay addressable; crashes and bad protocol are reported", asyn
     assert.equal(s.manager.get(a.id).status, "idle");
     await assert.rejects(s.spawn("crash"), /Child exited/);
     await assert.rejects(s.spawn("malformed"), /JSON|Unexpected/);
+  } finally { await s.cleanup(); }
+});
+
+test("a wait without a timeout holds until the child settles, and aborting it leaves the child working", async () => {
+  const s = await setup();
+  try {
+    const a = await s.spawn("slow-unbounded");
+    let outcome: string | undefined;
+    const waiting = s.manager.wait([a.id], "all").then(end => { outcome = end.wake; return end; });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(outcome, undefined, "still waiting after 300 ms");
+    await s.manager.abort(a.id);
+    assert.deepEqual(await waiting, { wake: "settled", ids: [a.id] });
+
+    await s.manager.send(a.id, "slow-again");
+    const stop = new AbortController();
+    const cancelled = s.manager.wait([a.id], "all", undefined, stop.signal);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    stop.abort();
+    await assert.rejects(cancelled, /abort/i);
+    assert.equal(s.manager.get(a.id).status, "working");
+  } finally { await s.cleanup(); }
+});
+
+test("a queued message ends a wait without touching the child, but a hold outranks it", async () => {
+  const s = await setup();
+  try {
+    const a = await s.spawn("slow-message");
+    let polls = 0;
+    assert.equal((await s.manager.wait([a.id], "all", undefined, undefined, () => ++polls >= 3)).wake, "message");
+    assert.equal(s.manager.get(a.id).status, "working");
+    await s.manager.intervene(a.id, "halt");
+    assert.equal((await s.manager.wait([a.id], "all", undefined, undefined, () => true)).wake, "hold");
+  } finally { await s.cleanup(); }
+});
+
+test("in mode any, a child that needs input is the reason even when a sibling settled", async () => {
+  const s = await setup();
+  try {
+    const [asking, done] = await Promise.all([s.spawn("ui"), s.spawn("alpha")]);
+    await s.manager.wait([done.id], "all", 2000);
+    assert.equal((await s.manager.wait([asking.id], "all", 2000)).wake, "input");
+    assert.equal(s.manager.get(done.id).status, "idle");
+    assert.equal((await s.manager.wait([asking.id, done.id], "any", 0)).wake, "input");
   } finally { await s.cleanup(); }
 });
 

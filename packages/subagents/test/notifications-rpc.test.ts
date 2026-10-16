@@ -12,7 +12,7 @@ const provider = fileURLToPath(new URL("./fixtures/notification-provider.mjs", i
 const executable = process.env.PEER_TEST_EXECUTABLE ?? process.execPath;
 const executableArgs = process.env.PEER_TEST_EXECUTABLE ? [] : [cli];
 
-for (const mode of ["read", "collect", "unread", "halt", "kill"]) {
+for (const mode of ["read", "collect", "default", "unread", "halt", "kill"]) {
   test(`real parent/child RPC notification: ${mode}`,  { timeout: 20000, skip: process.platform === "win32" }, async () => {
     const root = mkdtempSync(join(tmpdir(), "notice-parent-rpc-"));
     const agentDir = join(root, "agent"), bin = join(root, "bin");
@@ -63,14 +63,14 @@ for (const mode of ["read", "collect", "unread", "halt", "kill"]) {
       if (["halt", "kill"].includes(mode)) {
         assert.ok(reports.length >= 1 && reports.length <= 2, JSON.stringify(events));
         assert.match(reports.map(report => report.message.content).join("\n"), /confirmed/);
-      } else assert.equal(reports.length, ["read", "collect"].includes(mode) ? 0 : 1, JSON.stringify(events));
+      } else assert.equal(reports.length, ["read", "collect", "default"].includes(mode) ? 0 : 1, JSON.stringify(events));
       if (mode === "halt" || mode === "kill") assert.match(reports[0].message.content, /HUMAN SUPERVISION/);
       assert.equal(events.filter(e => e.type === "extension_error").length, 0, stderr);
       const parentId = readdirSync(join(agentDir, "subagents"))[0];
       const registry = JSON.parse(readFileSync(join(agentDir, "subagents", parentId, "registry.json"), "utf8"));
       assert.deepEqual(registry.pendingNotices, []);
       assert.deepEqual(registry.agents[0].config.coordination, { owns: [join(root, "src")], outputs: [join(root, "report.md")] });
-      if (mode === "collect") assert.equal(registry.agents[0].resultReview.status, "reviewed");
+      if (mode === "collect" || mode === "default") assert.equal(registry.agents[0].resultReview.status, "reviewed");
     } finally {
       child.kill("SIGTERM");
       const kill = setTimeout(() => child.kill("SIGKILL"), 4000);

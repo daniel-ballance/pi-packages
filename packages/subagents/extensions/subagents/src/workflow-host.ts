@@ -67,10 +67,10 @@ export function managerWorkflowHost(manager: SubagentManager, policy: () => Suba
         while (true) {
           signal.throwIfAborted();
           for (const id of ids.values()) childReady(id);
-          const result = await manager.wait([...ids.values()], "all", 1000, signal);
+          const { wake } = await manager.wait([...ids.values()], "all", 1000, signal);
           for (const id of ids.values()) childReady(id);
-          if (result.needsInput) throw new Error("Worker requested extension/human input; attempt blocked. Inspect its child log and arrange a new explicit attempt.");
-          if (!result.timedOut) break;
+          if (wake === "input") throw new Error("Worker requested extension/human input; attempt blocked. Inspect its child log and arrange a new explicit attempt.");
+          if (wake !== "timeout") break;
         }
         return jobs.map(job => {
           const record = manager.get(ids.get(job.step)!);

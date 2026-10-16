@@ -10,6 +10,7 @@ import type { Composition } from "./policy.js";
 import type { ChildPolicy } from "./child-policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
+import type { WaitEnd } from "./wait.js";
 
 export type InputDisposition = "started" | "queued" | "handled" | "unknown";
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
@@ -58,7 +59,7 @@ export interface SlotReservation { readonly id: symbol }
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
 const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
-const REPORT_KINDS = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
+export const REPORT_KINDS: ReadonlySet<string> = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
 function enforcePrivatePath(path: string, mode: number, directory: boolean) {
   const stat = lstatSync(path);
   if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile())) throw new Error(`Unsafe subagent state path: ${path}`);
@@ -228,8 +229,11 @@ export class SubagentManager {
    */
   private routedToParent(notice: Notice) {
     if (notice.kind === "human_intervention" || notice.kind === "input_requested") return false;
-    const parentId = this.records.get(notice.id)?.parentId;
-    return !!parentId && this.children.has(parentId);
+    return this.reportsDrainedBy(notice.id) !== undefined;
+  }
+  reportsDrainedBy(id: string): string | undefined {
+    const parentId = this.records.get(id)?.parentId;
+    return parentId && this.children.has(parentId) ? parentId : undefined;
   }
   /** Notices for the root Parent now. */
   pendingNotices(): Notice[] { return [...this.notices.values()].filter(notice => !this.routedToParent(notice)); }
@@ -971,19 +975,20 @@ export class SubagentManager {
       this.responding.delete(key);
     }
   }
-  async wait(ids: string[], mode: "any" | "all", timeoutMs: number, signal?: AbortSignal) {
-    const selected = ids.length ? ids : this.list().map(record => record.id);
+  async wait(ids: readonly string[], mode: "any" | "all", timeoutMs?: number, signal?: AbortSignal, messageQueued?: () => boolean): Promise<WaitEnd> {
+    const selected = ids.length ? [...ids] : this.list().map(record => record.id);
     for (const id of selected) this.get(id);
-    const deadline = Date.now() + timeoutMs;
+    const deadline = timeoutMs === undefined ? Infinity : Date.now() + timeoutMs;
+    const end = (wake: WaitEnd["wake"]): WaitEnd => ({ wake, ids: selected });
     while (true) {
       signal?.throwIfAborted();
-      const statuses = selected.map(id => this.summary(id));
-      if (statuses.some(r => r.hold)) return { timedOut: false, needsHold: true, agents: statuses };
-      const ready = statuses.filter(r => !BUSY.has(r.status));
-      if (!selected.length || (mode === "any" ? ready.length > 0 : ready.length === selected.length)) return { timedOut: false, agents: statuses };
-      // Human/extension input must be surfaced, not hidden behind a long wait.
-      if (statuses.some(r => r.status === "waiting_input")) return { timedOut: false, needsInput: true, agents: statuses };
-      if (Date.now() >= deadline) return { timedOut: true, agents: statuses };
+      const records = selected.map(id => this.get(id));
+      if (records.some(record => record.hold)) return end("hold");
+      if (records.some(record => record.status === "waiting_input")) return end("input");
+      const ready = records.filter(record => !BUSY.has(record.status)).length;
+      if (!selected.length || (mode === "any" ? ready > 0 : ready === selected.length)) return end("settled");
+      if (messageQueued?.()) return end("message");
+      if (Date.now() >= deadline) return end("timeout");
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   }

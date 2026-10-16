@@ -8,6 +8,7 @@ import { BUILTINS, parseChildSettings, parseMcpPolicy, type ChildPolicy } from "
 import { installManagedBuiltins } from "./managed-builtins.js";
 import { isProxiedTool, opOf, type ProxiedTool } from "./nesting.js";
 import { TOOL_SPECS } from "./tool-schemas.js";
+import { messageLatch, relayWait, type WaitArgs } from "./wait.js";
 
 function callText(value: unknown, limit = 80): string {
   const text = typeof value === "string"
@@ -71,15 +72,18 @@ export default function childGuard(pi: ExtensionAPI) {
       },
     });
   }
+  const childLatch = messageLatch();
   for (const name of proxied) {
     const spec = TOOL_SPECS[name];
     pi.registerTool({
       name, label: name.replace("subagent_", "Subagent "),
       description: `${spec.description} Runs through your parent's manager and acts only on Children you spawned and their descendants.`,
       parameters: spec.parameters,
-      async execute(_call, args, signal) {
-        peer ??= PeerClient.fromEnvironment();
-        const data = await peer.manage(opOf(name), args as Record<string, unknown>, signal);
+      async execute(_call, args, signal, _update, ctx) {
+        const client = peer ??= PeerClient.fromEnvironment();
+        const data = name === "subagent_wait"
+          ? await relayWait((relayed, segment) => client.manage("wait", relayed, segment), args as WaitArgs, signal, () => childLatch(ctx.hasPendingMessages()))
+          : await client.manage(opOf(name), args as Record<string, unknown>, signal);
         return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], details: data };
       },
     });

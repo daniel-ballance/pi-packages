@@ -9,7 +9,7 @@ import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { builtInPolicy, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
-import { collectReports } from "./src/collection.js";
+import { messageLatch, waitReport } from "./src/wait.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { cardsFromDetails, listingLine } from "./src/card.js";
 import { summarizeAgents } from "./src/usage.js";
@@ -453,19 +453,20 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       return output;
     },
   });
+  const rootLatch = messageLatch();
   registerTool({
     name: "subagent_wait", label: "Wait for Subagents",
     ...render("wait"),
     ...TOOL_SPECS.subagent_wait,
     async execute(_call, args, signal, _update, ctx) {
-      const manager = get(ctx);
-      const state = await manager.wait(args.ids ?? [], args.mode ?? "all", (args.timeoutSeconds ?? 30) * 1000, signal);
-      signal?.throwIfAborted(); // Never collect for a caller that is gone.
-      if (!args.collect) return result(state, ctx);
-      const collected = collectReports(manager, state.agents.map(agent => agent.id));
-      const data = { ...state, ...collected };
-      const output = result(data, ctx);
-      if (output.details === data) for (const report of collected.reports) manager.acknowledgeRead(report, true, !delegation.getStore());
+      const manager = get(ctx), callerId = delegation.getStore()?.callerId;
+      const operatorMessageQueued = callerId ? undefined : () => rootLatch(ctx.hasPendingMessages());
+      const end = await manager.wait(args.ids ?? [], args.mode ?? "all",
+        args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued);
+      signal?.throwIfAborted();
+      const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId);
+      const output = result(report, ctx);
+      if (output.details === report) for (const receipt of receipts) manager.acknowledgeRead(receipt, true, !callerId);
       return output;
     },
   });

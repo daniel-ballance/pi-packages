@@ -4,6 +4,8 @@ import { read, write as writeFd, close as closeFd } from "node:fs";
 import { JsonlDecoder, type Packet } from "./rpc.js";
 import { isManagementOp, type ManagementOp } from "./nesting.js";
 
+export const MANAGE_TIMEOUT_MS = 90_000;
+
 const MAX_FRAME = 64 * 1024;
 const MAX_PENDING = 8;
 class FrameTooLarge extends Error {}
@@ -131,7 +133,7 @@ export class PeerClient {
     return this.request({ recipient, message }, signal, timeoutMs, "Peer send interrupted or timed out; acceptance may be unknown. Ask the parent to inspect; do not retry blindly.");
   }
   /** A delegation call to the root Manager; waits may take up to a minute. */
-  manage(op: ManagementOp, args: Record<string, unknown>, signal?: AbortSignal, timeoutMs = 90000): Promise<unknown> {
+  manage(op: ManagementOp, args: Record<string, unknown>, signal?: AbortSignal, timeoutMs = MANAGE_TIMEOUT_MS): Promise<unknown> {
     return this.request({ op, args }, signal, timeoutMs, `subagent_${op} interrupted or timed out; its effect may be unknown. Inspect with subagent_list before retrying.`, true);
   }
   /** cancellable: on abort or timeout, tell the server to stop the call (management calls only). */

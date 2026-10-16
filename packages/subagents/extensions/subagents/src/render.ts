@@ -5,6 +5,7 @@ import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-wor
 import { cardLines, cardsFromDetails, inline, paint, plain, STATES } from "./card.js";
 import { limitLabel } from "./child-limit.js";
 import { reportedCost } from "./usage.js";
+import { isWakeReason, type WakeReason } from "./wait.js";
 
 type Data = Record<string, unknown>;
 type Action = "catalog" | "loop" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "release-hold" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow" | "workflow-start" | "workflow-inspect" | "workflow-control";
@@ -57,28 +58,49 @@ function catalogLines(data: Data, theme: Theme): string[] {
   return lines;
 }
 
-function groupLines(data: Data, width: number, theme: Theme): string[] {
-  const children = cardsFromDetails(array(data.agents), "summary");
-  const lines: string[] = [];
-  if (data.needsInput === true) lines.push(theme.fg("warning", "input required · waiting stopped"));
-  if (data.needsHold === true) lines.push(theme.fg("warning", "human hold · discuss before releasing work"));
-  if (array(data.reports).length) lines.push(theme.fg("accent", `${array(data.reports).length} report page(s) collected`));
-  if (data.hasMoreReports === true) lines.push(theme.fg("warning", "more reports remain · read deferred children"));
-  if (data.timedOut === true) lines.push(theme.fg("warning", "wait timed out · children may still be working"));
-  const totals = object(data.totals);
-  if (totals) {
-    const totalCost = reportedCost({ cost: totals.reportedCost });
-    lines.push(theme.fg("muted", `${count(totals.active) ?? "?"} active / ${count(totals.tracked) ?? children.length} tracked` +
-      ` · ${totalCost === undefined ? "cost unknown" : `$${totalCost.toFixed(3)}`}` +
-      (count(totals.missingCost) ? ` · ${totals.missingCost} cost unknown` : "")));
-  }
-  if (!children.length) lines.push(theme.fg("dim", "no subagents tracked."));
-  for (const child of children.slice(0, 4)) lines.push(...cardLines(child, width).map(line => paint(theme, line.spans)));
+function childCards(items: unknown[], width: number, theme: Theme): string[] {
+  const children = cardsFromDetails(items, "summary");
+  if (!children.length) return [theme.fg("dim", "no subagents tracked.")];
+  const lines = children.slice(0, 4).flatMap(child => cardLines(child, width).map(line => paint(theme, line.spans)));
   if (children.length > 4) {
     const hidden = children.slice(4);
     const attention = hidden.filter(child => STATES[child.state].group === "attention").length;
     lines.push(theme.fg(attention ? "warning" : "dim", `… ${hidden.length} more children${attention ? ` (${attention} need attention)` : ""}`));
   }
+  return lines;
+}
+
+function groupLines(data: Data, width: number, theme: Theme): string[] {
+  const lines: string[] = [];
+  const totals = object(data.totals);
+  if (totals) {
+    const totalCost = reportedCost({ cost: totals.reportedCost });
+    lines.push(theme.fg("muted", `${count(totals.active) ?? "?"} active / ${count(totals.tracked) ?? array(data.agents).length} tracked` +
+      ` · ${totalCost === undefined ? "cost unknown" : `$${totalCost.toFixed(3)}`}` +
+      (count(totals.missingCost) ? ` · ${totals.missingCost} cost unknown` : "")));
+  }
+  return [...lines, ...childCards(array(data.agents), width, theme)];
+}
+
+const WAKE_LINES: { readonly [W in WakeReason]: readonly [Color, string] | undefined } = {
+  hold: ["warning", "human hold · discuss before releasing work"],
+  input: ["warning", "input required · waiting stopped"],
+  settled: undefined,
+  message: ["accent", "message queued · waiting stopped"],
+  timeout: ["warning", "wait timed out · children may still be working"],
+};
+
+function waitLines(wake: WakeReason, data: Data, width: number, theme: Theme): string[] {
+  const banner = WAKE_LINES[wake];
+  const agents = array(data.agents).map(object).filter((agent): agent is Data => !!agent);
+  const lines = [...banner ? [theme.fg(...banner)] : [], ...childCards(agents, width, theme)];
+  const unread = agents.reduce((sum, agent) => sum + (count(agent.unread) ?? 0), 0);
+  if (unread) lines.push(theme.fg("warning", `${unread} report(s) not shown · subagent_read`));
+  const replies = agents.flatMap(agent => {
+    const reply = array(agent.reports).map(object).findLast(report => report?.kind === "assistant");
+    return reply ? [`${inline(agent.name).toLowerCase()}: ${plain(reply.text)}`] : [];
+  });
+  for (const reply of replies.slice(0, 2)) lines.push(...preview(reply, width, theme, "toolOutput", 2));
   return lines;
 }
 
@@ -239,7 +261,8 @@ function formatCall(action: Action, data: Data, theme: Theme, complete: boolean,
       const labels = ids.map(id => named("child", id, names)).filter(Boolean);
       const mode = inline(data.mode);
       const timeout = count(data.timeoutSeconds);
-      const tail = (mode && mode !== "all" ? output(mode) : "") + (timeout !== undefined && timeout !== 30 ? output(`${timeout}s`) : "");
+      const tail = (mode && mode !== "all" ? output(mode) : "") +
+        (timeout !== undefined ? output(`${timeout}s`) : complete ? output("until news") : "");
       if (labels.length === 1) return command(theme, "wait", labels[0]) + tail;
       let text = command(theme, "wait");
       if (labels[0]) text += accent(labels[0]);
@@ -328,13 +351,8 @@ export function subagentRenderers(action: Action, names?: NameLookup): Required<
         else if (action === "catalog") lines = catalogLines(data, theme);
         else if (action === "loop") lines = preview(raw, width, theme);
         else if (workflowAction(action)) lines = workflowLines(data, theme);
-        else if (action === "list" || action === "wait") {
-          lines = groupLines(data, width, theme);
-          for (const report of array(data.reports).map(object).filter((r): r is Data => !!r).slice(0, 2)) {
-            const reply = array(report.updates).map(object).findLast(update => update?.kind === "assistant");
-            if (reply) lines.push(...preview(`${inline(report.name).toLowerCase()}: ${plain(reply.text)}`, width, theme, "toolOutput", 2));
-          }
-        }
+        else if (action === "wait" && isWakeReason(data.wake)) lines = waitLines(data.wake, data, width, theme);
+        else if (action === "list" || action === "wait") lines = groupLines(data, width, theme);
         else if (action === "read") lines = readLines(data, width, theme);
         else if (["connect", "disconnect", "renew", "peers"].includes(action)) lines = peerLines(data, theme);
         else {

@@ -21,8 +21,13 @@ export default function (pi) {
           model: "notification-test/stub:off", tools: [], extensions: [fileURLToPath(import.meta.url)],
           coordination: { owns: ["src"], outputs: ["report.md"] },
         } };
-        else if (!waited) tool = { name: "subagent_wait", arguments: { ids: [JSON.parse(spawned.content.find(c => c.type === "text").text).id], timeoutSeconds: 5, collect: process.env.NOTICE_TEST_MODE === "collect" } };
-        else if (!read && !["unread", "collect"].includes(process.env.NOTICE_TEST_MODE)) tool = { name: "subagent_read", arguments: { id: JSON.parse(spawned.content.find(c => c.type === "text").text).id } };
+        else if (!waited) {
+          const ids = [JSON.parse(spawned.content.find(c => c.type === "text").text).id];
+          const mode = process.env.NOTICE_TEST_MODE;
+          tool = { name: "subagent_wait", arguments: ["message", "abort"].includes(mode) ? { ids }
+            : { ids, timeoutSeconds: 5, ...(mode === "default" ? {} : { collect: mode === "collect" }) } };
+        }
+        else if (!read && !["unread", "collect", "default", "message", "abort"].includes(process.env.NOTICE_TEST_MODE)) tool = { name: "subagent_read", arguments: { id: JSON.parse(spawned.content.find(c => c.type === "text").text).id } };
         else content = [{ type: "text", text: "PARENT FINISHED" }];
         if (tool) { stopReason = "toolUse"; content = [{ type: "toolCall", id: `call-${toolResults.length}`, ...tool }]; }
       }
@@ -33,10 +38,11 @@ export default function (pi) {
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
       };
       const stream = createAssistantMessageEventStream();
-      queueMicrotask(() => {
+      const delay = process.env.PI_SUBAGENT === "1" && ["message", "abort"].includes(process.env.NOTICE_TEST_MODE) ? 3000 : 0;
+      setTimeout(() => {
         stream.push({ type: "start", partial: output });
         stream.push({ type: "done", reason: stopReason, message: output }); stream.end();
-      });
+      }, delay);
       return stream;
     },
   });
