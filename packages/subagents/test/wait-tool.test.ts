@@ -11,11 +11,14 @@ import { asHost } from "./host-env.js";
 
 type Manage = (callerId: string, request: ManagementRequest, signal: AbortSignal) => Promise<unknown>;
 
+type Tool = (args: Record<string, unknown>) => Promise<{ content: { text: string }[]; details: unknown }>;
+
 async function withWaitTool(run: (tools: {
-  wait: (args: Record<string, unknown>) => Promise<{ details: unknown }>;
+  wait: Tool;
+  read: Tool;
   delegatedWait: (args: Record<string, unknown>) => Promise<unknown>;
   queue: (pending: boolean) => void;
-}) => Promise<void>) {
+}) => Promise<void>, extraRecords: (root: string) => Record<string, unknown>[] = () => []) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "wait-tool-"))), agentDir = join(root, "agent");
   mkdirSync(join(agentDir, "subagents", "s"), { recursive: true });
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "p/m:off" }], tools: [] }));
@@ -26,6 +29,7 @@ async function withWaitTool(run: (tools: {
   });
   writeFileSync(join(agentDir, "subagents", "s", "registry.json"), JSON.stringify({ version: 1, agents: [
     record("coordinator"), record("worker", { parentId: "coordinator", depth: 2 }),
+    ...extraRecords(root).map(extra => record(extra.id as string, extra)),
   ] }));
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -55,6 +59,7 @@ async function withWaitTool(run: (tools: {
     manager!.get("worker").status = "working";
     await run({
       wait: args => tools.get("subagent_wait").execute("c", args, undefined, undefined, ctx),
+      read: args => tools.get("subagent_read").execute("c", args, undefined, undefined, ctx),
       delegatedWait: args => manage!("coordinator", { op: "wait", args }, new AbortController().signal),
       queue: value => { pending = value; },
     });
@@ -79,4 +84,26 @@ test("a queued message ends the root's wait once per batch, and never a coordina
     queue(true);
     assert.equal(wake((await wait({ ids: ["worker"] })).details), "message", "a new batch after the queue drained");
   });
+});
+
+const exited = { cursor: 1, kind: "lifecycle", text: "Assignment running when process exited.", time: "now" };
+const crashed = { id: "crashed", status: "failed", error: "exited", updates: [exited], cursor: 1,
+  assignment: { id: "a1", status: "running", startedAt: "now" } };
+
+test("a wait that fits reports the result it collected as reviewed", async () => {
+  await withWaitTool(async ({ wait }) => {
+    const report = (await wait({ ids: ["crashed"] })).details as { agents: { resultReview?: { status: string } }[] };
+    assert.equal(report.agents[0].resultReview?.status, "reviewed");
+  }, () => [crashed]);
+});
+
+test("a wait that spills to a file claims no review, and subagent_read still returns the unread result", async () => {
+  await withWaitTool(async ({ wait, read }) => {
+    const output = await wait({ ids: ["crashed", "noisy"] });
+    assert.match(output.content[0].text, /\[Truncated\. Full result: /, "the wait spilled past the 30 KB cap");
+    assert.doesNotMatch(output.content[0].text, /"status": "reviewed"/);
+    const page = (await read({ id: "crashed" })).details as { updates: { cursor: number }[]; resultReview?: { status: string } };
+    assert.deepEqual(page.updates.map(update => update.cursor), [1], "the read still returns the unacknowledged result");
+    assert.equal(page.resultReview?.status, "unreviewed", "the spilled wait reviewed nothing");
+  }, () => [crashed, { id: "noisy", status: "failed", error: "e".repeat(31_000) }]);
 });

@@ -1,5 +1,5 @@
 import type { Static } from "typebox";
-import { REPORT_KINDS, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
+import { REPORT_KINDS, type AgentRecord, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
 import type { TOOL_SPECS } from "./tool-schemas.js";
 import { MANAGE_TIMEOUT_MS } from "./peer-transport.js";
 
@@ -87,6 +87,11 @@ const REPORT_LINES = 4, REPORT_INDENT_BYTES = 8, REPORT_SEPARATOR_BYTES = 2;
 const reportCost = (report: Report) => ({
   bytes: printed(report).bytes + REPORT_LINES * REPORT_INDENT_BYTES + REPORT_SEPARATOR_BYTES, lines: REPORT_LINES });
 
+const reviewOf = (record: AgentRecord) => record.resultReview && { status: record.resultReview.status };
+
+export const withCurrentReviews = (manager: SubagentManager, report: WaitReport): WaitReport =>
+  ({ ...report, agents: report.agents.map(news => ({ ...news, resultReview: reviewOf(manager.get(news.id)) })) });
+
 export function waitReport(manager: SubagentManager, end: WaitEnd, collect: boolean, callerId?: string,
   limits: ReportLimits = { bytes: 24_000, lines: 750 }): { readonly report: WaitReport; readonly receipts: readonly ReadReceipt[] } {
   const statuses = end.ids.map(id => {
@@ -97,7 +102,7 @@ export function waitReport(manager: SubagentManager, end: WaitEnd, collect: bool
       hold: record.hold && { kind: record.hold.kind, outcome: record.hold.outcome, detail: record.hold.detail },
       uiRequests: record.uiRequests.length ? record.uiRequests.map(({ id, method, title }) => ({ id, method, title })) : undefined,
       depth: record.depth, parentId: record.parentId,
-      resultReview: record.resultReview && { status: record.resultReview.status },
+      resultReview: reviewOf(record),
     };
     return news;
   });
@@ -120,12 +125,8 @@ export function waitReport(manager: SubagentManager, end: WaitEnd, collect: bool
       prefix.push(update);
     }
     if (!prefix.length && !page.uiRequests.length) return news;
-    const record = manager.get(news.id), assignment = record.assignment;
-    receipts.push({ id: news.id, updates: prefix, nextCursor: prefix.at(-1)?.cursor ?? record.readCursor, uiRequests: page.uiRequests });
-    const reviewed = news.resultReview?.status === "unreviewed" && assignment?.id === record.resultReview?.assignmentId
-      && prefix.some(update => update.cursor === assignment?.resultCursor);
-    return { ...news, unread: news.unread - reports.length, reports: reports.length ? reports : undefined,
-      resultReview: reviewed ? { status: "reviewed" as const } : news.resultReview };
+    receipts.push({ id: news.id, updates: prefix, nextCursor: prefix.at(-1)?.cursor ?? manager.get(news.id).readCursor, uiRequests: page.uiRequests });
+    return { ...news, unread: news.unread - reports.length, reports: reports.length ? reports : undefined };
   });
   return { report: { wake: end.wake, agents }, receipts };
 }
