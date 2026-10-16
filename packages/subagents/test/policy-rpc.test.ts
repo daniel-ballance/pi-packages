@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
@@ -24,7 +25,7 @@ test("real RPC policy enforcement, mandatory guard, revalidated resume, and clea
   };
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "subagent-test/stub:off" }], tools: ["read"], extensions: [provider] }));
   policy = new SubagentPolicy(environment);
-  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, 4, config => {
+  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, parseChildLimit(4), config => {
     if (!config.selection) throw new Error("Legacy configuration refused");
     return { ...policy.compile(config.cwd, config.selection), executable: process.execPath, executableArgs: [cli] };
   });
@@ -68,7 +69,7 @@ test("real RPC child loads alwaysExtensions without a parent selection", { timeo
     cwd: root, agentDir, projectTrusted: true, guardPath: guard, tools: () => ["read"],
     models: () => [{ provider: "subagent-test", id: "stub", input: ["text"], contextWindow: 32000, maxTokens: 1000, cost: {}, thinkingLevels: ["off"] }],
   });
-  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, 4);
+  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, parseChildLimit(4));
   try {
     const compiled = policy.compile(root, { model: "subagent-test/stub:off", tools: [] });
     const a = await manager.spawn({ name: "always", task: "Remember fig.", ...compiled, executable: process.execPath, executableArgs: [cli] });

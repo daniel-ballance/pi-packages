@@ -3,6 +3,7 @@ import { sep } from "node:path";
 import { keyText, type Theme, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { cardLines, cardsFromDetails, inline, paint, plain, STATES } from "./card.js";
+import { limitLabel } from "./child-limit.js";
 import { reportedCost } from "./usage.js";
 
 type Data = Record<string, unknown>;
@@ -43,8 +44,9 @@ function catalogLines(data: Data, theme: Theme): string[] {
   const models = array(data.models);
   const tools = array(data.tools);
   const enabled = data.spawnEnabled === true;
+  const childLimit = limitLabel(data.maxChildren);
   const lines = [theme.fg(enabled ? "success" : "warning", enabled ? "✓ ready to spawn" : "○ spawning disabled") +
-    theme.fg("muted", ` · ${models.length} model options · ${tools.length} tools${count(data.maxChildren) !== undefined ? ` · max ${data.maxChildren} children` : ""}`)];
+    theme.fg("muted", ` · ${models.length} model options · ${tools.length} tools${childLimit ? ` · ${childLimit}` : ""}`)];
   if (data.error) lines.push(theme.fg("error", inline(data.error)));
   for (const model of models.slice(0, 5)) lines.push(theme.fg("accent", `  ${inline(object(model)?.id)}`));
   if (models.length > 5) lines.push(theme.fg("dim", `  … ${models.length - 5} more model options`));

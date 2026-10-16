@@ -5,13 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { parseChildLimit, type ChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager, type Notice } from "../extensions/subagents/src/manager.js";
 import { cardsFromDetails, listingLine } from "../extensions/subagents/src/card.js";
 import { JsonlDecoder, RpcChild } from "../extensions/subagents/src/rpc.js";
 import { managerWorkflowHost, type AgentJob } from "../extensions/subagents/src/workflow-host.js";
 import type { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
-async function setup(limit = 4) {
+async function setup(limit: ChildLimit = parseChildLimit(4)) {
   const dir = await mkdtemp(join(tmpdir(), "subagent-test-"));
   const notices: Notice[] = [];
   const costs: number[] = [];
@@ -746,7 +747,7 @@ test("failed runs stay addressable; crashes and bad protocol are reported", asyn
 });
 
 test("concurrency, reserved flags, env persistence, and cancelled waits", async () => {
-  const s = await setup(1);
+  const s = await setup(parseChildLimit(1));
   try {
     const a = await s.manager.spawn({ name: "slow", task: "slow", cwd: s.dir, executable: process.execPath, executableArgs: [fixture], env: { TEST_SECRET: "never-persist-me" } });
     await assert.rejects(s.spawn("over limit"), /limit/);
@@ -774,7 +775,7 @@ function workflowPolicy(): SubagentPolicy {
 }
 
 test("workflow group reservation blocks a manual spawn between sequential members", async () => {
-  const s = await setup(2);
+  const s = await setup(parseChildLimit(2));
   const originalSpawn = s.manager.spawn.bind(s.manager);
   let firstStarted!: () => void, continueGroup!: () => void;
   const first = new Promise<void>(resolve => { firstStarted = resolve; });
@@ -804,7 +805,7 @@ test("workflow group reservation blocks a manual spawn between sequential member
 });
 
 test("cancelled workflow group releases unused reservation and closes partial setup", async () => {
-  const s = await setup(2);
+  const s = await setup(parseChildLimit(2));
   const originalSpawn = s.manager.spawn.bind(s.manager);
   let firstStarted!: () => void, continueGroup!: () => void;
   const first = new Promise<void>(resolve => { firstStarted = resolve; });

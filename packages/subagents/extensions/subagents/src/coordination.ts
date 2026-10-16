@@ -1,12 +1,13 @@
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import type { Capacity } from "./child-limit.js";
 
 export interface Coordination { owns?: string[]; outputs?: string[] }
 interface Worker {
   id: string; name: string; cwd: string; status: string; pid?: number;
   hold?: unknown; uncertainSubmission?: unknown; coordination?: Coordination; uiRequests?: unknown[];
 }
-export interface Capacity { limit: number; live: number; reserved: number; available: number }
+export type { Capacity };
 
 /** Canonicalize existing ancestors too, so missing output files behind symlinks compare correctly. */
 function canonical(path: string): string {

@@ -5,6 +5,7 @@ import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
 import { isProxiedTool } from "./nesting.js";
 import { ActivityFeed, type LiveActivity } from "./activity.js";
+import { allows, capacityOf, OMITTED_CHILD_LIMIT, reportedLimit, type ChildLimit } from "./child-limit.js";
 import type { Composition } from "./policy.js";
 import type { ChildPolicy } from "./child-policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
@@ -120,7 +121,7 @@ export class SubagentManager {
   private fence(id: string) { this.fenced.set(id, (this.fenced.get(id) ?? 0) + 1); }
   private unfence(id: string) { const n = (this.fenced.get(id) ?? 1) - 1; if (n) this.fenced.set(id, n); else this.fenced.delete(id); }
   readonly peers: PeerBroker;
-  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, readonly maxChildren = 4, private authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], readonly peerMessageLimit = 0) {
+  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, private readonly limit: ChildLimit = OMITTED_CHILD_LIMIT, private authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], readonly peerMessageLimit = 0) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     enforcePrivatePath(directory, 0o700, true);
     this.registry = join(directory, "registry.json");
@@ -304,15 +305,26 @@ export class SubagentManager {
   overview(includeRejected = false) {
     return { totals: summarizeAgents(this.list()), agents: this.list(includeRejected) };
   }
+  private get occupied(): number {
+    return this.children.size + this.reservedSlots;
+  }
+  /** Why this count can never be admitted. Undefined when a later free slot could fit it. */
+  private permanentRefusal(count: number): string | undefined {
+    if (allows(this.limit, count)) return undefined;
+    return allows(this.limit, 1)
+      ? `Live-child limit (${reportedLimit(this.limit)}) cannot fit ${count} children.`
+      : "Spawning is disabled by policy.";
+  }
   /** Available live-process slots, including in-flight workflow reservations. */
   capacity() {
-    return { limit: this.maxChildren, live: this.children.size, reserved: this.reservedSlots,
-      available: Math.max(0, this.maxChildren - this.children.size - this.reservedSlots) };
+    return capacityOf(this.limit, this.children.size, this.reservedSlots);
   }
   reserveSlots(count: number): SlotReservation | undefined {
     if (!Number.isInteger(count) || count < 1) throw new Error("Slot reservation count must be a positive integer");
     if (this.shuttingDown) throw new Error("Manager is shutting down");
-    if (this.children.size + this.reservedSlots + count > this.maxChildren) return undefined;
+    const blocked = this.permanentRefusal(count);
+    if (blocked) throw new Error(blocked);
+    if (!allows(this.limit, this.occupied + count)) return undefined;
     const reservation = { id: Symbol("subagent-slot-reservation") };
     this.reservations.set(reservation, count);
     this.reservedSlots += count;
@@ -333,15 +345,15 @@ export class SubagentManager {
   }
   private preflight(config: AgentRecord["config"], depth: number, overrides?: Record<string, string>, reservation?: SlotReservation, capacityReserved = false) {
     if (this.shuttingDown) throw new Error("Manager is shutting down");
+    if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
+    const checked = this.authorize ? this.authorize(config, depth) : config;
     if (!capacityReserved) {
       if (reservation) {
         if (!this.reservations.get(reservation)) throw new Error("Invalid or exhausted live-child slot reservation");
-      } else if (this.children.size + this.reservedSlots >= this.maxChildren) {
-        throw new Error(`Live-child limit (${this.maxChildren}) reached; close an idle child first.`);
+      } else if (!allows(this.limit, this.occupied + 1)) {
+        throw new Error(this.permanentRefusal(1) ?? `Live-child limit (${reportedLimit(this.limit)}) reached; close an idle child first.`);
       }
     }
-    if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
-    const checked = this.authorize ? this.authorize(config, depth) : config;
     if (!isAbsolute(checked.cwd) || !statSync(checked.cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");
     if ((checked.cliArgs ?? []).some(arg => RESERVED.has(arg.split("=")[0]))) throw new Error("cliArgs cannot override manager-owned RPC mode/session flags, print/export modes, or contain --");
     return checked;

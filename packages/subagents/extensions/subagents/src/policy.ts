@@ -2,6 +2,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { SpawnOptions } from "./manager.js";
+import { allows, parseChildLimit, reportedLimit, type ChildLimit } from "./child-limit.js";
 import { BUILTINS, parseChildSettings, parseMcpPolicy, type Builtin, type ChildSettings, type McpPolicy } from "./child-policy.js";
 import { parseLoopPolicy, type LoopPolicy } from "./loop.js";
 import { isProxiedTool } from "./nesting.js";
@@ -20,7 +21,7 @@ export interface PolicyConfig {
   /** Subsets of `extensions`/`tools` merged into every composition without a parent selection. */
   alwaysExtensions: string[]; alwaysTools: string[];
   systemPrompt: boolean; appendSystemPrompt: boolean; contextFiles: boolean;
-  maxChildren: number; workingDirectories: string[];
+  maxChildren: ChildLimit; workingDirectories: string[];
   peerMessageLimit: number;
   providerExtensions?: Record<string, string>;
   childSettings?: ChildSettings;
@@ -30,6 +31,8 @@ export interface PolicyConfig {
   /** How deep the Child tree may grow; absent means 1, Children that cannot delegate. */
   maxDepth?: number;
 }
+/** On-disk policy. maxChildren stays a wire number so the built-in file still stringifies as 6. */
+export type PolicyFile = Omit<PolicyConfig, "maxChildren"> & { maxChildren: number };
 export interface LocalModel {
   provider: string; id: string; input: readonly string[]; contextWindow: number; maxTokens: number;
   cost: unknown; thinkingLevels: readonly string[]; api?: string; type?: string;
@@ -52,7 +55,7 @@ const MENU: { id: string; description: string }[] = [
   { id: "anthropic/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer." },
   { id: "google/gemini-3.1-pro-preview:high", description: "Another family for review panels." },
 ];
-export const DEFAULT_POLICY: PolicyConfig = {
+export const DEFAULT_POLICY: PolicyFile = {
   version: 1,
   models: MENU,
   tools: ["read", "bash", "edit", "write", "grep", "find", "ls", "todo",
@@ -65,7 +68,7 @@ export const DEFAULT_POLICY: PolicyConfig = {
   loops: { enabled: true, minIntervalMs: 60_000, maxIterations: 50, maxDurationMs: 8 * 60 * 60_000 },
 };
 /** The claude-subscription provider ships as an extension, so Children get it only by selecting that file. */
-export function builtInPolicy(claudeSubscription?: string): PolicyConfig {
+export function builtInPolicy(claudeSubscription?: string): PolicyFile {
   if (!claudeSubscription) return DEFAULT_POLICY;
   return {
     ...DEFAULT_POLICY,
@@ -106,8 +109,7 @@ export function parsePolicy(value: unknown): PolicyConfig {
     if (v[flag] !== undefined && typeof v[flag] !== "boolean") throw new Error(`${flag} must be boolean`);
     flags[flag] = v[flag] === true;
   }
-  const maxChildren = v.maxChildren ?? 4;
-  if (typeof maxChildren !== "number" || !Number.isInteger(maxChildren) || maxChildren < 1 || maxChildren > 64) throw new Error("maxChildren must be an integer from 1 to 64");
+  const maxChildren = parseChildLimit(v.maxChildren);
   const peerMessageLimit = v.peerMessageLimit === undefined ? 0 : v.peerMessageLimit;
   if (typeof peerMessageLimit !== "number" || !Number.isInteger(peerMessageLimit) || peerMessageLimit < 0 || peerMessageLimit > 1000) throw new Error("peerMessageLimit must be an integer from 0 to 1000");
   const extensions = strings(v.extensions ?? [], "extensions");
@@ -143,7 +145,7 @@ export interface PolicyEnvironment {
   models: () => LocalModel[]; tools: () => string[];
   toolSources?: () => Record<string, string>;
   /** The policy used when no subagents.json exists; DEFAULT_POLICY if omitted. */
-  builtIn?: PolicyConfig;
+  builtIn?: PolicyFile;
   /** Providers an extension registered in this session. Children start with --no-extensions, so they lack them. */
   extensionProviders?: () => readonly string[];
 }
@@ -154,6 +156,10 @@ export class SubagentPolicy {
   readonly base: string;
   diagnostics: string[] = [];
   private ignoredProject?: string;
+  /** Off when the file did not parse. The error field, not this value, says whether that was deliberate. */
+  get childLimit(): ChildLimit {
+    return this.config?.maxChildren ?? { kind: "off" };
+  }
   constructor(readonly environment: PolicyEnvironment) {
     const project = resolve(environment.cwd, ".pi/subagents.json");
     const global = resolve(environment.agentDir, "subagents.json");
@@ -170,7 +176,7 @@ export class SubagentPolicy {
     this.diagnostics = this.ignoredProject ? [this.ignoredProject] : [];
     if (!this.config) {
       this.diagnostics.push(`${this.source}: ${this.error}`);
-      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: 0, peerMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
+      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: reportedLimit(this.childLimit), peerMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
     }
     const config = this.config;
     const available = this.environment.models();
@@ -246,10 +252,10 @@ export class SubagentPolicy {
       } catch (error) { this.diagnostics.push(`workingDirectories: ${value}: ${error}`); return []; }
     });
     return {
-      source: this.source, spawnEnabled: !!models.length && !!workingDirectories.length && !alwaysUnavailable,
+      source: this.source, spawnEnabled: allows(this.childLimit, 1) && !!models.length && !!workingDirectories.length && !alwaysUnavailable,
       models, tools, ...resources, alwaysExtensions, alwaysTools, workingDirectories,
       systemPrompt: config.systemPrompt, appendSystemPrompt: config.appendSystemPrompt,
-      contextFiles: config.contextFiles, maxChildren: config.maxChildren, peerMessageLimit: config.peerMessageLimit,
+      contextFiles: config.contextFiles, maxChildren: reportedLimit(this.childLimit), peerMessageLimit: config.peerMessageLimit,
       omittedEntries: this.diagnostics.length,
       providerExtensions: config.providerExtensions, childSettings: config.childSettings,
       mcp: config.mcp,

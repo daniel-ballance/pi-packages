@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import { SubagentPolicy, type Composition } from "../extensions/subagents/src/policy.js";
 const fixture = fileURLToPath(new URL("./fixtures/builtin-probe-provider.mjs", import.meta.url));
@@ -34,7 +35,7 @@ function setup(options: { project?: boolean; trusted?: boolean; credentials?: bo
   const policy = new SubagentPolicy(environment);
   const executable = previous.PEER_TEST_EXECUTABLE ?? process.execPath;
   const authorize = (selection: Composition) => ({ ...policy.compile(root, selection), executable, executableArgs: previous.PEER_TEST_EXECUTABLE ? [] : [cli] });
-  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, 4, config => authorize(config.selection!));
+  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, parseChildLimit(4), config => authorize(config.selection!));
   const selection = { model: "builtin-probe/stub:off", tools: ["codemode", "tool_search", "metered"],
     extensions: [fixture, "builtin:codemode", "builtin:tool-search", "builtin:mcp"], mcpServers: ["docs"] };
   const events = (id: string) => readFileSync(manager.get(id).logFile, "utf8").trim().split("\n").map(line => JSON.parse(line));

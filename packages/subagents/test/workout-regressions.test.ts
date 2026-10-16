@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { isCancellationError, SubagentManager } from "../extensions/subagents/src/manager.js";
 import { NoticeScheduler } from "../extensions/subagents/src/notifications.js";
 import { summarizeAgents } from "../extensions/subagents/src/usage.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-async function setup(maxChildren = 4) {
+async function setup(maxChildren = parseChildLimit(4)) {
   const dir = await mkdtemp(join(tmpdir(), "subagent-workout-"));
   const manager = new SubagentManager(join(dir, "manager"), undefined, undefined, maxChildren);
   const options = { name: "workout", cwd: dir, executable: process.execPath, executableArgs: [fixture] };
@@ -189,7 +190,7 @@ test("aggregate reports missing/invalid cost instead of pretending unknown means
 });
 
 test("cap/CLI/cwd/policy rejections create no records; actual launch failures stay diagnostic", async () => {
-  const s = await setup(1);
+  const s = await setup(parseChildLimit(1));
   try {
     const a = await s.manager.spawn({ ...s.options, task: "slow-codex" });
     await assert.rejects(s.manager.spawn({ ...s.options, task: "cap" }), /Live-child limit/);
@@ -198,7 +199,7 @@ test("cap/CLI/cwd/policy rejections create no records; actual launch failures st
     await assert.rejects(s.manager.spawn({ ...s.options, task: "invalid", cliArgs: ["--session=other"] }), /manager-owned/);
     await assert.rejects(s.manager.spawn({ ...s.options, task: "invalid", cwd: join(s.dir, "absent") }));
     assert.equal(s.manager.list(true).length, 1);
-    const policy = new SubagentManager(join(s.dir, "denied"), undefined, undefined, 1, () => { throw new Error("Policy denied"); });
+    const policy = new SubagentManager(join(s.dir, "denied"), undefined, undefined, parseChildLimit(1), () => { throw new Error("Policy denied"); });
     await assert.rejects(policy.spawn({ ...s.options, task: "invalid" }), /Policy denied/);
     assert.deepEqual(policy.list(true), []);
     await policy.shutdown();

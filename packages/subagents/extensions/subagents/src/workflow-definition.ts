@@ -1,5 +1,6 @@
 import { Type, type Static } from "typebox";
 import { Check, Errors } from "typebox/value";
+import { allows } from "./child-limit.js";
 import type { SubagentPolicy } from "./policy.js";
 
 const text = Type.String({ minLength: 1, maxLength: 20000 });
@@ -82,7 +83,6 @@ export function workUnits(def: WorkflowDefinition): string[][] {
 }
 export function authorizeWorkflow(def: WorkflowDefinition, policy: SubagentPolicy) {
   policy.directory(def.cwd);
-  if (def.limits.concurrency > (policy.config?.maxChildren ?? 0)) throw new Error("Workflow concurrency exceeds policy maxChildren");
   const validate = (v: Validator) => {
     if (v.kind === "agent") policy.compile(def.cwd, v.worker);
     if (v.kind === "command") policy.commandDirectory(def.cwd);
@@ -91,5 +91,6 @@ export function authorizeWorkflow(def: WorkflowDefinition, policy: SubagentPolic
     if (s.kind !== "check") policy.compile(def.cwd, s.worker);
     if (s.kind !== "task") validate(s.validator);
   }
+  if (!allows(policy.childLimit, def.limits.concurrency)) throw new Error("Workflow concurrency exceeds policy maxChildren");
   if ((def.peers ?? []).some(l => l.limit > (policy.config?.peerMessageLimit ?? 0))) throw new Error("Workflow peer limit exceeds current policy");
 }
