@@ -18,7 +18,7 @@ import { demoSource } from "./fixtures/inspector-demo.js";
 const plain = (lines: string[]) => lines.map(stripVTControlCharacters).join("\n");
 const keyMap: Record<string, string> = { "tui.select.up": "up", "tui.select.down": "down", "tui.select.confirm": "enter", "tui.select.cancel": "escape", "tui.select.pageUp": "pageUp", "tui.select.pageDown": "pageDown" };
 const keys = { matches: (data: string, action: string) => matchesKey(data, keyMap[action] as "up"), getKeys: (action: string) => [keyMap[action]] } as Pick<KeybindingsManager, "matches" | "getKeys">;
-const theme = { fg: (_tone: string, text: string) => `\x1b[38;5;242m${text}\x1b[39m` } as Theme;
+const theme = { fg: (_tone: string, text: string) => `\x1b[38;5;242m${text}\x1b[39m`, bold: (text: string) => text } as Theme;
 function panel(source = demoSource(), height = 24) {
   let closed = 0;
   const component = new InspectorPanel(source, theme, keys, () => height, () => {}, () => closed++);
@@ -104,7 +104,7 @@ test("selection survives new live entries and labels changing", () => {
   p.render(); p.press("\x1b[B"); p.press("\x1b[B"); // standalone
   source.agents()[0].name = "Renamed caching task";
   source.workflows()[0].status = "succeeded"; // preceding item goes into history
-  assert.match(p.render(), /› ● renamed caching task/);
+  assert.match(p.render(), /› ▎ ● renamed caching task/);
   assert.match(p.press("\r"), /renamed caching task/);
 });
 
@@ -352,7 +352,7 @@ test("all views fit narrow and wide terminals, resize and sanitize untrusted esc
 test("empty/missing records, theme changes and remapped keys remain usable", () => {
   const source: InspectorSource = { agents: () => [], workflows: () => [], activity: () => ({ tools: [], text: "" }) };
   assert.match(panel(source).render(), /no current background work/);
-  assert.match(inspectorPage(source, { kind: "agent", id: "gone" }).title, /unavailable/);
+  assert.equal(inspectorPage(source, { kind: "agent", id: "gone" }).title, "worker unavailable");
   let shade = 240, closed = 0;
   const p = new InspectorPanel(source, { fg: (_tone: string, text: string) => `\x1b[38;5;${shade}m${text}\x1b[39m` } as Theme,
     { ...keys, matches: (data, action) => action === "tui.select.cancel" && data === "q", getKeys: () => ["q"] }, () => 12, () => {}, () => closed++);
@@ -425,8 +425,8 @@ test("a nested Child's row names the Child that delegated it", () => {
   const [coordinator] = source.agents().filter(agent => !agent.workflow);
   const nested = { ...structuredClone(coordinator!), id: "nested", name: "Nested Worker", parentId: coordinator!.id, depth: 2 };
   const agents = [...source.agents(), nested];
-  const page = inspectorPage({ ...source, agents: () => agents }, { kind: "overview", history: true });
-  const row = [...page.rows, ...inspectorPage({ ...source, agents: () => agents }, { kind: "overview" }).rows].find(r => r.id === "agent:nested")!;
-  assert.match(row.text, new RegExp(`^\\S+ ↳ nested worker · .* · from ${coordinator!.name.toLowerCase()} · `));
+  const page = inspectorPage({ ...source, agents: () => agents }, { kind: "overview", history: true }, Date.now(), 100);
+  const row = [...page.rows, ...inspectorPage({ ...source, agents: () => agents }, { kind: "overview" }, Date.now(), 100).rows].find(r => r.id === "agent:nested")!;
+  assert.match(row.text, new RegExp(`^  ▎ ● nested worker \\[opus-5-5 xhigh\\] .* · from ${coordinator!.name.toLowerCase()}$`));
   assert.doesNotMatch(row.text, /parent review needed/, "a nested report is its coordinator's to read");
 });

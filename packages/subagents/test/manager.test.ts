@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { SubagentManager, type Notice } from "../extensions/subagents/src/manager.js";
-import { formatAgentListing } from "../extensions/subagents/src/usage.js";
+import { cardsFromDetails, listingLine } from "../extensions/subagents/src/card.js";
 import { JsonlDecoder, RpcChild } from "../extensions/subagents/src/rpc.js";
 import { managerWorkflowHost, type AgentJob } from "../extensions/subagents/src/workflow-host.js";
 import type { SubagentPolicy } from "../extensions/subagents/src/policy.js";
@@ -143,8 +143,8 @@ test("listing keeps footer cache-hit and auto-compaction across usage refresh", 
     const usage = s.manager.get(a.id).usage as { cacheHitRate?: number; autoCompaction?: boolean };
     assert.equal(usage.autoCompaction, true);
     assert.equal(usage.cacheHitRate, (300 / 420) * 100);
-    assert.equal(formatAgentListing(s.manager.list().find(agent => agent.id === a.id)!),
-      `${a.id} · footer-stats · idle · test/fake:medium · 1 turn · ↑1.2k ↓340 R12k W800 CH71.4% 12.4%/272k (auto)`);
+    const [card] = cardsFromDetails(s.manager.list().filter(agent => agent.id === a.id), "summary");
+    assert.match(listingLine(card).text, new RegExp(`^\\* footer-stats \\(${a.id}\\) · unread · test/fake:medium · completed · \\d+s · 1 turn · ↑1\\.2k ↓340 R12k W800 CH71\\.4% 12\\.4%/272k \\(auto\\)$`));
   } finally { await s.cleanup(); }
 });
 

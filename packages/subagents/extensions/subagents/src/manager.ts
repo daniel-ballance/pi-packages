@@ -358,6 +358,7 @@ export class SubagentManager {
     const nextCursor = updates.at(-1)?.cursor ?? cursor;
     const result = {
       id, name: record.name, status: record.status, activity: record.activity,
+      model: record.model, thinking: record.thinking,
       updates, nextCursor, hasMore: record.cursor > nextCursor,
       gap: record.updates.length > 0 && cursor < record.updates[0].cursor - 1,
       uiRequests: record.uiRequests, sessionFile: record.sessionFile,
