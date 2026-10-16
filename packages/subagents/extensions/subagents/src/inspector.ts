@@ -1,5 +1,6 @@
 import type { ExtensionContext, KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { paint } from "./card.js";
 import { cleanText, inspectorPage, oneLine, type InspectorSource, type Location, type Page, type Row } from "./inspector-data.js";
 
 export interface InspectorActions {
@@ -125,6 +126,7 @@ export class InspectorPanel {
     if ((this.frame.selected !== undefined || this.frame.top === 0) && !choices.some(row => row.id === this.frame.selected)) this.frame.selected = choices[0]?.id;
     const layout = new Map<string, Layout>();
     this.lines = this.page.rows.flatMap(row => {
+      if (row.spans) return [{ key: `${row.id}:0`, row, text: row.text }];
       let cached = this.layout.get(row.id);
       const prefix = oneLine(row.prefix ?? "");
       if (!cached || cached.text !== row.text || cached.width !== width || cached.prefix !== prefix) {
@@ -157,10 +159,12 @@ export class InspectorPanel {
       return truncateToWidth(fg("border", "│ ") + clipped + " ".repeat(Math.max(0, inner - visibleWidth(clipped))) + fg("border", " │"), this.width);
     };
     const edge = (left: string, right: string) => truncateToWidth(fg("border", left + "─".repeat(Math.max(0, width - 2)) + right), this.width);
-    const output = [edge("╭", "╮"), box(fg("accent", oneLine(this.page.title))), box(fg(this.pendingKill ? "error" : "dim", this.pendingKill && !this.killConfirmReady ? "resize to read the complete warning before confirming" : oneLine(this.page.subtitle)))];
+    const title = typeof this.page.title === "string" ? fg("accent", oneLine(this.page.title)) : paint(this.theme, this.page.title);
+    const output = [edge("╭", "╮"), box(title), box(fg(this.pendingKill ? "error" : "dim", this.pendingKill && !this.killConfirmReady ? "resize to read the complete warning before confirming" : oneLine(this.page.subtitle)))];
     for (const line of this.lines.slice(this.frame.top, this.frame.top + this.bodyHeight)) {
       const selected = !!line.row.target && line.row.id === this.frame.selected;
-      output.push(box((selected ? fg("accent", "› ") : "  ") + fg("dim", oneLine(line.row.prefix ?? "")) + fg(selected ? "accent" : line.row.tone ?? "text", line.text)));
+      const body = line.row.spans ? paint(this.theme, line.row.spans, selected ? "accent" : undefined) : fg(selected ? "accent" : line.row.tone ?? "text", line.text);
+      output.push(box((selected ? fg("accent", "› ") : "  ") + fg("dim", oneLine(line.row.prefix ?? "")) + body));
     }
     while (output.length < this.bodyHeight + 3) output.push(box(""));
     const cancel = this.keys.getKeys("tui.select.cancel")[0] ?? "unbound";
