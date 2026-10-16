@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Defensive theme-set hook: restore canonical Pi config links if another writer
+# replaced them. Current Omarchy only rewrites settings with its explicit
+# omarchy-theme-set-pi --activate path, not ordinary theme changes.
+# Direct --activate calls do not run this hook: run global/link.sh afterward.
+# Installed as a symlink under ~/.config/omarchy/hooks/theme-set.d/.
+set -euo pipefail
+
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# Omarchy's theme generator always targets this directory, even when Pi uses a
+# custom agent directory. Do not accidentally repair a different installation.
+PI_CODING_AGENT_DIR="$HOME/.pi/agent" "$here/../link.sh" >/dev/null

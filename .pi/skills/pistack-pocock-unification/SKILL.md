@@ -29,7 +29,7 @@ Drop a pocock skill when pistack has a skill or playbook for the same request, e
 
 ## Where the verdicts live
 
-- **User settings.** `~/.pi/agent/settings.json` is a symlink to `~/Work/omarchy-customizations/pi/settings.json`. Its `pi-pocock-skills` entry lists each kept skill as `skills/<name>/SKILL.md`, relative to the package root. The entry's `source` path resolves from `~/.pi/agent`, not from the symlink target. Commit only `pi/settings.json` in that repository, because it often holds other uncommitted edits.
+- **User settings.** `global/settings.json` in this repository, linked as `~/.pi/agent/settings.json`. Its `pi-pocock-skills` entry lists each kept skill as `skills/<name>/SKILL.md`, relative to the package root. The entry's `source` path resolves from `~/.pi/agent`, not from the symlink target. The main checkout's copy often holds live edits from Pi, so start from it when you copy the file into the worktree.
 - **The collection.** The root `package.json` `pi.skills` list excludes every pocock skill whose name is also a pistack skill, as `!packages/pi-pocock-skills/skills/<name>`. Write the exclusion without a leading `./`, which matches nothing.
 
 Keep `pi-pocock-skills` out of this repository's `.pi/settings.json`. A project entry for the same package replaces the user entry inside this repository.

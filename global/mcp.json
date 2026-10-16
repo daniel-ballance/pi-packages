@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "mac-computer-use": {
+      "type": "stdio",
+      "command": "ssh",
+      "args": [
+        "-T",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=10",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3",
+        "danballance@100.120.109.108",
+        "env CUA_REPL_NODE_REPL_PATH=/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl CUA_REPL_ENABLED_SURFACES=computer NODE_REPL_NODE_PATH=/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node NODE_REPL_NODE_MODULE_DIRS=/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules NODE_REPL_TRUSTED_CODE_PATHS=/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules CODEX_CLI_PATH=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex /Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node /Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/@oai/cua-repl/bin/cua-repl.mjs"
+      ],
+      "timeout": 120,
+      "exposure": "codemode",
+      "toolExposure": {
+        "js_add_node_module_dir": "hidden"
+      },
+      "description": "Control permitted apps on Dan's MacBook Air over SSH using OpenAI Computer Use. Native app approvals are required; access is not limited to Calculator."
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@0.0.82", "--headless", "--executable-path", "/usr/bin/chromium"],
+      "protocol": "2025-11-25",
+      "toolLoading": "deferred"
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "protocol": "2025-11-25"
+    }
+  }
+}
