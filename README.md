@@ -198,6 +198,22 @@ The package scripts are the source of truth for package-specific test details.
 The root gate runs deterministic local tests: it does not use a globally installed
 Pi executable, credentials, or live web-search results.
 
+### Pre-push hook
+
+GitHub Actions minutes are limited, so the root check also runs locally before
+every push. Enable the committed hook once per clone:
+
+```sh
+git config core.hooksPath scripts/git-hooks
+```
+
+The setting is shared by every worktree of the clone, and each worktree runs its
+own copy of [`scripts/git-hooks/pre-push`](scripts/git-hooks/pre-push). The hook
+refuses a push of anything other than a clean `HEAD`, because the check runs on
+the working tree, then runs `./scripts/check.sh` and blocks the push if it fails.
+Install dependencies first (`./scripts/ci-install.sh`). Bypass it with
+`git push --no-verify`.
+
 ## CI support and limits
 
 CI runs the complete root check with both npm and pnpm 12.6.0 on Node.js
