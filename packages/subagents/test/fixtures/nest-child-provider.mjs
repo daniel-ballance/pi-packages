@@ -28,7 +28,7 @@ export default function (pi) {
         const [name, args] = steps[results.length];
         content = [{ type: "toolCall", id: `coord-${results.length}`, name, arguments: args }]; stopReason = "toolUse";
       } else if (role === "COORDINATE") {
-        const reply = (data(2).updates ?? []).findLast(update => update.kind === "assistant")?.text;
+        const reply = (data(1).agents ?? []).find(agent => agent.id === worker)?.reports?.findLast(report => report.kind === "assistant")?.text;
         content = [{ type: "text", text: JSON.stringify({ worker, reply, foreign: results[3]?.isError ? text(results[3]) : "ALLOWED", deep: results[4]?.isError ? text(results[4]) : "ALLOWED", spawnError: results[0]?.isError ? text(results[0]) : undefined }) }];
       } else content = [{ type: "text", text: "Ready." }];
       const output = { role: "assistant", api: model.api, provider: model.provider, model: model.id, content, stopReason, timestamp: Date.now(),

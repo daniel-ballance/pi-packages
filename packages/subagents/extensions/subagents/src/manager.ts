@@ -59,7 +59,7 @@ export interface SlotReservation { readonly id: symbol }
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
 const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
-const REPORT_KINDS = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
+export const REPORT_KINDS: ReadonlySet<string> = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
 function enforcePrivatePath(path: string, mode: number, directory: boolean) {
   const stat = lstatSync(path);
   if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile())) throw new Error(`Unsafe subagent state path: ${path}`);
@@ -229,8 +229,12 @@ export class SubagentManager {
    */
   private routedToParent(notice: Notice) {
     if (notice.kind === "human_intervention" || notice.kind === "input_requested") return false;
-    const parentId = this.records.get(notice.id)?.parentId;
-    return !!parentId && this.children.has(parentId);
+    return this.reportsDrainedBy(notice.id) !== undefined;
+  }
+  /** Who drains id's routine reports: its parent while that Child is live, else the root (undefined). */
+  reportsDrainedBy(id: string): string | undefined {
+    const parentId = this.records.get(id)?.parentId;
+    return parentId && this.children.has(parentId) ? parentId : undefined;
   }
   /** Notices for the root Parent now. */
   pendingNotices(): Notice[] { return [...this.notices.values()].filter(notice => !this.routedToParent(notice)); }

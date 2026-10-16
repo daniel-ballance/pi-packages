@@ -32,7 +32,7 @@ export default function (pi) {
         content = [{ type: "toolCall", id: `parent-${results.length}`, name, arguments: args }]; stopReason = "toolUse";
       } else {
         const proof = results.some(r => r.isError) ? { error: text(results.find(r => r.isError)) } : {
-          coordinator, report: (data(2).updates ?? []).findLast(update => update.kind === "assistant")?.text,
+          coordinator, report: (data(1).agents ?? []).find(agent => agent.id === coordinator)?.reports?.findLast(report => report.kind === "assistant")?.text,
           before: data(3).agents.map(({ id, name, parentId, depth, status }) => ({ id, name, parentId, depth, status })),
           after: data(5).agents.map(({ id, name, status }) => ({ id, name, status })),
         };

@@ -54,12 +54,17 @@ export const TOOL_SPECS = {
       parameters: Type.Object({ id, since: Type.Optional(Type.Integer({ minimum: 0 })) }),
   },
   subagent_wait: {
-      description: "Wait until any/all selected children settle, fail or stop. Returns early for input or human holds. Optional collect returns bounded new report pages and acknowledges only successfully returned output; deferred IDs need another read/collection. Cancellation stops waiting, NOT children. Defaults to all tracked children, all mode, 30 seconds; maximum 60 seconds. Output capped at 30KB/1000 lines.",
+      description: "Block until your children have news, then return each selected child's status and its new reports. " +
+        "Returns when the selected children settle (mode all, the default, or any), a child needs input, a human hold appears, or a message for you is queued (it reaches you after this result, or when you end your turn); wake names which, and agents lists each child. " +
+        "Cancelling the wait stops waiting, NOT the children. No time limit unless timeoutSeconds is set. " +
+        "With nothing else to do this turn, end your turn instead: finished children's reports wake you. " +
+        "Defaults to all your tracked children. Returned reports are acknowledged. unread counts reports not included (collect:false, or they did not fit): subagent_read that child. " +
+        "To keep waiting past a child that needs input or is held, pass the other ids. Output capped at 30KB/1000 lines.",
       parameters: Type.Object({
         ids: Type.Optional(Type.Array(id)),
         mode: Type.Optional(Type.Unsafe<"any" | "all">({ type: "string", enum: ["any", "all"] })),
-        timeoutSeconds: Type.Optional(Type.Integer({ minimum: 0, maximum: 60 })),
-        collect: Type.Optional(Type.Boolean({ description: "Collect and acknowledge bounded new reports along with wait status." })),
+        timeoutSeconds: Type.Optional(Type.Integer({ minimum: 0, description: "Return after this many seconds even without news. Omit to wait until there is news." })),
+        collect: Type.Optional(Type.Boolean({ description: "Default true: return and acknowledge new reports. false: status only, nothing acknowledged." })),
       }),
   },
   subagent_close: {
