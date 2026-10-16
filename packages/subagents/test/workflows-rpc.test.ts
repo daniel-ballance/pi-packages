@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
 import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 import { Workflows } from "../extensions/subagents/src/workflows.js";
@@ -20,7 +21,7 @@ test("real workflow host leaves a halted worker process alive for human supervis
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "workflow-test/stub:off" }], tools: ["read"], extensions: [provider] }));
   const policy = new SubagentPolicy({ cwd: root, agentDir, projectTrusted: true, guardPath: guard,
     models: () => [{ provider: "workflow-test", id: "stub", input: ["text"], contextWindow: 32000, maxTokens: 1000, cost: {}, thinkingLevels: ["off"] }], tools: () => ["read"] });
-  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, 4, (config: AgentRecord["config"]) => ({ ...policy.compile(config.cwd, config.selection!),
+  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, parseChildLimit(4), (config: AgentRecord["config"]) => ({ ...policy.compile(config.cwd, config.selection!),
     executable: process.env.PEER_TEST_EXECUTABLE ?? process.execPath, executableArgs: process.env.PEER_TEST_EXECUTABLE ? [] : [cli] }));
   let intervention: Promise<unknown> | undefined, childId = "", pid: number | undefined;
   const job: AgentJob = { step: "halted", workflow: "workflow-halt", cwd: root, worker: { model: "workflow-test/stub:off", tools: ["read"], extensions: [provider] },
@@ -48,7 +49,7 @@ test("real Pi workflows: DAG, repair, improvement, reviewer, scoped peer group a
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "workflow-test/stub:off" }], tools: ["write", "read", "bash", "peer_send"], extensions: [provider], peerMessageLimit: 2 }));
   const policy = new SubagentPolicy({ cwd: root, agentDir, projectTrusted: true, guardPath: guard,
     models: () => [{ provider: "workflow-test", id: "stub", input: ["text"], contextWindow: 32000, maxTokens: 1000, cost: {}, thinkingLevels: ["off"] }], tools: () => ["write", "read", "bash"] });
-  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, 4, (config: AgentRecord["config"]) => ({ ...policy.compile(config.cwd, config.selection!),
+  const manager = new SubagentManager(join(root, "manager"), undefined, undefined, parseChildLimit(4), (config: AgentRecord["config"]) => ({ ...policy.compile(config.cwd, config.selection!),
     executable: process.env.PEER_TEST_EXECUTABLE ?? process.execPath, executableArgs: process.env.PEER_TEST_EXECUTABLE ? [] : [cli] }), 2);
   const engine = new Workflows(join(manager.directory, "workflows"), managerWorkflowHost(manager, () => policy));
   const worker = { model: "workflow-test/stub:off", tools: ["write"], extensions: [provider] };

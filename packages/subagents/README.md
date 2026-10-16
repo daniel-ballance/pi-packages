@@ -102,7 +102,7 @@ The built-in policy applies only when no `subagents.json` exists. It is a menu a
 - `contextFiles` permits normal `AGENTS.md`/`CLAUDE.md` context discovery. It does not replace system-prompt handling. Children can opt out even when permitted. The resolved choice is saved for resume validation.
 - `workingDirectories` permits directory roots and their descendants. Relative roots resolve against the parent launch cwd, **not** the configuration directory. Real paths are checked so symlink traversal cannot escape an allowed root. The default is `["."]`.
 - `peerMessageLimit` is an integer from 0 to 1000, default **0 (disabled)** in both built-in and user policies. A positive value caps each directional peer-message allowance. Also allowlist `peer_send` and explicitly select it in each participating child's `tools`. No existing policy gains communication implicitly. This limits message-triggered turns, not tokens or provider costs.
-- `maxChildren` is the live-process cap, including idle children, from 1 to 64 (default 4). The previous `PI_SUBAGENTS_MAX_CHILDREN` override is no longer used.
+- `maxChildren` is the live-process cap for the whole tree, idle children included. `0` turns spawning off. `-1` removes the cap. A positive safe integer is the cap, up to `Number.MAX_SAFE_INTEGER`. An omitted field means 4. The built-in policy, used only when no file exists, stays 6. Any other value makes the policy invalid. The old `PI_SUBAGENTS_MAX_CHILDREN` override remains unused.
 - In user files, omitted tools/resources mean empty allowlists and omitted permission booleans mean `false`. They do not inherit built-in permissions. Unknown configuration fields are errors.
 
 No user configuration files are generated or overwritten automatically.

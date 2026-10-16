@@ -95,6 +95,9 @@ test("catalog summarizes capabilities without dumping policy guidance", () => {
   const catalog = { spawnEnabled: true, models: [{ id: "test/model:high", description: "Long model guidance hidden until expansion" }], tools: ["read", "bash"], maxChildren: 4, source: "/private/policy.json", omittedEntries: 2 };
   const text = render("catalog", catalog);
   assert.match(text, /ready to spawn · 1 model options · 2 tools · max 4 children/);
+  assert.match(render("catalog", { ...catalog, maxChildren: "unlimited" }), /no child limit/);
+  assert.match(render("catalog", { ...catalog, spawnEnabled: false, maxChildren: 0 }), /max 0 children/);
+  assert.doesNotMatch(render("catalog", { ...catalog, maxChildren: -1 }), /max -1 children|no child limit/);
   assert.match(text, /test\/model:high/);
   assert.match(text, /tools: read, bash/);
   assert.match(text, /2 unavailable option/);

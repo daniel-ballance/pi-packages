@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
 import { treeOrder } from "../extensions/subagents/src/inspector-data.js";
 import { fitDelegatedReply } from "../extensions/subagents/src/nesting.js";
@@ -13,7 +14,7 @@ const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url)
 // A coordinator A, its Child B, and B's Child C: the tree the root Manager keeps.
 async function tree(authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], notice: (notice: unknown) => void = () => {}) {
   const dir = await mkdtemp(join(tmpdir(), "subagent-nesting-"));
-  const manager = new SubagentManager(dir, notice, () => {}, 4, authorize);
+  const manager = new SubagentManager(dir, notice, () => {}, parseChildLimit(4), authorize);
   const spawn = async (name: string, parentId?: string) => (await manager.spawn({ name, task: name, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId })).id;
   const a = await spawn("A"), b = await spawn("B", a), c = await spawn("C", b);
   // Stop only B, as if its process had exited: C stays live under a stopped intermediate.

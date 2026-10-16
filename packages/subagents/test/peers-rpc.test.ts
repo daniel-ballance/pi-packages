@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
 import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 const cli = process.env.PEER_TEST_CLI ?? fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
@@ -22,7 +23,7 @@ test("real child peer tools: idle prompt, busy steering, limits, graph, resume a
   const authorize = (config: AgentRecord["config"]) => ({ ...policy.compile(config.cwd, config.selection!),
     executable: process.env.PEER_TEST_EXECUTABLE ?? process.execPath, executableArgs: process.env.PEER_TEST_EXECUTABLE ? [] : [cli] });
   const directory = join(root, "manager");
-  let manager = new SubagentManager(directory, undefined, undefined, 4, authorize, 3);
+  let manager = new SubagentManager(directory, undefined, undefined, parseChildLimit(4), authorize, 3);
   const spawn = (name: string, tools = ["peer_send", "peer_test_hold", "peer_test_ask"]) => manager.spawn({ name, task: "Ready", ...policy.compile(root, { model: "peer-test/stub:off", tools, extensions: [provider] }) });
   const settle = async () => {
     for (let i = 0; i < 100; i++) {
@@ -87,7 +88,7 @@ test("real child peer tools: idle prompt, busy steering, limits, graph, resume a
     const usedBefore = structuredClone(manager.peers.state.links);
     const cursorBefore = manager.peers.state.cursor;
     await manager.shutdown();
-    manager = new SubagentManager(directory, undefined, undefined, 4, authorize, 3);
+    manager = new SubagentManager(directory, undefined, undefined, parseChildLimit(4), authorize, 3);
     assert.deepEqual(manager.peers.state.links, usedBefore);
     assert.ok(manager.list().every(r => r.status === "stopped"));
     await manager.resume(b.id); await manager.resume(c.id);

@@ -13,7 +13,8 @@ test("built-in policy is a multi-provider menu with delegation, nesting and loop
   assert.equal(policy.maxDepth, 2);
   assert.equal(policy.loops?.enabled, true);
   assert.equal(policy.peerMessageLimit, 0);
-  assert.equal(policy.maxChildren, 6);
+  assert.deepEqual(policy.maxChildren, { kind: "capped", max: 6 });
+  assert.match(JSON.stringify(DEFAULT_POLICY), /"maxChildren":6/);
   assert.deepEqual(policy.workingDirectories, ["."]);
   for (const resources of [policy.extensions, policy.skills, policy.promptTemplates, policy.themes]) assert.deepEqual(resources, []);
   const withClaude = parsePolicy(builtInPolicy("/x/claude-subscription/index.ts"));
