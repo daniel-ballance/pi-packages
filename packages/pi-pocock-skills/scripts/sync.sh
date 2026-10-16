@@ -288,7 +288,7 @@ print_upstream_pin() {
   fi
 }
 
-TMP="$(mktemp -d "$OUT_PARENT/.agent-skills-sync.XXXXXX")"
+TMP="$(mktemp -d "$OUT_PARENT/.pi-pocock-skills-sync.XXXXXX")"
 BACKUP_DIR=""
 INSTALL_MOVED=0
 
@@ -369,7 +369,7 @@ fi
 
 # Swap only after generation, drift checks, allowlist checks, and output checks
 # all pass. Restore the old tree if the final move itself fails.
-BACKUP_DIR="$(mktemp -d "$OUT_PARENT/.agent-skills-backup.XXXXXX")"
+BACKUP_DIR="$(mktemp -d "$OUT_PARENT/.pi-pocock-skills-backup.XXXXXX")"
 if [ -e "$OUT" ] || [ -L "$OUT" ]; then
   mv -- "$OUT" "$BACKUP_DIR/skills"
 fi

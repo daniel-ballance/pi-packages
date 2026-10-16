@@ -1,5 +1,5 @@
-[submodule "agent-skills/vendor/matt-pocock"]
-	path = packages/agent-skills/vendor/matt-pocock
+[submodule "packages/pi-pocock-skills/vendor/matt-pocock"]
+	path = packages/pi-pocock-skills/vendor/matt-pocock
 	url = https://github.com/mattpocock/skills.git
 [submodule "packages/pistack/vendor/pstack"]
 	path = packages/pistack/vendor/pstack

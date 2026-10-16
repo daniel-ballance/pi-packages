@@ -1,8 +1,8 @@
 # `lint-skill`: research and design choices
 
-Status: research history. V1 is implemented in `packages/agent-skills`.
+Status: research history. V1 is implemented in `packages/pi-pocock-skills`.
 See [the v1 design](lint-skill-design.md) for the consolidated contract and the
-[command guide](../packages/agent-skills/docs/lint-skill.md) for usage. Earlier
+[command guide](../packages/pi-pocock-skills/docs/lint-skill.md) for usage. Earlier
 alternatives below remain as research history, not current implementation choices.
 
 ## Confirmed scope after discussion
@@ -25,7 +25,7 @@ alternatives below remain as research history, not current implementation choice
   within the skill or an explicitly supplied resource root; report outside-root
   dependencies as unverified. Record URLs without fetching. Treat other skills
   as separately lintable dependencies with their own roots and hop budgets.
-- Ship a standalone `lint-skill` command with `agent-skills`, usable on explicitly
+- Ship a standalone `lint-skill` command with `pi-pocock-skills`, usable on explicitly
   supplied skill directories outside this repository. No Pi runtime dependency.
 
 ## File-hop and orphan policy
@@ -285,7 +285,7 @@ Use an explicit dependency, not another package's transitive `yaml` install.
 A real Markdown parser is also needed for the agreed reference-graph checks;
 its specific library remains to be chosen.
 
-**Decision: ship the standalone command with `agent-skills`.** The current manifest
+**Decision: ship the standalone command with `pi-pocock-skills`.** The current manifest
 excludes `scripts/` from published files. Add `bin`, the implementation files, and
 runtime dependencies to the package contract. Document direct Node invocation as
 well as npm binary usage: installing a Pi package does not necessarily expose its
@@ -321,10 +321,10 @@ encoding, sibling dependencies, and outside-root links explicitly.
 ## Repository integration constraints
 
 Sources: [root README](../README.md),
-[package instructions](../packages/agent-skills/AGENTS.md),
-[sync script](../packages/agent-skills/scripts/sync.sh),
-[sync tests](../packages/agent-skills/scripts/test-sync.sh),
-[manifest](../packages/agent-skills/package.json), and
+[package instructions](../packages/pi-pocock-skills/AGENTS.md),
+[sync script](../packages/pi-pocock-skills/scripts/sync.sh),
+[sync tests](../packages/pi-pocock-skills/scripts/test-sync.sh),
+[manifest](../packages/pi-pocock-skills/package.json), and
 [CI installer](../scripts/ci-install.sh).
 
 - `skills/` is generated. Fixes belong in translation rules or upstream, never

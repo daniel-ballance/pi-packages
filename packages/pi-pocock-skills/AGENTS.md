@@ -1,4 +1,4 @@
-# agent-skills
+# pi-pocock-skills
 
 Matt Pocock's engineering skills, translated for the Pi harness, plus the
 hand-maintained `lint-skill` authoring CLI. The skill collection is a **generated
@@ -127,7 +127,7 @@ today. That is expected, not a bug.
 ## Updating upstream
 
 ```bash
-cd agent-skills
+cd packages/pi-pocock-skills
 ./scripts/sync.sh --check          # what would change, before touching anything
 git -C vendor/matt-pocock fetch --depth 50 origin main
 git -C vendor/matt-pocock checkout <new-sha>
@@ -150,7 +150,7 @@ present.
 Add to `~/.pi/agent/settings.json`:
 
 ```json
-"packages": ["../../Code/pi-packages/packages/agent-skills"]
+"packages": ["../../Code/pi-packages/packages/pi-pocock-skills"]
 ```
 
 Then `/reload`. Skills arrive as `/skill:<name>`.

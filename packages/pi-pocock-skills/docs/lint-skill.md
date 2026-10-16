@@ -1,7 +1,7 @@
 # lint-skill
 
 Read-only linting for Agent Skills used in Pi. Requires Node.js 22.19 or newer.
-The command ships with `agent-skills`; it does not require a running Pi session.
+The command ships with `pi-pocock-skills`; it does not require a running Pi session.
 
 ## Run
 

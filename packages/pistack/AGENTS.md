@@ -31,7 +31,7 @@ npm run check                         # drift check, then lint-skill on every sk
 npm test                              # generator tests on fixtures
 ```
 
-`npm run check` runs the collection's `lint-skill` from `../agent-skills`, so
+`npm run check` runs the collection's `lint-skill` from `../pi-pocock-skills`, so
 install the workspace first.
 
 ## Rule kinds
