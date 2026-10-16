@@ -212,18 +212,44 @@ test("workflow concurrency 64 authorizes under no limit, fails under a cap of 3,
   }
 });
 
-test("an unlimited manager admits a reservation the old cap would refuse, and its capacity stays finite in JSON", async () => {
+test("an unlimited manager admits a reservation the old cap would refuse, and its capacity stays finite in JSON", { timeout: 20000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "child-limit-open-"));
+  const manager = new SubagentManager(dir, undefined, undefined, parseChildLimit(-1));
   try {
-    const manager = new SubagentManager(dir, undefined, undefined, parseChildLimit(-1));
-    assert.ok(manager.reserveSlots(100));
+    const booked = manager.reserveSlots(100);
+    assert.ok(booked);
     const round = JSON.parse(JSON.stringify(manager.capacity()));
     assert.equal(round.limit, "unlimited");
     assert.equal(Number.isFinite(round.available), true);
     assert.equal(round.available > 0, true);
     assert.equal(round.reserved, 100);
     assert.equal(JSON.stringify(round).includes("-1"), false);
+    manager.releaseSlots(booked);
+    const released = manager.capacity();
+    assert.equal(released.reserved, 0);
+    assert.equal(Number.isFinite(released.available), true);
+    assert.equal(released.available > 0, true);
+    manager.releaseSlots(booked);
+    const repeated = manager.capacity();
+    assert.equal(repeated.reserved, 0);
+    assert.equal(Number.isFinite(repeated.available), true);
+    assert.equal(repeated.available > 0, true);
+    const held = manager.reserveSlots(2);
+    assert.ok(held);
+    const child = await manager.spawn({
+      name: "reserved", task: "remember", cwd: dir, executable: process.execPath, executableArgs: [fixture],
+    }, held);
+    const claimed = manager.capacity();
+    assert.equal(claimed.live, 1);
+    assert.equal(claimed.reserved, 1);
+    manager.releaseSlots(held);
+    assert.equal(manager.capacity().reserved, 0);
+    assert.equal(manager.capacity().live, 1);
+    await manager.close(child.id);
+    assert.equal(manager.capacity().live, 0);
+    assert.equal(manager.capacity().reserved, 0);
   } finally {
+    await manager.shutdown();
     await rm(dir, { recursive: true, force: true });
   }
 });

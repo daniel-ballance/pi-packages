@@ -7,7 +7,6 @@ interface Worker {
   id: string; name: string; cwd: string; status: string; pid?: number;
   hold?: unknown; uncertainSubmission?: unknown; coordination?: Coordination; uiRequests?: unknown[];
 }
-export type { Capacity };
 
 /** Canonicalize existing ancestors too, so missing output files behind symlinks compare correctly. */
 function canonical(path: string): string {

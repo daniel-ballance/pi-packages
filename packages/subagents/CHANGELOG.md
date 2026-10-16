@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- `maxChildren` accepts `0` to disable spawning, `-1` for no live cap, and any positive safe integer. The old 1 to 64 ceiling is gone. An omitted field still means 4, and the built-in policy still means 6.
+- `maxChildren` accepts `0` to disable spawning, `-1` for no live cap, and any positive safe integer. The old 1 to 64 ceiling is gone. An omitted field still means 4, and the built-in policy still means 6. `null` is invalid. `null` no longer means an omitted `maxChildren` field.
 - Show each child the same way on every surface, from one state table. Tool results draw a two-line card: glyph, name and state word with the short `model · effort` on the right, then activity, elapsed time, turns and cost. `/subagents` draws one row per child or run: glyph, name, `[model effort]` badge and activity, under short group rules, with the legend as its subtitle. `/subagents list` lines start with the glyph and name and strip terminal controls from child text. `subagent_read` now also returns the child's `model` and `thinking`.
 - Launch each Child with `--models <its model>`, so the user's `enabledModels` setting no longer prints "No models match pattern" warnings for providers the Child does not load.
 - Make the built-in policy (used only when no `subagents.json` exists) work for multi-model workflows with no setup: a menu across the common providers, dropping unreachable entries without diagnostics; `todo` and the delegation tools; `maxDepth` 2; bounded wake loops; six live Children; and the collection's `claude-subscription` provider when it is installed beside this package. A user's own file still keeps every optional field off until it is set.

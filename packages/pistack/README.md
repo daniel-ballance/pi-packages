@@ -160,7 +160,7 @@ applies.
 | | Terminal | T3 Code |
 |---|---|---|
 | Restrict a Child's tools | Yes, per Child | No: a read-only brief says "do not edit" |
-| Open Children at once | `maxChildren` (4 by default) | No fixed limit |
+| Open Children at once | `maxChildren`. A user file defaults to 4 and the built-in policy is 6. `0` turns spawning off and `-1` means no cap. | No fixed limit |
 | Nesting | Needs `maxDepth` above 1 | Always on |
 | Timers | Needs `loops` | `schedule_task` |
 | Watch a pull request | `gh` polling, or a watcher Child | `watch_pull_request`, from the top-level thread only; a delegated task polls with `gh` |

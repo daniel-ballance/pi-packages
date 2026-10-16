@@ -5,7 +5,7 @@ import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
 import { isProxiedTool } from "./nesting.js";
 import { ActivityFeed, type LiveActivity } from "./activity.js";
-import { allows, capacityOf, OMITTED_CHILD_LIMIT, reportedLimit, type ChildLimit } from "./child-limit.js";
+import { allows, capacityOf, OMITTED_CHILD_LIMIT, permanentRefusal, reportedLimit, type ChildLimit } from "./child-limit.js";
 import type { Composition } from "./policy.js";
 import type { ChildPolicy } from "./child-policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
@@ -305,15 +305,6 @@ export class SubagentManager {
   overview(includeRejected = false) {
     return { totals: summarizeAgents(this.list()), agents: this.list(includeRejected) };
   }
-  private get occupied(): number {
-    return this.children.size + this.reservedSlots;
-  }
-  private permanentRefusal(count: number): string | undefined {
-    if (allows(this.limit, count)) return undefined;
-    return allows(this.limit, 1)
-      ? `Live-child limit (${reportedLimit(this.limit)}) cannot fit ${count} children.`
-      : "Spawning is disabled by policy.";
-  }
   /** Available live-process slots, including in-flight workflow reservations. */
   capacity() {
     return capacityOf(this.limit, this.children.size, this.reservedSlots);
@@ -321,9 +312,9 @@ export class SubagentManager {
   reserveSlots(count: number): SlotReservation | undefined {
     if (!Number.isInteger(count) || count < 1) throw new Error("Slot reservation count must be a positive integer");
     if (this.shuttingDown) throw new Error("Manager is shutting down");
-    const blocked = this.permanentRefusal(count);
+    const blocked = permanentRefusal(this.limit, count);
     if (blocked) throw new Error(blocked);
-    if (!allows(this.limit, this.occupied + count)) return undefined;
+    if (!allows(this.limit, this.children.size + this.reservedSlots + count)) return undefined;
     const reservation = { id: Symbol("subagent-slot-reservation") };
     this.reservations.set(reservation, count);
     this.reservedSlots += count;
@@ -349,8 +340,8 @@ export class SubagentManager {
     if (!capacityReserved) {
       if (reservation) {
         if (!this.reservations.get(reservation)) throw new Error("Invalid or exhausted live-child slot reservation");
-      } else if (!allows(this.limit, this.occupied + 1)) {
-        throw new Error(this.permanentRefusal(1) ?? `Live-child limit (${reportedLimit(this.limit)}) reached; close an idle child first.`);
+      } else if (!allows(this.limit, this.children.size + this.reservedSlots + 1)) {
+        throw new Error(permanentRefusal(this.limit, 1) ?? `Live-child limit (${reportedLimit(this.limit)}) reached; close an idle child first.`);
       }
     }
     if (!isAbsolute(checked.cwd) || !statSync(checked.cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");

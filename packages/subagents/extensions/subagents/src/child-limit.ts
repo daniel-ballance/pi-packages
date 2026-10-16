@@ -31,10 +31,10 @@ export function parseChildLimit(value: unknown): ChildLimit {
   return capped(value);
 }
 
-export function allows(limit: ChildLimit, live: number): boolean {
+export function allows(limit: ChildLimit, total: number): boolean {
   switch (limit.kind) {
     case "off": return false;
-    case "capped": return live <= limit.max;
+    case "capped": return total <= limit.max;
     case "unlimited": return true;
     default: {
       const _exhaustive: never = limit;
@@ -43,14 +43,30 @@ export function allows(limit: ChildLimit, live: number): boolean {
   }
 }
 
-export function capacityOf(limit: ChildLimit, live: number, reserved: number): Capacity {
+export function permanentRefusal(limit: ChildLimit, count: number): string | undefined {
   switch (limit.kind) {
     case "off":
-      return { limit: 0, live, reserved, available: 0 };
+      return "Spawning is disabled by policy.";
     case "capped":
-      return { limit: limit.max, live, reserved, available: Math.max(0, limit.max - live - reserved) };
+      return count <= limit.max ? undefined : `Live-child limit (${reportedLimit(limit)}) cannot fit ${count} children.`;
     case "unlimited":
-      return { limit: "unlimited", live, reserved, available: Number.MAX_SAFE_INTEGER };
+      return undefined;
+    default: {
+      const _exhaustive: never = limit;
+      throw new Error(`Unhandled child limit: ${JSON.stringify(_exhaustive)}`);
+    }
+  }
+}
+
+export function capacityOf(limit: ChildLimit, live: number, reserved: number): Capacity {
+  const reported = reportedLimit(limit);
+  switch (limit.kind) {
+    case "off":
+      return { limit: reported, live, reserved, available: 0 };
+    case "capped":
+      return { limit: reported, live, reserved, available: Math.max(0, limit.max - live - reserved) };
+    case "unlimited":
+      return { limit: reported, live, reserved, available: Number.MAX_SAFE_INTEGER };
     default: {
       const _exhaustive: never = limit;
       throw new Error(`Unhandled child limit: ${JSON.stringify(_exhaustive)}`);
