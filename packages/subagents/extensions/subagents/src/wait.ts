@@ -25,9 +25,14 @@ export function messageLatch(): (pending: boolean) => boolean {
 const RELAY_REPLY_HEADROOM_SECONDS = 30;
 export const RELAY_SEGMENT_SECONDS = MANAGE_TIMEOUT_MS / 1000 - RELAY_REPLY_HEADROOM_SECONDS;
 
-const wakeOf = (reply: unknown) => {
-  const wake = typeof reply === "object" && reply !== null ? (reply as { wake?: unknown }).wake : undefined;
-  return isWakeReason(wake) ? wake : undefined;
+/** What the root sends back for a delegated wait: its report, or fitDelegatedReply's preview of one too large for the pipe. */
+type RelayedWait = { readonly kind: "report"; readonly wake: WakeReason } | { readonly kind: "truncated" };
+
+const parseRelayed = (reply: unknown): RelayedWait => {
+  const fields = typeof reply === "object" && reply !== null ? reply as { wake?: unknown; truncated?: unknown } : {};
+  if (fields.truncated === true) return { kind: "truncated" };
+  if (isWakeReason(fields.wake)) return { kind: "report", wake: fields.wake };
+  throw new Error(`Unexpected reply to a relayed wait: ${String(JSON.stringify(reply)).slice(0, 200)}`);
 };
 
 export async function relayWait(manage: (args: WaitArgs, signal?: AbortSignal) => Promise<unknown>,
@@ -50,12 +55,14 @@ export async function relayWait(manage: (args: WaitArgs, signal?: AbortSignal) =
       clearInterval(poll);
       signal?.removeEventListener("abort", follow);
     }
-    const rootStillWaiting = wakeOf(reply) === "timeout";
-    if (queued || !rootStillWaiting) break;
+    if (queued) break;
+    const relayed = parseRelayed(reply);
+    if (relayed.kind === "truncated" || relayed.wake !== "timeout") break;
   }
   signal?.throwIfAborted();
   const final = await manage({ ...args, timeoutSeconds: 0 }, signal);
-  return queued && wakeOf(final) === "timeout" ? { ...final as object, wake: "message" } : final;
+  const relayed = parseRelayed(final);
+  return queued && relayed.kind === "report" && relayed.wake === "timeout" ? { ...final as object, wake: "message" } : final;
 }
 
 export interface Report { readonly kind: string; readonly text: string }
