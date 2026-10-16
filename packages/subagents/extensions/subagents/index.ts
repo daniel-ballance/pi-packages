@@ -11,7 +11,8 @@ import { builtInPolicy, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
 import { collectReports } from "./src/collection.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
-import { formatAgentListing, summarizeAgents } from "./src/usage.js";
+import { cardsFromDetails, listingLine } from "./src/card.js";
+import { summarizeAgents } from "./src/usage.js";
 import { subagentRenderers } from "./src/render.js";
 import { Workflows } from "./src/workflows.js";
 import { managerWorkflowHost } from "./src/workflow-host.js";
@@ -564,8 +565,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       }
       else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | halt <id> | kill <id>]. Ask the parent to manage agents.");
       await manager.refreshUsageSnapshots();
-      const records = manager.list();
-      ctx.ui.notify(records.map(formatAgentListing).join("\n") || "No subagents tracked.", "info");
+      ctx.ui.notify(cardsFromDetails(manager.list(), "summary").map(card => listingLine(card).text).join("\n") || "No subagents tracked.", "info");
     },
   });
   // session_start handlers added during dispatch run on the next event only.

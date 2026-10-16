@@ -89,21 +89,6 @@ export function noteAutoCompaction(usage: unknown, enabled: unknown): unknown {
   return { ...(recordOf(usage) ?? {}), autoCompaction: enabled };
 }
 
-/** One assistant response (including tool-calling responses) counts as a turn. */
-export function formatAgentListing(record: { id: string; name: string; status: string; model?: string; thinking?: string; usage?: unknown }) {
-  const usage = record.usage;
-  const turns = usage && typeof usage === "object" && "assistantMessages" in usage ? usage.assistantMessages : undefined;
-  const turnLabel = typeof turns === "number" && Number.isInteger(turns) && turns >= 0
-    ? `${turns} ${turns === 1 ? "turn" : "turns"}` : "turns unknown";
-  const model = record.model ? `${record.model}:${record.thinking ?? "unknown"}` : "no model";
-  const stats = formatFooterStats(usage);
-  const cost = reportedCost(usage);
-  const tail = stats
-    ? cost === undefined ? `${stats} · cost unknown` : stats
-    : cost === undefined ? "cost unknown" : `$${cost.toFixed(3)}`;
-  return `${record.id} · ${record.name.toLowerCase()} · ${record.status} · ${model} · ${turnLabel} · ${tail}`;
-}
-
 /** Each entry contains its child's latest cumulative session snapshot. */
 export function summarizeAgents(records: readonly { status: string; pid?: number; usage?: unknown; unread?: number }[]) {
   return {

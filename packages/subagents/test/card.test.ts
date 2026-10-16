@@ -137,10 +137,10 @@ test("cards hold sanitized text and selection keeps state colours", () => {
   assert.equal(paint(theme, railLine(reviewed, 80).spans, "accent"), "<success>▎<accent> <success>✓<accent> **<accent>child**<accent> <accent>[grok-4.7]");
 });
 
-test("the README status legend is the STATES table", t => {
+test("the README status legend is the STATES table", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
   const section = readme.split(/^### Status legend$/m)[1];
-  if (section === undefined) return t.skip("README has no ### Status legend heading yet");
+  assert.ok(section !== undefined, "README has a ### Status legend heading");
   const rows = [...section.split(/^#/m)[0].matchAll(/^\| `(.+?)` \| (\S+) \|/gm)].map(match => `${match[1]} ${match[2]}`);
   assert.deepEqual(rows, Object.values(STATES).map(style => `${style.glyph} ${style.word}`));
 });

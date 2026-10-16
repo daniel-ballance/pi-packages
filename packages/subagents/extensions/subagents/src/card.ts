@@ -80,6 +80,7 @@ export interface AgentCard {
   /** What the child is doing, or what its last run came to. "" when nothing beyond the state word is known. */
   readonly activity: string;
   readonly elapsed?: Elapsed;
+  /** Assistant responses, tool-calling ones included. */
   readonly turns?: number;
   /** Absent, never zero, when unknown. */
   readonly cost?: number;
