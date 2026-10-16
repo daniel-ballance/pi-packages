@@ -12,7 +12,6 @@ const provider = fileURLToPath(new URL("./fixtures/notification-provider.mjs", i
 const executable = process.env.PEER_TEST_EXECUTABLE ?? process.execPath;
 const executableArgs = process.env.PEER_TEST_EXECUTABLE ? [] : [cli];
 
-// A real Pi parent waits, without a timeout, on a worker that takes three seconds.
 for (const mode of ["message", "abort"] as const) {
   test(`real parent RPC: ${mode === "message" ? "a steer typed during an unbounded wait ends it" : "aborting an unbounded wait leaves the worker running"}`, { timeout: 20000, skip: process.platform === "win32" }, async () => {
     const root = mkdtempSync(join(tmpdir(), "wait-parent-rpc-"));

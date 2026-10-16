@@ -82,7 +82,6 @@ function groupLines(data: Data, width: number, theme: Theme): string[] {
   return [...lines, ...childCards(array(data.agents), width, theme)];
 }
 
-/** Settled has no banner because the cards already say it. */
 const WAKE_LINES: { readonly [W in WakeReason]: readonly [Color, string] | undefined } = {
   hold: ["warning", "human hold · discuss before releasing work"],
   input: ["warning", "input required · waiting stopped"],

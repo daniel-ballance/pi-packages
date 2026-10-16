@@ -11,7 +11,6 @@ import { asHost } from "./host-env.js";
 
 type Manage = (callerId: string, request: ManagementRequest, signal: AbortSignal) => Promise<unknown>;
 
-/** The extension as Pi loads it, with a coordinator and its working child restored from the registry. */
 async function withWaitTool(run: (tools: {
   wait: (args: Record<string, unknown>) => Promise<{ details: unknown }>;
   delegatedWait: (args: Record<string, unknown>) => Promise<unknown>;
@@ -53,7 +52,6 @@ async function withWaitTool(run: (tools: {
       } as unknown as ExtensionAPI);
       for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     });
-    // A restored record has no process; mark it working so only a deadline or a message can end a wait.
     manager!.get("worker").status = "working";
     await run({
       wait: args => tools.get("subagent_wait").execute("c", args, undefined, undefined, ctx),

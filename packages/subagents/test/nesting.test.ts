@@ -153,7 +153,6 @@ test("a cancelled delegated call is cancelled in the root too", async () => {
   } finally { sockets.close(); }
 });
 
-/** A Child relaying waits to a fake root that records each wait it is asked for. */
 async function relay(answer: (args: WaitArgs, signal: AbortSignal) => Promise<unknown>) {
   const sockets = await socketPair(), calls: WaitArgs[] = [];
   servePeer(sockets.remote, undefined, (request, signal) => { calls.push(request.args as WaitArgs); return answer(request.args as WaitArgs, signal); });

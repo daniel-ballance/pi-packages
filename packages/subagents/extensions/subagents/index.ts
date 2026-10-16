@@ -460,12 +460,10 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     ...TOOL_SPECS.subagent_wait,
     async execute(_call, args, signal, _update, ctx) {
       const manager = get(ctx), callerId = delegation.getStore()?.callerId;
-      // A delegated call runs on the root's ctx, whose queue holds the operator's messages, not the caller's.
-      // The caller's relay (relayWait in child-guard.ts) watches its own queue.
       const messageQueued = callerId ? undefined : () => rootLatch(ctx.hasPendingMessages());
       const end = await manager.wait(args.ids ?? [], args.mode ?? "all",
         args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, messageQueued);
-      signal?.throwIfAborted(); // Never acknowledge for a caller that is gone.
+      signal?.throwIfAborted();
       const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId);
       const output = result(report, ctx);
       if (output.details === report) for (const receipt of receipts) manager.acknowledgeRead(receipt, true, !callerId);

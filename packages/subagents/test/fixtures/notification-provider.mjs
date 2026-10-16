@@ -38,7 +38,6 @@ export default function (pi) {
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
       };
       const stream = createAssistantMessageEventStream();
-      // The waiting modes need a worker still running when the parent interrupts its wait.
       const delay = process.env.PI_SUBAGENT === "1" && ["message", "abort"].includes(process.env.NOTICE_TEST_MODE) ? 3000 : 0;
       setTimeout(() => {
         stream.push({ type: "start", partial: output });

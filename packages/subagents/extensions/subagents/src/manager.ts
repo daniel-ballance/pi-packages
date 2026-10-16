@@ -231,7 +231,6 @@ export class SubagentManager {
     if (notice.kind === "human_intervention" || notice.kind === "input_requested") return false;
     return this.reportsDrainedBy(notice.id) !== undefined;
   }
-  /** Who drains id's routine reports: its parent while that Child is live, else the root (undefined). */
   reportsDrainedBy(id: string): string | undefined {
     const parentId = this.records.get(id)?.parentId;
     return parentId && this.children.has(parentId) ? parentId : undefined;
@@ -976,8 +975,6 @@ export class SubagentManager {
       this.responding.delete(key);
     }
   }
-  /** Blocks until the selection has news, and throws on abort. Empty ids select every tracked child, and no timeoutMs
-   *  means no deadline. messageQueued is a predicate rather than a context, so the caller decides whose queue counts. */
   async wait(ids: readonly string[], mode: "any" | "all", timeoutMs?: number, signal?: AbortSignal, messageQueued?: () => boolean): Promise<WaitEnd> {
     const selected = ids.length ? [...ids] : this.list().map(record => record.id);
     for (const id of selected) this.get(id);
