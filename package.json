@@ -18,7 +18,7 @@
       "./packages/todo/extensions/todo/index.ts",
       "./packages/web-search/extensions/web-search/index.ts"
     ],
-    "skills": ["./packages/agent-skills/skills", "./packages/subagents/skills", "./packages/pistack/skills", "!./packages/pistack/skills/tdd"],
+    "skills": ["./packages/pi-pocock-skills/skills", "./packages/subagents/skills", "./packages/pistack/skills", "!./packages/pistack/skills/tdd"],
     "prompts": ["./packages/*/prompts/**/*.md"],
     "themes": ["./packages/*/themes/**/*.json"]
   },

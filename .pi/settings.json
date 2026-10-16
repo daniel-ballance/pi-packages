@@ -2,7 +2,7 @@
   "packages": [
     "../packages/self-reload",
     {
-      "source": "../packages/agent-skills",
+      "source": "../packages/pi-pocock-skills",
       "skills": [
         "skills/wait-what/SKILL.md",
         "skills/research/SKILL.md",

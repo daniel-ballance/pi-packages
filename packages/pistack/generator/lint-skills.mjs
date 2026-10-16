@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Run the collection's lint-skill CLI (from agent-skills) over every generated skill.
+// Run the collection's lint-skill CLI (from pi-pocock-skills) over every generated skill.
 import { readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const skills = join(root, "skills");
-const lintSkill = join(root, "../agent-skills/scripts/lint-skill.mjs");
+const lintSkill = join(root, "../pi-pocock-skills/scripts/lint-skill.mjs");
 const directories = readdirSync(skills, { withFileTypes: true })
   .filter(entry => entry.isDirectory() && existsSync(join(skills, entry.name, "SKILL.md")))
   .map(entry => join(skills, entry.name))

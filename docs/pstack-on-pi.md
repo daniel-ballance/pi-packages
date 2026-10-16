@@ -100,7 +100,7 @@ the gap.
 | pstack needs | Pi / this repo offers | Gap |
 |---|---|---|
 | Skills with `disable-model-invocation`, invoked by slash command with arguments | Pi implements Agent Skills; `/skill:name args` appends args as a user request; `disable-model-invocation` is honoured ([docs/skills.md](#sources)); `enableSkillCommands` setting controls command discovery. | None. Command names are `/skill:<name>` rather than `/<name>`. An extension can `registerCommand("poteto-mode")` as a short alias that calls `ctx.sendUserMessage("/skill:poteto-mode …", {expandPromptTemplates:true})`. |
-| Subagent spawn with per-call model, read-only mode, background execution | `subagents` package: `subagent_spawn` takes exact `provider/model:thinking`, an explicit `tools` array (read-only = omit `edit`/`write`/`bash`), `cwd`, `appendSystemPrompt`; returns acceptance, with `subagent_wait`/`subagent_read` for results ([README "Tools"](../packages/subagents/README.md)). Inside T3 Code: `delegate_task` with `target.model`, `orchestrator_capabilities` for the live catalog, `task_status`. | Two backends with different tool names. `agent-skills` already has a backend-neutral delegation reference (`skills/references/CHILD-DELEGATION.md`) the research skill uses; pstack-derived skills should write against the same abstraction. |
+| Subagent spawn with per-call model, read-only mode, background execution | `subagents` package: `subagent_spawn` takes exact `provider/model:thinking`, an explicit `tools` array (read-only = omit `edit`/`write`/`bash`), `cwd`, `appendSystemPrompt`; returns acceptance, with `subagent_wait`/`subagent_read` for results ([README "Tools"](../packages/subagents/README.md)). Inside T3 Code: `delegate_task` with `target.model`, `orchestrator_capabilities` for the live catalog, `task_status`. | Two backends with different tool names. `pi-pocock-skills` already has a backend-neutral delegation reference (`skills/references/CHILD-DELEGATION.md`) the research skill uses; pstack-derived skills should write against the same abstraction. |
 | Named agent persona (`poteto-agent`) | No Pi equivalent. The closest is a spawn composition: `appendSystemPrompt` plus `skills: [<mode skill>]` so the child sees the mode skill, and a task preamble "read `<abs path>/SKILL.md` first". Durable-subagents and T3 also take a task prompt only. | The "must read the mode skill in full" guarantee is prompt-enforced on Cursor too. On Pi it can be *tool-enforced*: a parent-side extension can prepend the SKILL.md content to every child task it brokers. |
 | Cloud workers / isolation per worker | No cloud. Isolation is a git worktree: this repo's convention is `.pi/worktrees/` (`.pi/APPEND_SYSTEM.md`). `subagent_spawn` takes `cwd` and the default policy allows `workingDirectories: ["."]`, which includes `.pi/worktrees/*`. T3's `delegate_task` has `isolation: "worktree"`. | The `subagents` package "does not create worktrees or merge changes" (README). The parent (or a small tool) must `git worktree add` first. |
 | Depth-3 coordinator → sub-coordinator → worker trees | `subagents`: non-recursion is an invariant ("Non-recursion: invariant, not policy", README §218). Workflows (`subagent_workflow_start`, [WORKFLOWS.md](../packages/subagents/WORKFLOWS.md)) give DAG fan-out/fan-in, checks and bounded loops without nesting. T3 children can delegate (T3 `task_cancel` stops "the tasks it delegated too"). | Orchestrate's sub-coordinator layer is not expressible under plain Pi `subagents`; express tracks as workflow definitions instead, or require T3 for that playbook. |
@@ -112,30 +112,30 @@ the gap.
 | Todo list | Not a Pi built-in. `ui.setWidget` can render one; a `todo` tool with `appendEntry` persistence is ~100 lines. | Small extension tool, or accept a markdown checklist in the reply. |
 | Transcript mining (`recall`, `reflect`, `automate-me`, trail audit) | Pi sessions are JSONL under the agent dir's `sessions/` ([docs/sessions.md, session-format.md](#sources)); `ctx.sessionManager` exposes the current session path. | Rewrite path discovery; confirm per-cwd layout before shipping. Privacy rule "do not glob other projects" still applies. |
 | MCP discovery for `why` | `mcp-client` package registers MCP tools; `mcp_servers_change` event; `getAllTools()`. | Rewrite the "inspect `mcps/`" step to "list tools whose namespace is an MCP server". |
-| `create-skill` built-in | `agent-skills` ships `writing-for-agents` and the `lint-skill` CLI. | Point to those. |
+| `create-skill` built-in | `pi-pocock-skills` ships `writing-for-agents` and the `lint-skill` CLI. | Point to those. |
 | `deslop`, `control-ui`, `control-cli` (external) | No equivalent. `computer-use` (macOS only) and T3 `preview_*` tools cover some UI driving. | Leave as "verification skill is project-local" (pstack's own `create-verification-skill` already assumes this). |
 | PR watching (`watch-pr`) | T3: `watch_pull_request` native. Plain Pi: port the script to run under `tsx` (packages already depend on it) or drop bun. | The script is ~2.5k lines with tests; porting is mechanical (`import.meta.dir` → `import.meta.dirname`, bun lock → npm). Decide whether plain-Pi babysit is in scope. |
 | Orchestrate store CLI (`orch.ts`) | `subagents` workflows retain artifact/validation history and expose `subagent_workflow_inspect`; the plain-file store (`units.tsv`, `ledger.tsv`) can be workflow artifacts. | Either port `orch.ts` (bun → tsx) or re-express as workflow definitions. The plain-file idea ("every file has exactly one writer, readers aggregate at read time") is worth keeping regardless. |
 | `bun` | Node 22.19 + `tsx` is the repo standard. | Replace. |
 
-### 2.1 Overlap with `agent-skills`
+### 2.1 Overlap with `pi-pocock-skills`
 
-`agent-skills` already ships `tdd`, `code-review`, `research`, `diagnosing-bugs`,
+`pi-pocock-skills` already ships `tdd`, `code-review`, `research`, `diagnosing-bugs`,
 `writing-for-agents`, `grilling`, `domain-modeling`, `codebase-design`. pstack's
 `tdd`, `interrogate` (review), `why`/`how` (investigation), `unslop`/
 `technical-writing` (prose), and `sharpen`/`in-your-own-words` (clarify the ask)
 cover the same ground with different rules. Shipping both sets doubles the skill
 listing in every system prompt and gives the model two contradictory TDD skills.
-A port should either route pstack playbooks to the existing agent-skills where
+A port should either route pstack playbooks to the existing pi-pocock-skills where
 they fit (e.g. bug-fix step "write the failing test" → `/skill:tdd`), or replace.
 
 ## 3. Implementation options
 
 ### 3.1 How to source the prose: vendor and translate, or fork
 
-`agent-skills` proves one pattern: vendor upstream as a submodule, generate a
+`pi-pocock-skills` proves one pattern: vendor upstream as a submodule, generate a
 translated overlay with `scripts/sync.sh`, fail the check on drift
-([`packages/agent-skills/AGENTS.md`](../packages/agent-skills/AGENTS.md)). That
+([`packages/pi-pocock-skills/AGENTS.md`](../packages/pi-pocock-skills/AGENTS.md)). That
 worked because upstream's Pi incompatibilities were four mechanical substitutions.
 
 pstack is different. The Cursor coupling is semantic: every routed skill has a
@@ -146,7 +146,7 @@ MCP, and cloud environments. A sed-style transform cannot rewrite those into
 1. **Hand fork** a subset, record the upstream pin, re-diff on upstream bumps.
    Cheapest to start; drift is manual.
 2. **Vendor + patch overlay**: submodule plus per-file patches applied by a
-   script, with a drift check like agent-skills. Keeps attribution and makes
+   script, with a drift check like pi-pocock-skills. Keeps attribution and makes
    upstream bumps a `git apply` exercise. More setup.
 3. **Rewrite from scratch** using pstack as the design reference, with the
    mechanics in §1.2 and this repo's vocabulary (`CONTEXT.md`: Parent, Child,
@@ -167,7 +167,7 @@ naming review), in three layers so that layer 1 is useful on its own.
 - `skills/<mode>/SKILL.md`: the router. Same structure as poteto-mode:
   non-negotiables, principle index, autonomy, delegation defaults, reply style,
   playbook table. Delegation section written against the backend-neutral
-  contract from `agent-skills/skills/references/CHILD-DELEGATION.md`, with two
+  contract from `pi-pocock-skills/skills/references/CHILD-DELEGATION.md`, with two
   concrete recipes: `subagent_spawn` (model from the role table, `tools`
   subset for read-only, `cwd` = a worktree the parent created under
   `.pi/worktrees/`) and T3 `delegate_task` (`target.model`, `isolation:
@@ -222,7 +222,7 @@ All of these are ordinary extension APIs confirmed in `types.d.ts`
 |---|---|
 | `subagents` | The delegation backend for plain Pi. `subagent_catalog` feeds setup; `subagent_spawn` with exact model and tools does what pstack asks of `Task`; `subagent_wait` replaces `run_in_background` polling; workflows carry layer 3. No change needed for layer 1. Possible later change: a `worktree` option on spawn (today "does not create worktrees"). |
 | `durable-subagents` | Same contract, native Durable hosts. Nothing pstack-specific. |
-| `agent-skills` | `writing-for-agents` + `lint-skill` stand in for `create-skill`; `tdd`/`code-review`/`research`/`diagnosing-bugs` can be routed from playbooks instead of duplicated; `references/CHILD-DELEGATION.md` is the delegation abstraction. The sync/drift pattern is a template if §3.1 option 2 is chosen. |
+| `pi-pocock-skills` | `writing-for-agents` + `lint-skill` stand in for `create-skill`; `tdd`/`code-review`/`research`/`diagnosing-bugs` can be routed from playbooks instead of duplicated; `references/CHILD-DELEGATION.md` is the delegation abstraction. The sync/drift pattern is a template if §3.1 option 2 is chosen. |
 | `mcp-client` | Evidence sources for `why`/`recall`. |
 | `claude-subscription`, other providers | Supplies the model diversity the review panels depend on. |
 | `self-reload` | Already there for the "fix the broken skill mid-task" rule. |
@@ -261,10 +261,10 @@ All of these are ordinary extension APIs confirmed in `types.d.ts`
    `schedule_task` and `preview_*` already cover `Task`, babysit, `/loop` and
    UI verification. Layer 2's `/loop` and `ask_user` should stay inactive when
    `T3_MCP_URL` is set, the same way `subagents` does.
-8. **Overlap with agent-skills** (§2.1): decide route-or-replace per skill
+8. **Overlap with pi-pocock-skills** (§2.1): decide route-or-replace per skill
    before writing playbooks, so the playbooks name one skill per step.
 9. **Licensing and attribution.** MIT; keep the upstream LICENSE and pin in the
-   package, as agent-skills does for its vendor.
+   package, as pi-pocock-skills does for its vendor.
 
 ## 5. Suggested next step
 
@@ -296,6 +296,6 @@ earns its context cost on Pi before any extension code is written.
   workflows), `packages/subagents/extensions/subagents/src/policy.ts`
   (`DEFAULT_POLICY`, `splitModel`), `packages/subagents/WORKFLOWS.md`,
   `packages/durable-subagents/README.md` (host API),
-  `packages/agent-skills/AGENTS.md` (vendor/translate pattern),
+  `packages/pi-pocock-skills/AGENTS.md` (vendor/translate pattern),
   `CONTEXT.md` (vocabulary), `.pi/APPEND_SYSTEM.md` (worktree convention),
   `docs/t3-subagents-revamp.md` (T3 bridge behaviour).

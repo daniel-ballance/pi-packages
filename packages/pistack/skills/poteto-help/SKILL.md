@@ -100,7 +100,7 @@ Close calls:
 Not in pstack:
 
 - Cursor's slop-stripping and app-control skills have no Pi port. Use a slop-strip pass and the project's own driver (**Drive the app** in the [host capabilities](../poteto-mode/references/host-capabilities.md)).
-- Cursor's loop command maps to **Wake and loop**, and its skill-authoring built-in to `writing-for-agents` and `lint-skill` from the agent-skills package.
+- Cursor's loop command maps to **Wake and loop**, and its skill-authoring built-in to `writing-for-agents` and `lint-skill` from the pi-pocock-skills package.
 - pstack has no `/orchestrate` skill. Orchestrate is a `/skill:poteto-mode` playbook. If the slash menu shows `/orchestrate`, another package provides it.
 
 ## Playbooks and principles

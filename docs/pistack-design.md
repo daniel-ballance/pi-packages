@@ -11,7 +11,7 @@ mode, 23 playbooks, 24 principles, routed and discipline skills, agents,
 scripts, guide), **generated deterministically** from a vendored upstream so
 that maintenance is: pull the latest pstack, run the generator, run the
 checks, push. Hand-editing generated output is forbidden, exactly as for
-`packages/agent-skills`.
+`packages/pi-pocock-skills`.
 
 Read in this order: §1 principles, §2 baseline, §3 contract, §4 workstreams
 (4.0 is the generator), §5 open questions, §6 brief.
@@ -46,7 +46,7 @@ identical; only the tool that satisfies it changes.
 4. Every `ctx.ui` call guards on `hasUI`. Without UI, apply a stated default
    and say so in the tool result.
 5. Skills name capabilities and resolve tools through one lookup reference
-   (the pattern of `packages/agent-skills/skills/references/CHILD-DELEGATION.md`),
+   (the pattern of `packages/pi-pocock-skills/skills/references/CHILD-DELEGATION.md`),
    never backend tool names inline.
 6. A semantics-parity list lives in the docs (§3). When one backend gains a
    behaviour, the other gets it or the skill states the gap.
@@ -130,7 +130,7 @@ whether maintenance stays cheap.
 Package `packages/pistack`. Upstream vendored as a git submodule at
 `packages/pistack/vendor/pstack` (the `cursor/plugins` repo, sparse to
 `pstack/`, pinned by commit; MIT, LICENSE carried through). Follows the
-`agent-skills` contract (`packages/agent-skills/AGENTS.md`): `skills/`,
+`pi-pocock-skills` contract (`packages/pi-pocock-skills/AGENTS.md`): `skills/`,
 `agents/`, `scripts/`, `docs/` outputs are **generated**, the check fails on
 drift, and the only hand-maintained inputs are the generator and its rules.
 
@@ -177,7 +177,7 @@ What each upstream artifact becomes:
 | `automations/benny/` | `automations/benny/` as a dormant reference plus a note mapping Cursor automations to T3 `schedule_task` webhooks; not registered as skills | 1 |
 | `plugin.json` | `package.json` `pi` manifest; version recorded as `pistack.upstream` | generator |
 
-Package scripts, mirroring `agent-skills`:
+Package scripts, mirroring `pi-pocock-skills`:
 
 - `sync`: `git submodule update --init`, generate into `skills/` etc.
 - `check`: regenerate to a temp dir and diff against the committed tree
@@ -328,10 +328,10 @@ day one. Rules that need deciding before the first full generation:
   Values must be exact Pi identities permitted by the Allowlist (CLI) or by
   `orchestrator_capabilities` (T3). Thinking ladder derived from each model's
   `thinkingLevels`, not hard-coded tokens; no "fast" variants.
-- Overlap with `agent-skills` (`tdd`, `code-review`, `research`,
+- Overlap with `pi-pocock-skills` (`tdd`, `code-review`, `research`,
   `diagnosing-bugs`, `writing-for-agents`): a rule table `rules/routes.json`
   maps each pstack skill name to `emit`, `alias` (emit a one-paragraph skill
-  that points at the agent-skills one) or `replace`. Decide per skill before
+  that points at the pi-pocock-skills one) or `replace`. Decide per skill before
   the first generation so every playbook step names one skill.
 
 **Extension (hand-written).** `/pistack-setup` (model detection via
@@ -522,10 +522,10 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
    **Decided 2026-10-15 (user): keep `poteto-mode`.**
 10. **Decisions taken while building the generator (2026-10-15, user where
     marked).**
-    - Overlap with `agent-skills` (user): pistack is self-contained; every
+    - Overlap with `pi-pocock-skills` (user): pistack is self-contained; every
       skill, agent and script lives in `packages/pistack`, nothing is routed
-      to `agent-skills`, so `rules/routes.json` is dropped. Upstream names are
-      kept; `tdd` collides by name with `agent-skills`' `tdd` only when both
+      to `pi-pocock-skills`, so `rules/routes.json` is dropped. Upstream names are
+      kept; `tdd` collides by name with `pi-pocock-skills`' `tdd` only when both
       are enabled, and the README says so. pistack stays out of the root
       collection manifest (opt-in, like `durable-subagents`) so the collection
       never loads two `tdd` skills.
@@ -556,7 +556,7 @@ You are implementing the design above in this repository. Constraints:
 - The generator (4.0) comes before any generated content is committed.
   Never hand-edit a generated file; if the output is wrong, fix a rule and
   regenerate. The drift check must be part of `./scripts/check.sh` from the
-  first commit, as it is for `agent-skills`.
+  first commit, as it is for `pi-pocock-skills`.
 - Read first: this file; [pstack-on-pi.md](pstack-on-pi.md); `CONTEXT.md`;
   `README.md` ("Package layout", "Repository check"); for 4.3,
   `packages/subagents/README.md`, `ROADMAP.md`, `WORKFLOWS.md`,
@@ -568,7 +568,7 @@ You are implementing the design above in this repository. Constraints:
   each answer in this document's §5 with evidence.
 - Every new tool follows §1.1 rules 2, 3, 4 and 7. Every new policy field is
   off by default and documented in the subagents configuration reference.
-- Use the `tdd` and `code-review` skills from `agent-skills` for each slice;
+- Use the `tdd` and `code-review` skills from `pi-pocock-skills` for each slice;
   the root check `./scripts/check.sh` must pass with both npm and pnpm
   layouts as described in `README.md`.
 - Deliverables per workstream: code, tests (including the fake-`T3_MCP_URL`

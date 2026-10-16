@@ -1,4 +1,4 @@
-# agent-skills
+# pi-pocock-skills
 
 Matt Pocock's engineering skills, translated for Pi. Eleven skills covering
 design interviews, domain modelling, deep-module design, TDD, two-axis code
@@ -17,7 +17,7 @@ before changing anything in here.
 Add to `~/.pi/agent/settings.json`:
 
 ```json
-"packages": ["../../Code/pi-packages/packages/agent-skills"]
+"packages": ["../../Code/pi-packages/packages/pi-pocock-skills"]
 ```
 
 Then `/reload`. Skills arrive as `/skill:<name>`.

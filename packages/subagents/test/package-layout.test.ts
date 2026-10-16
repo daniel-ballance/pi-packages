@@ -12,7 +12,7 @@ const root = fileURLToPath(new URL("../../..", import.meta.url));
 const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "pistack", "self-reload", "subagents", "todo", "web-search"];
 const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
 const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
-// pistack's generated skills join the collection, except its tdd: agent-skills' tdd
+// pistack's generated skills join the collection, except its tdd: pi-pocock-skills' tdd
 // already has that name, and poteto-mode refers to the skill only by name.
 const pistackSkills = readdirSync(join(root, "packages/pistack/skills"), { withFileTypes: true })
   .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/pistack/skills", entry.name, "SKILL.md")) && entry.name !== "tdd")
@@ -145,7 +145,7 @@ test("individual packages still discover their public resources", async () => {
     assert.deepEqual(result.extensions, [`packages/${name}/extensions/${name}/index.ts`]);
     assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
   }
-  assert.deepEqual((await load(join(root, "packages/agent-skills"))).skills, engineeringSkills);
+  assert.deepEqual((await load(join(root, "packages/pi-pocock-skills"))).skills, engineeringSkills);
   // pistack is generated: every emitted SKILL.md, its own tdd included, must load
   // under its directory name when the package is installed on its own.
   const pistackDir = join(root, "packages/pistack/skills");

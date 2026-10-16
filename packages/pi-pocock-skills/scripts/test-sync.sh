@@ -39,10 +39,10 @@ make_mv_shim() {
   mkdir -p "$dir"
   cat > "$dir/mv" <<SHIM
 #!/usr/bin/env bash
-if [[ "\${MV_SHIM_MODE:-}" == install || "\${MV_SHIM_MODE:-}" == install-and-restore ]] && [[ "\${2:-}" == */.agent-skills-sync.*/skills ]]; then
+if [[ "\${MV_SHIM_MODE:-}" == install || "\${MV_SHIM_MODE:-}" == install-and-restore ]] && [[ "\${2:-}" == */.pi-pocock-skills-sync.*/skills ]]; then
   exit 91
 fi
-if [[ "\${MV_SHIM_MODE:-}" == restore || "\${MV_SHIM_MODE:-}" == install-and-restore ]] && [[ "\${2:-}" == */.agent-skills-backup.*/skills ]]; then
+if [[ "\${MV_SHIM_MODE:-}" == restore || "\${MV_SHIM_MODE:-}" == install-and-restore ]] && [[ "\${2:-}" == */.pi-pocock-skills-backup.*/skills ]]; then
   exit 92
 fi
 exec "$real_mv" "\$@"
@@ -110,7 +110,7 @@ if (cd "$case_root" && PATH="$shim:$PATH" MV_SHIM_MODE=install ./scripts/sync.sh
 fi
 after="$(sha256sum "$case_root/skills/grilling/SKILL.md")"
 [ "$before" = "$after" ] || fail 'install move failure lost the previous output'
-if find "$case_root" -maxdepth 1 -type d -name '.agent-skills-backup.*' -print -quit | grep -q .; then
+if find "$case_root" -maxdepth 1 -type d -name '.pi-pocock-skills-backup.*' -print -quit | grep -q .; then
   fail 'successful recovery left an old backup directory'
 fi
 
@@ -122,7 +122,7 @@ if (cd "$case_root" && PATH="$shim:$PATH" MV_SHIM_MODE=install-and-restore ./scr
   cat "$TMP/restore-failure.log" >&2
   fail 'restore failure unexpectedly passed'
 fi
-backup_dir="$(find "$case_root" -maxdepth 1 -type d -name '.agent-skills-backup.*' -print -quit)"
+backup_dir="$(find "$case_root" -maxdepth 1 -type d -name '.pi-pocock-skills-backup.*' -print -quit)"
 [ -n "$backup_dir" ] || fail 'failed recovery did not retain a backup directory'
 grep -Fq 'retained recovery output' "$backup_dir/skills/grilling/SKILL.md" || fail 'retained recovery copy is incomplete'
 grep -Fq 'recovery copy retained at' "$TMP/restore-failure.log" || fail 'restore failure did not report the recovery path'

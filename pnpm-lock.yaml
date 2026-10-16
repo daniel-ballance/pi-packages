@@ -18,15 +18,6 @@ importers:
         specifier: 8.10.2
         version: 8.10.2
 
-  packages/agent-skills:
-    dependencies:
-      mdast-util-from-markdown:
-        specifier: 2.0.3
-        version: 2.0.3
-      yaml:
-        specifier: 2.9.1
-        version: 2.9.1
-
   packages/claude-subscription:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
@@ -125,6 +116,15 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/pi-pocock-skills:
+    dependencies:
+      mdast-util-from-markdown:
+        specifier: 2.0.3
+        version: 2.0.3
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
 
   packages/pistack:
     dependencies:

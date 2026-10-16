@@ -59,7 +59,7 @@ Evidence and alternatives: [research notes](lint-skill-research.md).
 
 ## Agreed product behavior
 
-Ship a JavaScript command with `agent-skills` for linting Agent Skills used in Pi.
+Ship a JavaScript command with `pi-pocock-skills` for linting Agent Skills used in Pi.
 It accepts explicitly supplied skill directories, including directories outside
 this repository. It is not a Pi extension and needs no Pi runtime.
 
@@ -113,7 +113,7 @@ Use Node >=22.19, ESM, a `bin` entry pointing to `scripts/lint-skill.mjs`, and a
 explicit published-file list containing the CLI and its implementation. Declare
 parser libraries as runtime dependencies and commit the package lockfile.
 
-Document direct invocation (`node /path/to/agent-skills/scripts/lint-skill.mjs ...`)
+Document direct invocation (`node /path/to/pi-pocock-skills/scripts/lint-skill.mjs ...`)
 and npm binary usage. Do not promise that Pi package installation adds the command
 to the user's shell PATH. Test the packed package, not only a working checkout.
 
