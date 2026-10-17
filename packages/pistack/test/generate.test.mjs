@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { generate, sectionHash } from "../generator/generate.mjs";
+import { gitEnv } from "../generator/git-env.mjs";
 
 const cli = fileURLToPath(new URL("../generator/generate.mjs", import.meta.url));
 
@@ -227,7 +228,7 @@ test("sync records the upstream commit and version in package.json, and check fa
     "package.json": JSON.stringify({ name: "demo", pistack: { upstream: "stale" } }, null, 2) + "\n",
     "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", upstream: { repository: "acme/plugins", checkout: "vendor/up" }, map: [{ from: "skills/", to: "skills/" }], exclude: [] }),
   });
-  const git = (...args) => spawnSync("git", ["-C", join(root, "vendor/up"), ...args], { encoding: "utf8" });
+  const git = (...args) => spawnSync("git", ["-C", join(root, "vendor/up"), ...args], { encoding: "utf8", env: gitEnv() });
   const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, PISTACK_PACKAGE_DIR: root } });
   try {
     git("init", "-q"); git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x");

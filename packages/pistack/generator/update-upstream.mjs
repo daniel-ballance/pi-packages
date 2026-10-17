@@ -14,6 +14,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gitEnv } from "./git-env.mjs";
 
 const generator = join(dirname(fileURLToPath(import.meta.url)), "generate.mjs");
 
@@ -27,7 +28,7 @@ function main(args) {
   if (!upstream) { console.error("rules/manifest.json names no upstream checkout"); return 1; }
   const checkout = join(packageDir, upstream.checkout), subtree = relative(checkout, join(packageDir, vendor)) || ".";
   if (!existsSync(join(checkout, ".git"))) { console.error(`${upstream.checkout} is not checked out; run npm run sync first`); return 1; }
-  const git = (...gitArgs) => execFileSync("git", ["-C", checkout, ...gitArgs], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const git = (...gitArgs) => execFileSync("git", ["-C", checkout, ...gitArgs], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
 
   if (git("status", "--porcelain")) { console.error(`${upstream.checkout} has local changes; the generator reads upstream only, so discard them first`); return 1; }
   const branch = upstream.branch ?? "main", ref = args[0] ?? `origin/${branch}`;
@@ -39,7 +40,7 @@ function main(args) {
 
   if (from === to) console.log(`${upstream.repository} is already at ${to.slice(0, 7)}.`);
   else {
-    const forward = spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", from, to]).status === 0;
+    const forward = spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", from, to], { env: gitEnv() }).status === 0;
     git("checkout", "--quiet", "--detach", to);
     console.log(`${upstream.repository}: ${from.slice(0, 7)} -> ${to.slice(0, 7)}${forward ? "" : " (not a descendant of the old pin)"}`);
     const log = git("log", "--oneline", "--no-decorate", forward ? `${from}..${to}` : to, ...(forward ? [] : ["-n", "20"]), "--", subtree);

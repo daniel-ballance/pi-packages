@@ -11,6 +11,7 @@ import type { ChildPolicy } from "./child-policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
 import type { WaitEnd } from "./wait.js";
+import { gitEnv } from "./worktree.js";
 
 export type InputDisposition = "started" | "queued" | "handled" | "unknown";
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
@@ -450,7 +451,7 @@ export class SubagentManager {
       else if (config.tools) args.push("--no-tools");
     }
     args.push(...extra, "--mode", "rpc", "--session", record.sessionFile);
-    const env: NodeJS.ProcessEnv = { ...process.env, PI_SUBAGENT: "1" };
+    const env: NodeJS.ProcessEnv = { ...gitEnv(), PI_SUBAGENT: "1" };
     for (const key of ["PI_SESSION_ID", "PI_SESSION_FILE", "PI_PROVIDER", "PI_MODEL", "PI_REASONING_LEVEL"]) delete env[key];
     if (this.authorize && overrides) throw new Error("Environment overrides are disabled by managed spawn policy");
     Object.assign(env, overrides);

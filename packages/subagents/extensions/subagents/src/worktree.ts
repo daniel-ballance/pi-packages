@@ -11,9 +11,26 @@ export interface Worktree extends WorktreePlan {
   ignored: boolean;
 }
 
+let repoGitEnv: string[] | undefined;
+
+export function gitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (!repoGitEnv) {
+    try {
+      repoGitEnv = execFileSync("git", ["rev-parse", "--local-env-vars"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+        .trim().split(/\s+/).filter(name => name !== "GIT_CONFIG_COUNT" && name !== "GIT_CONFIG_PARAMETERS");
+    } catch {
+      // Git may be unavailable; still prevent children from inheriting the caller's repository.
+      repoGitEnv = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"];
+    }
+  }
+  const env = { ...base };
+  for (const name of repoGitEnv) delete env[name];
+  return env;
+}
+
 // Git output ends with one newline; paths may legitimately end in other whitespace.
 const git = (cwd: string, ...args: string[]) =>
-  execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).replace(/\n$/, "");
+  execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).replace(/\n$/, "");
 
 function gitError(error: unknown): string {
   const stderr = (error as { stderr?: Buffer | string }).stderr;
