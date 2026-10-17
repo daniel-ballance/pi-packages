@@ -23,6 +23,8 @@ Format a round like so:
 ➡️ <your recommended answer>
 ```
 
+Word each question so "yes" accepts your recommended answer.
+
 Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
 
 Facts are your job, never the user's. For a non-trivial environment investigation, when child and retrieval tools are available, spawn a bounded child to gather it. For a trivial lookup, or when those tools are unavailable, inspect it directly. Ask independent frontier questions now and wait only for dependent child work. Decisions remain the user's: ask and wait.

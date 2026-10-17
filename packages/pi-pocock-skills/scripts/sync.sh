@@ -63,21 +63,27 @@ RULES_FILE="$(mktemp)"
 trap 'rm -f "$RULES_FILE"' EXIT
 cat >"$RULES_FILE" <<'RULES'
 skill-tool-twice|1|Call the Skill tool twice, for "([^"]+)" and "([^"]+)"\.|Read `../$1/SKILL.md` and `../$2/SKILL.md`, and follow both.
-skill-tool-call-upper|0|Call the Skill tool with "([^"]+)"|Read `../$1/SKILL.md`
+skill-tool-call-upper|1|Call the Skill tool with "([^"]+)"|Read `../$1/SKILL.md`
 skill-tool-call-lower|1|call the Skill tool with "([^"]+)"|read `../$1/SKILL.md`
 subagent-dispatch|1|Finding _facts_ is your job, never the user's\. When a frontier question needs a fact from the environment \(filesystem, tools, etc\.\), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself\. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now\. The _decisions_ are the user's: put each to them and wait\.|Facts are your job, never the user's. For a non-trivial environment investigation, when child and retrieval tools are available, spawn a bounded child to gather it. For a trivial lookup, or when those tools are unavailable, inspect it directly. Ask independent frontier questions now and wait only for dependent child work. Decisions remain the user's: ask and wait.
 subagent-plural|1|sub-agents|subagents
 subagent-singular|1|sub-agent|subagent
 subagent-spawn-many|1|Spawn 3\+ subagents in parallel|Spawn up to 3 parallel children with `subagent_spawn`, within the catalog's live-child limit; then `subagent_wait`, `subagent_read`, and `subagent_close` each child
 subagent-spawn-review|1|Spawn both subagents in parallel|Spawn both reviewers with `subagent_spawn`, then `subagent_wait`
+subagent-review-collect|1|Issue both subagent calls together, in the foreground, and aggregate the reports they return\.|Spawn both reviewers before waiting; collect and verify both reports before aggregating them.
 subagent-background|1|Spin up a \*\*background agent\*\* to do the research, so you keep working while it reads\.|For substantial research, when child and retrieval tools are available, spawn a bounded child so you can keep working while it reads. For a trivial lookup, or when those tools are unavailable, research directly.
 subagent-design-twice|1|spin up parallel subagents|spawn parallel children with `subagent_spawn`
 clear-to-new|0|(?<![\w/-])/clear\b|/new
 arg-hint|0|^argument-hint:.*\n||
 hitl-resource-link|1|`scripts/hitl-loop\.template\.sh`|[HITL loop template](scripts/hitl-loop.template.sh)
 skill-resource-link|1|`\.\./([a-z0-9-]+)/SKILL\.md`|[$1](../$1/SKILL.md)
-tdd-command-link|1|(?<![\w./-])/tdd\b|[/tdd](../tdd/SKILL.md)
-review-command-link|1|(?<![\w./-])/code-review\b|[/code-review](../code-review/SKILL.md)
+tdd-command-link|0|(?<![\w./-])/tdd\b|[/tdd](../tdd/SKILL.md)
+review-command-link|0|(?<![\w./-])/code-review\b|[/code-review](../code-review/SKILL.md)
+tracker-precondition|1|The issue tracker should have been provided to you\. If not, tell the user to run `/setup-matt-pocock-skills`\.|The spec is whatever the conversation already names: a package design doc (`docs/<name>.md`), the package `README.md`, `ROADMAP.md`, or a spec file under `docs/`. If nothing is named, ask the user where the spec is. These repos keep specs in the repo, not in an issue tracker.
+tracker-spec-source|1|1\. Issue references in the commit messages \(`\#123`, `Closes \#45`, GitLab `!67`, etc\.\), fetched via the workflow in the tracker doc\.|1. A spec path named in the conversation or commit messages.
+tracker-ticket|1|If the user passes a ticket reference, fetch it from the issue tracker and state its title before starting\. If the reference is ambiguous, ask\.|If the user passes a ticket reference, use the repo's documented tracker workflow to fetch it and state its title before starting. If no tracker is configured, ask for the ticket text; if the reference is ambiguous, ask.
+glossary-convention|1|\bGLOSSARY(?=[.-])|CONTEXT
+glossary-map-heading|1|\# Glossary Map|# Context Map
 RULES
 
 # Slash-command namespacing: /name -> /skill:name for every skill we might name.
@@ -86,13 +92,6 @@ SLASH_SKILLS=(tdd code-review grill-me grill-with-docs grilling domain-modeling 
               improve-codebase-architecture prototype handoff teach to-questionnaire
               writing-for-agents setup-matt-pocock-skills)
 
-# code-review's tracker dependency has no analogue here: these repos keep specs
-# in repo docs, not in an issue tracker.
-TRACKER_OLD='The issue tracker should have been provided to you. If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.'
-TRACKER_NEW='The spec is whatever the conversation already names: a package design doc (`docs/<name>.md`), the package `README.md`, `ROADMAP.md`, or a spec file under `docs/`. If nothing is named, ask the user where the spec is. These repos keep specs in the repo, not in an issue tracker.'
-TRACKER_ISSUE_OLD='1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.), fetched via the workflow in `docs/agents/issue-tracker.md`.'
-TRACKER_ISSUE_NEW='1. A spec path named in the conversation or commit messages.'
-
 # This is a shared reference for the translated child workflows. Keep the
 # mechanics here rather than duplicating them in every generated skill.
 CHILD_POINTER='Read [child delegation guidance](../references/CHILD-DELEGATION.md) before using child delegation.'
@@ -100,7 +99,15 @@ CHILD_POINTER='Read [child delegation guidance](../references/CHILD-DELEGATION.m
 CHILD_GUIDANCE=$(cat <<'GUIDANCE'
 # Child delegation
 
-Use a child for bounded, non-trivial work. First call `subagent_catalog` to see usable exact models, tools, and the live-child limit. Compose one focused child with `subagent_spawn`, selecting only the tools it needs and an explicit task and working directory. Parallelize only independent tasks and stay within the catalog limit. With nothing else to do this turn, end your turn; finished children's reports wake you. Call `subagent_wait` for the selected IDs only when your next step in this turn needs the results. It returns their new reports. Inspect replies, errors, and requested artifacts, and `subagent_read` a child whose `unread` is above 0. Verify the result; completion is not proof. Call `subagent_close` for every child after reading it, including failed work.
+Use a child for bounded, non-trivial work. Follow the branch for the current host; skill prose naming `subagent_*` tools describes the Pi CLI branch.
+
+## T3 Code
+
+Use T3's `orchestrator_capabilities` to choose an available exact provider/model, then `delegate_task` with a bounded task and explicit working directory in the prompt. Retain each `taskId`. Prefer async delegation; issue independent tasks before waiting. Completion wakes the parent, so end the turn when nothing else is ready. Use `task_status` when a result is needed mid-turn, and `task_cancel` to interrupt active work. Verify returned reports and artifacts before aggregating. A new review round uses a new `delegate_task` call with the original brief, prior findings, responses, and unresolved objections, not a message to the backing child thread. Use a distinct `clientRequestId` per round, stable across retries. Top-level threads are not delegated tasks.
+
+## Pi CLI
+
+First call `subagent_catalog` to see usable exact models, tools, and the live-child limit. Compose one focused child with `subagent_spawn`, selecting only the tools it needs and an explicit task and working directory. Parallelize only independent tasks and stay within the catalog limit. With nothing else to do this turn, end your turn; finished children's reports wake you. Call `subagent_wait` for the selected IDs only when your next step in this turn needs the results. It returns their new reports. Inspect replies, errors, and requested artifacts, and `subagent_read` a child whose `unread` is above 0. Verify the result; completion is not proof. Call `subagent_close` for every child after reading it, including failed work.
 
 If catalog or spawn is unavailable, or the task has no retrieval tools available to the child, do the work directly or state the limitation. Do not assume a fallback model or child composition: unavailable catalog entries are not silently substituted.
 GUIDANCE
@@ -110,17 +117,23 @@ declare -A COUNTS=()
 MISSING=0
 
 find_src() {
-  local name="$1" d
+  local name="$1" d found=""
   for d in "$VENDOR"/skills/*/"$name"; do
-    [ -f "$d/SKILL.md" ] && { echo "$d"; return 0; }
+    [ -f "$d/SKILL.md" ] || continue
+    if [ -n "$found" ]; then
+      printf '  AMBIGUOUS upstream skill "%s": %s and %s\n' "$name" "$found" "$d" >&2
+      return 1
+    fi
+    found="$d"
   done
-  return 1
+  [ -n "$found" ] || return 1
+  printf '%s\n' "$found"
 }
 
 count_matches() {
   local pat="$1" dir="$2" total=0 c
   while IFS= read -r -d '' f; do
-    c="$(P="$pat" perl -0777 -ne 'my $p=$ENV{P}; my $n = () = $_ =~ /$p/gm; print $n' "$f" 2>/dev/null || echo 0)"
+    c="$(P="$pat" perl -0777 -ne 'my $p=$ENV{P}; my $n = () = $_ =~ /$p/gm; print $n' "$f")" || return 1
     total=$((total + c))
   done < <(find "$dir" -name '*.md' -print0)
   echo "$total"
@@ -133,19 +146,6 @@ apply_to_tree() {
       my $p = $ENV{P};
       my $r = $ENV{R};
       s{$p}{ do { my @c = ($1, $2, $3); my $t = $r; $t =~ s/\$(\d)/(defined $c[$1-1] ? $c[$1-1] : "")/ge; $t } }gem;
-    ' "$f"
-  done < <(find "$dir" -name '*.md' -print0)
-}
-
-# Literal (non-regex) replacement. \Q...\E inside an interpolated variable is not
-# reliably honoured, so quote the metacharacters explicitly.
-apply_literal_to_tree() {
-  local dir="$1" lit="$2" rep="$3"
-  while IFS= read -r -d '' f; do
-    L="$lit" R="$rep" perl -0777 -pi -e '
-      my $p = quotemeta($ENV{L});
-      my $r = $ENV{R};
-      s{$p}{$r}gm;
     ' "$f"
   done < <(find "$dir" -name '*.md' -print0)
 }
@@ -199,6 +199,16 @@ run_translation() {
     rm -rf -- "$target/$name/agents"
   done
 
+  # Keep the local CONTEXT.md contract, including the bundled format reference.
+  # Rename before rewriting links; a collision is drift, not permission to overwrite.
+  if [ -e "$target/domain-modeling/GLOSSARY-FORMAT.md" ]; then
+    if [ -e "$target/domain-modeling/CONTEXT-FORMAT.md" ]; then
+      echo '  INVALID upstream: both glossary and context format resources exist' >&2
+      return 1
+    fi
+    mv -- "$target/domain-modeling/GLOSSARY-FORMAT.md" "$target/domain-modeling/CONTEXT-FORMAT.md"
+  fi
+
   write_child_guidance "$target"
 
   # Count then apply, one rule at a time, in order. Rules that rewrite text an
@@ -210,10 +220,8 @@ run_translation() {
     apply_to_tree "$target" "$pat" "$rep"
   done < "$RULES_FILE"
 
-  # Tracker swaps run BEFORE slash-namespacing, or their literal source text has
-  # already been rewritten and will never match.
-  apply_literal_to_tree "$target" "$TRACKER_OLD" "$TRACKER_NEW"
-  apply_literal_to_tree "$target" "$TRACKER_ISSUE_OLD" "$TRACKER_ISSUE_NEW"
+  # Counted tracker rules above run BEFORE slash-namespacing, which would
+  # otherwise change the source command spelling before it can match.
 
   # Slash-command namespacing.
   for s in "${SLASH_SKILLS[@]}"; do
@@ -257,10 +265,22 @@ validate_output() {
     echo '  INVALID output: generated skills contain a symlink' >&2
     fail=1
   fi
-  if grep -R -n -F 'docs/agents/issue-tracker.md' "$target" >/dev/null 2>&1; then
-    echo '  INVALID output: generated skills retain an issue-tracker reference' >&2
+  if grep -R -n -E 'docs/agents/issue-tracker\.md|The issue tracker should have been provided|workflow in the tracker doc' "$target" >/dev/null 2>&1; then
+    echo '  INVALID output: generated skills retain an issue-tracker prerequisite' >&2
     fail=1
   fi
+  if grep -R -n -E 'Skill tool|in the foreground|GLOSSARY[.-]' "$target" >/dev/null 2>&1; then
+    echo '  INVALID output: generated skills retain untranslated harness or glossary wording' >&2
+    fail=1
+  fi
+  # The implementation wrapper must keep its dependency closure even if upstream
+  # changes from slash commands to another invocation spelling.
+  for name in tdd code-review; do
+    if ! grep -Fq "(../$name/SKILL.md)" "$target/implement/SKILL.md"; then
+      printf '  INVALID output: implement lost its %s dependency link\n' "$name" >&2
+      fail=1
+    fi
+  done
   return "$fail"
 }
 

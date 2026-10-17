@@ -1,6 +1,12 @@
 # Current decisions
 
-Last run: 2026-10-16, pistack upstream `cursor/plugins@f713f14` (pstack 0.15.25), pi-pocock-skills upstream `c55ee46`.
+Last run: 2026-10-17, pistack upstream `cursor/plugins@f713f14` (pstack 0.15.25), pi-pocock-skills upstream `49dd158`.
+
+Pocock refresh: all eleven names, invocation flags, coverage verdicts, and kept
+skill dependencies remain unchanged. No settings or collection-filter edits were
+needed. Real-loader checks passed in home and the update worktree; the root check
+also exercises collection loading and pistack's `tdd` winner. Fresh interactive
+CLI/T3 prompt lists were not exercised in this run.
 
 ## Coverage table
 
