@@ -10,6 +10,7 @@ import { parsePolicy, SubagentPolicy, type PolicyEnvironment } from "../extensio
 import { PeerClient, servePeer } from "../extensions/subagents/src/peer-transport.js";
 import childGuard from "../extensions/subagents/src/child-guard.js";
 import { relayWait, type WaitArgs } from "../extensions/subagents/src/wait.js";
+import { fitDelegatedReply } from "../extensions/subagents/src/nesting.js";
 
 const base = { version: 1, models: [{ id: "p/m:off" }], tools: ["read", "subagent_spawn", "subagent_wait"] };
 
@@ -205,6 +206,22 @@ test("timeoutSeconds 0 makes exactly one relayed call, and aborting a relayed wa
     setTimeout(() => stop.abort(), 50);
     await assert.rejects(r.wait({}, stop.signal), /abort/i);
     assert.deepEqual(r.calls.slice(1).map(call => call.collect), [false], "no collecting call for a caller that is gone");
+  } finally { r.close(); }
+});
+
+test("a truncated segment reply ends the relay, and the collecting call returns its preview", async () => {
+  const truncated = fitDelegatedReply({ wake: "timeout", agents: [{ error: "e".repeat(70_000) }] });
+  const r = await relay(async () => truncated);
+  try {
+    assert.deepEqual(await r.wait({ ids: ["w"] }), truncated);
+    assert.deepEqual(r.calls.map(call => call.collect), [false, undefined], "one segment, then one collecting call");
+  } finally { r.close(); }
+});
+
+test("a relayed wait refuses a reply that is neither a report nor a truncated preview", async () => {
+  const r = await relay(async () => ({ agents: [] }));
+  try {
+    await assert.rejects(r.wait({ ids: ["w"] }), /Unexpected reply to a relayed wait/);
   } finally { r.close(); }
 });
 

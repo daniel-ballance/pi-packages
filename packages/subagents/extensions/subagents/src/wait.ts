@@ -1,5 +1,5 @@
 import type { Static } from "typebox";
-import { REPORT_KINDS, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
+import { REPORT_KINDS, type AgentRecord, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
 import type { TOOL_SPECS } from "./tool-schemas.js";
 import { MANAGE_TIMEOUT_MS } from "./peer-transport.js";
 
@@ -25,9 +25,14 @@ export function messageLatch(): (pending: boolean) => boolean {
 const RELAY_REPLY_HEADROOM_SECONDS = 30;
 export const RELAY_SEGMENT_SECONDS = MANAGE_TIMEOUT_MS / 1000 - RELAY_REPLY_HEADROOM_SECONDS;
 
-const wakeOf = (reply: unknown) => {
-  const wake = typeof reply === "object" && reply !== null ? (reply as { wake?: unknown }).wake : undefined;
-  return isWakeReason(wake) ? wake : undefined;
+/** What the root sends back for a delegated wait: its report, or fitDelegatedReply's preview of one too large for the pipe. */
+type RelayedWait = { readonly kind: "report"; readonly wake: WakeReason } | { readonly kind: "truncated" };
+
+const parseRelayed = (reply: unknown): RelayedWait => {
+  const fields = typeof reply === "object" && reply !== null ? reply as { wake?: unknown; truncated?: unknown } : {};
+  if (fields.truncated === true) return { kind: "truncated" };
+  if (isWakeReason(fields.wake)) return { kind: "report", wake: fields.wake };
+  throw new Error(`Unexpected reply to a relayed wait: ${String(JSON.stringify(reply)).slice(0, 200)}`);
 };
 
 export async function relayWait(manage: (args: WaitArgs, signal?: AbortSignal) => Promise<unknown>,
@@ -50,12 +55,14 @@ export async function relayWait(manage: (args: WaitArgs, signal?: AbortSignal) =
       clearInterval(poll);
       signal?.removeEventListener("abort", follow);
     }
-    const rootStillWaiting = wakeOf(reply) === "timeout";
-    if (queued || !rootStillWaiting) break;
+    if (queued) break;
+    const relayed = parseRelayed(reply);
+    if (relayed.kind === "truncated" || relayed.wake !== "timeout") break;
   }
   signal?.throwIfAborted();
   const final = await manage({ ...args, timeoutSeconds: 0 }, signal);
-  return queued && wakeOf(final) === "timeout" ? { ...final as object, wake: "message" } : final;
+  const relayed = parseRelayed(final);
+  return queued && relayed.kind === "report" && relayed.wake === "timeout" ? { ...final as object, wake: "message" } : final;
 }
 
 export interface Report { readonly kind: string; readonly text: string }
@@ -87,6 +94,11 @@ const REPORT_LINES = 4, REPORT_INDENT_BYTES = 8, REPORT_SEPARATOR_BYTES = 2;
 const reportCost = (report: Report) => ({
   bytes: printed(report).bytes + REPORT_LINES * REPORT_INDENT_BYTES + REPORT_SEPARATOR_BYTES, lines: REPORT_LINES });
 
+const reviewOf = (record: AgentRecord) => record.resultReview && { status: record.resultReview.status };
+
+export const withCurrentReviews = (manager: SubagentManager, report: WaitReport): WaitReport =>
+  ({ ...report, agents: report.agents.map(news => ({ ...news, resultReview: reviewOf(manager.get(news.id)) })) });
+
 export function waitReport(manager: SubagentManager, end: WaitEnd, collect: boolean, callerId?: string,
   limits: ReportLimits = { bytes: 24_000, lines: 750 }): { readonly report: WaitReport; readonly receipts: readonly ReadReceipt[] } {
   const statuses = end.ids.map(id => {
@@ -97,7 +109,7 @@ export function waitReport(manager: SubagentManager, end: WaitEnd, collect: bool
       hold: record.hold && { kind: record.hold.kind, outcome: record.hold.outcome, detail: record.hold.detail },
       uiRequests: record.uiRequests.length ? record.uiRequests.map(({ id, method, title }) => ({ id, method, title })) : undefined,
       depth: record.depth, parentId: record.parentId,
-      resultReview: record.resultReview && { status: record.resultReview.status },
+      resultReview: reviewOf(record),
     };
     return news;
   });
@@ -120,12 +132,8 @@ export function waitReport(manager: SubagentManager, end: WaitEnd, collect: bool
       prefix.push(update);
     }
     if (!prefix.length && !page.uiRequests.length) return news;
-    const record = manager.get(news.id), assignment = record.assignment;
-    receipts.push({ id: news.id, updates: prefix, nextCursor: prefix.at(-1)?.cursor ?? record.readCursor, uiRequests: page.uiRequests });
-    const reviewed = news.resultReview?.status === "unreviewed" && assignment?.id === record.resultReview?.assignmentId
-      && prefix.some(update => update.cursor === assignment?.resultCursor);
-    return { ...news, unread: news.unread - reports.length, reports: reports.length ? reports : undefined,
-      resultReview: reviewed ? { status: "reviewed" as const } : news.resultReview };
+    receipts.push({ id: news.id, updates: prefix, nextCursor: prefix.at(-1)?.cursor ?? manager.get(news.id).readCursor, uiRequests: page.uiRequests });
+    return { ...news, unread: news.unread - reports.length, reports: reports.length ? reports : undefined };
   });
   return { report: { wake: end.wake, agents }, receipts };
 }

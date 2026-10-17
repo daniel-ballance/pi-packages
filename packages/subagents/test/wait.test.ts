@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { cardsFromDetails } from "../extensions/subagents/src/card.js";
 import { parseChildLimit, type ChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager } from "../extensions/subagents/src/manager.js";
-import { messageLatch, waitReport, type WaitEnd } from "../extensions/subagents/src/wait.js";
+import { messageLatch, waitReport, withCurrentReviews, type WaitEnd } from "../extensions/subagents/src/wait.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
@@ -36,8 +36,9 @@ test("a default report returns new reports inline without echoes, and acknowledg
     assert.ok(s.manager.read(id, undefined, false).updates.length, "building the report acknowledges nothing");
     assert.deepEqual(report.agents[0].reports, [{ kind: "assistant", text: "1:alpha" }]);
     assert.equal(report.agents[0].unread, 0);
-    assert.equal(cardsFromDetails(report.agents, "summary")[0].state, "reviewed");
+    assert.equal(cardsFromDetails(report.agents, "summary")[0].state, "unread", "nothing is reviewed before acknowledgement");
     s.acknowledge(receipts);
+    assert.equal(cardsFromDetails(withCurrentReviews(s.manager, report).agents, "summary")[0].state, "reviewed");
     assert.deepEqual(s.manager.pendingNotices().filter(notice => notice.id === id), [], "no SUBAGENT REPORTS turn follows");
     assert.deepEqual(s.manager.read(id).updates, [], "the task echo was acknowledged with the report");
     assert.equal(s.manager.get(id).resultReview?.status, "reviewed");

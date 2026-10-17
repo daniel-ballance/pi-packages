@@ -20,7 +20,7 @@ for (const mode of ["message", "abort"] as const) {
     writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec ${[executable, ...executableArgs].map(arg => JSON.stringify(arg)).join(" ")} "$@"\n`, { mode: 0o700 });
     writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "notification-test/stub:off" }], tools: [], extensions: [provider] }));
     const child = spawn(executable, [...executableArgs, "--mode", "rpc", "--no-extensions", "--no-context-files", "--no-skills", "--no-prompt-templates", "-e", provider, "-e", extension, "--model", "notification-test/stub:off"], {
-      cwd: root, env: { PATH: `${bin}:${process.env.PATH}`, HOME: root, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PI_TELEMETRY: "0", NOTICE_TEST_MODE: mode },
+      cwd: root, env: { PATH: `${bin}:${process.env.PATH}`, HOME: root, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PI_TELEMETRY: "0", NOTICE_TEST_MODE: mode, NOTICE_TEST_RELEASE: join(root, "release") },
       stdio: ["pipe", "pipe", "pipe"],
     });
     const events: any[] = [];
@@ -41,19 +41,18 @@ for (const mode of ["message", "abort"] as const) {
     try {
       child.stdin.write(JSON.stringify({ type: "prompt", message: "Exercise an unbounded wait." }) + "\n");
       await waitEvent("tool_execution_start");
-      const started = Date.now();
-      await new Promise(resolve => setTimeout(resolve, 300));
       child.stdin.write(JSON.stringify(mode === "message"
         ? { type: "prompt", message: "Operator steer.", streamingBehavior: "steer" }
         : { type: "abort" }) + "\n");
       const ended = await waitEvent("tool_execution_end");
-      assert.ok(Date.now() - started < 2500, "the wait ended before the worker finished");
-      const registry = JSON.parse(readFileSync(join(agentDir, "subagents", readdirSync(join(agentDir, "subagents"))[0], "registry.json"), "utf8"));
-      assert.equal(registry.agents[0].status, "working", "the worker keeps working");
+      const workerStatus = () => JSON.parse(readFileSync(join(agentDir, "subagents", readdirSync(join(agentDir, "subagents"))[0], "registry.json"), "utf8")).agents[0].status;
+      assert.equal(workerStatus(), "working", "the worker keeps working until the test releases it");
       if (mode === "message") {
         assert.equal(ended.isError, false, JSON.stringify(ended));
         assert.equal(ended.result.details.wake, "message");
       } else assert.equal(ended.isError, true, JSON.stringify(ended));
+      writeFileSync(join(root, "release"), "");
+      await waitFor(() => workerStatus() === "working" ? undefined : true);
     } finally {
       child.kill("SIGTERM");
       const kill = setTimeout(() => child.kill("SIGKILL"), 4000);

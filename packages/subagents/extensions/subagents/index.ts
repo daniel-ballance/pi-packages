@@ -9,7 +9,7 @@ import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { builtInPolicy, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
-import { messageLatch, waitReport } from "./src/wait.js";
+import { messageLatch, waitReport, withCurrentReviews } from "./src/wait.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { cardsFromDetails, listingLine } from "./src/card.js";
 import { summarizeAgents } from "./src/usage.js";
@@ -466,8 +466,10 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       signal?.throwIfAborted();
       const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId);
       const output = result(report, ctx);
-      if (output.details === report) for (const receipt of receipts) manager.acknowledgeRead(receipt, true, !callerId);
-      return output;
+      if (output.details !== report) return output;
+      for (const receipt of receipts) manager.acknowledgeRead(receipt, true, !callerId);
+      // Acknowledgement only turns unreviewed into reviewed, which is shorter, so this still fits.
+      return result(withCurrentReviews(manager, report), ctx);
     },
   });
   registerTool({

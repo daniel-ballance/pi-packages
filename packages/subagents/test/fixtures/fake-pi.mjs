@@ -35,6 +35,11 @@ process.stdin.on('data', chunk => {
       } : {}),
     });
     else if (cmd.type === 'prompt') {
+      if (cmd.message === '/_child-policy-check') {
+        emit({ type: 'entry_appended', entry: { type: 'custom', customType: 'child-policy-check', data: { tools: [] } } });
+        respond(cmd, { disposition: 'handled' });
+        continue;
+      }
       if (cmd.message === 'CONSUME' || cmd.message === 'IDLE USAGE') {
         respond(cmd, { disposition: 'handled' });
         if (cmd.message === 'IDLE USAGE') setTimeout(() => {
@@ -79,6 +84,7 @@ process.stdin.on('data', chunk => {
         emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'early result' }], stopReason: 'stop' } });
         timer = setTimeout(() => { working = false; emit({ type: 'agent_settled' }); }, 150);
       }
+      else if (cmd.message === 'until-abort') continue;
       else if (cmd.message === 'footer-stats') {
         clearTimeout(timer); working = false;
         emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'stats' }], stopReason: 'stop',
