@@ -84,6 +84,53 @@ test("update moves the checkout to the upstream tip, lists its commits and regen
   } finally { dispose(); }
 });
 
+test("update reports emitted, excluded and unmapped source changes without including other plugins", () => {
+  const { pkg, run, commit, dispose } = fixture();
+  try {
+    const manifestPath = join(pkg, "rules/manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.exclude = ["^skills/omitted/"];
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    commit({
+      "up/skills/added/SKILL.md": "# Added\n",
+      "up/skills/omitted/SKILL.md": "# Omitted\n",
+      "up/docs/harness/adapter.md": "# Other harness\n",
+      "up/README.md": "# Upstream install\n",
+      "other/new.md": "Another plugin.\n",
+    }, "add source and packaging");
+    const result = run(updateCli);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /A up\/skills\/added\/SKILL\.md -> skills\/added\/SKILL\.md/);
+    assert.match(result.stdout, /A up\/skills\/omitted\/SKILL\.md \(excluded\)/);
+    assert.match(result.stdout, /A up\/docs\/harness\/adapter\.md \(not emitted; review scope\)/);
+    assert.match(result.stdout, /A up\/README\.md \(not emitted; review scope\)/);
+    assert.doesNotMatch(result.stdout, /other\/new\.md/);
+    assert.match(result.stdout, /full upstream commits.*outside up\//);
+    assert.doesNotMatch(run(updateCli).stdout, /Changed upstream source paths/);
+  } finally { dispose(); }
+});
+
+test("the scope report includes both sides of a rename and handles explicit older pins", () => {
+  const { pkg, origin, run, head, dispose } = fixture();
+  try {
+    const first = head();
+    git(origin, "mv", "up/skills/demo", "up/skills/renamed");
+    git(origin, "commit", "-qm", "rename demo");
+    const result = run(updateCli);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /D up\/skills\/demo\/SKILL\.md -> skills\/demo\/SKILL\.md/);
+    assert.match(result.stdout, /A up\/skills\/renamed\/SKILL\.md -> skills\/renamed\/SKILL\.md/);
+    assert.equal(readFileSync(join(pkg, "skills/renamed/SKILL.md"), "utf8").startsWith("# Demo"), true);
+    const rollback = run(updateCli, first);
+    assert.equal(rollback.status, 0, rollback.stderr);
+    assert.equal(head(), first);
+    assert.match(rollback.stdout, /not a descendant/);
+    assert.match(rollback.stdout, /A up\/skills\/demo\/SKILL\.md/);
+    assert.match(rollback.stdout, /D up\/skills\/renamed\/SKILL\.md/);
+    assert.equal(run(generateCli, "--check").status, 0);
+  } finally { dispose(); }
+});
+
 test("when upstream deletes a rule's text, update fails naming the rule and leaves the checkout at the new commit", () => {
   const { run, commit, read, head, dispose } = fixture();
   try {

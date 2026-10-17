@@ -1,12 +1,20 @@
 # Current decisions
 
-Last run: 2026-10-17, pistack upstream `cursor/plugins@f713f14` (pstack 0.15.25), pi-pocock-skills upstream `49dd158`.
+Last run: 2026-10-17, pistack upstream `cursor/plugins@101b274` (pstack 0.15.25), pi-pocock-skills upstream `49dd158`.
 
 Pocock refresh: all eleven names, invocation flags, coverage verdicts, and kept
 skill dependencies remain unchanged. No settings or collection-filter edits were
 needed. Real-loader checks passed in home and the update worktree; the root check
 also exercises collection loading and pistack's `tdd` winner. Fresh interactive
 CLI/T3 prompt lists were not exercised in this run.
+
+The pstack update adds Claude Code packaging, not canonical skill changes. Every
+coverage verdict below is unchanged: pistack's skill names, invocation flags,
+playbooks, and cross-package pointers match its previous pin. `skill-report
+--check` passes for home and the update worktree; the root package-loader tests
+verify the candidate collection loads pistack's `tdd` without diagnostics. Live
+conversational CLI/T3 checks were not repeated for this URL/pin-only generated
+delta. See the [update validation](../../../docs/pistack-upstream-2026-10-17.md).
 
 ## Coverage table
 

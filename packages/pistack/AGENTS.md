@@ -108,7 +108,16 @@ npm run update-upstream -- <ref>    # or a commit or tag
 ```
 
 It fetches `vendor/pstack`, moves it to the ref, lists upstream's commits to
-`pstack/`, and regenerates. Generation records the pin in `package.json`
+`pstack/` and classifies each changed source path against the manifest, then
+regenerates. The report distinguishes emitted paths, explicit exclusions, and
+paths not emitted. Review every path marked `review scope`: it may be a new
+capability the manifest does not yet include. `plugin.json` is not emitted but
+supplies the plugin name and version. Inspect the full upstream commits too
+(`git -C vendor/pstack show --stat <sha>`); packaging can live outside
+`pstack/`. Use the canonical `pstack/` sources, not upstream's generated
+`harness/pstack/` copies for other hosts.
+
+Generation records the pin in `package.json`
 (`pistack.upstream`) and the README markers and fills `{{upstream.commit}}`;
 `--check` fails while any of them disagree with the checkout.
 
@@ -126,5 +135,8 @@ that broke it (`git -C vendor/pstack show <sha>`), then fix the rule:
 
 Rerun `node generator/generate.mjs` until it passes, then review
 `git diff -- skills agents` for upstream changing a decision, not just a
-sentence. Run `npm run check` and `npm test`, and commit `vendor/pstack` with
-the regenerated output and rule changes.
+sentence. Regenerate a second time and confirm the diff is unchanged.
+Re-check skill coverage with the repository's
+[`pistack-pocock-unification` skill](../../.pi/skills/pistack-pocock-unification/SKILL.md).
+Run `npm run check`, `npm test`, and the repository's `./scripts/check.sh`
+before committing `vendor/pstack` with the regenerated output and rule changes.

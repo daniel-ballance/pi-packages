@@ -180,4 +180,4 @@ host, run setup there.
 ## License
 
 MIT, from upstream; see [LICENSE](LICENSE). Upstream pin:
-<!-- pistack:upstream -->`cursor/plugins` [`f713f14`](https://github.com/cursor/plugins/tree/f713f14203cd6420cec13cd7c55c32d598dbab68/pstack), pstack 0.15.25<!-- /pistack:upstream -->.
+<!-- pistack:upstream -->`cursor/plugins` [`101b274`](https://github.com/cursor/plugins/tree/101b274dd991f694e1f7024be2157e5f3adf07de/pstack), pstack 0.15.25<!-- /pistack:upstream -->.
