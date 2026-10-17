@@ -17,8 +17,8 @@ const child = {
   usage: { assistantMessages: 1, cost: 0.125, tokens: { input: 484, output: 9 }, contextUsage: { percent: 0.2, contextWindow: 272000 }, autoCompaction: true },
 };
 function result(details: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(details, null, 2) }], details }; }
-function render(action: Action, details: unknown, expanded = false, width = 120) {
-  return subagentRenderers(action).renderResult(result(details), { expanded, isPartial: false }, theme, context()).render(width).join("\n");
+function render(action: Action, details: unknown, expanded = false, width = 120, args?: Record<string, unknown>) {
+  return subagentRenderers(action).renderResult(result(details), { expanded, isPartial: false }, theme, { ...context(), ...(args ? { args } : {}) }).render(width).join("\n");
 }
 
 test("all subagent tools register call/result renderers without changing execution schemas", () => {
@@ -43,15 +43,19 @@ test("peer renderers show directional budgets and receipt state with bounded wid
   for (const line of render("peers", data, false, 30).split("\n")) assert.ok(visibleWidth(line) <= 30);
 });
 
-test("spawn shows a two-line card with state, model, effort, turns and cost, then the task, instead of raw JSON", () => {
-  const rendered = render("spawn", { ...child, status: "working" });
+test("spawn card shows name, state and model, and a short task line from the call", () => {
+  const details = { id: child.id, name: child.name, status: "working", model: child.model, thinking: child.thinking, unread: 0 };
+  const rendered = render("spawn", details, false, 120, { name: child.name, task: child.task, model: child.model, thinking: child.thinking });
   assert.match(rendered, /^● footer-smoke-test working {2,}gpt-5\.6-luna · high$/m);
-  assert.match(rendered, /^↳ 1 turn · \$0\.125$/m);
-  assert.doesNotMatch(rendered, /↑484/);
   assert.match(rendered, /task: Return a short answer/);
-  assert.doesNotMatch(rendered, /sessionFile|\/private|"usage"/);
+  assert.doesNotMatch(rendered, /sessionFile|\/private|"usage"|1 turn/);
   assert.ok(rendered.split("\n").length <= 4);
   assert.match(rendered, /expand for details/);
+  const long = render("spawn", details, false, 120, { task: `Return a short answer ${"x".repeat(2000)}` });
+  assert.match(long, /task: Return a short answer/);
+  assert.doesNotMatch(long, /x{90}/);
+  assert.match(long, /footer-smoke-test working/);
+  assert.match(long, /gpt-5\.6-luna · high/);
 });
 
 test("expanded output retains full raw diagnostics and does not mutate the tool result", () => {
@@ -213,7 +217,7 @@ test("chrome and display names are lowercase without altering payloads, identifi
   assert.match(call, /subagents • ax helpers • spawn Check README.md and MyAPI/);
   assert.match(render("spawn", data), /· ax helpers stopped/);
   assert.match(render("spawn", data, true), /"id": "Agent-ABC"/);
-  assert.match(render("spawn", data), /task: Check README.md and MyAPI/);
+  assert.match(render("spawn", data, false, 120, { task: data.task }), /task: Check README.md and MyAPI/);
   assert.match(render("spawn", data, true), /"name": "AX Helpers"/);
   const unknown = subagentRenderers("read").renderCall({ id: "Agent-ABC" }, theme, context()).render(100).join("\n");
   assert.match(unknown, /Agent-ABC/);

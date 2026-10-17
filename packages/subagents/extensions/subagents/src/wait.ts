@@ -99,20 +99,20 @@ const reviewOf = (record: AgentRecord) => record.resultReview && { status: recor
 export const withCurrentReviews = (manager: SubagentManager, report: WaitReport): WaitReport =>
   ({ ...report, agents: report.agents.map(news => ({ ...news, resultReview: reviewOf(manager.get(news.id)) })) });
 
+export function childNews(record: AgentRecord): ChildNews {
+  return {
+    id: record.id, name: record.name, status: record.status, activity: record.activity, error: record.error,
+    unread: record.updates.filter(update => update.cursor > record.readCursor && REPORT_KINDS.has(update.kind)).length,
+    hold: record.hold && { kind: record.hold.kind, outcome: record.hold.outcome, detail: record.hold.detail },
+    uiRequests: record.uiRequests.length ? record.uiRequests.map(({ id, method, title }) => ({ id, method, title })) : undefined,
+    depth: record.depth, parentId: record.parentId,
+    resultReview: reviewOf(record),
+  };
+}
+
 export function waitReport(manager: SubagentManager, end: WaitEnd, collect: boolean, callerId?: string,
   limits: ReportLimits = { bytes: 24_000, lines: 750 }): { readonly report: WaitReport; readonly receipts: readonly ReadReceipt[] } {
-  const statuses = end.ids.map(id => {
-    const record = manager.get(id);
-    const news: ChildNews = {
-      id, name: record.name, status: record.status, activity: record.activity, error: record.error,
-      unread: record.updates.filter(update => update.cursor > record.readCursor && REPORT_KINDS.has(update.kind)).length,
-      hold: record.hold && { kind: record.hold.kind, outcome: record.hold.outcome, detail: record.hold.detail },
-      uiRequests: record.uiRequests.length ? record.uiRequests.map(({ id, method, title }) => ({ id, method, title })) : undefined,
-      depth: record.depth, parentId: record.parentId,
-      resultReview: reviewOf(record),
-    };
-    return news;
-  });
+  const statuses = end.ids.map(id => childNews(manager.get(id)));
   if (!collect) return { report: { wake: end.wake, agents: statuses }, receipts: [] };
   const used = printed({ wake: end.wake, agents: statuses });
   let bytes = limits.bytes - used.bytes, lines = limits.lines - used.lines;

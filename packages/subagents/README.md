@@ -133,7 +133,7 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 |---|---|
 | `subagent_catalog` | Discover allowed, currently usable ingredients |
 | `subagent_loop` | Wake this parent on an interval until a stop condition holds; `start`, `stop`, `status`. Disabled unless the policy has `loops` |
-| `subagent_spawn` | Compose and start a child; returns prompt acceptance, not completion |
+| `subagent_spawn` | Compose and start a child. Returns acceptance, not completion, as a compact child entry with model, thinking, overlap warnings, and any created worktree |
 | `subagent_list` | `{ totals, agents }`: aggregate reported cost/live counts plus child status, unread counts, usage and paths |
 | `subagent_send` | Prompt an idle child, or explicitly steer/queue a follow-up for a working child; returns the observed input `disposition` |
 | `subagent_connect` | Parent authorizes a bidirectional peer link with independent directional allowances |
@@ -150,6 +150,8 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 | `subagent_workflow_start` | Start a parent-authored JSON workflow; returns acceptance |
 | `subagent_workflow_inspect` | Inspect run/step progress, artifacts, validation and attempts |
 | `subagent_workflow_control` | Pause, explicitly resume/retry, or cancel a workflow |
+
+`subagent_spawn` shares the compact per-child entry from `subagent_wait`. It adds `model`, `thinking`, `coordinationWarnings`, `coordinationWarningCount`, `worktree` when created, and `overlapsOutsideYourSubtree` when nonzero. Direct and proxied spawns omit the task, usage, and session/log/stderr paths. `subagent_list` still returns the full summary, including `lastSubmission.disposition`.
 
 Example composition, after consulting the catalog:
 
