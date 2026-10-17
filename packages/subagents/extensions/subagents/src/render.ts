@@ -358,7 +358,10 @@ export function subagentRenderers(action: Action, names?: NameLookup): Required<
         else {
           const [card] = cardsFromDetails([data], "summary");
           lines = [...card ? cardLines(card, width).map(line => paint(theme, line.spans)) : preview(raw, width, theme), ...overlapLines(data, theme)];
-          if (action === "spawn" && data.task) lines.push(theme.fg("dim", `task: ${inline(data.task)}`));
+          if (action === "spawn") {
+            const task = clip(inline(object(context?.args)?.task));
+            if (task) lines.push(theme.fg("dim", `task: ${task}`));
+          }
         }
         if (expanded && raw) {
           lines.push("", theme.fg("dim", "full result"));

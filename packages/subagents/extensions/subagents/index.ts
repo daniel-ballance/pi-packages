@@ -9,7 +9,7 @@ import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { builtInPolicy, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
-import { messageLatch, waitReport, withCurrentReviews } from "./src/wait.js";
+import { childNews, messageLatch, waitReport, withCurrentReviews, type ChildNews } from "./src/wait.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { cardsFromDetails, listingLine } from "./src/card.js";
 import { summarizeAgents } from "./src/usage.js";
@@ -31,6 +31,12 @@ import type { ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-co
 import type { TSchema } from "typebox";
 
 const { id, message } = SHARED_SCHEMAS;
+type SpawnReceipt = ChildNews & {
+  model?: string; thinking?: string; worktree?: Worktree;
+  coordinationWarnings: ReturnType<typeof coordinationWarnings>;
+  coordinationWarningCount: number;
+  overlapsOutsideYourSubtree?: number;
+};
 const noticeKeys = (details: unknown): string[] => {
   if (!details || typeof details !== "object" || !("noticeKeys" in details) || !Array.isArray(details.noticeKeys)) return [];
   return details.noticeKeys.filter((key): key is string => typeof key === "string");
@@ -369,9 +375,19 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         if (worktree) config = policy.compile(cwd, selection, depth);
         const coordination = normalizeCoordination(declared, cwd);
         const child = await manager.spawn({ name, task, ...config, coordination, ...(parentId ? { parentId } : {}) });
+        const record = manager.get(child.id);
         const all = coordinationWarnings(coordination, manager.list(), child.id), warnings = visible(all);
         const outside = all.length - warnings.length;
-        return result({ ...child, ...(worktree ? { worktree } : {}), coordinationWarnings: warnings.slice(0, 25), coordinationWarningCount: warnings.length, ...(outside ? { overlapsOutsideYourSubtree: outside } : {}) }, ctx);
+        const receipt: SpawnReceipt = {
+          ...childNews(record),
+          ...(record.model ? { model: record.model } : {}),
+          ...(record.thinking ? { thinking: record.thinking } : {}),
+          ...(worktree ? { worktree } : {}),
+          coordinationWarnings: warnings.slice(0, 25),
+          coordinationWarningCount: warnings.length,
+          ...(outside ? { overlapsOutsideYourSubtree: outside } : {}),
+        };
+        return result(receipt, ctx);
       } catch (error) {
         if (worktree) try { removeWorktree(worktree); } catch { /* report the spawn failure, not the cleanup */ }
         throw error;
