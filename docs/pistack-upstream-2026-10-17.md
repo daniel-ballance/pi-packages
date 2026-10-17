@@ -65,6 +65,30 @@ repeat-generation process.
   `PACKAGE_MANAGER=pnpm PI_PACKAGING_NPM_OFFLINE=false` as in CI. This includes
   the pnpm production-install packaging fixture. Lockfiles are unchanged.
 
+## Pre-push race found and repaired
+
+The first pre-push gate caught an existing unrelated race in
+`workflows-parent-rpc.test.ts`: it waits for `proof.json` to exist, then parses
+it, while the provider fixture created that file before filling its bytes.
+The result was `Unexpected end of JSON input`. The fixture now writes a sibling
+`.tmp` file and renames it into place, so existence means complete JSON.
+
+A temporary Node preload widened the empty-file/write interval to 250 ms for
+both the final and temporary proof paths. The original fixture failed with the
+same parse error; the atomic fixture passed the same real RPC test under Node
+22.19.0. The preload was only a manual fault-injection probe, not shipped code.
+The full local npm and pnpm gates were rerun with the repaired fixture before
+publication; no hook or check was bypassed.
+
+## Concurrent base update
+
+PR #40 merged the Pocock refresh while this change was being published. Rebased
+onto `72fcd49`, retained its Pocock `49dd158` pin and coverage notes, and resolved
+only the shared decisions-note conflict. Re-inventory still shows identical skill
+names and invocation flags. The combined candidate passed both complete Node
+22.19.0 npm and pnpm root gates again; no Pocock generated files were modified by
+this branch.
+
 Local CI includes generated drift, coupling/skill lint, typechecks, upstream
 helper-script tests, host variants, and real Pi resource/production-package
 loading. These results establish a packaging-only upstream update; they do not
