@@ -49,8 +49,7 @@ function fixture() {
     ]),
   });
   git(root, "clone", "-q", origin, join(pkg, "vendor/up"));
-  git(join(pkg, "vendor/up"), "config", "protocol.file.allow", "always");
-  const env = { ...gitEnv(), PISTACK_PACKAGE_DIR: pkg };
+  const env = { ...gitEnv(), PISTACK_PACKAGE_DIR: pkg, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "protocol.file.allow", GIT_CONFIG_VALUE_0: "always" };
   const run = (cli, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd: pkg, encoding: "utf8", env });
   assert.equal(run(generateCli).status, 0);
   const commit = (files, message) => { write(origin, files); git(origin, "add", "."); git(origin, "commit", "-qm", message); return git(origin, "rev-parse", "HEAD"); };

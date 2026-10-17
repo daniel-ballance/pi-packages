@@ -171,6 +171,30 @@ test("gitEnv keeps GIT_CONFIG_COUNT and still ignores GIT_DIR", () => {
   }
 });
 
+test("gitEnv discovers repository variables lazily and caches them", { skip: process.platform === "win32" }, () => {
+  const bin = mkdtempSync(join(tmpdir(), "worktree-git-env-discovery-"));
+  const source = pathToFileURL(join(import.meta.dirname, "../extensions/subagents/src/worktree.ts")).href;
+  const log = join(bin, "calls");
+  writeFileSync(join(bin, "git"), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DISCOVERY_LOG"\nprintf "%s\\n" GIT_DIR GIT_FUTURE_LOCAL GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS\n', { mode: 0o755 });
+  try {
+    const result = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+      import assert from "node:assert/strict";
+      import { existsSync } from "node:fs";
+      import { gitEnv } from ${JSON.stringify(source)};
+      assert.equal(existsSync(process.env.DISCOVERY_LOG), false);
+      const base = { GIT_FUTURE_LOCAL: "remove", GIT_DIR: process.env.DECOY, KEEP: "yes" };
+      for (let i = 0; i < 2; i++) {
+        assert.deepEqual(gitEnv(base), { KEEP: "yes" });
+      }
+      assert.equal(base.GIT_FUTURE_LOCAL, "remove");
+    `], { encoding: "utf8", env: { ...process.env, PATH: bin, DISCOVERY_LOG: log, DECOY: join(bin, ".git") }, cwd: join(import.meta.dirname, "..") });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(log, "utf8"), "rev-parse --local-env-vars\n");
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
 test("gitEnv still drops GIT_DIR when git cannot name its variables", () => {
   const empty = mkdtempSync(join(tmpdir(), "worktree-git-env-nopath-"));
   const source = pathToFileURL(join(import.meta.dirname, "../extensions/subagents/src/worktree.ts")).href;
@@ -179,11 +203,11 @@ test("gitEnv still drops GIT_DIR when git cannot name its variables", () => {
       import { gitEnv } from ${JSON.stringify(source)};
       const env = gitEnv({
         ...process.env,
-        GIT_DIR: "/decoy",
-        GIT_WORK_TREE: "/decoy",
-        GIT_INDEX_FILE: "/decoy",
-        GIT_COMMON_DIR: "/decoy",
-        GIT_OBJECT_DIRECTORY: "/decoy",
+        GIT_DIR: process.env.DECOY,
+        GIT_WORK_TREE: process.env.DECOY,
+        GIT_INDEX_FILE: process.env.DECOY,
+        GIT_COMMON_DIR: process.env.DECOY,
+        GIT_OBJECT_DIRECTORY: process.env.DECOY,
         GIT_CONFIG_COUNT: "1",
         GIT_CONFIG_KEY_0: "demo.key",
         GIT_CONFIG_VALUE_0: "kept",
@@ -197,7 +221,7 @@ test("gitEnv still drops GIT_DIR when git cannot name its variables", () => {
         GIT_CONFIG_COUNT: env.GIT_CONFIG_COUNT ?? null,
         GIT_CONFIG_VALUE_0: env.GIT_CONFIG_VALUE_0 ?? null,
       }));
-    `], { encoding: "utf8", env: { ...process.env, PATH: empty }, cwd: join(import.meta.dirname, "..") });
+    `], { encoding: "utf8", env: { ...process.env, PATH: empty, DECOY: join(empty, ".git") }, cwd: join(import.meta.dirname, "..") });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), {
       GIT_DIR: null,
