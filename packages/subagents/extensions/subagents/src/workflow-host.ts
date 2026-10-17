@@ -6,6 +6,7 @@ import { verifyArtifact } from "./workflow-artifacts.js";
 import { authorizeWorkflow, type PeerLink, type Worker, type WorkflowDefinition } from "./workflow-definition.js";
 import type { InputDisposition, SlotReservation, SubagentManager } from "./manager.js";
 import type { SubagentPolicy } from "./policy.js";
+import { gitEnv } from "./worktree.js";
 
 export interface AgentJob {
   step: string; workflow: string; cwd: string; worker: Worker; instructions: string;
@@ -114,7 +115,7 @@ export function runCommand(command: string, cwd: string, env: Record<string, str
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   return new Promise((resolve, reject) => {
-    const child = spawn("bash", ["-c", command], { cwd, env: { ...process.env, ...env }, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("bash", ["-c", command], { cwd, env: { ...gitEnv(), ...env }, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", logged = 0, killer: NodeJS.Timeout | undefined, failure: Error | undefined;
     const kill = (sig: NodeJS.Signals) => {
       try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig); else child.kill(sig); }

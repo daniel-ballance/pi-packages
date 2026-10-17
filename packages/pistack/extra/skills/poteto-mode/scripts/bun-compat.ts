@@ -1,33 +1,25 @@
 // The two Bun process APIs the upstream script tests use, on node:child_process.
 // Hand-written for pistack (extra/).
-import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_process";
+import { execFileSync, spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_process";
 import { basename } from "node:path";
 
 type Options = { readonly cwd?: string; readonly env?: Readonly<Record<string, string | undefined>> };
 
-// `git rev-parse --local-env-vars`. A hook exports these, and they override `-C`.
-const REPO_GIT_ENV = [
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_CONFIG",
-  "GIT_CONFIG_PARAMETERS",
-  "GIT_CONFIG_COUNT",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_IMPLICIT_WORK_TREE",
-  "GIT_GRAFT_FILE",
-  "GIT_INDEX_FILE",
-  "GIT_NO_REPLACE_OBJECTS",
-  "GIT_REPLACE_REF_BASE",
-  "GIT_PREFIX",
-  "GIT_SHALLOW_FILE",
-  "GIT_COMMON_DIR",
-];
+let repoGitEnv: string[] | undefined;
 
 function commandEnv(file: string, env: Options["env"]): NodeJS.ProcessEnv | undefined {
   if (basename(file) !== "git") return env as NodeJS.ProcessEnv | undefined;
+  if (!repoGitEnv) {
+    try {
+      repoGitEnv = execFileSync("git", ["rev-parse", "--local-env-vars"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+        .trim().split(/\s+/).filter(name => name !== "GIT_CONFIG_COUNT" && name !== "GIT_CONFIG_PARAMETERS");
+    } catch {
+      // Git may be unavailable; still prevent children from inheriting the caller's repository.
+      repoGitEnv = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"];
+    }
+  }
   const next: NodeJS.ProcessEnv = { ...(env ?? process.env) };
-  for (const name of REPO_GIT_ENV) delete next[name];
+  for (const name of repoGitEnv) delete next[name];
   return next;
 }
 

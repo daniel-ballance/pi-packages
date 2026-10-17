@@ -11,28 +11,20 @@ export interface Worktree extends WorktreePlan {
   ignored: boolean;
 }
 
-// `git rev-parse --local-env-vars`. A hook exports these, and they override `-C`.
-const REPO_GIT_ENV = [
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_CONFIG",
-  "GIT_CONFIG_PARAMETERS",
-  "GIT_CONFIG_COUNT",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_IMPLICIT_WORK_TREE",
-  "GIT_GRAFT_FILE",
-  "GIT_INDEX_FILE",
-  "GIT_NO_REPLACE_OBJECTS",
-  "GIT_REPLACE_REF_BASE",
-  "GIT_PREFIX",
-  "GIT_SHALLOW_FILE",
-  "GIT_COMMON_DIR",
-] as const;
+let repoGitEnv: string[] | undefined;
 
 export function gitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (!repoGitEnv) {
+    try {
+      repoGitEnv = execFileSync("git", ["rev-parse", "--local-env-vars"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+        .trim().split(/\s+/).filter(name => name !== "GIT_CONFIG_COUNT" && name !== "GIT_CONFIG_PARAMETERS");
+    } catch {
+      // Git may be unavailable; still prevent children from inheriting the caller's repository.
+      repoGitEnv = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"];
+    }
+  }
   const env = { ...base };
-  for (const name of REPO_GIT_ENV) delete env[name];
+  for (const name of repoGitEnv) delete env[name];
   return env;
 }
 
