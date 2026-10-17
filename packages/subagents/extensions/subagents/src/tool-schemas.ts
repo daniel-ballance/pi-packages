@@ -17,7 +17,7 @@ export const TOOL_SPECS = {
   },
   subagent_spawn: {
       description: "Spawn a persistent Pi RPC child and send its initial task. Returns after prompt acceptance, not completion. " +
-        "The result is the same compact child entry as a subagent_wait agent, plus model, thinking, overlap warnings, and worktree when one was created. It does not include the task, usage, or session/log/stderr paths. " +
+        "The result is the compact child entry a subagent_wait agent gets, without reports, plus model, thinking, overlap warnings, and worktree when one was created. It does not include the task, usage, or session/log/stderr paths. " +
         "Consult subagent_catalog first. Compose an exact allowed provider/model:thinking and explicit tools/resources; catalog alwaysExtensions/alwaysTools are added automatically. " +
         "Optional systemPrompt replaces the default; appendSystemPrompt adds instructions; omit both to inherit Pi defaults/SYSTEM.md. " +
         "Discovery is disabled; subagent tools other than the delegation tools are forbidden, and those only when subagent_catalog reports maxDepth above the new child's depth. Bash still grants full machine access: NOT a sandbox. " +
