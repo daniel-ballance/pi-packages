@@ -6,10 +6,12 @@ disable-model-invocation: true
 
 Implement the work described by the user in the spec or tickets.
 
-Use [/skill:tdd](../tdd/SKILL.md) where possible, at pre-agreed seams.
+If the user passes a ticket reference, use the repo's documented tracker workflow to fetch it and state its title before starting. If no tracker is configured, ask for the ticket text; if the reference is ambiguous, ask.
+
+Read [tdd](../tdd/SKILL.md) where possible, at pre-agreed seams.
 
 Run typechecking regularly, single test files regularly, and the full test suite once at the end.
 
-Once done, use [/skill:code-review](../code-review/SKILL.md) to review the work.
+Once done, read [code-review](../code-review/SKILL.md) to review the work.
 
 Commit your work to the current branch.
