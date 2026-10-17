@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./git-env.mjs";
+import { sourcePathClassifier } from "./source-paths.mjs";
 
 const readJson = (path, fallback) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
 
@@ -53,13 +54,11 @@ const isExecutable = path => (statSync(path).mode & 0o111) !== 0;
 // Map upstream paths to output paths; the first matching `from` prefix wins.
 // Text files are strings, which rules may rewrite; anything else stays bytes.
 function collect(vendor, manifest, executables, problems) {
-  const exclude = (manifest.exclude ?? []).map(source => new RegExp(source));
+  const classify = sourcePathClassifier(manifest);
   const files = new Map();
   for (const path of walk(vendor).map(file => file.split("\\").join("/"))) {
-    if (exclude.some(pattern => pattern.test(path))) continue;
-    const entry = manifest.map.find(({ from }) => from.endsWith("/") ? path.startsWith(from) : path === from);
-    if (!entry) continue;
-    const output = entry.to + path.slice(entry.from.length);
+    const { output } = classify(path);
+    if (output === undefined) continue;
     if (isLink(join(vendor, path))) { problems.push(`${path}: upstream symlinks are not supported; exclude it or add a rule`); continue; }
     const bytes = readFileSync(join(vendor, path));
     files.set(output, decode(bytes) ?? bytes);

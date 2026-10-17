@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./git-env.mjs";
+import { sourcePathClassifier } from "./source-paths.mjs";
 
 const generator = join(dirname(fileURLToPath(import.meta.url)), "generate.mjs");
 
@@ -24,7 +25,8 @@ function main(args) {
     return 2;
   }
   const packageDir = resolve(process.env.PISTACK_PACKAGE_DIR ?? join(dirname(generator), ".."));
-  const { vendor, upstream } = JSON.parse(readFileSync(join(packageDir, "rules/manifest.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync(join(packageDir, "rules/manifest.json"), "utf8"));
+  const { vendor, upstream } = manifest;
   if (!upstream) { console.error("rules/manifest.json names no upstream checkout"); return 1; }
   const checkout = join(packageDir, upstream.checkout), subtree = relative(checkout, join(packageDir, vendor)) || ".";
   if (!existsSync(join(checkout, ".git"))) { console.error(`${upstream.checkout} is not checked out; run npm run sync first`); return 1; }
@@ -45,6 +47,18 @@ function main(args) {
     console.log(`${upstream.repository}: ${from.slice(0, 7)} -> ${to.slice(0, 7)}${forward ? "" : " (not a descendant of the old pin)"}`);
     const log = git("log", "--oneline", "--no-decorate", forward ? `${from}..${to}` : to, ...(forward ? [] : ["-n", "20"]), "--", subtree);
     console.log(log ? `Upstream commits touching ${subtree}/:\n${log.replace(/^/gm, "  ")}` : `No upstream commits touch ${subtree}/.`);
+    const changes = git("diff", "--name-status", "--no-renames", "-z", from, to, "--", subtree).split("\0").slice(0, -1);
+    if (changes.length) {
+      const classify = sourcePathClassifier(manifest);
+      console.log("Changed upstream source paths (manifest scope):");
+      for (let index = 0; index < changes.length; index += 2) {
+        const [status, path] = changes.slice(index, index + 2);
+        const { kind, output } = classify(relative(subtree, path).split("\\").join("/"));
+        const scope = output === undefined ? ` (${kind}${kind === "not emitted" ? "; review scope" : ""})` : ` -> ${output}`;
+        console.log(`  ${status} ${path}${scope}`);
+      }
+    }
+    console.log(`Review the full upstream commits too: packaging and generated harness trees may live outside ${subtree}/.`);
   }
 
   const generated = spawnSync(process.execPath, [generator], { stdio: "inherit", env: process.env });

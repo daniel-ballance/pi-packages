@@ -1,5 +1,5 @@
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
-import { writeFileSync } from "node:fs";
+import { renameSync, writeFileSync } from "node:fs";
 import workflowProvider from "./workflow-provider.mjs";
 export default function (pi) {
   workflowProvider(pi);
@@ -20,7 +20,11 @@ export default function (pi) {
       else if (started?.isError || inspected?.isError) content = [{ type: "text", text: `WORKFLOW SMOKE FAILED: ${text(inspected ?? started)}` }];
       else if (inspected) {
         const proof = JSON.parse(text(inspected));
-        if (process.env.WORKFLOW_SMOKE_OUTPUT) writeFileSync(process.env.WORKFLOW_SMOKE_OUTPUT, JSON.stringify(proof, null, 2));
+        if (process.env.WORKFLOW_SMOKE_OUTPUT) {
+          const output = process.env.WORKFLOW_SMOKE_OUTPUT;
+          writeFileSync(`${output}.tmp`, JSON.stringify(proof, null, 2));
+          renameSync(`${output}.tmp`, output);
+        }
         content = [{ type: "text", text: proof.status === "succeeded" ? "WORKFLOW SMOKE PASSED: autonomous run finished; inspected after one workflow notification." : "WORKFLOW SMOKE FAILED: inspect status." }];
       } else if (reported && started) call("subagent_workflow_inspect", { id: JSON.parse(text(started)).id });
       else if (started) content = [{ type: "text", text: "Workflow launched. Parent is idle while workers and checks proceed autonomously." }];
