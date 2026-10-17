@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,11 +6,12 @@ import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { asHost } from "./host-env.js";
+import { git as runGit } from "./git.js";
 
 async function withSpawnTool(workingDirectories: string[], run: (spawn: (args: Record<string, unknown>) => Promise<unknown>, repo: string, git: (...args: string[]) => string, root: string) => Promise<void>) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "worktree-tool-"))), repo = join(root, "repo"), agentDir = join(root, "agent");
   mkdirSync(join(repo, "src"), { recursive: true }); mkdirSync(agentDir);
-  const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
+  const git = (...args: string[]) => runGit(["-C", repo, ...args], { encoding: "utf8" }).trim();
   git("init", "-q", "-b", "main"); writeFileSync(join(repo, "src/a.ts"), "1\n");
   git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
   // The model and tools are always allowed; tests vary only workingDirectories.

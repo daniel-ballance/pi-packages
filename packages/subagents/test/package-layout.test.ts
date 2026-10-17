@@ -6,6 +6,7 @@ import { basename, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
+import { git as runGit, gitEnv } from "./git.js";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
@@ -83,7 +84,7 @@ test("Pi Git installation resolves every extension without development dependenc
         filter: path => !["node_modules", "vendor", ".git"].includes(basename(path)),
       });
     }
-    const git = (...args: string[]) => execFileSync("git", args, { cwd: source, stdio: "pipe" });
+    const git = (...args: string[]) => runGit(args, { cwd: source, stdio: "pipe" });
     git("init", "--quiet", "--template=");
     git("add", ".");
     git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
@@ -102,7 +103,7 @@ test("Pi Git installation resolves every extension without development dependenc
       console.log(JSON.stringify(manager.getInstalledPath(source, "user")));
     `], {
       cwd: temp, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, GIT_CONFIG_COUNT: "1",
+      env: { ...gitEnv(), GIT_CONFIG_COUNT: "1",
         GIT_CONFIG_KEY_0: `url.${pathToFileURL(temp + "/").href}.insteadOf`,
         GIT_CONFIG_VALUE_0: "https://pi-packages.invalid/fixtures/",
         npm_config_offline: process.env.PI_PACKAGING_NPM_OFFLINE ?? "true", npm_config_ignore_scripts: "true",

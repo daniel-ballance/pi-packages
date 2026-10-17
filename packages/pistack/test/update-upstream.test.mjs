@@ -5,12 +5,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { gitEnv } from "../generator/git-env.mjs";
 
 const generateCli = fileURLToPath(new URL("../generator/generate.mjs", import.meta.url));
 const updateCli = fileURLToPath(new URL("../generator/update-upstream.mjs", import.meta.url));
 
 const identity = ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "init.defaultBranch=main", "-c", "protocol.file.allow=always"];
-const git = (cwd, ...args) => execFileSync("git", [...identity, "-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const git = (cwd, ...args) => execFileSync("git", [...identity, "-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
 
 function write(root, files) {
   for (const [path, text] of Object.entries(files)) {
@@ -48,7 +49,8 @@ function fixture() {
     ]),
   });
   git(root, "clone", "-q", origin, join(pkg, "vendor/up"));
-  const env = { ...process.env, PISTACK_PACKAGE_DIR: pkg, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "protocol.file.allow", GIT_CONFIG_VALUE_0: "always" };
+  git(join(pkg, "vendor/up"), "config", "protocol.file.allow", "always");
+  const env = { ...gitEnv(), PISTACK_PACKAGE_DIR: pkg };
   const run = (cli, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd: pkg, encoding: "utf8", env });
   assert.equal(run(generateCli).status, 0);
   const commit = (files, message) => { write(origin, files); git(origin, "add", "."); git(origin, "commit", "-qm", message); return git(origin, "rev-parse", "HEAD"); };

@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { chmodSync } from "node:fs";
 import { createWorktree, planWorktree, removeWorktree } from "../extensions/subagents/src/worktree.js";
+import { git as runGit } from "./git.js";
 
 function repo() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "worktree-repo-")));
-  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  const git = (...args: string[]) => runGit(["-C", root, ...args], { encoding: "utf8" }).trim();
   git("init", "-q", "-b", "main");
   writeFileSync(join(root, "README.md"), "hello\n");
   git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
@@ -100,7 +100,7 @@ test("the plan names the destination before anything is created, keeping whitesp
   const parent = realpathSync(mkdtempSync(join(tmpdir(), "worktree-space-")));
   const root = join(parent, "trailing ");
   mkdirSync(root);
-  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
+  const git = (...args: string[]) => runGit(["-C", root, ...args], { encoding: "utf8" });
   try {
     git("init", "-q", "-b", "main"); writeFileSync(join(root, "a"), "a\n"); git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "a");
     const plan = planWorktree({ cwd: root, name: "spacey" });

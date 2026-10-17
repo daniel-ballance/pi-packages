@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 import { cliEnv } from "./host-env.js";
+import { git as runGit } from "./git.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const fixture = fileURLToPath(new URL("./fixtures/worktree-parent-provider.mjs", import.meta.url));
 const childFixture = fileURLToPath(new URL("./fixtures/peer-provider.mjs", import.meta.url));
@@ -15,7 +15,7 @@ const extension = fileURLToPath(new URL("../extensions/subagents/index.ts", impo
 test("a real parent spawns a child in a new git worktree under .pi/worktrees", { timeout: 45000, skip: process.platform === "win32" }, async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "worktree-parent-"))), agentDir = join(root, "agent"), bin = join(root, "bin"), repo = join(root, "repo");
   mkdirSync(agentDir); mkdirSync(bin); mkdirSync(repo);
-  const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
+  const git = (...args: string[]) => runGit(["-C", repo, ...args], { encoding: "utf8" }).trim();
   git("init", "-q", "-b", "main");
   writeFileSync(join(repo, ".gitignore"), ".pi/worktrees/\n");
   git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");

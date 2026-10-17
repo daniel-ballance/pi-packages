@@ -17,6 +17,7 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readd
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gitEnv } from "./git-env.mjs";
 
 const readJson = (path, fallback) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
 
@@ -177,8 +178,8 @@ function applyPatches(patchesDir, outDir, problems) {
   for (const name of walk(patchesDir).filter(file => file.endsWith(".patch"))) {
     const patch = join(patchesDir, name);
     try {
-      execFileSync("git", ["apply", "--check", patch], { cwd: outDir, stdio: "pipe" });
-      execFileSync("git", ["apply", patch], { cwd: outDir, stdio: "pipe" });
+      execFileSync("git", ["apply", "--check", patch], { cwd: outDir, stdio: "pipe", env: gitEnv() });
+      execFileSync("git", ["apply", patch], { cwd: outDir, stdio: "pipe", env: gitEnv() });
     } catch (error) {
       problems.push(`patch ${name} no longer applies; rebase it: ${String(error.stderr ?? error.message).trim()}`);
     }
@@ -240,7 +241,7 @@ function drift(packageDir, outDir) {
 export function upstreamInfo(packageDir) {
   const { vendor, upstream } = readJson(join(packageDir, "rules/manifest.json"));
   if (!upstream) return undefined;
-  const commit = execFileSync("git", ["-C", join(packageDir, upstream.checkout), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const commit = execFileSync("git", ["-C", join(packageDir, upstream.checkout), "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv() }).trim();
   const { name, version } = readJson(join(packageDir, vendor, "plugin.json"));
   const subtree = relative(upstream.checkout, vendor).split("\\").join("/");
   return { repository: upstream.repository, commit, subtree, name, version };
