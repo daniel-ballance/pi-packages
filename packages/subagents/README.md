@@ -151,7 +151,7 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 | `subagent_workflow_inspect` | Inspect run/step progress, artifacts, validation and attempts |
 | `subagent_workflow_control` | Pause, explicitly resume/retry, or cancel a workflow |
 
-`subagent_spawn` shares the compact per-child entry from `subagent_wait`. It adds `model`, `thinking`, `coordinationWarnings`, `coordinationWarningCount`, `worktree` when created, and `overlapsOutsideYourSubtree` when nonzero. Direct and proxied spawns omit the task, usage, and session/log/stderr paths. `subagent_list` still returns the full summary, including `lastSubmission.disposition`.
+`subagent_spawn` shares the compact per-child entry from `subagent_wait`, without `reports`. It adds `model`, `thinking`, `coordinationWarnings`, `coordinationWarningCount`, `worktree` when created, and `overlapsOutsideYourSubtree` when nonzero. Direct and proxied spawns omit the task, usage, and session/log/stderr paths. `subagent_list` still returns the full summary, including `lastSubmission.disposition`.
 
 Example composition, after consulting the catalog:
 
