@@ -74,7 +74,7 @@ Registry lookups use `npm view <name> version`. Release-channel checks use `mise
 
 ## Results
 
-The npm clean install and canonical root check pass with Node 26.12.0, npm 12.2.0, and Python 3.15.0. The dependency update also passed the root check on minimum-supported Node 22.19.0 before the final security-source correction. Final clean-manager and independent verification remain pending.
+The npm clean install and canonical root check pass with Node 26.12.0, npm 12.2.0, and Python 3.15.0. The dependency update also passed the root check on minimum-supported Node 22.19.0 before the final security-source correction. A separate pnpm 12.14.0 checkout also passes its frozen install and root check. Its new package store reused zero packages. An isolated metadata-policy check verified all 328 lock entries without bypassing the release-age policy. Independent verification and merge remain pending.
 
 npm 12 changed `npm pack --json` from an array to a name-keyed object. The packaging test reads either shape through `Object.values`. Two assertion messages now supply an empty string when their diagnostic detail is absent, as required by the latest Node types.
 
