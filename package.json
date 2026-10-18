@@ -6,7 +6,7 @@
   "keywords": ["pi-package"],
   "engines": { "node": ">=22.19.0" },
   "workspaces": ["packages/*", "scripts/lint-skill"],
-  "devDependencies": { "brace-expansion": "5.0.12", "undici": "8.10.2" },
+  "devDependencies": { "brace-expansion": "5.0.12", "undici": "8.12.2" },
   "pi": {
     "extensions": [
       "./packages/claude-subscription/extensions/claude-subscription/index.ts",

@@ -217,7 +217,7 @@ test("human halt persists before synchronous workflow hook, cancels queues, and 
     const requested = s.manager.pendingNotices().find(n => n.kind === "human_intervention")!;
     s.manager.markNoticesDelivered([requested.key]); // An in-flight requested receipt cannot erase confirmation.
     await pending;
-    assert.equal(s.manager.get(a.id).hold?.outcome, "confirmed", s.manager.get(a.id).hold?.detail);
+    assert.equal(s.manager.get(a.id).hold?.outcome, "confirmed", s.manager.get(a.id).hold?.detail ?? "");
     assert.equal(s.manager.get(a.id).assignment?.status, "cancelled");
     assert.match(s.manager.pendingNotices().find(n => n.kind === "human_intervention")!.text, /confirmed/);
     assert.equal(s.manager.get(a.id).pid, pid);

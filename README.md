@@ -28,7 +28,7 @@ For a local checkout, install dependencies first; Pi references local paths but
 
 ```sh
 npm ci --ignore-scripts
-# Or, with pnpm 12.6.0:
+# Or, with pnpm 12.14.0:
 # pnpm install --frozen-lockfile --ignore-scripts
 node scripts/patch-pi-host-security.mts
 pi install "$PWD"
@@ -75,20 +75,22 @@ entry points are extensions, not supporting modules such as the child guard.
 
 The root supports both npm and pnpm workspaces. Use `npm ci --ignore-scripts`
 with `package-lock.json`, or `pnpm install --frozen-lockfile --ignore-scripts`
-with `pnpm-workspace.yaml` and `pnpm-lock.yaml` (verified with pnpm 12.6.0).
+with `pnpm-workspace.yaml` and `pnpm-lock.yaml` (verified with pnpm 12.14.0).
 No single-manager `packageManager` pin is imposed. `.npmrc` selects nested npm
 trees; pnpm uses its isolated, symlinked dependency layout. Both keep package
 runtime dependencies resolvable from their extension entry points.
 
 After a development install, run `node scripts/patch-pi-host-security.mts`
 (or use `./scripts/ci-install.sh locked`, which runs it after installation and
-any CI runtime overrides). The pinned Pi SDKs publish an npm shrinkwrap containing
+any CI runtime overrides). Older Pi SDKs published an npm shrinkwrap containing
 vulnerable `brace-expansion` and `undici`; npm honors it even when our outer
 lock or overrides name patched releases. This explicit step copies the separately
-integrity-verified `brace-expansion` 5.0.12 and `undici` 8.10.2 development
+integrity-verified `brace-expansion` 5.0.12 and `undici` 8.12.2 development
 dependencies into affected local SDKs and updates only their shrinkwrap entries.
-It preflights all nine development hosts, accepts already-patched versions on
-the reviewed 5.x and 8.x lines, and leaves those dependencies unchanged. Each
+It preflights all seven development hosts. The security floors remain
+`brace-expansion` 5.0.12 and `undici` 8.10.2, separate from the reviewed replacement
+versions. Already-safe dependencies on the reviewed 5.x and 8.x lines stay unchanged.
+The supported Pi 1.3.0 SDK pins safe versions and has no shrinkwrap to patch. Each
 SDK's replacements are staged together with one merged shrinkwrap; a failed
 promotion restores that SDK's installed libraries. Successful patches clear
 hidden npm lock caches. It never runs dependency
@@ -218,8 +220,8 @@ Install dependencies first (`./scripts/ci-install.sh`). Bypass it with
 
 ## CI support and limits
 
-CI runs the complete root check with both npm and pnpm 12.6.0 on Node.js
-22.19.0 against the committed lockfiles. Every package develops and tests against
+CI runs the complete root check with npm 12.2.0 and pnpm 12.14.0 on Node.js
+22.23.3 and 26.12.0 against the committed lockfiles. Every package develops and tests against
 **Pi 1.3.0**, the one supported runtime; `scripts/ci-install.sh` refuses any
 other. Older Pi releases are not tested. Tests use local deterministic providers and fixtures;
 live search/MCP services and optional installed-Pi executable overrides are

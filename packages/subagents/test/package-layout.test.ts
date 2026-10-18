@@ -179,9 +179,9 @@ test("every package has resource directories and packs its declared extension im
       await readdir(join(path, type));
       assert.ok(Array.isArray(manifest.pi[type]), `${name}: missing pi.${type}`);
     }
-    const [pack] = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+    const [pack] = Object.values<{ files: { path: string }[] }>(JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
       cwd: path, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-    }));
+    })));
     const files = pack.files.map((file: { path: string }) => file.path);
     if (collectionExtensions.includes(name)) {
       assert.ok(files.includes(`extensions/${name}/index.ts`), name);

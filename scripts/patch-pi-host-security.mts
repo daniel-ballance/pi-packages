@@ -16,16 +16,16 @@ const hosts: readonly { packageName: string; alias: string }[] = [
 
 type Dependency = {
   name: "brace-expansion" | "undici";
-  floor: string;
+  sourceVersion: string;
   major: number;
   minor: number;
   patch: number;
   integrity?: string;
 };
 const dependencies: readonly Dependency[] = [
-  { name: "brace-expansion", floor: "5.0.12", major: 5, minor: 0, patch: 12 },
-  { name: "undici", floor: "8.10.2", major: 8, minor: 10, patch: 2,
-    integrity: "sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==" },
+  { name: "brace-expansion", sourceVersion: "5.0.12", major: 5, minor: 0, patch: 12 },
+  { name: "undici", sourceVersion: "8.12.2", major: 8, minor: 10, patch: 2,
+    integrity: "sha512-XtuDWVdqTLr3NAxm2ly9/hU6kUsJOgGh1RASzMBbsw6aWCOaQzHdW+QQDfdERjfJ2V5vL5pRPa4RetO9UfivDg==" },
 ];
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -74,8 +74,11 @@ function noUndiciDependencies(manifest: Record<string, unknown>): void {
 }
 
 function validateSource(manifest: Record<string, unknown>, dependency: Dependency): void {
-  if (manifest.name !== dependency.name || manifest.version !== dependency.floor) {
-    throw new Error(`Install the reviewed ${dependency.name} ${dependency.floor} development dependency first`);
+  if (manifest.name !== dependency.name || manifest.version !== dependency.sourceVersion) {
+    throw new Error(`Install the reviewed ${dependency.name} ${dependency.sourceVersion} development dependency first`);
+  }
+  if (!patched(dependency.sourceVersion, dependency)) {
+    throw new Error("Reviewed source is below its security floor");
   }
   if (dependency.name === "undici") {
     noUndiciDependencies(manifest);
@@ -113,8 +116,8 @@ for (const dependency of dependencies) {
   const manifest = await json(join(path, "package.json"));
   validateSource(manifest, dependency);
   const resolution = object(packages[`node_modules/${dependency.name}`], "security source lock entry");
-  if (resolution.version !== dependency.floor ||
-      resolution.resolved !== `https://registry.npmjs.org/${dependency.name}/-/${dependency.name}-${dependency.floor}.tgz` ||
+  if (resolution.version !== dependency.sourceVersion ||
+      resolution.resolved !== `https://registry.npmjs.org/${dependency.name}/-/${dependency.name}-${dependency.sourceVersion}.tgz` ||
       typeof resolution.integrity !== "string" || !resolution.integrity.startsWith("sha512-") ||
       (dependency.integrity !== undefined && resolution.integrity !== dependency.integrity)) {
     throw new Error("Security source must have the reviewed version, registry URL and SHA-512 integrity");
@@ -195,7 +198,7 @@ for (const host of selected) {
     if (old.version !== current.version) throw new Error("Installed Pi dependency disagrees with its shrinkwrap");
     if (dependency.name === "undici") noUndiciDependencies(old);
     entries[key] = {
-      ...old, version: dependency.floor, resolved: source.resolution.resolved, integrity: source.resolution.integrity,
+      ...old, version: dependency.sourceVersion, resolved: source.resolution.resolved, integrity: source.resolution.integrity,
     };
     plan.shrinkwrap.packages = entries;
     plan.replacements.push({ target, source });
@@ -245,4 +248,4 @@ for (const plan of plans) {
   }
 }
 if (plans.length > 0) await rm(rootCache, { force: true });
-console.log(`Pi host security: ${selected.length} checked, ${plans.length} patched to brace-expansion 5.0.12 and undici 8.10.2.`);
+console.log(`Pi host security: ${selected.length} checked, ${plans.length} patched to ${dependencies.map((dependency: Dependency): string => `${dependency.name} ${dependency.sourceVersion}`).join(" and ")}.`);
