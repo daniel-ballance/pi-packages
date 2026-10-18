@@ -105,7 +105,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   const refresh = () => {
     reportActivity();
     if (!manager || !context?.hasUI) return;
-    footerLabel = formatSubagentSummary(manager.list());
+    footerLabel = formatSubagentSummary(manager.list(), manager.capacity().limit);
     // Also requests a render, but don't add our old third row in the TUI.
     context.ui.setStatus("subagents", context.mode === "tui" ? undefined : footerLabel || undefined);
   };

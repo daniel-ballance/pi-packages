@@ -187,9 +187,9 @@ test("the footer summary counts and costs every level of the tree", async () => 
   try {
     const a = await spawn("A", "1", undefined), b = await spawn("B", "2", a), c = await spawn("C", "4", b);
     await manager.refreshUsageSnapshots();
-    assert.match(formatSubagentSummary(manager.list()), /^subagents: \d\/3 • \$7\.000$/, "a grandchild is tracked and costed");
+    assert.match(formatSubagentSummary(manager.list(), manager.capacity().limit), /^subagents: \d(\(\+\d\))?\/4 of 3 • \$7\.000$/, "a grandchild is tracked and costed");
     await manager.close(b);
     assert.equal(manager.get(c).status, "stopped");
-    assert.match(formatSubagentSummary(manager.list()), /^subagents: [01]\/3 • \$7\.000$/, "closed descendants stay tracked and keep their cost");
+    assert.match(formatSubagentSummary(manager.list(), manager.capacity().limit), /^subagents: \d(\(\+\d\))?\/4 of 3 • \$7\.000$/, "closed descendants stay tracked and keep their cost");
   } finally { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); }
 });

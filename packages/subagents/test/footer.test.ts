@@ -4,28 +4,50 @@ import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "../extensions/subagents/src/footer.js";
 const dim = (text: string) => `\x1b[38;5;242m${text}\x1b[39m`;
-const label = "subagents: 0/3 • $1.234";
+const label = "subagents: 0/4 of 3 • $1.234";
 
 test("summary counts active/all children and sums cumulative costs including closed sessions", () => {
   assert.equal(formatSubagentSummary([
     { status: "working", usage: { cost: 0.1234 } },
     { status: "idle", usage: { cost: 0.2 } },
     { status: "stopped", usage: { cost: 0.9106 } },
-  ]), "subagents: 1/3 • $1.234");
+  ], 8), "subagents: 1/8 of 3 • $1.234");
   const resumed = [{ status: "working", usage: { cost: 1 } }];
-  assert.equal(formatSubagentSummary(resumed), "subagents: 1/1 • $1.000");
+  assert.equal(formatSubagentSummary(resumed, 8), "subagents: 1/8 of 1 • $1.000");
   resumed[0].usage = { cost: 1.25 };
   resumed[0].status = "stopped";
-  assert.equal(formatSubagentSummary(resumed), "subagents: 0/1 • $1.250");
+  assert.equal(formatSubagentSummary(resumed, 8), "subagents: 0/8 of 1 • $1.250");
 });
 
 test("summary handles no agents, missing/invalid costs and all active lifecycle states", () => {
-  assert.equal(formatSubagentSummary([]), "");
+  assert.equal(formatSubagentSummary([], 4), "");
   assert.equal(formatSubagentSummary([
     { status: "starting" }, { status: "waiting_input", usage: { cost: NaN } },
     { status: "failed", usage: { cost: -1 } }, { status: "stopped", usage: { cost: "unknown" } },
-  ]), "subagents: 2/4 • $0.000+");
-  assert.equal(formatSubagentSummary([{ status: "idle", usage: { cost: 0 } }, { status: "working" }]), "subagents: 1/2 • $0.000+");
+  ], 6), "subagents: 2/6 of 4 • $0.000+");
+  assert.equal(formatSubagentSummary([{ status: "idle", usage: { cost: 0 } }, { status: "working" }], 4), "subagents: 1/4 of 2 • $0.000+");
+});
+
+test("summary shows live idle children, and omits that count at zero", () => {
+  const working = { status: "working", pid: 1, usage: { cost: 7 } };
+  const idle = (pid: number) => ({ status: "idle", pid, usage: { cost: 0 } });
+  const stopped = { status: "stopped", usage: { cost: 0 } };
+  assert.equal(formatSubagentSummary([
+    working, idle(2), idle(3), stopped, stopped, stopped, stopped, stopped,
+  ], 4), "subagents: 1(+2)/4 of 8 • $7.000");
+  assert.equal(formatSubagentSummary([
+    { status: "working", pid: 1, usage: { cost: 0 } },
+    { status: "starting", pid: 2, usage: { cost: 0 } },
+    stopped,
+  ], 4), "subagents: 2/4 of 3 • $0.000");
+});
+
+test("summary labels an unlimited cap as infinity and a disabled cap as off", () => {
+  const stopped = (cost: number) => ({ status: "stopped", usage: { cost } });
+  assert.equal(formatSubagentSummary([stopped(1.234), stopped(0), stopped(0)], "unlimited"), "subagents: 0/∞ of 3 • $1.234");
+  assert.equal(formatSubagentSummary([{ status: "stopped" }], 0), "subagents: 0/off of 1 • $0.000+");
+  assert.equal(formatSubagentSummary([], "unlimited"), "");
+  assert.equal(formatSubagentSummary([], 0), "");
 });
 
 test("right aligns dim lowercase status above the model and preserves stock rows", () => {

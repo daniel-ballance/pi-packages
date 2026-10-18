@@ -1,11 +1,22 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { Capacity } from "./child-limit.js";
 import { summarizeAgents } from "./usage.js";
 
+export function capacityLabel(limit: Capacity["limit"]): string {
+  switch (limit) {
+    case "unlimited": return "∞";
+    case 0: return "off";
+    default: return String(limit);
+  }
+}
+
 /** Usage is a cumulative snapshot per child session, not a per-run charge. */
-export function formatSubagentSummary(records: readonly { status: string; usage?: unknown }[]): string {
+export function formatSubagentSummary(records: readonly { status: string; pid?: number; usage?: unknown }[], limit: Capacity["limit"]): string {
   if (!records.length) return "";
   const totals = summarizeAgents(records);
-  return `subagents: ${totals.active}/${totals.tracked} • $${totals.reportedCost.toFixed(3)}${totals.missingCost ? "+" : ""}`;
+  const idle = Math.max(0, totals.live - totals.active);
+  const idleLabel = idle > 0 ? `(+${idle})` : "";
+  return `subagents: ${totals.active}${idleLabel}/${capacityLabel(limit)} of ${totals.tracked} • $${totals.reportedCost.toFixed(3)}${totals.missingCost ? "+" : ""}`;
 }
 
 /** Decorate, don't recreate, Pi's first footer row. Remaining rows are untouched. */
