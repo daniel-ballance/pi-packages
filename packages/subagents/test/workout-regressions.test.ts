@@ -222,12 +222,14 @@ test("legacy never-started cap records are hidden by default, but inspectable ex
     const registry = join(s.dir, "manager", "registry.json");
     const stored = JSON.parse(await readFile(registry, "utf8"));
     stored.agents.push({ ...stored.agents[0], id: "legacy-cap", error: "Error: Live-child limit (4) reached; close an idle child first." });
+    stored.agents.push({ ...stored.agents[0], id: "tree-cap", error: "Error: Live-child limit (4) reached across the whole tree (4 live); close an idle child first." });
     await writeFile(registry, JSON.stringify(stored));
     restored = new SubagentManager(join(s.dir, "manager"));
     assert.equal(restored.list().length, 1);
-    assert.equal(restored.list(true).length, 2);
+    assert.equal(restored.list(true).length, 3);
     assert.equal(restored.overview(true).totals.tracked, 1);
     assert.equal(restored.summary("legacy-cap").rejected, true);
+    assert.equal(restored.summary("tree-cap").rejected, true);
     assert.equal(restored.read("legacy-cap").id, "legacy-cap");
     assert.equal((await restored.wait([], "all", 0)).ids.length, 1);
   } finally { await restored?.shutdown(); await s.cleanup(); }

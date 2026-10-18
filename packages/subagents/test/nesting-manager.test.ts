@@ -8,6 +8,7 @@ import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
 import { treeOrder } from "../extensions/subagents/src/inspector-data.js";
 import { fitDelegatedReply } from "../extensions/subagents/src/nesting.js";
+import { formatSubagentSummary } from "../extensions/subagents/src/footer.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
@@ -175,4 +176,20 @@ test("a subtree abort awaits a descendant's abort already in flight and reports 
     const aborted = await aborting as { subtreeFailures?: string[] };
     assert.deepEqual(aborted.subtreeFailures, [`${t.c}: Error: abort timed out`]);
   } finally { manager.abortRuns.clear(); await t.cleanup(); }
+});
+
+test("the footer summary counts and costs every level of the tree", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "subagent-nesting-cost-"));
+  const manager = new SubagentManager(dir, () => {}, () => {}, parseChildLimit(4));
+  const spawn = async (name: string, cost: string, parentId?: string) => (await manager.spawn({
+    name, task: name, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId, env: { TEST_COST: cost },
+  })).id;
+  try {
+    const a = await spawn("A", "1", undefined), b = await spawn("B", "2", a), c = await spawn("C", "4", b);
+    await manager.refreshUsageSnapshots();
+    assert.match(formatSubagentSummary(manager.list(), manager.capacity().limit), /^subagents: \d(\(\+\d\))?\/4 of 3 • \$7\.000$/, "a grandchild is tracked and costed");
+    await manager.close(b);
+    assert.equal(manager.get(c).status, "stopped");
+    assert.match(formatSubagentSummary(manager.list(), manager.capacity().limit), /^subagents: \d(\(\+\d\))?\/4 of 3 • \$7\.000$/, "closed descendants stay tracked and keep their cost");
+  } finally { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); }
 });

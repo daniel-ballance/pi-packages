@@ -254,6 +254,26 @@ test("an unlimited manager admits a reservation the old cap would refuse, and it
   }
 });
 
+test("a start at the live cap says the limit is tree-wide and does not address a parent", { timeout: 20000 }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "child-limit-tree-"));
+  const manager = new SubagentManager(dir, undefined, undefined, parseChildLimit(1));
+  try {
+    await manager.spawn({ name: "holder", task: "remember", cwd: dir, executable: process.execPath, executableArgs: [fixture] });
+    await assert.rejects(manager.spawn({
+      name: "extra", task: "remember", cwd: dir, executable: process.execPath, executableArgs: [fixture],
+    }), (thrown: unknown) => {
+      const message = thrown instanceof Error ? thrown.message : "";
+      assert.equal(message, "Live-child limit (1) reached across the whole tree (1 live); close an idle child first.");
+      assert.doesNotMatch(message, /message your parent/);
+      return true;
+    });
+    assert.equal(manager.list(true).some(record => record.name === "extra"), false);
+  } finally {
+    await manager.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a full cap refuses one more child without throwing, and off refuses even an empty tree", async () => {
   const dir = await mkdtemp(join(tmpdir(), "child-limit-full-"));
   try {
