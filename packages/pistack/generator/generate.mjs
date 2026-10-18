@@ -80,10 +80,13 @@ function expander(commit, problems) {
 
 // Count, then apply, per rule in order: later rules may rewrite earlier output.
 function applyTokens(files, rules, expand, problems) {
+  const skillNames = [...files.keys()]
+    .flatMap(path => /^skills\/([^/]+)\/SKILL\.md$/.exec(path)?.slice(1) ?? [])
+    .sort().map(name => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") || "(?!)";
   for (const rule of rules) {
     const replace = expand(rule.replace, `token rule ${rule.id}`);
     const scope = rule.files ? new RegExp(rule.files) : undefined;
-    const pattern = new RegExp(rule.find, `g${rule.flags ?? ""}`);
+    const pattern = new RegExp(rule.find.replaceAll("{{skills.names}}", () => skillNames), `g${rule.flags ?? ""}`);
     let count = 0;
     for (const [path, text] of files) {
       if (typeof text !== "string" || (scope && !scope.test(path))) continue;
