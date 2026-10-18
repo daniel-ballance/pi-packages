@@ -72,6 +72,31 @@ export default function childGuard(pi: ExtensionAPI) {
       },
     });
   }
+  if (allowed.has("parent_send") && process.env.PI_SUBAGENT_PEER_FD === "3") {
+    pi.registerTool({
+      name: "parent_send", label: "Message Parent",
+      renderCall(args, theme, context) {
+        const message = callText(args?.message);
+        let text = theme.fg("toolTitle", theme.bold("parent • send"));
+        if (message) text += " " + theme.fg("accent", message);
+        else if (!context?.argsComplete) text += " " + theme.fg("toolOutput", "...");
+        const component = context?.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
+        component.setText(text);
+        return component;
+      },
+      description: "Message the agent that gave you this task while you keep working: a finding that changes its plan, a blocker, a decision you need, or progress it should know before you finish. " +
+        "Returns at once; it does not wait for a reply. The parent sees it when it next checks on you, and may answer by steering you with a message. " +
+        "Your final reply already reaches the parent, so do not use this for the result or for routine progress. The parent's manager limits how many you may send per task.",
+      parameters: Type.Object({
+        message: Type.String({ minLength: 1, maxLength: 4000 }),
+      }, { additionalProperties: false }),
+      async execute(_call, args, signal) {
+        peer ??= PeerClient.fromEnvironment();
+        const data = await peer.messageParent(args.message, signal);
+        return { content: [{ type: "text", text: JSON.stringify(data) }], details: data };
+      },
+    });
+  }
   const childLatch = messageLatch();
   for (const name of proxied) {
     const spec = TOOL_SPECS[name];

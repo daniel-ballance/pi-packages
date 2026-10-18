@@ -86,6 +86,7 @@ const WAKE_LINES: { readonly [W in WakeReason]: readonly [Color, string] | undef
   hold: ["warning", "human hold · discuss before releasing work"],
   input: ["warning", "input required · waiting stopped"],
   settled: undefined,
+  child_message: ["accent", "message from a child · waiting stopped"],
   message: ["accent", "message queued · waiting stopped"],
   timeout: ["warning", "wait timed out · children may still be working"],
 };
@@ -97,8 +98,9 @@ function waitLines(wake: WakeReason, data: Data, width: number, theme: Theme): s
   const unread = agents.reduce((sum, agent) => sum + (count(agent.unread) ?? 0), 0);
   if (unread) lines.push(theme.fg("warning", `${unread} report(s) not shown · subagent_read`));
   const replies = agents.flatMap(agent => {
-    const reply = array(agent.reports).map(object).findLast(report => report?.kind === "assistant");
-    return reply ? [`${inline(agent.name).toLowerCase()}: ${plain(reply.text)}`] : [];
+    const reports = array(agent.reports).map(object);
+    const reply = reports.findLast(report => report?.kind === "assistant") ?? reports.findLast(report => report?.kind === "message");
+    return reply ? [`${inline(agent.name).toLowerCase()}${reply.kind === "message" ? " (message)" : ""}: ${plain(reply.text)}`] : [];
   });
   for (const reply of replies.slice(0, 2)) lines.push(...preview(reply, width, theme, "toolOutput", 2));
   return lines;
@@ -148,8 +150,10 @@ function readLines(data: Data, width: number, theme: Theme): string[] {
   const reply = updates.findLast(update => update.kind === "assistant" && plain(update.text).trim());
   if (reply) lines.push(...preview(plain(reply.text), width, theme));
   else {
+    const message = updates.findLast(update => update.kind === "message" && plain(update.text).trim());
     const report = updates.findLast(update => ["aborted", "completed", "input_requested"].includes(String(update.kind)));
-    if (report) lines.push(...preview(plain(report.text), width, theme, "muted", 2));
+    if (message) lines.push(...preview(`message: ${plain(message.text)}`, width, theme));
+    else if (report) lines.push(...preview(plain(report.text), width, theme, "muted", 2));
     else if (!errors.length) lines.push(theme.fg("dim", updates.length ? "no new assistant reply." : "no new updates."));
   }
   if (updates.length > 1) lines.push(theme.fg("dim", `${updates.length} updates · latest reply shown when available`));

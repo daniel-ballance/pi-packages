@@ -118,7 +118,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       manager = new SubagentManager(join(getAgentDir(), "subagents", ctx.sessionManager.getSessionId()), () => notifications?.wake(), refresh, policy.childLimit, (config, depth) => {
         if (!config.selection) throw new Error("Legacy child has no allowlisted composition. Spawn a new child using subagent_catalog instead of resuming unrestricted v1 parameters.");
         return { ...policy.compile(config.cwd, config.selection, depth), coordination: config.coordination };
-      }, policy.config?.peerMessageLimit ?? 0);
+      }, policy.config?.peerMessageLimit ?? 0, policy.config?.parentMessageLimit ?? 0);
       manager.setInterventionHook((record, kind) => {
         if (record.workflow) getWorkflows(ctx).holdForIntervention(record.id, `User ${kind === "halt" ? "halted" : "killed"} ${record.name} (${record.id})`, record.workflow);
       });
@@ -479,7 +479,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const manager = get(ctx), callerId = delegation.getStore()?.callerId;
       const operatorMessageQueued = callerId ? undefined : () => rootLatch(ctx.hasPendingMessages());
       const end = await manager.wait(args.ids ?? [], args.mode ?? "all",
-        args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued);
+        args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued, callerId);
       signal?.throwIfAborted();
       const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId);
       const output = result(report, ctx);

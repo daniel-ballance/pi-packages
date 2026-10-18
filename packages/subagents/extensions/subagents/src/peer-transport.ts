@@ -21,9 +21,11 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
 
 /** Private inherited pipe: the owner supplies sender identity, never the packet.
- * Two request shapes share it: a peer message, and (for a Child allowed to
- * delegate) a management call that the root Manager scopes to the sender's subtree. */
-export function servePeer(socket: Duplex, receive?: (packet: Packet) => Promise<unknown>, manage?: (request: ManagementRequest, signal: AbortSignal) => Promise<unknown>) {
+ * Three request shapes share it: a peer message, a message to the Child's own
+ * parent ({ toParent }), and (for a Child allowed to delegate) a management call
+ * that the root Manager scopes to the sender's subtree. */
+export function servePeer(socket: Duplex, receive?: (packet: Packet) => Promise<unknown>, manage?: (request: ManagementRequest, signal: AbortSignal) => Promise<unknown>,
+  toParent?: (message: string) => Promise<unknown>) {
   let active = 0;
   let sequence = 0;
   // In-flight management calls, which the Child may cancel: { cancel: id }, no reply.
@@ -42,6 +44,14 @@ export function servePeer(socket: Duplex, receive?: (packet: Packet) => Promise<
       const controller = new AbortController();
       cancellable.set(packet.id, controller);
       dispatch(packet, () => manage({ op: packet.op, args: packet.args }, controller.signal), () => cancellable.delete(packet.id));
+      return;
+    }
+    if ("toParent" in packet) {
+      if (!toParent || Object.keys(packet).some(key => !["id", "toParent"].includes(key)) ||
+          typeof packet.toParent !== "string" || !packet.toParent.trim() || packet.toParent.length > 4000) {
+        write(socket, { id: packet.id, success: false, error: "Invalid parent message, or parent_send is not enabled for this Child." }); return;
+      }
+      dispatch(packet, () => toParent(packet.toParent));
       return;
     }
     if (!receive || Object.keys(packet).some(key => !["id", "recipient", "message"].includes(key)) ||
@@ -131,6 +141,10 @@ export class PeerClient {
   }
   send(recipient: string, message: string, signal?: AbortSignal, timeoutMs = 35000): Promise<unknown> {
     return this.request({ recipient, message }, signal, timeoutMs, "Peer send interrupted or timed out; acceptance may be unknown. Ask the parent to inspect; do not retry blindly.");
+  }
+  /** A message for this Child's own parent. The manager queues it as a report; it never waits for a reply. */
+  messageParent(message: string, signal?: AbortSignal, timeoutMs = 35000): Promise<unknown> {
+    return this.request({ toParent: message }, signal, timeoutMs, "Message to parent interrupted or timed out; it may or may not have arrived. Do not resend blindly: say it in your final reply instead.");
   }
   /** A delegation call to the root Manager; waits may take up to a minute. */
   manage(op: ManagementOp, args: Record<string, unknown>, signal?: AbortSignal, timeoutMs = MANAGE_TIMEOUT_MS): Promise<unknown> {

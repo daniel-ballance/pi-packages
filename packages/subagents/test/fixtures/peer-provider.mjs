@@ -28,7 +28,14 @@ export default function (pi) {
       const text = typeof last?.content === "string" ? last.content : (last?.content ?? []).filter(c => c.type === "text").map(c => c.text).join("\n");
       let content = [{ type: "text", text: `Observed: ${text}` }], stopReason = "stop";
       const call = (name, args) => { content = [{ type: "toolCall", id: `call-${Date.now()}-${Math.random()}`, name, arguments: args }]; stopReason = "toolUse"; };
-      if (last?.role === "user" && text.startsWith("SEND ")) call("peer_send", JSON.parse(text.slice(5)));
+      // TELL <n> <message>: n parent_send calls in one turn. TELL_HOLD <message>: one, then keep working.
+      const users = context.messages.filter(m => m.role === "user");
+      const prompt = users.at(-1), promptText = typeof prompt?.content === "string" ? prompt.content : (prompt?.content ?? []).filter(c => c.type === "text").map(c => c.text).join("\n");
+      const results = context.messages.slice(context.messages.lastIndexOf(prompt) + 1).filter(m => m.role === "toolResult").length;
+      const tell = /^TELL (\d+) (.+)$/s.exec(promptText);
+      if (tell && results < Number(tell[1])) call("parent_send", { message: `${tell[2]} #${results + 1}` });
+      else if (promptText.startsWith("TELL_HOLD ") && results < 2) results ? call("peer_test_hold", {}) : call("parent_send", { message: promptText.slice(10) });
+      else if (last?.role === "user" && text.startsWith("SEND ")) call("peer_send", JSON.parse(text.slice(5)));
       else if (last?.role === "user" && text === "HOLD") call("peer_test_hold", {});
       else if (last?.role === "user" && text === "ASK") call("peer_test_ask", {});
       else if (last?.role === "user" && text.startsWith("Peer message ")) {

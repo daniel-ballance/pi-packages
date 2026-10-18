@@ -30,6 +30,7 @@ A project override must restate every capability it needs from the global config
 | `workingDirectories` | Allowed roots and descendants; default `["."]`. Real paths are checked. |
 | `maxChildren` | Live-process cap, including idle children. `0` disables spawning. `-1` means no cap. A positive safe integer is the cap, up to `Number.MAX_SAFE_INTEGER`. Omitted means 4. Not a cost, token, or tool-execution limit. |
 | `peerMessageLimit` | Integer 0–1000; default 0 disables peer messaging. Positive value caps each directional allowance. Also allowlist `peer_send` and explicitly select it in both participating children. Parent must then connect the pair; no implicit links. |
+| `parentMessageLimit` | Integer 0–1000; omitted means 0, which disables `parent_send`. Positive value caps how many messages a child may send its parent per assignment. Also allowlist `parent_send` and select it per child. |
 
 | `providerExtensions` | Optional provider ID → explicit allowlisted extension file; composition must also select that file. Use it for any provider an extension registers (such as `claude-subscription`): Children start with `--no-extensions`, so without it the catalog marks those models `requiresExtension` and a spawn must select the provider's extension itself. |
 | `childSettings` | Optional codemode mode/budget overrides and cache-warming suppression; see [built-ins](reference/builtins.md). |

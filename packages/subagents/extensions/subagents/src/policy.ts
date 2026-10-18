@@ -23,6 +23,8 @@ export interface PolicyConfig {
   systemPrompt: boolean; appendSystemPrompt: boolean; contextFiles: boolean;
   maxChildren: ChildLimit; workingDirectories: string[];
   peerMessageLimit: number;
+  /** parent_send messages a Child may send its parent per assignment; 0 disables. */
+  parentMessageLimit: number;
   providerExtensions?: Record<string, string>;
   childSettings?: ChildSettings;
   mcp?: McpPolicy;
@@ -58,11 +60,12 @@ export const DEFAULT_POLICY: PolicyFile = {
   version: 1,
   models: MENU,
   tools: ["read", "bash", "edit", "write", "grep", "find", "ls", "todo",
+    "parent_send",
     "subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_close", "subagent_list", "subagent_send"],
   extensions: [], skills: [], promptTemplates: [], themes: [],
   alwaysExtensions: [], alwaysTools: [],
   systemPrompt: true, appendSystemPrompt: true, contextFiles: true,
-  maxChildren: 6, workingDirectories: ["."], peerMessageLimit: 0,
+  maxChildren: 6, workingDirectories: ["."], peerMessageLimit: 0, parentMessageLimit: 20,
   maxDepth: 2,
   loops: { enabled: true, minIntervalMs: 60_000, maxIterations: 50, maxDurationMs: 8 * 60 * 60_000 },
 };
@@ -111,6 +114,8 @@ export function parsePolicy(value: unknown): PolicyConfig {
   const maxChildren = parseChildLimit(v.maxChildren);
   const peerMessageLimit = v.peerMessageLimit === undefined ? 0 : v.peerMessageLimit;
   if (typeof peerMessageLimit !== "number" || !Number.isInteger(peerMessageLimit) || peerMessageLimit < 0 || peerMessageLimit > 1000) throw new Error("peerMessageLimit must be an integer from 0 to 1000");
+  const parentMessageLimit = v.parentMessageLimit === undefined ? 0 : v.parentMessageLimit;
+  if (typeof parentMessageLimit !== "number" || !Number.isInteger(parentMessageLimit) || parentMessageLimit < 0 || parentMessageLimit > 1000) throw new Error("parentMessageLimit must be an integer from 0 to 1000");
   const extensions = strings(v.extensions ?? [], "extensions");
   for (const extension of extensions) if (extension.startsWith("builtin:") && !BUILTINS.includes(extension as Builtin)) throw new Error(`Forbidden or unknown built-in extension: ${extension}`);
   const tools = strings(v.tools ?? [], "tools");
@@ -136,7 +141,7 @@ export function parsePolicy(value: unknown): PolicyConfig {
     ...(v.maxDepth === undefined ? {} : { maxDepth }),
     promptTemplates: strings(v.promptTemplates ?? [], "promptTemplates"), themes: strings(v.themes ?? [], "themes"),
     systemPrompt: flags.systemPrompt, appendSystemPrompt: flags.appendSystemPrompt, contextFiles: flags.contextFiles,
-    maxChildren, workingDirectories: strings(v.workingDirectories ?? ["."], "workingDirectories"), peerMessageLimit,
+    maxChildren, workingDirectories: strings(v.workingDirectories ?? ["."], "workingDirectories"), peerMessageLimit, parentMessageLimit,
   };
 }
 export interface PolicyEnvironment {
@@ -174,7 +179,7 @@ export class SubagentPolicy {
     this.diagnostics = this.ignoredProject ? [this.ignoredProject] : [];
     if (!this.config) {
       this.diagnostics.push(`${this.source}: ${this.error}`);
-      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: reportedLimit(this.childLimit), peerMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
+      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: reportedLimit(this.childLimit), peerMessageLimit: 0, parentMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
     }
     const config = this.config;
     const available = this.environment.models();
@@ -211,6 +216,10 @@ export class SubagentPolicy {
       if (tool === "peer_send") {
         if (config.peerMessageLimit > 0) return true;
         this.diagnostics.push("peer_send requires a positive peerMessageLimit (ignored)"); return false;
+      }
+      if (tool === "parent_send") {
+        if (config.parentMessageLimit > 0) return true;
+        this.diagnostics.push("parent_send requires a positive parentMessageLimit (ignored)"); return false;
       }
       if (tool.startsWith("subagent_")) {
         if (isProxiedTool(tool) && (config.maxDepth ?? 1) > 1) return true;
@@ -254,6 +263,7 @@ export class SubagentPolicy {
       models, tools, ...resources, alwaysExtensions, alwaysTools, workingDirectories,
       systemPrompt: config.systemPrompt, appendSystemPrompt: config.appendSystemPrompt,
       contextFiles: config.contextFiles, maxChildren: reportedLimit(this.childLimit), peerMessageLimit: config.peerMessageLimit,
+      parentMessageLimit: config.parentMessageLimit,
       omittedEntries: this.diagnostics.length,
       providerExtensions: config.providerExtensions, childSettings: config.childSettings,
       mcp: config.mcp,

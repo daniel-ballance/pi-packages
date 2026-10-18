@@ -112,8 +112,8 @@ interface AgentFacts {
   readonly usage?: unknown;
 }
 
-const REPORT_KINDS = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
-const REOPENING_KINDS = new Set(["error", "extension_error", "input_requested", "human_intervention"]);
+const REPORT_KINDS = new Set(["assistant", "message", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
+const REOPENING_KINDS = new Set(["message", "error", "extension_error", "input_requested", "human_intervention"]);
 const RESULT_KINDS = new Set(["assistant", "error", "failure", "aborted", "completed"]);
 const STATUSES: ReadonlySet<string> = new Set<Status>(["starting", "working", "waiting_input", "idle", "stopping", "stopped", "failed"]);
 const OUTCOMES: ReadonlySet<string> = new Set(["completed", "failed", "cancelled"]);

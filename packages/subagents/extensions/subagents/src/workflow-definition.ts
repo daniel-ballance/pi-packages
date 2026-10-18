@@ -60,6 +60,9 @@ export function parseWorkflow(value: unknown): WorkflowDefinition {
       if (s.mode === "repair" && (s.direction !== undefined || s.target !== undefined || s.minImprovement !== undefined)) throw new Error("Score settings only apply to improvement loops");
     }
   });
+  // The workflow runtime, not a parent agent, consumes worker output.
+  const workers = def.steps.flatMap(s => [...s.kind === "check" ? [] : [s.worker], ...s.kind !== "task" && s.validator.kind === "agent" ? [s.validator.worker] : []]);
+  if (workers.some(worker => worker.tools.includes("parent_send"))) throw new Error("Workflow workers cannot select parent_send; their output goes to the workflow");
   const pairs = new Set<string>();
   for (const link of def.peers ?? []) {
     const a = steps.get(link.a), b = steps.get(link.b), key = [link.a, link.b].sort().join(":");

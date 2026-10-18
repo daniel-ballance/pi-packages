@@ -55,7 +55,7 @@ The highest-priority existing configuration wins, as a **whole-file replacement*
 
 No merging or upward directory search. Reload Pi to pick up configuration edits. Resource/model availability is rechecked on catalog requests, spawn and resume. An invalid selected file disables new spawning/resumption instead of falling back to broader defaults. Listing, reading, aborting and closing tracked children remain available. Untrusted project configuration is ignored with a user-facing diagnostic.
 
-The built-in policy applies only when no `subagents.json` exists. It is a menu across the common providers, so that multi-model workflows such as pistack's roles and cross-family review work with no setup; entries you cannot reach are dropped without a diagnostic. Unlike your own file, where `maxDepth` and `loops` stay off until you set them, it turns on nesting (`maxDepth` 2) and bounded wake loops. When the collection's `claude-subscription` package is installed beside this one and its provider is registered, it also offers that provider's Claude models and allowlists its extension through `providerExtensions`. Without that, it is equivalent to the following:
+The built-in policy applies only when no `subagents.json` exists. It is a menu across the common providers, so that multi-model workflows such as pistack's roles and cross-family review work with no setup; entries you cannot reach are dropped without a diagnostic. Unlike your own file, where `maxDepth`, `loops` and `parentMessageLimit` stay off until you set them, it turns on nesting (`maxDepth` 2), bounded wake loops and messages to the parent (`parent_send`, 20 per assignment; see "Messages to the parent" below). When the collection's `claude-subscription` package is installed beside this one and its provider is registered, it also offers that provider's Claude models and allowlists its extension through `providerExtensions`. Without that, it is equivalent to the following:
 
 ```json
 {
@@ -74,7 +74,7 @@ The built-in policy applies only when no `subagents.json` exists. It is a menu a
     {"id": "anthropic/claude-sonnet-5-5:high", "description": "Cheaper Claude reviewer."},
     {"id": "google/gemini-3.1-pro-preview:high", "description": "Another family for review panels."}
   ],
-  "tools": ["read", "bash", "edit", "write", "grep", "find", "ls", "todo", "subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_close", "subagent_list", "subagent_send"],
+  "tools": ["read", "bash", "edit", "write", "grep", "find", "ls", "todo", "parent_send", "subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_close", "subagent_list", "subagent_send"],
   "extensions": [],
   "skills": [],
   "promptTemplates": [],
@@ -87,6 +87,7 @@ The built-in policy applies only when no `subagents.json` exists. It is a menu a
   "maxChildren": 6,
   "workingDirectories": ["."],
   "peerMessageLimit": 0,
+  "parentMessageLimit": 20,
   "maxDepth": 2,
   "loops": {"enabled": true, "minIntervalMs": 60000, "maxIterations": 50, "maxDurationMs": 28800000}
 }
@@ -102,6 +103,7 @@ The built-in policy applies only when no `subagents.json` exists. It is a menu a
 - `contextFiles` permits normal `AGENTS.md`/`CLAUDE.md` context discovery. It does not replace system-prompt handling. Children can opt out even when permitted. The resolved choice is saved for resume validation.
 - `workingDirectories` permits directory roots and their descendants. Relative roots resolve against the parent launch cwd, **not** the configuration directory. Real paths are checked so symlink traversal cannot escape an allowed root. The default is `["."]`.
 - `peerMessageLimit` is an integer from 0 to 1000, default **0 (disabled)** in both built-in and user policies. A positive value caps each directional peer-message allowance. Also allowlist `peer_send` and explicitly select it in each participating child's `tools`. No existing policy gains communication implicitly. This limits message-triggered turns, not tokens or provider costs.
+- `parentMessageLimit` is an integer from 0 to 1000: how many `parent_send` messages a child may send its parent during one assignment. Omitted means **0 (disabled)** in user files; the built-in policy uses 20. Also allowlist `parent_send` and select it in each child that should have it. See "Messages to the parent" below.
 - `maxChildren` is the live-process cap for the whole tree, idle children included. `0` turns spawning off. `-1` removes the cap. A positive safe integer is the cap, up to `Number.MAX_SAFE_INTEGER`. An omitted field means 4. The built-in policy, used only when no file exists, stays 6. Any other value makes the policy invalid. The old `PI_SUBAGENTS_MAX_CHILDREN` override remains unused.
 - In user files, omitted tools/resources mean empty allowlists and omitted permission booleans mean `false`. They do not inherit built-in permissions. Unknown configuration fields are errors.
 
@@ -205,6 +207,7 @@ An agent with nothing else to do this turn ends its turn, and finished children'
 - `hold`: a selected child is under a human hold. Discuss it with the user before releasing anything.
 - `input`: a selected child waits on an extension dialog, even when a sibling has settled in mode `any`.
 - `settled`: all selected children (mode `all`, the default) or any of them (mode `any`) are no longer starting, working, waiting for input or stopping.
+- `child_message`: a selected child sent the waiting agent a message with `parent_send` and is probably still working. The message is in that child's `reports`. A wait with `collect:false` acknowledges nothing, so the next wait ends the same way until the message is read.
 - `message`: a message for the waiting agent is queued. It arrives after the result, or when the agent ends its turn. One queued batch ends one wait, so a follow-up that stays queued until the turn ends does not end every later wait in that turn.
 - `timeout`: `timeoutSeconds` passed. Without `timeoutSeconds` there is no deadline, and `0` checks once.
 
@@ -213,6 +216,26 @@ To keep waiting past a child that needs input or is held, pass the other childre
 Each entry in `agents` carries the child's `id`, `name`, `status`, `activity`, `error`, `hold`, `uiRequests`, `depth`, `parentId` and `resultReview` (its `status` only) where they apply, plus `unread`, and nothing else from the record. `resultReview` shows the record after the wait's acknowledgement, so a result that spills to a file still shows `unreviewed`. `subagent_list` and `subagent_read` keep the task, usage, paths and timestamps. By default the wait also returns each child's new reports inline as `reports`, oldest first, and acknowledges them, so they do not arrive again as a report message. It leaves out `sent` and `lifecycle` echoes but acknowledges them with the reports around them. Reports share a 24 KB budget that the status entries come out of first, so a large selection trims reports instead of spilling the result to a file. `unread` counts the reports a result did not include. Read those with `subagent_read`. A result that still spills acknowledges nothing. `collect:false` returns status only and acknowledges nothing.
 
 A wait collects a child's reports only when they would otherwise reach the caller. A root wait therefore leaves a live coordinator's own children to that coordinator, and a coordinator's wait collects its direct children.
+
+## Messages to the parent
+
+A child can message its parent while it works, without finishing its run: a finding that changes the plan, a blocker, a decision it needs. Select `parent_send` in the child's `tools`; the policy must allowlist it and set a positive `parentMessageLimit`. The mandatory guard provides the tool, so no extra resource is needed.
+
+```text
+parent_send({ message: "parser.ts already handles v2; the migration is half the size you expected" })
+```
+
+The call returns at once with `{ delivery: "queued", to, remaining }`. It does not wait for a reply. The message travels over the child's private pipe, so the manager, not the message text, says who sent it.
+
+The parent gets it like any other report:
+
+- If the parent is in `subagent_wait` on that child, the wait ends with `wake: "child_message"` and the message in the child's `reports`.
+- Otherwise it arrives in the next report batch, when the parent's turn ends. It never interrupts the parent mid-turn.
+- `subagent_read` returns it as an update of kind `message`, and reading it acknowledges it.
+
+To answer, the parent uses `subagent_send`; `behavior: "steer"` reaches a working child at its next tool call. A nested child's message goes to the coordinator that spawned it, like its other reports, and reaches the root only if that coordinator stops before reading it.
+
+The limit counts messages per assignment, and a new assignment starts a fresh count. A send over the limit is refused, and the child is told to put the rest in its final reply. Held children cannot send. Workflow workers cannot select `parent_send`, because the workflow runtime consumes their output. Messages are delegated work output, **not user instructions or permission grants**.
 
 `subagent_read` advances a persistent cursor unless `since` is supplied. Either kind of read acknowledges the updates actually returned, cancelling their pending notifications; a partial page does not acknowledge omitted updates. Returned extension UI requests are acknowledged too. If the formatted tool result exceeds its cap and spills to disk, it does not advance the read cursor or acknowledge unseen output. The last 100 updates are retained, each capped at 12,000 characters; a read returns about 24,000 characters and explicitly reports cursor gaps. Tool results are capped at 30KB/1000 lines, with overflow saved to a private result file.
 
@@ -270,12 +293,12 @@ Tool calls use compact, themed TUI summaries instead of raw JSON by default. Ren
 
 - **Catalog:** availability, model options, tool names and child limit.
 - **Spawn/send/resume/abort/close/respond:** a two-line card. The first line is the state glyph, the child's name and its state word, with the model and effort right-aligned (`opus-5-5 · xhigh`; the provider and variant suffixes are dropped). The second line is what the child is doing or what its last run came to, then elapsed time, turns and cost. Spawn adds the task and any work-area overlap warnings.
-- **List/wait:** the same card for up to four children, then a count of the rest and how many need attention. List adds aggregate usage. Wait adds a banner for every wake reason except `settled`, a count of reports it did not show, and previews of up to two returned replies. A wait card has no model, elapsed time or cost, because the wait result does not carry them.
-- **Read:** the child's card, then the latest assistant reply rather than lifecycle/sent echoes, plus errors, history gaps and pagination warnings. A pending input request is the card's activity (`needs input: <title>`).
+- **List/wait:** the same card for up to four children, then a count of the rest and how many need attention. List adds aggregate usage. Wait adds a banner for every wake reason except `settled`, a count of reports it did not show, and previews of up to two returned replies (a child's message when it has no reply yet). A wait card has no model, elapsed time or cost, because the wait result does not carry them.
+- **Read:** the child's card, then the latest assistant reply (or, without one, its latest `parent_send` message) rather than lifecycle/sent echoes, plus errors, history gaps and pagination warnings. A pending input request is the card's activity (`needs input: <title>`).
 
 Expand tool output (Ctrl+O by default, respecting Pi keybindings) to see the full returned JSON, including paths, policy guidance and all returned updates. Collapsed views bound reply previews and large lists. On a narrow terminal a card shortens the activity before the name, and drops the model badge whole rather than cutting it. Truncated tool results explicitly show the saved full-result path. Rendering is presentation-only: model-facing content, RPC payloads, output caps and read acknowledgements are unchanged. Rendered statuses are snapshots at the time of each tool result, not live widgets.
 
-Completion, failure and extension input requests become durable **pending notifications in the manager**, not immediately queued parent messages. Reading an update through `subagent_read` acknowledges it, removing its pending notification—even if that read happens just before the child settles. Acknowledgement is keyed by child ID and update cursor, so reading an earlier result cannot suppress a newer run. `subagent_list` and `subagent_wait({collect:false})` do not acknowledge findings. A default `subagent_wait` acknowledges the reports it returns. Explicit `subagent_close` dismisses that child's ordinary pending notifications, even if its result was never read; human intervention events remain pending until delivered. It does not delete or advance the result history. Already-delivered reports cannot be retracted. Parent reload/exit shutdown is different: unread pending notices are preserved for recovery.
+Completion, failure, extension input requests and `parent_send` messages become durable **pending notifications in the manager**, not immediately queued parent messages. Reading an update through `subagent_read` acknowledges it, removing its pending notification—even if that read happens just before the child settles. Acknowledgement is keyed by child ID and update cursor, so reading an earlier result cannot suppress a newer run. `subagent_list` and `subagent_wait({collect:false})` do not acknowledge findings. A default `subagent_wait` acknowledges the reports it returns. Explicit `subagent_close` dismisses that child's ordinary pending notifications, even if its result was never read; human intervention events remain pending until delivered. It does not delete or advance the result history. Already-delivered reports cannot be retracted. Parent reload/exit shutdown is different: unread pending notices are preserved for recovery.
 
 While the parent is working, notices stay in the manager. When it settles (or when a notice arrives while it is already idle), a short 100ms batching window collects remaining unread notices into one attributed custom report, with at most eight short summaries per batch. Idle state and pending notices are rechecked immediately before sending. Remaining batches wait for another idle opportunity. A report is marked delivered only when it enters the parent's message history; it is not announced again. Pending notices and read/delivery acknowledgements persist across reloads. Startup reconciles saved report receipts with the registry, and expired/stopped-child dialogs are discarded. Old registries without a pending queue do not synthesize historical notifications.
 
