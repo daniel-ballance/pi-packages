@@ -28,12 +28,12 @@
     "test:once": "node --test test/*.test.mjs test/*.test.ts && cd skills/poteto-mode/scripts && node --test check-plan.test.ts watch-pr/*.test.ts orch/*.test.ts"
   },
   "dependencies": {
-    "commander": "14.0.0"
+    "commander": "15.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typebox": "^1.0.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^26.6.5",
+    "typebox": "^1.4.2",
+    "typescript": "^7.0.2"
   },
   "pi": {
     "extensions": [

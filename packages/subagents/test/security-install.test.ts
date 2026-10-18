@@ -12,9 +12,9 @@ const script = fileURLToPath(new URL("../../../scripts/patch-pi-host-security.mt
 const sdkName = "@earendil-works/pi-coding-agent";
 const packageNames = ["claude-subscription", "computer-use", "mcp-client", "self-reload", "subagents", "todo", "web-search"];
 
-const undiciIntegrity = "sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==";
+const undiciIntegrity = "sha512-XtuDWVdqTLr3NAxm2ly9/hU6kUsJOgGh1RASzMBbsw6aWCOaQzHdW+QQDfdERjfJ2V5vL5pRPa4RetO9UfivDg==";
 const undiciResolution = {
-  version: "8.10.2", resolved: "https://registry.npmjs.org/undici/-/undici-8.10.2.tgz", integrity: undiciIntegrity,
+  version: "8.12.2", resolved: "https://registry.npmjs.org/undici/-/undici-8.12.2.tgz", integrity: undiciIntegrity,
 };
 
 type Fixture = { root: string; sdkDirectories: string[]; braceDirectories: string[] };
@@ -55,7 +55,7 @@ async function fixture(root: string): Promise<Fixture> {
   });
   await writeFile(join(root, "node_modules/brace-expansion/index.cjs"), "module.exports = 'patched';\n");
   await json(join(root, "node_modules/undici/package.json"), {
-    name: "undici", version: "8.10.2", main: "index.js", engines: { node: ">=22.19.0" },
+    name: "undici", version: "8.12.2", main: "index.js", engines: { node: ">=22.19.0" },
   });
   await writeFile(join(root, "node_modules/undici/index.js"), "module.exports = 'patched undici';\n");
   await json(join(root, "package-lock.json"), {
@@ -161,6 +161,35 @@ test("explicit install step patches all seven SDKs, preserves their code/other e
   });
 });
 
+test("secure unshrinkwrapped SDKs remain unchanged when the reviewed source is newer", async (): Promise<void> => {
+  await withFixture(async (value: Fixture): Promise<void> => {
+    for (const sdk of value.sdkDirectories) {
+      await installedVersion(sdk, "undici", "8.10.2");
+      await installedVersion(sdk, "brace-expansion", "5.0.12");
+      await rm(join(sdk, "npm-shrinkwrap.json"));
+    }
+    const before = await snapshot(value.root);
+    assert.match(await run(value), /7 checked, 0 patched/);
+    assert.deepEqual(await snapshot(value.root), before);
+  });
+});
+
+test("a reviewed source below its security floor is refused before modifying hosts", async (): Promise<void> => {
+  await withFixture(async (value: Fixture): Promise<void> => {
+    const path = join(value.root, "scripts/patch-pi-host-security.mts");
+    const beforeScript = await readFile(path, "utf8");
+    const afterScript = beforeScript.replace('sourceVersion: "8.12.2"', 'sourceVersion: "8.10.1"');
+    assert.notEqual(afterScript, beforeScript);
+    await writeFile(path, afterScript);
+    await update(join(value.root, "node_modules/undici/package.json"), (manifest: Record<string, unknown>): void => {
+      manifest.version = "8.10.1";
+    });
+    const before = await snapshot(value.root);
+    await assert.rejects(run(value), /Reviewed source is below its security floor/);
+    assert.deepEqual(await snapshot(value.root), before);
+  });
+});
+
 test("preflight rejects a global SDK symlink before modifying any local host", async (): Promise<void> => {
   await withFixture(async (value: Fixture, directory: string): Promise<void> => {
     const outside = await host(join(directory, "global"), sdkName);
@@ -263,7 +292,7 @@ test("shared local SDK symlinks are patched once and retain both shrinkwrap upda
     for (const name of ["brace-expansion", "undici"]) {
       const parsed: unknown = JSON.parse(await readFile(join(shared, "npm-shrinkwrap.json"), "utf8"));
       const entry = record(record(record(parsed).packages)[`node_modules/${name}`]);
-      assert.equal(entry.version, name === "undici" ? "8.10.2" : "5.0.12");
+      assert.equal(entry.version, name === "undici" ? "8.12.2" : "5.0.12");
     }
     assert.match(await run(value), /7 checked, 0 patched/);
   });
@@ -275,7 +304,7 @@ for (const [field, invalid, error] of [
   ["name", "other", /Unexpected undici dependency/],
   ["version", 8, /undici version must be a string/],
   ["version", "9.0.0", /Unreviewed undici version/],
-  ["version", "8.10.2-beta.1", /Unreviewed undici version/],
+  ["version", "8.12.2-beta.1", /Unreviewed undici version/],
   ["version", "8.9999999999999999999999.0", /Invalid undici version/],
   ["dependencies", { unexpected: "*" }, /Unreviewed undici dependency shape/],
   ["dependencies", null, /expected an object/],
@@ -290,8 +319,8 @@ for (const [field, invalid, error] of [
   });
 }
 for (const [field, invalid, error] of [
-  ["name", "other", /Install the reviewed undici 8.10.2/],
-  ["version", "8.10.1", /Install the reviewed undici 8.10.2/],
+  ["name", "other", /Install the reviewed undici 8.12.2/],
+  ["version", "8.10.1", /Install the reviewed undici 8.12.2/],
   ["dependencies", { unexpected: "*" }, /Unreviewed undici dependency shape/],
   ["engines", { node: ">=18" }, /Unreviewed undici source engines/],
 ] satisfies [string, unknown, RegExp][]) {

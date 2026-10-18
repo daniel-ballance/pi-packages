@@ -189,7 +189,7 @@ test("what a turn reports about the plan reaches the command when the full repor
   await h.command();
   const model = h.provider.getModels()[0];
   const message = await h.provider.streamSimple(model, normalizeContext({ messages: [{ role: "user", content: "Hi", timestamp: 1 }], tools: [] }), {}).result();
-  assert.equal(message.stopReason, "stop", message.errorMessage);
+  assert.equal(message.stopReason, "stop", message.errorMessage ?? "");
   await h.command();
   assert.match(h.notices.at(-1) ?? "", /5-hour: 8% used/);
   assert.match(h.notices.at(-1) ?? "", /Limits from the last turn/);

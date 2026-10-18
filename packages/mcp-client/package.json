@@ -33,10 +33,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
-    "ajv": "^8.18.0",
+    "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "eventsource-parser": "^3.0.6",
-    "zod": "^4.3.6"
+    "eventsource-parser": "^4.1.2",
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -46,12 +46,12 @@
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "1.3.0",
     "@earendil-works/pi-tui": "1.3.0",
-    "@modelcontextprotocol/node": "2.0.0",
-    "@modelcontextprotocol/server": "2.0.0",
-    "@types/node": "^22.0.0",
-    "prettier": "3.6.2",
-    "tsx": "^4.21.0",
-    "typebox": "^1.0.0",
-    "typescript": "^5.9.3"
+    "@modelcontextprotocol/node": "2.1.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "@types/node": "^26.6.5",
+    "prettier": "3.9.10",
+    "tsx": "^4.23.15",
+    "typebox": "^1.4.2",
+    "typescript": "^7.0.2"
   }
 }
