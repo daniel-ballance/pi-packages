@@ -60,10 +60,11 @@ async function handle(cmd) {
     }
     if (cmd.type === "prompt") {
       const allowed = JSON.parse(process.env.PI_SUBAGENT_ALLOWED_TOOLS ?? "[]");
-      if (process.env.SPAWN_PROOF && allowed.includes("subagent_spawn")) {
-        const task = readFileSync(process.env.SPAWN_TASK_FILE, "utf8");
+      const prompted = process.env.SPAWN_ON;
+      if (allowed.includes("subagent_spawn") && (prompted ? cmd.message === prompted : !!process.env.SPAWN_PROOF)) {
+        const task = prompted ? cmd.message : readFileSync(process.env.SPAWN_TASK_FILE, "utf8");
         const data = await manage({ op: "spawn", args: { name: "worker", task, cwd: process.cwd(), model: "p/m:off", tools: [] } });
-        writeFileSync(process.env.SPAWN_PROOF, JSON.stringify(data));
+        if (process.env.SPAWN_PROOF) writeFileSync(process.env.SPAWN_PROOF, JSON.stringify(data));
       }
       return respond(cmd, { disposition: "started" });
     }

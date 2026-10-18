@@ -74,6 +74,14 @@ export function capacityOf(limit: ChildLimit, live: number, reserved: number): C
   }
 }
 
+export function capacityReachedText(capacity: Pick<Capacity, "limit" | "live">, audience: "manager" | "root" | "nested"): string {
+  const { limit, live } = capacity;
+  if (audience === "manager") return `Live-child limit (${limit}) reached across the whole tree (${live} live); close an idle child first.`;
+  const reached = `Live-child capacity reached (limit ${limit}). Inspect before closing idle workers; held work requires discussion.`;
+  if (audience === "root") return reached;
+  return `${reached} The limit of ${limit} counts every live child in the whole tree (${live} live); you can only close your own idle children, and if you have none to reuse or close, do not retry, and if you have a way to message your parent, ask for a slot, otherwise report the limit in your final reply.`;
+}
+
 export function reportedLimit(limit: ChildLimit): Capacity["limit"] {
   switch (limit.kind) {
     case "off": return 0;

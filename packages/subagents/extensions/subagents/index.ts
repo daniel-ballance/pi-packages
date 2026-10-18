@@ -7,6 +7,7 @@ import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type Ext
 import { Type } from "typebox";
 import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
+import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
 import { childNews, messageLatch, waitReport, withCurrentReviews, type ChildNews } from "./src/wait.js";
@@ -362,7 +363,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const capacity = manager.capacity();
       // A delegating Child sees only its own subtree, in errors and warnings too.
       const visible = <T extends { id: string }>(records: T[]) => parentId ? records.filter(record => manager.isDescendant(record.id, parentId)) : records;
-      if (!capacity.available) throw new Error(`Live-child capacity reached${parentId ? " across the whole tree" : ""}. Inspect before closing idle workers; held work requires discussion. Recovery: ${JSON.stringify(recoverySummary(visible(manager.list()), capacity))}`);
+      if (!capacity.available) throw new Error(`${capacityReachedText(capacity, parentId ? "nested" : "root")} Recovery: ${JSON.stringify(recoverySummary(visible(manager.list()), capacity))}`);
       if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
       // Everything is checked before git writes anything, the destination included.
       const plan = wanted ? planWorktree({ cwd: requested, name, ...(typeof wanted === "object" ? wanted : {}) }) : undefined;

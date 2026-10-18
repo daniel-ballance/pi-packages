@@ -5,7 +5,7 @@ import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
 import { isProxiedTool } from "./nesting.js";
 import { ActivityFeed, type LiveActivity } from "./activity.js";
-import { allows, capacityOf, OMITTED_CHILD_LIMIT, permanentRefusal, reportedLimit, type ChildLimit } from "./child-limit.js";
+import { allows, capacityOf, capacityReachedText, OMITTED_CHILD_LIMIT, permanentRefusal, type ChildLimit } from "./child-limit.js";
 import type { Composition } from "./policy.js";
 import type { ChildPolicy } from "./child-policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
@@ -346,7 +346,7 @@ export class SubagentManager {
       if (reservation) {
         if (!this.reservations.get(reservation)) throw new Error("Invalid or exhausted live-child slot reservation");
       } else if (!allows(this.limit, this.children.size + this.reservedSlots + 1)) {
-        throw new Error(permanentRefusal(this.limit, 1) ?? `Live-child limit (${reportedLimit(this.limit)}) reached; close an idle child first.`);
+        throw new Error(permanentRefusal(this.limit, 1) ?? capacityReachedText(this.capacity(), "manager"));
       }
     }
     if (!isAbsolute(checked.cwd) || !statSync(checked.cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");
