@@ -512,7 +512,9 @@ export async function runSimple(args: {
   };
   return pollUntilTerminal({
     dependencies: args.dependencies,
-    options: args.options,
+    options: args.statusOnly
+      ? { ...args.options, maxQueryErrors: 1 }
+      : args.options,
     stamp,
     step,
   });

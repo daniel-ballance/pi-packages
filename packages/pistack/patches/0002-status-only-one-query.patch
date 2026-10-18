@@ -107,3 +107,16 @@
    it("shows help without touching the reader", async () => {
      const reader = fakeReader();
      const harness = testRuntime(reader);
+--- a/skills/poteto-mode/scripts/watch-pr/policy.ts
++++ b/skills/poteto-mode/scripts/watch-pr/policy.ts
+@@ -512,7 +512,9 @@ export async function runSimple(args: {
+   };
+   return pollUntilTerminal({
+     dependencies: args.dependencies,
+-    options: args.options,
++    options: args.statusOnly
++      ? { ...args.options, maxQueryErrors: 1 }
++      : args.options,
+     stamp,
+     step,
+   });
