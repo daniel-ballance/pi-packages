@@ -79,6 +79,7 @@
     "edit",
     "write",
     "todo",
+    "parent_send",
     "subagent_catalog",
     "subagent_spawn",
     "subagent_wait",
@@ -88,6 +89,7 @@
     "subagent_send"
   ],
   "peerMessageLimit": 0,
+  "parentMessageLimit": 20,
   "extensions": [
     "/home/danballance/Code/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts"
   ],

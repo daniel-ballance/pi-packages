@@ -113,7 +113,7 @@ test("catalog summarizes capabilities without dumping policy guidance", () => {
 
 test("each wake reason but settled draws its banner above the children", () => {
   const banners: { [W in WakeReason]: RegExp | undefined } = {
-    hold: /human hold/, input: /input required/, settled: undefined, message: /message queued/, timeout: /wait timed out/,
+    hold: /human hold/, input: /input required/, settled: undefined, child_message: /message from a child/, message: /message queued/, timeout: /wait timed out/,
   };
   const working = { id: child.id, name: child.name, status: "working", activity: "Tool: bash", unread: 0 };
   for (const wake of WAKE_REASONS) {
@@ -121,6 +121,15 @@ test("each wake reason but settled draws its banner above the children", () => {
     assert.match(text, /footer-smoke-test working/, wake);
     for (const [other, banner] of Object.entries(banners)) if (banner) assert.equal(banner.test(text), other === wake, `${wake}: ${other}`);
   }
+});
+
+test("a child_message wait previews the message of a child that is still working", () => {
+  const working = { id: "sa-1", name: "scout", status: "working", unread: 0, reports: [{ kind: "message", text: "The API is v2, not v1: plan B." }] };
+  const text = render("wait", { wake: "child_message", agents: [working] });
+  assert.match(text, /message from a child/);
+  assert.match(text, /scout \(message\): The API is v2, not v1: plan B\./);
+  const read = render("read", { id: "sa-1", name: "scout", status: "working", updates: [{ cursor: 3, kind: "message", text: "Blocked on credentials." }] });
+  assert.match(read, /message: Blocked on credentials\./);
 });
 
 test("a wait draws returned reports as reviewed with a preview, and counts the reports it did not show", () => {

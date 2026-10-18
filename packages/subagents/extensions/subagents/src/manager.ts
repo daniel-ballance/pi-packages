@@ -53,6 +53,8 @@ export interface AgentRecord {
   uncertainSubmission?: { at: string; reason: string };
   /** Accepted follow-ups start a new assignment only when their own run begins. */
   queuedAssignments?: { id: string; task: string; at: string; startAt: number }[];
+  /** parent_send messages used during the assignment they were sent in. */
+  parentMessages?: { assignmentId: string; used: number };
 }
 export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string }
 export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
@@ -60,7 +62,7 @@ export interface SlotReservation { readonly id: symbol }
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
 const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
-export const REPORT_KINDS: ReadonlySet<string> = new Set(["assistant", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
+export const REPORT_KINDS: ReadonlySet<string> = new Set(["assistant", "message", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
 function enforcePrivatePath(path: string, mode: number, directory: boolean) {
   const stat = lstatSync(path);
   if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile())) throw new Error(`Unsafe subagent state path: ${path}`);
@@ -123,7 +125,7 @@ export class SubagentManager {
   private fence(id: string) { this.fenced.set(id, (this.fenced.get(id) ?? 0) + 1); }
   private unfence(id: string) { const n = (this.fenced.get(id) ?? 1) - 1; if (n) this.fenced.set(id, n); else this.fenced.delete(id); }
   readonly peers: PeerBroker;
-  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, private readonly limit: ChildLimit = OMITTED_CHILD_LIMIT, private authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], readonly peerMessageLimit = 0) {
+  constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, private readonly limit: ChildLimit = OMITTED_CHILD_LIMIT, private authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], readonly peerMessageLimit = 0, readonly parentMessageLimit = 0) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     enforcePrivatePath(directory, 0o700, true);
     this.registry = join(directory, "registry.json");
@@ -486,6 +488,10 @@ export class SubagentManager {
         try { return await this.management(record.id, request, controller.signal); }
         finally { calls.delete(controller); if (!calls.size && this.callerCalls.get(record.id) === calls) this.callerCalls.delete(record.id); }
       } : undefined,
+      parentMessage: config.selection?.tools.includes("parent_send") && this.parentMessageLimit > 0 ? async message => {
+        if (this.children.get(record.id) !== child) throw new Error("Stale child process");
+        return this.messageParent(record, message);
+      } : undefined,
       event: packet => this.event(record, packet),
       stderr: text => this.log(record.stderrFile, text),
       exit: error => {
@@ -679,6 +685,24 @@ export class SubagentManager {
         }
         break;
     }
+  }
+  /**
+   * parent_send: a report the Child chose to send now. It reaches the parent the way
+   * a finished run's report does (its subagent_wait, else when its turn ends), and a
+   * nested Child's message goes to the Child that spawned it. The Child keeps working.
+   */
+  private messageParent(record: AgentRecord, message: string) {
+    if (record.workflow) throw new Error("Workflow workers report to the workflow runtime; parent_send is unavailable.");
+    if (this.shuttingDown) throw new Error("The parent is shutting down; put this in your final reply.");
+    this.assertReleased(record);
+    const assignmentId = record.assignment?.id ?? "";
+    if (record.parentMessages?.assignmentId !== assignmentId) record.parentMessages = { assignmentId, used: 0 };
+    const limit = this.parentMessageLimit;
+    if (record.parentMessages.used >= limit) throw new Error(`Message limit reached for this assignment (${limit}). Put anything else in your final reply; do not retry.`);
+    record.parentMessages.used++;
+    this.update(record, "message", message);
+    this.announce(record, "message", message);
+    return { delivery: "queued", to: record.parentId ?? "parent", remaining: limit - record.parentMessages.used };
   }
   summary(id: string) { return this.list(true).find(record => record.id === id)!; }
   async send(id: string, message: string, behavior?: "steer" | "followUp") {
@@ -976,9 +1000,14 @@ export class SubagentManager {
       this.responding.delete(key);
     }
   }
-  async wait(ids: readonly string[], mode: "any" | "all", timeoutMs?: number, signal?: AbortSignal, messageQueued?: () => boolean): Promise<WaitEnd> {
+  /** callerId: the coordinator Child waiting, or undefined for the root Parent. */
+  async wait(ids: readonly string[], mode: "any" | "all", timeoutMs?: number, signal?: AbortSignal, messageQueued?: () => boolean, callerId?: string): Promise<WaitEnd> {
     const selected = ids.length ? [...ids] : this.list().map(record => record.id);
     for (const id of selected) this.get(id);
+    const watched = new Set(selected);
+    // Only messages this caller will collect: a grandchild's message is its coordinator's.
+    const childMessage = () => [...this.notices.values()].some(notice =>
+      notice.kind === "message" && watched.has(notice.id) && this.reportsDrainedBy(notice.id) === callerId);
     const deadline = timeoutMs === undefined ? Infinity : Date.now() + timeoutMs;
     const end = (wake: WaitEnd["wake"]): WaitEnd => ({ wake, ids: selected });
     while (true) {
@@ -988,6 +1017,7 @@ export class SubagentManager {
       if (records.some(record => record.status === "waiting_input")) return end("input");
       const ready = records.filter(record => !BUSY.has(record.status)).length;
       if (!selected.length || (mode === "any" ? ready > 0 : ready === selected.length)) return end("settled");
+      if (childMessage()) return end("child_message");
       if (messageQueued?.()) return end("message");
       if (Date.now() >= deadline) return end("timeout");
       await new Promise(resolve => setTimeout(resolve, 100));

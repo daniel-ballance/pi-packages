@@ -24,7 +24,7 @@ Deferred: credential-free HTTP/OAuth store isolation, MCP resources/prompts, ext
 
 **Goal:** let cooperating children exchange questions, findings and handoffs without making the parent manually relay every message.
 
-**Implemented foundation:** parent-controlled bidirectional, non-transitive links; child-only `peer_send`; private process-bound transport; steering/new-turn delivery; persistent per-sender→recipient allowances and bounded parent-inspectable history. Parent-only connect/disconnect/renew/inspect tools remain under `subagent_*`, so the child guard still rejects every management tool. See [design and acceptance tests](PEER-MESSAGING.md) and the [README](README.md#peer-communication).
+**Implemented foundation:** parent-controlled bidirectional, non-transitive links; child-only `peer_send`; private process-bound transport; steering/new-turn delivery; persistent per-sender→recipient allowances and bounded parent-inspectable history. Parent-only connect/disconnect/renew/inspect tools remain under `subagent_*`, so the child guard still rejects every management tool. A child can also message its own parent mid-run with `parent_send`, delivered as a report, never mid-turn ([README](README.md#messages-to-the-parent)). See [design and acceptance tests](PEER-MESSAGING.md) and the [README](README.md#peer-communication).
 
 ### Still deferred
 

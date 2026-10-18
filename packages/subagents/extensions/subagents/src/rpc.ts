@@ -39,10 +39,11 @@ export class RpcChild {
     exit: (error?: Error) => void;
     peerRequest?: (packet: Packet) => Promise<unknown>;
     manageRequest?: (request: ManagementRequest, signal: AbortSignal) => Promise<unknown>;
+    parentMessage?: (message: string) => Promise<unknown>;
   }) {
     const env = { ...options.env };
     delete env.PI_SUBAGENT_PEER_FD;
-    const privatePipe = !!(options.peerRequest || options.manageRequest);
+    const privatePipe = !!(options.peerRequest || options.manageRequest || options.parentMessage);
     if (privatePipe) env.PI_SUBAGENT_PEER_FD = "3";
     this.child = spawn(options.executable, options.args, {
       cwd: options.cwd, env, stdio: privatePipe ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
@@ -86,7 +87,7 @@ export class RpcChild {
       const peer = this.child.stdio[3] as Duplex | null;
       try {
         if (!peer) throw new Error("Failed to attach managed peer pipe");
-        servePeer(peer, options.peerRequest, options.manageRequest);
+        servePeer(peer, options.peerRequest, options.manageRequest, options.parentMessage);
       } catch (error) { fail(error as Error); }
     }
   }
