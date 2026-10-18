@@ -138,7 +138,7 @@ export class SubagentManager {
         // Keep old cap-preflight artifacts inspectable, but don't count
         // them as agents by default. Never hide actual process launch failures.
         if (!record.sessionId && !record.startedAt && !existsSync(record.sessionFile) &&
-            /^Error: Live-child limit \(\d+\) reached;/.test(record.error ?? "")) record.rejected = true;
+            /^Error: Live-child limit \(\d+\) reached(;| across the whole tree)/.test(record.error ?? "")) record.rejected = true;
         // Old stopped records have no trustworthy assignment outcome: do not infer completion.
         if (record.hold && !["halt", "kill"].includes(record.hold.kind)) delete record.hold;
         if (record.hold?.outcome === "pending" || (record.hold?.kind === "halt" && record.hold.outcome === "confirmed" && record.uncertainSubmission)) {

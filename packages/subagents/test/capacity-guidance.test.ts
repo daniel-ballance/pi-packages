@@ -7,7 +7,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { asHost } from "./host-env.js";
 
-const guidance = "The limit of 1 counts every live child in the whole tree (1 live); you can only close your own idle children, and if you have none to reuse or close, do not retry, and if you have a way to message your parent, ask for a slot, otherwise report the limit in your final reply.";
+const guidance = "The limit of 1 counts every live child in the whole tree (1 live). You can close only your own idle children. If you have none to reuse or close, do not retry. If you have a way to message your parent, ask it for a slot. Otherwise report the limit in your final reply.";
 
 test("a nested spawn at the live cap is told not to retry, and a root spawn is not", { timeout: 20000, skip: process.platform === "win32" }, async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "capacity-guidance-")));
