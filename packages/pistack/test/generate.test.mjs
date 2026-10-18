@@ -55,6 +55,42 @@ test("tokens, sections and the file map produce the translated tree", () => {
   } finally { dispose(); }
 });
 
+test("slash commands discover emitted skill paths, including new skills and principles, without rewriting other tokens", () => {
+  const rule = JSON.parse(readFileSync(new URL("../rules/tokens.json", import.meta.url), "utf8")).find(({ id }) => id === "slash-skill");
+  const { root, out, read, dispose } = fixture({
+    "vendor/up/skills/future-check/SKILL.md": "# Future\n\nRun /future-check and /principle-future.\n",
+    "vendor/up/skills/principle-future/SKILL.md": "# Principle\n",
+    "vendor/up/skills/omitted/SKILL.md": "# Omitted\n",
+    "vendor/up/agents/helper.md": "Run /future-check.\n",
+    "vendor/up/skills/demo/commands.md": "/demo /future-check /principle-future /not-a-skill /omitted /principle-missing\n/skill:future-check docs/future-check https://example.test/future-check ./future-check ../future-check /future-check-more /future-check_word\n",
+    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", map: [{ from: "skills/", to: "skills/" }, { from: "agents/", to: "agents/" }], exclude: ["^skills/omitted/"] }),
+    "rules/tokens.json": JSON.stringify([{ ...rule, min: 1 }]),
+    "rules/sections.json": "[]",
+    "rules/lint.json": JSON.stringify({ deny: [] }),
+  });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.equal(read("skills/future-check/SKILL.md"), "# Future\n\nRun /skill:future-check and /skill:principle-future.\n");
+    assert.equal(read("agents/helper.md"), "Run /skill:future-check.\n");
+    assert.equal(read("skills/demo/commands.md"), "/skill:demo /skill:future-check /skill:principle-future /not-a-skill /omitted /principle-missing\n/skill:future-check docs/future-check https://example.test/future-check ./future-check ../future-check /future-check-more /future-check_word\n");
+  } finally { dispose(); }
+});
+
+test("slash command discovery with no emitted skills cannot match a bare slash", () => {
+  const rule = JSON.parse(readFileSync(new URL("../rules/tokens.json", import.meta.url), "utf8")).find(({ id }) => id === "slash-skill");
+  const { root, out, read, dispose } = fixture({
+    "vendor/up/agents/helper.md": "Use /future-check or /anything.\n",
+    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", map: [{ from: "agents/", to: "agents/" }] }),
+    "rules/tokens.json": JSON.stringify([{ ...rule, min: 0 }]),
+    "rules/sections.json": "[]",
+    "rules/lint.json": JSON.stringify({ deny: [] }),
+  });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.equal(read("agents/helper.md"), "Use /future-check or /anything.\n");
+  } finally { dispose(); }
+});
+
 test("a token rule that stops matching upstream fails with its id", () => {
   const { root, out, dispose } = fixture({ "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\n---\n\n## Subagents\n\nx\n" });
   try {

@@ -44,7 +44,10 @@ Applied in this order; the same upstream and rules give byte-identical output.
    limits the rule to output paths matching a regular expression. Rules count
    then apply in order, so a later rule sees an earlier rule's output. `min` is
    a tripwire: a rule matching fewer times fails generation with its id, which
-   means upstream reworded the text.
+   means upstream reworded the text. In `find`, `{{skills.names}}` expands to
+   a regex alternation of the emitted `skills/<name>/SKILL.md` directory names,
+   escaped and sorted in code-unit order. The final slash-command rule uses it
+   so new upstream skills get Pi commands without maintaining a second list.
 2. **Section replacements** (`rules/sections.json`): `{file, heading,
    upstreamHeading?, overlay, upstream}`. `heading` is the line as it reads after
    token rewrites; `upstreamHeading` is the raw upstream line when a token rule
@@ -126,8 +129,9 @@ longer fits, and the checkout stays at the new commit. Read the upstream commit
 that broke it (`git -C vendor/pstack show <sha>`), then fix the rule:
 
 - **Token rule, 0 matches**: upstream reworded the text, so update `find`; or
-  upstream deleted it, so delete the rule. If the rule added Pi-specific
-  meaning, decide whether that meaning still belongs somewhere.
+  upstream deleted it or now supplies the translated form, so delete the rule.
+  If the rule added Pi-specific meaning, decide whether that meaning still
+  belongs somewhere.
 - **Section changed upstream**: review the overlay against the upstream change,
   then set the new hash the message prints.
 - **Patch no longer applies**: rebase it against the new output.
