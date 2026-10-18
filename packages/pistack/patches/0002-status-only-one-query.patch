@@ -1,0 +1,109 @@
+--- a/skills/poteto-mode/scripts/watch-pr/cli.test.ts
++++ b/skills/poteto-mode/scripts/watch-pr/cli.test.ts
+@@ -32,6 +32,43 @@ function testRuntime(reader: GitHubReader): {
+   };
+ }
+ 
++function checksUnavailableReader(): GitHubReader & {
++  readonly calls: readonly string[];
++} {
++  return fakeReader({
++    fastPath: { kind: "checks", checks: [] },
++    rollupPages: [{ checks: [], endCursor: null }],
++  });
++}
++
++function recordedRuntime(reader: GitHubReader): {
++  readonly runtime: CliRuntime;
++  readonly stdout: string[];
++  readonly stderr: string[];
++  readonly sleeps: number[];
++} {
++  const stdout: string[] = [];
++  const stderr: string[] = [];
++  const sleeps: number[] = [];
++  return {
++    stdout,
++    stderr,
++    sleeps,
++    runtime: {
++      reader,
++      clock: {
++        now: () => 0,
++        observedAt: () => "2026-07-26T00:00:00.000Z",
++        async sleep(seconds: number) {
++          sleeps.push(seconds);
++        },
++      },
++      stdout: (value) => stdout.push(value),
++      stderr: (value) => stderr.push(value),
++    },
++  };
++}
++
+ describe("parseArgs", () => {
+   it("uses the specified defaults", () => {
+     expect(parseArgs([], silentIo)).toMatchObject({
+@@ -214,6 +251,62 @@ describe("main", () => {
+     });
+   });
+ 
++  it("asks once and returns a blocker without sleeping when status-only cannot read checks", async () => {
++    const reader = checksUnavailableReader();
++    const harness = recordedRuntime(reader);
++    const code = await main(
++      ["--owner", "owner", "--repo", "repo", "--pr", "1", "--status-only"],
++      harness.runtime
++    );
++    expect(code).toBe(7);
++    expect(harness.sleeps).toEqual([]);
++    expect(harness.stdout).toHaveLength(1);
++    expect(JSON.parse(harness.stdout[0])).toMatchObject({
++      kind: "BLOCKER",
++      terminal: true,
++      exitCode: 7,
++      blocker: {
++        kind: "status-query",
++        failures: 1,
++        failure: { kind: "checks-unavailable", retryable: true },
++      },
++    });
++    expect(
++      reader.calls.filter((call) => call === "checksFastPath")
++    ).toHaveLength(1);
++    expect(
++      reader.calls.filter((call) => call.startsWith("checkRollupPage:"))
++    ).toEqual(["checkRollupPage:null"]);
++    expect(harness.stdout[0]).toContain("were empty");
++  });
++
++  it("retries a drive-mode check read until the query-error budget", async () => {
++    const reader = checksUnavailableReader();
++    const harness = recordedRuntime(reader);
++    const code = await main(
++      ["--owner", "owner", "--repo", "repo", "--pr", "1"],
++      harness.runtime
++    );
++    expect(code).toBe(7);
++    expect(harness.sleeps).toEqual([60, 120, 240, 300]);
++    expect(harness.stdout).toHaveLength(5);
++    expect(JSON.parse(harness.stdout[4])).toMatchObject({
++      kind: "BLOCKER",
++      exitCode: 7,
++      blocker: {
++        kind: "status-query",
++        failures: 5,
++        failure: { kind: "checks-unavailable" },
++      },
++    });
++    expect(
++      harness.stdout.slice(0, 4).map((line) => JSON.parse(line).kind)
++    ).toEqual(["RETRY", "RETRY", "RETRY", "RETRY"]);
++    expect(
++      reader.calls.filter((call) => call === "checksFastPath")
++    ).toHaveLength(5);
++  });
++
+   it("shows help without touching the reader", async () => {
+     const reader = fakeReader();
+     const harness = testRuntime(reader);
