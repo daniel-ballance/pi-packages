@@ -74,10 +74,18 @@ Registry lookups use `npm view <name> version`. Release-channel checks use `mise
 
 ## Results
 
-The npm clean install and canonical root check pass with Node 26.12.0, npm 12.2.0, and Python 3.15.0. The dependency update also passed the root check on minimum-supported Node 22.19.0 before the final security-source correction. A separate pnpm 12.14.0 checkout also passes its frozen install and root check. Its new package store reused zero packages. An isolated metadata-policy check verified all 328 lock entries without bypassing the release-age policy. Independent verification and merge remain pending.
+The npm clean install and canonical root check pass with Node 26.12.0, npm 12.2.0, and Python 3.15.0. The dependency update also passed the root check on minimum-supported Node 22.19.0 before the final security-source correction. A separate pnpm 12.14.0 checkout also passes its frozen install and root check. Its new package store reused zero packages. An isolated metadata-policy check verified all 328 lock entries without bypassing the release-age policy. Independent verification of the initial head returned PASS+NOTES. The local matrix covers npm and pnpm on Node 22.23.3 and 26.12.0. GitHub's workflow is manually disabled, and no remote CI result is claimed. A pnpm peer-policy correction requires a fresh verdict before merge.
 
 npm 12 changed `npm pack --json` from an array to a name-keyed object. The packaging test reads either shape through `Object.values`. Two assertion messages now supply an empty string when their diagnostic detail is absent, as required by the latest Node types.
 
 The undici update initially exposed a mistaken assumption. The reviewed replacement release and the safe-installed floor shared one field. Raising both made the installer try to patch secure, unshrinkwrapped Pi 1.3.0. A new regression reproduced that failure before the correction.
 
 Two independent design candidates compared a separate `sourceVersion` against deletion of the patch infrastructure. The cross-judge selected the field split, scoring it 7 against 4. The parent agreed because it preserves the existing security boundaries with a smaller change. The implementation keeps undici's security floor at 8.10.2, reviews the 8.12.2 source and integrity separately, and derives the output message from the dependency records. All 40 security-install tests pass. The regression verifies that secure SDKs without shrinkwraps remain byte-for-byte unchanged. Removing the historical patch infrastructure is outside this update's scope.
+
+The initial pnpm import warned about an undici peer. `pnpm peers check` showed that changing the security-only override's target made the OpenAI SDK peer demand 8.12.2 while Pi retained its safe 8.10.2 pin. Restoring the existing override removed that artificial mismatch. The direct root dependency and the patcher's reviewed source remain 8.12.2. The corrected frozen pnpm install, peer check, and Node 22.23.3 root check all pass.
+
+A copied-out claude-subscription development install also passes. Its preflight checks one host and patches none. The installed Pi runtime with the updated Claude Agent SDK passes all ten live smoke tests, including tools, session continuity, abort recovery, thinking, and plan-limit events.
+
+The first three decision-trail timestamps mark the checkpoint when those earlier actions were logged. They are not claimed as the actions' exact start times. The underlying logs and transcript record the sequence.
+
+The PR-status helper retried absent-check errors even with `--status-only`. That separate CLI bug is not treated as a green-check result and is being corrected independently. The repository's explicitly disabled workflow remains disabled.
