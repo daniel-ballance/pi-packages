@@ -1,7 +1,10 @@
 [
   { "file": "skills/poteto-mode/SKILL.md", "heading": "## Subagents", "overlay": "poteto-mode/subagents.md", "upstream": "1968484284dc" },
   { "file": "skills/poteto-mode/playbooks/orchestrate.md", "heading": "#### Roles and placement", "overlay": "orchestrate/roles-and-placement.md", "upstream": "c67ab1d9c6e8" },
-  { "file": "skills/setup-pstack/SKILL.md", "heading": "## Steps", "overlay": "setup-pstack/steps.md", "upstream": "ccd498bd6440" },
-  { "file": "skills/poteto-help/SKILL.md", "heading": "## Get set up", "overlay": "poteto-help/get-set-up.md", "upstream": "203aef8f5f8b" },
+  { "file": "skills/setup-pstack/SKILL.md", "heading": "### 1. Detect available models", "overlay": "setup-pstack/detect-available-models.md", "upstream": "cf6e3bfe67b9" },
+  { "file": "skills/setup-pstack/SKILL.md", "heading": "### 2. Load current state", "overlay": "setup-pstack/load-current-state.md", "upstream": "e4defeabe554" },
+  { "file": "skills/setup-pstack/SKILL.md", "heading": "### 3. Budget, map, and confirm", "overlay": "setup-pstack/budget-map-and-confirm.md", "upstream": "a771eeed4d13" },
+  { "file": "skills/setup-pstack/SKILL.md", "heading": "### 4. Validate", "overlay": "setup-pstack/validate.md", "upstream": "1ba1ddd11fe0" },
+  { "file": "skills/setup-pstack/SKILL.md", "heading": "### 5. Write the rule", "overlay": "setup-pstack/write-the-file.md", "upstream": "7ae29a99fa0d" },
   { "file": "skills/poteto-help/SKILL.md", "heading": "## Start a task with `/skill:poteto-mode`", "upstreamHeading": "## Start a task with `/poteto-mode`", "overlay": "poteto-help/start-a-task.md", "upstream": "f63d471dbcd2" }
 ]

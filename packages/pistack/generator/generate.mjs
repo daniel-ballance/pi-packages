@@ -125,11 +125,14 @@ function findSection(lines, heading) {
   if (starts.length !== 1) return { error: starts.length === 0 ? "not found" : `found ${starts.length} times` };
   const start = starts[0], level = headingLevel(heading) ?? 0;
   let end = lines.length;
+  const children = [];
   for (let index = start + 1; index < lines.length; index++) {
     const found = fenced[index] ? undefined : headingLevel(lines[index]);
-    if (found !== undefined && found <= level) { end = index; break; }
+    if (found === undefined) continue;
+    if (found <= level) { end = index; break; }
+    children.push(lines[index]);
   }
-  return { start, end };
+  return { start, end, children };
 }
 
 // The hash of the untranslated upstream section an overlay replaces. When
@@ -147,7 +150,14 @@ function applySections(files, upstream, sections, overlaysDir, expand, problems)
     if (typeof text !== "string") { problems.push(`section rule: ${file} is not an emitted text file`); continue; }
     const lines = text.split("\n"), section = findSection(lines, heading);
     if (section.error) { problems.push(`section rule: ${file}: heading "${heading}" ${section.error}. Upstream changed the section.`); continue; }
-    const actual = sectionHash(upstream.get(file), upstreamHeading);
+    const source = upstream.get(file);
+    const sourceSection = typeof source === "string" ? findSection(source.split("\n"), upstreamHeading) : undefined;
+    if (sourceSection && !sourceSection.error && sourceSection.children.length) {
+      const listed = sourceSection.children.map(line => `"${line}"`).join(", ");
+      problems.push(`section rule: ${file}: "${heading}" is not a leaf; it contains ${listed}. Replace each child. Put text before the first child in a token anchored on "${heading}". A sibling with no rule is emitted.`);
+      continue;
+    }
+    const actual = sectionHash(source, upstreamHeading);
     if (actual !== expected) {
       problems.push(`section rule: ${file}: section "${heading}" changed upstream (was ${expected}, now ${actual}). Review the overlay, then update its hash.`);
       continue;
