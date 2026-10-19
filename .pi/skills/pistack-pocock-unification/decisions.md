@@ -1,24 +1,22 @@
 # Current decisions
 
-Last run: 2026-10-18, pistack upstream `cursor/plugins@0b8e952` (pstack 0.15.26), pi-pocock-skills upstream `49dd158`.
+Last run: 2026-10-19, pistack upstream `cursor/plugins@d457567` (pstack 0.15.28), pi-pocock-skills upstream `49dd158`.
 
-Pocock refresh: all eleven names, invocation flags, coverage verdicts, and kept
-skill dependencies remain unchanged. No settings or collection-filter edits were
-needed. Real-loader checks passed in home and the update worktree; the root check
-also exercises collection loading and pistack's `tdd` winner. Fresh interactive
-CLI/T3 prompt lists were not exercised in this run.
+The pstack refresh adds the user-invoked `maintain-formal-verification-skill`,
+improves its creator, and offers formal verification during setup. It maintains
+verification models and checks against covered code. It does not replace a domain
+glossary, research report, or writing procedure. All eleven coverage verdicts
+below remain unchanged. Existing invocation flags, playbooks, kept dependencies,
+and cross-package pointers are unchanged. No settings or collection-filter edits
+are needed.
 
-The pstack update adds the user-invoked `create-formal-verification-skill` and
-improves `ketchup` and TypeScript guidance. Formal verification adds no overlap
-with the eleven Pocock skills: it creates a bounded, mutation-checked verification
-skill, not a domain glossary, research report, or writing procedure. Every
-coverage verdict below is unchanged; existing invocation flags, playbooks, and
-cross-package pointers remain the same. No settings or collection-filter edits
-are needed. `skill-report --check` passes for home and the update worktree; the
-root package-loader tests separately load the candidate tree, including the new
-skill, and verify that pistack's `tdd` wins without diagnostics. Fresh interactive
-CLI/T3 prompt lists were not exercised. See the
-[update validation](../../../docs/pistack-upstream-2026-10-18.md).
+`skill-report --check` passes for home and the update worktree. Live settings
+still select the main checkout. A separate isolated Pi 1.3.0 loader check loads
+the candidate collection and pistack package directly, finds the new skill with
+model invocation disabled, and verifies that pistack's `tdd` wins without skill
+diagnostics. The full root check also passes. Fresh interactive CLI and T3 prompt
+lists were not exercised. See the
+[update validation](../../../docs/pistack-upstream-2026-10-19.md).
 
 ## Coverage table
 

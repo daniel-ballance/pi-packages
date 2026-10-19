@@ -50,6 +50,6 @@
     ]
   },
   "pistack": {
-    "upstream": "cursor/plugins@0b8e952052d482ee6de06deebf14d590d77b1b34 pstack 0.15.26"
+    "upstream": "cursor/plugins@d457567332aa6989e753ea289f30ea2bfbc80bc0 pstack 0.15.28"
   }
 }

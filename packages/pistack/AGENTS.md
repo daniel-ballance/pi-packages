@@ -53,7 +53,11 @@ Applied in this order; the same upstream and rules give byte-identical output.
    token rewrites; `upstreamHeading` is the raw upstream line when a token rule
    changed it. The section runs from the exact heading line to the next heading
    of the same or a higher level. The overlay replaces it whole, heading
-   included. `upstream` is the first 12 hex digits of the SHA-256 of the
+   included, and only when that upstream section is a leaf: a child heading
+   outside a fence fails generation even when the hash still matches. The message
+   names the file, the heading, and each child. Replace each child. Put text
+   before the first child in a token anchored on the heading. A sibling with no
+   rule is emitted. `upstream` is the first 12 hex digits of the SHA-256 of the
    untranslated upstream section; when upstream edits the section, generation
    fails with the new hash. Review the overlay against the upstream change, then
    update the hash. A heading that disappears fails with its file and text.
@@ -86,7 +90,8 @@ own script tests; `npm run check` typechecks `watch-pr`.
   capability in [`extra/skills/poteto-mode/references/host-capabilities.md`](extra/skills/poteto-mode/references/host-capabilities.md)
   and link that file; keep tool names for both hosts in that one place.
 - Prefer a sentence-level token rule scoped with `files` over a section
-  replacement: untouched upstream sentences around it keep flowing in.
+  replacement: untouched upstream sentences around it keep flowing in. A section
+  rule names a leaf heading, never a parent that has children.
 - A recurring upstream sentence gets one global rule, not one per skill.
 - Never write an upstream commit into a rule. A link into upstream uses
   `{{upstream.commit}}` in a token `replace` or an overlay, and the generator
@@ -133,7 +138,10 @@ that broke it (`git -C vendor/pstack show <sha>`), then fix the rule:
   If the rule added Pi-specific meaning, decide whether that meaning still
   belongs somewhere.
 - **Section changed upstream**: review the overlay against the upstream change,
-  then set the new hash the message prints.
+  then set the new hash the message prints. If the message says the section is
+  not a leaf, do not bump the hash. Split it into child overlays, or anchor
+  preamble text with a token. A new sibling with no rule is already emitted;
+  read it, and add a rule only when it needs Pi text.
 - **Patch no longer applies**: rebase it against the new output.
 - **Coupling lint**: upstream added Cursor-only text; add a rule.
 

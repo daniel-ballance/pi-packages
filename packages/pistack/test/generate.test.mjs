@@ -105,15 +105,30 @@ test("a section heading that disappears upstream fails with its file and heading
   } finally { dispose(); }
 });
 
-test("a section ends at the next heading of the same or a higher level", () => {
-  const { root, out, read, dispose } = fixture({
-    "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\n---\n\nUse the Task tool.\n\n## Subagents\n\nCursor.\n\n### Detail\n\nCursor too.\n\n# Top\n\nKept.\n",
-    "rules/sections.json": JSON.stringify([{ file: "skills/demo/SKILL.md", heading: "## Subagents", overlay: "demo/subagents.md", upstream: "82da502595ac" }]),
+test("a leaf section ends at the next heading of the same or a higher level, and a parent overlay is refused", () => {
+  const parentText = "---\nname: Demo\n---\n\nUse the Task tool.\n\n## Subagents\n\nCursor.\n\n### Detail\n\nCursor too.\n\n# Top\n\nKept.\n";
+  const parent = fixture({
+    "vendor/up/skills/demo/SKILL.md": parentText,
+    "rules/sections.json": JSON.stringify([{ file: "skills/demo/SKILL.md", heading: "## Subagents", overlay: "demo/subagents.md", upstream: sectionHash(parentText, "## Subagents") }]),
   });
   try {
-    generate({ packageDir: root, outDir: out });
-    assert.equal(read("skills/demo/SKILL.md"), "---\nname: demo\n---\n\nUse a child.\n\n## Subagents\n\nPi delegation.\n\n# Top\n\nKept.\n");
-  } finally { dispose(); }
+    assert.throws(() => generate({ packageDir: parent.root, outDir: parent.out }), error => {
+      assert.match(error.message, /skills\/demo\/SKILL\.md: "## Subagents" is not a leaf; it contains "### Detail"/);
+      assert.match(error.message, /token anchored on "## Subagents"/);
+      assert.match(error.message, /A sibling with no rule is emitted/);
+      assert.doesNotMatch(error.message, /update its hash/);
+      return true;
+    });
+  } finally { parent.dispose(); }
+  const leafText = "---\nname: Demo\n---\n\nUse the Task tool.\n\n## Subagents\n\nCursor.\n\n## Next\n\nSame level.\n\n# Top\n\nKept.\n";
+  const leaf = fixture({
+    "vendor/up/skills/demo/SKILL.md": leafText,
+    "rules/sections.json": JSON.stringify([{ file: "skills/demo/SKILL.md", heading: "## Subagents", overlay: "demo/subagents.md", upstream: sectionHash(leafText, "## Subagents") }]),
+  });
+  try {
+    generate({ packageDir: leaf.root, outDir: leaf.out });
+    assert.equal(leaf.read("skills/demo/SKILL.md"), "---\nname: demo\n---\n\nUse a child.\n\n## Subagents\n\nPi delegation.\n\n## Next\n\nSame level.\n\n# Top\n\nKept.\n");
+  } finally { leaf.dispose(); }
 });
 
 test("patches apply after tokens and sections, and a stale patch fails with its name", () => {
@@ -277,6 +292,70 @@ test("sync records the upstream commit and version in package.json, and check fa
     assert.equal(drift.status, 1);
     assert.match(drift.stderr, /package\.json pistack\.upstream/);
   } finally { dispose(); }
+});
+
+test("a parent overlay is refused even when its hash is current", () => {
+  const text = "---\nname: Demo\n---\n\nUse the Task tool.\n\n## Steps\n\nDo these.\n\n### 1. First\n\nCursor.\n\n### 2. Second\n\nAlso Cursor.\n";
+  const { root, out, dispose } = fixture({
+    "vendor/up/skills/demo/SKILL.md": text,
+    "rules/sections.json": JSON.stringify([{ file: "skills/demo/SKILL.md", heading: "## Steps", overlay: "demo/subagents.md", upstream: sectionHash(text, "## Steps") }]),
+  });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /"## Steps" is not a leaf; it contains "### 1\. First", "### 2\. Second"/);
+  } finally { dispose(); }
+});
+
+test("replacing a leaf leaves a new sibling offer, translated, with no rule for that sibling", () => {
+  const text = "---\nname: Demo\n---\n\nUse the Task tool.\n\n### 1. First\n\nCursor leaf.\n\n### 2. Offer\n\nRun /demo now.\n";
+  const { root, out, read, dispose } = fixture({
+    "vendor/up/skills/demo/SKILL.md": text,
+    "rules/tokens.json": JSON.stringify([
+      { id: "task-tool", min: 1, find: "the Task tool", replace: "a child" },
+      { id: "skill-name", min: 1, find: "^name: Demo$", flags: "m", replace: "name: demo" },
+      { id: "offer", min: 1, find: "/demo\\b", replace: "/skill:demo", files: "^skills/demo/" },
+    ]),
+    "rules/sections.json": JSON.stringify([{ file: "skills/demo/SKILL.md", heading: "### 1. First", overlay: "demo/subagents.md", upstream: sectionHash(text, "### 1. First") }]),
+  });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.equal(read("skills/demo/SKILL.md"), "---\nname: demo\n---\n\nUse a child.\n\n## Subagents\n\nPi delegation.\n\n### 2. Offer\n\nRun /skill:demo now.\n");
+  } finally { dispose(); }
+});
+
+test("a heading inside a fence is not a child of the leaf that contains it", () => {
+  const text = "---\nname: Demo\n---\n\nUse the Task tool.\n\n### 5. Write the rule\n\nBefore.\n\n```md\n### 9. Not a heading\n# Also not\n```\n\nAfter.\n\n### 6. Confirm\n\nKept.\n";
+  const { root, out, read, dispose } = fixture({
+    "vendor/up/skills/demo/SKILL.md": text,
+    "rules/sections.json": JSON.stringify([{ file: "skills/demo/SKILL.md", heading: "### 5. Write the rule", overlay: "demo/subagents.md", upstream: sectionHash(text, "### 5. Write the rule") }]),
+  });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.equal(read("skills/demo/SKILL.md"), "---\nname: demo\n---\n\nUse a child.\n\n## Subagents\n\nPi delegation.\n\n### 6. Confirm\n\nKept.\n");
+  } finally { dispose(); }
+});
+
+test("setup offers and the help setup sentence come from upstream through the package rules", () => {
+  const packageDir = fileURLToPath(new URL("..", import.meta.url));
+  const out = mkdtempSync(join(tmpdir(), "pistack-rules-"));
+  try {
+    generate({ packageDir, outDir: out });
+    const setup = readFileSync(join(out, "skills/setup-pstack/SKILL.md"), "utf8");
+    const help = readFileSync(join(out, "skills/poteto-help/SKILL.md"), "utf8");
+    const upstream = readFileSync(join(packageDir, "vendor/pstack/pstack/skills/setup-pstack/SKILL.md"), "utf8");
+    const aside = " (resolves wherever pstack is installed: workspace, user, or plugin)";
+    const expectedOffers = upstream.slice(upstream.indexOf("### 7. Offer a verification skill")).replaceAll(aside, "").replaceAll(/\/(create-(?:formal-)?verification-skill)\b/g, "/skill:$1");
+    assert.equal(setup.slice(setup.indexOf("### 7. Offer a verification skill")), expectedOffers);
+    assert.equal(setup.includes(aside), false);
+    const offer = "Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.";
+    assert.equal(help.includes(offer), true);
+    assert.equal(readFileSync(join(packageDir, "vendor/pstack/pstack/skills/poteto-help/SKILL.md"), "utf8").includes(offer), true);
+    assert.match(help, /The collection installs pistack with `subagents` and `todo`/);
+    assert.match(help, /pistack spends extra tokens on subagents and review panels/);
+    assert.match(help, /written for Cursor/);
+    assert.equal(help.includes("/plugin "), false);
+    assert.equal(help.includes("docs/harness/"), false);
+    assert.equal(help.includes("not part of the collection manifest"), false);
+  } finally { rmSync(out, { recursive: true, force: true }); }
 });
 
 test("{{upstream.commit}} without an upstream checkout fails with the rule that uses it", () => {
