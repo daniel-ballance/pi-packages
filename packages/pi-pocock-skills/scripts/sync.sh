@@ -296,6 +296,10 @@ validate_translation() {
   if ! validate_output "$target"; then
     fail=1
   fi
+  if ! node "$ROOT/scripts/check-skills.mjs" "$target"; then
+    echo '  INVALID output: staged skills failed lint-skill' >&2
+    fail=1
+  fi
   return "$fail"
 }
 
@@ -387,8 +391,6 @@ if ! validate_translation "$TMP/skills"; then
   exit 1
 fi
 
-# Swap only after generation, drift checks, allowlist checks, and output checks
-# all pass. Restore the old tree if the final move itself fails.
 BACKUP_DIR="$(mktemp -d "$OUT_PARENT/.pi-pocock-skills-backup.XXXXXX")"
 if [ -e "$OUT" ] || [ -L "$OUT" ]; then
   mv -- "$OUT" "$BACKUP_DIR/skills"
