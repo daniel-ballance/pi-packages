@@ -5,9 +5,10 @@ collection is a **generated vendor overlay**, not a hand-maintained fork.
 
 `npm run check` checks translation drift, then lints the collection with the
 repository's [`lint-skill`](../../scripts/lint-skill/README.md) through the
-`scripts/check-skills.mjs` adapter, which selects this collection. Install from
-the repository root first (`./scripts/ci-install.sh`); the package itself has no
-dependencies.
+`scripts/check-skills.mjs` adapter, which selects this collection. `sync.sh`
+calls that same adapter on the staged tree, in both regenerate and `--check`
+modes, before it replaces `skills/`. Install from the repository root first
+(`./scripts/ci-install.sh`); the package itself has no dependencies.
 
 `skills/` is generated. Never edit it by hand. Edit the rules in
 `scripts/sync.sh`, then re-run.
@@ -133,9 +134,10 @@ independently requires its TDD and review dependency links. Required tracker
 rewrites are counted like every other rule, not silently attempted.
 
 Generation also rejects ambiguous source names, invalid regular expressions,
-untranslated harness/glossary wording, and colliding format resources. Sync
-validates a staged tree before replacing `skills/`; regression tests cover
-failure preservation and failed-move recovery.
+untranslated harness/glossary wording, colliding format resources, and broken
+links in the staged tree. A lint error, an incomplete check, or a missing
+linter refuses replacement. Warnings do not. Regression tests cover failure
+preservation and failed-move recovery.
 
 ## Updating upstream
 

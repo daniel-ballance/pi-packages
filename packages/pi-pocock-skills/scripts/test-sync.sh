@@ -3,8 +3,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO="$(cd "$ROOT/../.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+FIXTURE_REPO="$TMP/repo"
+mkdir -p "$FIXTURE_REPO/scripts"
+ln -s "$REPO/scripts/lint-skill" "$FIXTURE_REPO/scripts/lint-skill"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -12,9 +16,11 @@ fail() {
 }
 
 new_case() {
-  local name="$1" case_root="$TMP/$1"
+  local name="$1" repo="${2:-$FIXTURE_REPO}" case_root
+  case_root="$repo/packages/$name"
   mkdir -p "$case_root/scripts" "$case_root/vendor"
   cp -a "$ROOT/scripts/sync.sh" "$case_root/scripts/"
+  cp -a "$ROOT/scripts/check-skills.mjs" "$case_root/scripts/"
   cp -a "$ROOT/skills" "$case_root/skills"
   cp -a "$ROOT/vendor/matt-pocock" "$case_root/vendor/matt-pocock"
   # Copy only sync inputs: the package now also has installed CLI dependencies.
@@ -30,6 +36,37 @@ expect_failure() {
     cat "$log" >&2
     fail "$label unexpectedly passed"
   fi
+}
+
+expect_sync_failure() {
+  local label="$1" root="$2" log="$TMP/$1.log"
+  if (cd "$root" && ./scripts/sync.sh >"$log" 2>&1); then
+    cat "$log" >&2
+    fail "$label unexpectedly passed"
+  fi
+}
+
+break_research() {
+  local root="$1" link="$2"
+  printf '\n%s\n' "$link" >> "$root/vendor/matt-pocock/skills/engineering/research/SKILL.md"
+  printf '\nstale sentinel\n' >> "$root/skills/research/SKILL.md"
+}
+
+assert_preserved() {
+  local label="$1" root="$2" before="$3" after
+  after="$(sha256sum "$root/skills/research/SKILL.md")"
+  [ "$before" = "$after" ] || fail "$label replaced committed output"
+  grep -Fq 'stale sentinel' "$root/skills/research/SKILL.md" || fail "$label lost the sentinel"
+  if find "$root" -maxdepth 1 \( -name '.pi-pocock-skills-sync.*' -o -name '.pi-pocock-skills-backup.*' \) -print -quit | grep -q .; then
+    fail "$label left a staging or backup directory"
+  fi
+}
+
+assert_link_refusal() {
+  local label="$1"
+  grep -Fq 'references/missing' "$TMP/$label.log" || fail "$label did not report references/missing"
+  grep -Fq 'Referenced resource does not exist:' "$TMP/$label.log" || fail "$label did not name the missing resource"
+  grep -Fq 'failed lint-skill' "$TMP/$label.log" || fail "$label did not report the lint refusal"
 }
 
 make_mv_shim() {
@@ -124,6 +161,8 @@ grep -Fq 'preserve this output' "$case_root/skills/grilling/SKILL.md" || fail 'p
 case_root="$(new_case success)"
 printf '\nstale output\n' >> "$case_root/skills/grilling/SKILL.md"
 (cd "$case_root" && ./scripts/sync.sh >"$TMP/success.log" 2>&1)
+grep -Fq 'Summary: 0 error(s)' "$TMP/success.log" || fail 'successful sync did not lint the staged tree'
+! grep -Fq 'references/missing' "$TMP/success.log" || fail 'successful sync reported a missing reference'
 ! grep -Fq 'stale output' "$case_root/skills/grilling/SKILL.md" || fail 'successful sync kept stale output'
 [ -f "$case_root/skills/references/CHILD-DELEGATION.md" ] || fail 'shared child guidance was not generated'
 # Resource pointers must be discoverable by the Markdown reference graph.
@@ -146,6 +185,7 @@ grep -Fq '[CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md)' "$case_root/skills/domain-mo
 grep -Fq 'read `CONTEXT.md` (if it exists)' "$case_root/skills/tdd/SKILL.md" || fail 'project path was incorrectly rewritten'
 grep -Fq '[Ordering](./src/ordering/CONTEXT.md)' "$case_root/skills/domain-modeling/CONTEXT-FORMAT.md" || fail 'fenced example was incorrectly rewritten'
 (cd "$case_root" && ./scripts/sync.sh --check >"$TMP/success-check.log" 2>&1)
+grep -Fq 'Summary: 0 error(s)' "$TMP/success-check.log" || fail 'successful check did not lint the staged tree'
 cp -a "$case_root/skills" "$TMP/first-generation"
 (cd "$case_root" && ./scripts/sync.sh >"$TMP/success-repeat.log" 2>&1)
 diff -r "$TMP/first-generation" "$case_root/skills" || fail 'repeated generation is not byte-identical'
@@ -200,4 +240,60 @@ if (cd "$case_root" && ./scripts/sync.sh --check extra >"$TMP/arguments-extra.lo
   fail 'extra argument unexpectedly passed'
 fi
 
-echo 'sync tests passed: mismatch, missing/ambiguous upstream, counted drift, untranslated output, invalid regex, glossary collision, preservation, semantic updates, determinism, legacy commands, dependencies, move recovery, arguments'
+case_root="$(new_case adapter)"
+(cd "$case_root" && node scripts/check-skills.mjs >"$TMP/adapter-default.log" 2>&1) || fail 'default skills tree failed lint'
+grep -Fq 'Summary: 0 error(s)' "$TMP/adapter-default.log" || fail 'default lint did not report a clean summary'
+(cd "$case_root" && node scripts/check-skills.mjs skills >"$TMP/adapter-relative.log" 2>&1) || fail 'relative skills directory failed lint'
+status=0
+(cd "$case_root" && node scripts/check-skills.mjs skills extra >"$TMP/adapter-args.log" 2>&1) || status=$?
+[ "$status" -eq 2 ] || fail "extra adapter argument exited $status"
+status=0
+(cd "$case_root" && node scripts/check-skills.mjs "$case_root/missing" >"$TMP/adapter-missing.log" 2>&1) || status=$?
+[ "$status" -eq 2 ] || fail "missing skills directory exited $status"
+broken="$TMP/broken-skills"
+cp -a "$case_root/skills" "$broken"
+printf '\n[missing report](references/missing-report.md)\n' >> "$broken/research/SKILL.md"
+status=0
+(cd "$case_root" && node scripts/check-skills.mjs "$broken" >"$TMP/adapter-optional.log" 2>&1) || status=$?
+[ "$status" -eq 1 ] || fail "optional skills directory exited $status"
+grep -Fq 'references/missing' "$TMP/adapter-optional.log" || fail 'optional directory was not the tree that was linted'
+grep -Fq 'Referenced resource does not exist:' "$TMP/adapter-optional.log" || fail 'optional directory did not name the missing resource'
+
+case_root="$(new_case unbundled-dependency)"
+break_research "$case_root" '[unbundled skill](../prototype/SKILL.md)'
+before="$(sha256sum "$case_root/skills/research/SKILL.md")"
+expect_sync_failure unbundled-dependency "$case_root"
+assert_preserved unbundled-dependency "$case_root" "$before"
+assert_link_refusal unbundled-dependency
+
+case_root="$(new_case unbundled-dependency-check)"
+break_research "$case_root" '[unbundled skill](../prototype/SKILL.md)'
+before="$(sha256sum "$case_root/skills/research/SKILL.md")"
+expect_failure unbundled-dependency-check "$case_root"
+assert_preserved unbundled-dependency-check "$case_root" "$before"
+assert_link_refusal unbundled-dependency-check
+
+case_root="$(new_case missing-resource)"
+break_research "$case_root" '[missing report](references/missing-report.md)'
+before="$(sha256sum "$case_root/skills/research/SKILL.md")"
+expect_sync_failure missing-resource "$case_root"
+assert_preserved missing-resource "$case_root" "$before"
+assert_link_refusal missing-resource
+
+case_root="$(new_case missing-resource-check)"
+break_research "$case_root" '[missing report](references/missing-report.md)'
+before="$(sha256sum "$case_root/skills/research/SKILL.md")"
+expect_failure missing-resource-check "$case_root"
+assert_preserved missing-resource-check "$case_root" "$before"
+assert_link_refusal missing-resource-check
+
+nolint_repo="$TMP/repo-nolint"
+mkdir -p "$nolint_repo/scripts"
+case_root="$(new_case linter-unavailable "$nolint_repo")"
+printf '\nstale sentinel\n' >> "$case_root/skills/research/SKILL.md"
+before="$(sha256sum "$case_root/skills/research/SKILL.md")"
+expect_sync_failure linter-unavailable "$case_root"
+assert_preserved linter-unavailable "$case_root" "$before"
+grep -Fq 'lint-skill.mjs' "$TMP/linter-unavailable.log" || fail 'missing linter was not the failure'
+
+echo 'sync tests passed: mismatch, missing/ambiguous upstream, counted drift, untranslated output, invalid regex, glossary collision, preservation, semantic updates, determinism, legacy commands, dependencies, move recovery, arguments, staged lint, missing linter, adapter arguments'
