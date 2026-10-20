@@ -17,11 +17,11 @@ Read packages/p3stack/skills/maintain-p3stack/SKILL.md and follow it in full. Re
 
 Stop without changing a dirty tree. Stop a source on a failed fetch, invalid ref, unexplained scope change, failed gate, or unavailable required tool. Preserve the candidate and receipts for review instead of treating a failure as clean. Check existing maintenance PRs so this run does not duplicate an open update. Continue other independent sources only from clean isolated worktrees.
 
-For an upstream change, read the scope reports and full upstream commits. Repair only generator inputs and regenerate. Use the failure-classes reference for every failure. Keep sources that share a checkout in one PR and record a bump note for each affected source. Open a separate PR for each independent changed source. Require package checks, tests, registry and host checks, loader verification, the root gate, and a fresh-process smoke. Run the routing eval when routes or chains change.
+For an upstream change, read the scope reports and full upstream commits. Repair only generator inputs and regenerate. Use the failure-classes reference for every failure. Keep sources that share a checkout in one PR and record a bump note for each affected source. Open a separate PR for each independent changed source. Require package checks, tests, registry and host checks, loader verification, the root gate, and a fresh-process smoke. Execute the routing eval as its own step when routes or chains change, even if another gate fails.
 
 If lockfiles are stale, dispatch the dependency-refresh procedure named by the skill and stop that source. If T3 has drifted, report the observed contract and request a separate host-contract repair. Do not update T3 or mix host and dependency repairs into source PRs.
 
-Never hand-edit skills or agents. Never write under ~/.pi/agent, run pi install or mise install, or change the installed host. Never merge, arm auto-merge, retarget, or close a PR. Push only your own branch with hooks. No unchanged-source PRs or bump notes.
+Never hand-edit skills, agents, or files under vendor. Repair generator inputs and use the package bump command to move pins. Never write under ~/.pi/agent, run pi install or mise install, or change the installed host. Never merge, arm auto-merge, retarget, or close a PR. Push only your own branch with hooks. No unchanged-source PRs or bump notes.
 
 Finish with one status and full candidate SHA per vendored source, the authored registry result, PR links, receipt paths, and any blocked sources with their reasons. A clean audit alone does not prove that upstream is current. Confirm linked PRs through the host map before handback. Leave every PR unmerged.
 ```
