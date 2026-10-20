@@ -771,7 +771,7 @@ syncBuiltinESMExports();
   assert.deepEqual(readdirSync(recovery), ["skills"]);
 });
 
-pocockCase("13 failed staging preserves the old tree without a shell move", ({ root, run }) => {
+pocockCase("19 failed staging preserves the old tree without a shell move", ({ root, run }) => {
   assert.equal(run().status, 0);
   const output = join(root, "blocked");
   writeFileSync(output, "not a directory");
@@ -780,7 +780,7 @@ pocockCase("13 failed staging preserves the old tree without a shell move", ({ r
   assert.deepEqual(readFileSync(join(root, "skills/grilling/SKILL.md")), before);
 });
 
-pocockCase("14 failed resource validation leaves no recovery step", ({ root, run, input, read }) => {
+pocockCase("20 failed resource validation leaves no recovery step", ({ root, run, input, read }) => {
   assert.equal(run().status, 0);
   const before = read("research/SKILL.md");
   const file = input("engineering/research/SKILL.md");
