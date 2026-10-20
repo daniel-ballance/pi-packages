@@ -1,1 +1,58 @@
-[]
+[
+  {
+    "id": "feature-seam-tests",
+    "playbook": "playbooks/feature.md",
+    "anchor": "2. `architect` for parallel design exploration.",
+    "position": "after",
+    "skill": "tdd",
+    "when": "Use the seams named by architect. Confirm them with the human under the default grant."
+  },
+  {
+    "id": "bug-red-loop",
+    "playbook": "playbooks/bug-fix.md",
+    "anchor": "Reproduce it yourself on the matching surface via the control skill (Non-negotiables), even when a debug or instrumentation protocol says to ask the user to reproduce.",
+    "position": "before",
+    "skill": "diagnosing-bugs",
+    "when": "No failing reproduction exists yet. Then continue Bug fix from the plan step."
+  },
+  {
+    "id": "feature-comment-review",
+    "playbook": "playbooks/feature.md",
+    "anchor": "7. If the design is contested, `interrogate` before shipping.",
+    "position": "before",
+    "skill": "no-comments",
+    "when": "Review completed code before code-review."
+  },
+  {
+    "id": "feature-standards-review",
+    "playbook": "playbooks/feature.md",
+    "anchor": "7. If the design is contested, `interrogate` before shipping.",
+    "position": "before",
+    "skill": "code-review",
+    "when": "After no-comments. Keep standards and spec findings separate."
+  },
+  {
+    "id": "bug-comment-review",
+    "playbook": "playbooks/bug-fix.md",
+    "anchor": "6. Run **Opening a PR**.",
+    "position": "before",
+    "skill": "no-comments",
+    "when": "Review completed code before code-review."
+  },
+  {
+    "id": "bug-standards-review",
+    "playbook": "playbooks/bug-fix.md",
+    "anchor": "6. Run **Opening a PR**.",
+    "position": "before",
+    "skill": "code-review",
+    "when": "After no-comments. Keep standards and spec findings separate."
+  },
+  {
+    "id": "skill-authoring-style",
+    "playbook": "playbooks/authoring-a-skill.md",
+    "anchor": "1. Use the skill-authoring procedure (**Author a skill** in the host capabilities).",
+    "position": "before",
+    "skill": "writing-for-agents",
+    "when": "Author or modify agent-facing instructions."
+  }
+]

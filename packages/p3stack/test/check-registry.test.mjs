@@ -44,6 +44,31 @@ function fixture(t) {
   return { root, write, skills, skill, run };
 }
 
+test("generation renders routes and chains from their registry rows", t => {
+  const f = fixture(t);
+  f.write("vendor/demo/skills/poteto-mode/SKILL.md", f.skill("poteto-mode"));
+  f.write("vendor/demo/skills/poteto-mode/playbooks/feature.md", "Implement the sketch.\n");
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], path: "skills/poteto-mode/SKILL.md", name: "poteto-mode" }]);
+  const outDir = join(f.root, "out");
+  generate({ packageDir: f.root, outDir });
+  const routes = readFileSync(join(outDir, "skills/p3stack-mode/references/routes.md"), "utf8");
+  const chains = readFileSync(join(outDir, "skills/p3stack-mode/references/chains.md"), "utf8");
+  assert.match(routes, /\[first\]\(\.\.\/first\/SKILL.md\)/);
+  assert.match(chains, /first-chain/);
+  assert.match(chains, /Implement the sketch\./);
+  assert.match(chains, /\[playbooks\/feature.md\]\(\.\.\/poteto-mode\/playbooks\/feature.md\)/);
+});
+
+test("route and chain registries contain the admitted owner and TDD routes", () => {
+  const read = name => JSON.parse(readFileSync(new URL(`../registry/${name}.json`, import.meta.url), "utf8"));
+  const routes = read("routes"), chains = read("chains");
+  for (const name of ["triage", "dyl-review", "implement-spec"]) assert.ok(routes.some(row => row.target === name), name);
+  assert.ok(chains.some(row => row.skill === "tdd" && row.playbook === "playbooks/feature.md"));
+  assert.ok(chains.some(row => row.skill === "diagnosing-bugs" && row.playbook === "playbooks/bug-fix.md"));
+  const rules = JSON.parse(readFileSync(new URL("../rules/tokens.json", import.meta.url), "utf8"));
+  for (const id of ["tracker-precondition", "tracker-spec-source", "tracker-ticket"]) assert.ok(!rules.some(row => row.id === id), id);
+});
+
 test("scope reports distinguish registry drops and unclassified skills", () => {
   const classify = sourcePathClassifier({ name: "demo", map: [{ from: "skills/", to: "skills/" }] }, [
     { source: "demo", path: "skills/first/SKILL.md", action: "emit", name: "renamed" },
