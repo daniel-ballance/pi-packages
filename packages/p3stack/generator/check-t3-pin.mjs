@@ -56,18 +56,31 @@ function main(args) {
       return 0;
     }
     const t3 = join(homedir(), ".t3");
+    const layouts = pin.statePaths.map(layout => ({ ...layout, path: join(t3, layout.path) }));
     if (!options.size && !existsSync(t3)) {
-      console.log("Skipping T3 pin check because ~/.t3 is absent.");
+      console.log(`Skipping T3 pin check because ~/.t3 is absent. State paths checked at ${layouts.map(layout => layout.path).join(" or ")}.`);
       return 0;
     }
-    const state = json(options.get("--state") ?? join(t3, "runtime/service-state.json"));
+    const layout = options.has("--state")
+      ? { path: options.get("--state") }
+      : layouts.find(layout => existsSync(layout.path));
+    if (!layout) {
+      console.log(`Skipping T3 pin check because no state file exists at ${layouts.map(layout => layout.path).join(" or ")}.`);
+      return 0;
+    }
+    const state = json(layout.path);
+    const activeVersion = layout.versionField ? state?.[layout.versionField] : state?.activeVersion ?? state?.serverVersion;
     const bridge = options.get("--bridge") ?? join(t3, "caches/pi-t3-mcp-extension.ts");
-    const sha256 = createHash("sha256").update(readFileSync(bridge)).digest("hex");
     const problems = [];
-    if (state?.activeVersion !== pin.version) problems.push(`activeVersion is ${state?.activeVersion}, expected ${pin.version}`);
-    if (sha256 !== pin.bridgeSha256) problems.push(`bridge SHA-256 is ${sha256}, expected ${pin.bridgeSha256}`);
-    if (problems.length) throw new Error(problems.join("\n"));
-    console.log(`T3 ${pin.version} matches rules/t3-pin.json`);
+    if (activeVersion !== pin.version) problems.push(`activeVersion is ${activeVersion}, expected ${pin.version}`);
+    try {
+      const sha256 = createHash("sha256").update(readFileSync(bridge)).digest("hex");
+      if (sha256 !== pin.bridgeSha256) problems.push(`bridge SHA-256 is ${sha256}, expected ${pin.bridgeSha256}`);
+    } catch {
+      problems.push(`bridge hash unverifiable at ${bridge}`);
+    }
+    if (problems.length) throw new Error([problems[0], `state read from ${layout.path}`, ...problems.slice(1)].join("\n"));
+    console.log(`T3 ${pin.version} matches rules/t3-pin.json\nstate read from ${layout.path}`);
     return 0;
   } catch (error) {
     console.error(error.message);

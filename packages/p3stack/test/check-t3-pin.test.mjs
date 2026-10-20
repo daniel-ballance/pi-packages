@@ -77,8 +77,8 @@ test("pin check skips when T3 is absent", t => {
 
 test("pin check reports legacy serverVersion drift without a bridge", t => {
   const f = fixture(t);
-  const pin = JSON.parse(readFileSync(new URL("../rules/t3-pin.json", import.meta.url), "utf8"));
-  f.write("rules/t3-pin.json", { ...pin, statePaths });
+  const pin = JSON.parse(readFileSync(join(f.root, "rules/t3-pin.json"), "utf8"));
+  f.write("rules/t3-pin.json", { ...pin, version: "0.1.1-nightly.20261018.3302" });
   f.write("legacy-home/.t3/userdata/server-runtime.json", { serverVersion: "0.1.1-nightly.20261016.3203" });
   const result = f.run([], "legacy-home");
   assert.equal(result.status, 1, result.stdout);
@@ -161,9 +161,11 @@ test("pin CLI rejects unknown, missing, repeated, or mixed arguments", t => {
   }
 });
 
-test("pin records the inspected nightly, bridge, direct tools, and prompt return shape", () => {
+test("pin records a nightly matching the host map, bridge, direct tools, and prompt return shape", () => {
   const pin = JSON.parse(readFileSync(new URL("../rules/t3-pin.json", import.meta.url), "utf8"));
-  assert.equal(pin.version, "0.1.1-nightly.20261018.3302");
+  const hostMap = readFileSync(new URL("../extra/skills/poteto-mode/references/host-capabilities.md", import.meta.url), "utf8");
+  assert.match(pin.version, /^\d+\.\d+\.\d+-nightly\.\d{8}\.\d+$/);
+  assert.equal(hostMap.match(/^- \*\*T3\.\*\* .*Pinned T3 version is `([^`]+)`\./m)?.[1], pin.version);
   assert.equal(pin.bridgeSha256, "8cc49f380d825f869d2b50b1fd512cb71fe8d3e869d78e6fcd8ea5d3e6fbb24f");
   assert.deepEqual(pin.statePaths, statePaths);
   assert.deepEqual(pin.directTools, tools);

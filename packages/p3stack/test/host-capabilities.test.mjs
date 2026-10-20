@@ -16,6 +16,12 @@ test("delegate line 8 distinguishes a lost-call retry from a new round", () => {
   assert.match(section("Delegate"), /coordination\.owns/);
 });
 
+test("T3 delegate line states the pinned nightly", () => {
+  const pin = JSON.parse(readFileSync(new URL("../rules/t3-pin.json", import.meta.url), "utf8"));
+  const t3 = section("Delegate").split("\n").find(line => line.startsWith("- **T3.**"));
+  assert.ok(t3?.includes(`Pinned T3 version is \`${pin.version}\`.`));
+});
+
 test("opening a PR cites the Pull requests section and records its chain", () => {
   const opening = readFileSync(new URL("../skills/poteto-mode/playbooks/opening-a-pr.md", import.meta.url), "utf8");
   assert.match(opening, /Read \*\*Pull requests\*\* in the \[host capabilities\]\(references\/host-capabilities\.md\)/);
