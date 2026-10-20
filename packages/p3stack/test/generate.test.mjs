@@ -479,7 +479,7 @@ test("the maintenance skill and its references are emitted byte-for-byte from au
   try {
     generate({ packageDir, outDir: out });
     const directory = "skills/maintain-p3stack";
-    for (const path of ["SKILL.md", "references/failure-classes.md", "references/bump-note.md"]) {
+    for (const path of ["SKILL.md", "references/failure-classes.md", "references/bump-note.md", "references/nightly.md"]) {
       const input = join(packageDir, "authored", directory, path);
       assert.ok(existsSync(input), path);
       assert.deepEqual(readFileSync(join(out, directory, path)), readFileSync(input), path);

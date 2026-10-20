@@ -5,7 +5,7 @@ description: Audit p3stack's current source pins or bump its vendored upstream s
 
 # Maintain p3stack
 
-Audit the current pins first. Stop after the audit unless the operator explicitly requests an upstream-tip bump or supplies a ref. A scheduled run must explicitly request a bump.
+Audit the current pins first. Stop after the audit unless the operator explicitly requests an upstream-tip bump or supplies a ref. The [nightly prompt](references/nightly.md) requests a bump.
 
 Work in the repository that contains this package. Read its `AGENTS.md` and `packages/p3stack/AGENTS.md`. Run package commands from `packages/p3stack` and the root gate from the repository root. Keep a Markdown checklist and receipt paths outside the checkout.
 
