@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
+import { createAgentSession, DefaultResourceLoader, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import p3stack from "../extensions/p3stack/index.ts";
-import { installFooterPrefix, prefixFooter } from "../extensions/p3stack/src/footer.ts";
+import type { Context } from "../extensions/p3stack/src/mode.ts";
 import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/p3stack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
@@ -12,46 +15,79 @@ const model = (provider: string, id: string, levels: Record<string, string | nul
 const opus = model("claude-subscription", "claude-opus-5-5", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" });
 const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: null });
 
-// subagents: absent, loaded but too old to reply on the bus, or replying with this catalog.
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
-function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents } = {}) {
+function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[], factory = p3stack } = {}) {
   const root = mkdtempSync(join(tmpdir(), "p3stack-ext-")), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const tools = new Map<string, any>(), commands = new Map<string, any>(), handlers = new Map<string, Function[]>();
-  const entries: unknown[] = [], notices: [string, string?][] = [], statuses: [string, string | undefined][] = [], asked: string[] = [];
+  const entries: unknown[] = [], notices: [string, string?][] = [], statuses: [string, string | undefined][] = [], footers: Parameters<ExtensionUIContext["setFooter"]>[0][] = [], asked: string[] = [];
   const ui = {
     select: async (title: string, options: string[]) => { asked.push(`${title} [${options.join(" | ")}]`); return answers.shift(); },
     input: async (title: string) => { asked.push(title); return answers.shift(); },
     confirm: async (title: string) => { asked.push(title); return answers.shift() === "yes"; },
     notify: (message: string, type?: string) => notices.push([message, type]),
     setStatus: (key: string, text?: string) => statuses.push([key, text]),
+    setFooter: (factory: Parameters<ExtensionUIContext["setFooter"]>[0]) => footers.push(factory),
   };
   const ctx = {
-    cwd, hasUI, mode, isProjectTrusted: () => trusted,
+    cwd, hasUI, mode, model: parent, isProjectTrusted: () => trusted,
+    executeTool: async (name: string, args: unknown): ReturnType<Context["executeTool"]> => {
+      assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
+      assert.deepEqual(args, {});
+      return {
+        toolCall: { type: "toolCall", id: "call/1", name, arguments: args },
+        result: { content: [{ type: "text", text: JSON.stringify(t3) }], structuredContent: t3, details: {} },
+        isError: false,
+      };
+    },
     get ui() { if (!hasUI) throw new Error("touched ui without UI"); return ui; },
-    modelRegistry: { getAvailable: () => [opus, grok] },
-    sessionManager: { getBranch: () => branch },
+    modelRegistry: { getAvailable: () => [opus, grok], isUsingOAuth: () => false, getProvider: () => undefined },
+    getContextUsage: (): ReturnType<ExtensionContext["getContextUsage"]> => undefined,
+    sessionManager: { getBranch: () => branch, getEntries: (): SessionEntry[] => [], getSessionName: (): string | undefined => undefined },
   };
-  p3stack({
+  factory({
+    getThinkingLevel: () => "xhigh",
     registerTool: (tool: any) => tools.set(tool.name, tool),
     registerCommand: (name: string, command: any) => commands.set(name, command),
     on: (name: string, handler: Function) => handlers.set(name, [...handlers.get(name) ?? [], handler]),
     appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
-    getAllTools: () => [...tools.values(), ...subagents ? [{ name: "subagent_catalog" }] : []],
+    getAllTools: () => [...tools.values(), ...extraTools, ...subagents ? [{ name: "subagent_catalog" }] : [], ...t3 ? [{ name: "mcp__t3-code__orchestrator_capabilities" }] : []],
     events: { emit: (channel: string, data: { reply(value: unknown): void }) => { if (channel === "subagents:catalog" && subagents && subagents !== "old") data.reply(subagents); } },
   } as never);
   const emit = async (name: string, event: any = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); return event; };
-  // What before_agent_start handlers return as messages beside the request.
   const reminders = async (event: any) => { const out = []; for (const handler of handlers.get("before_agent_start") ?? []) { const result = await handler(event, ctx); if (result?.message) out.push(result.message); } return out; };
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
   const dispose = () => { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; rmSync(root, { recursive: true, force: true }); };
-  return { root, cwd, agentDir, tools, commands, emit, reminders, call, command, entries, notices, statuses, asked, dispose };
+  return { root, cwd, agentDir, ctx, tools, commands, emit, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
 }
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
+
+test("each extension module registers its own job without loading unrelated features", async () => {
+  const { registerMode } = await import("../extensions/p3stack/src/mode.ts");
+  const { registerBrief } = await import("../extensions/p3stack/src/brief.ts");
+  const { registerAsk } = await import("../extensions/p3stack/src/ask.ts");
+  const { registerSetup } = await import("../extensions/p3stack/src/setup.ts");
+  const { registerRoles } = await import("../extensions/p3stack/src/roles.ts");
+  const mode = harness({ factory: pi => { const on = registerMode(pi, "router.md"); registerBrief(pi, on, "router.md", "agent.md"); } });
+  try {
+    assert.equal(mode.tools.size, 0);
+    await mode.command("p3stack", "on");
+    const event = { toolName: "subagent_spawn", input: { task: "Fix it." } };
+    await mode.emit("tool_call", event);
+    assert.match(event.input.task, /read agent\.md/);
+  } finally { mode.dispose(); }
+  for (const [factory, tool, command] of [[registerAsk, "ask_user", undefined], [registerRoles, "p3stack_roles", undefined], [registerSetup, undefined, "p3stack-setup"]] as const) {
+    const h = harness({ factory });
+    try {
+      assert.deepEqual([...h.tools.keys()], tool ? [tool] : []);
+      assert.deepEqual([...h.commands.keys()], command ? [command] : []);
+    } finally { h.dispose(); }
+  }
+});
 
 test("a budget sets each model's thinking level, clamped to what that model offers", () => {
   assert.equal(thinkingFor("unlimited", opus), "max");
@@ -75,23 +111,130 @@ test("p3stack_roles answers with the role table as text, from the file or the de
     const result = await h.call("p3stack_roles", {});
     assert.match(text(result), /^Role defaults from .*agent\/p3stack\.json \(budget large \(xhigh\)\)/);
     assert.match(text(result), /swarm workers: xai\/grok-4\.7:xhigh\n/);
-    assert.match(text(result), /judgment and prose: claude-opus-5-5-xhigh \(default hint\)/);
+    assert.match(text(result), /judgment and prose: claude-subscription\/claude-opus-5-5:xhigh/);
     assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:xhigh");
     assert.equal(Object.keys(result.structuredContent.roles).length, Object.keys(DEFAULT_ROLES).length);
   } finally { h.dispose(); }
 });
 
 test("a trusted project's file wins over the personal one, and a broken file is reported, not used", async () => {
-  const project = harness({ trusted: true, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "a/b:low" } }, "agent/p3stack.json": { roles: { "bug-fix": "c/d:high" } } } });
-  try { assert.match(text(await project.call("p3stack_roles", {})), /bug-fix: a\/b:low/); } finally { project.dispose(); }
+  const project = harness({ trusted: true, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "xai/grok-4.7:low" } }, "agent/p3stack.json": { roles: { "bug-fix": "xai/grok-4.7:high" } } } });
+  try { assert.match(text(await project.call("p3stack_roles", {})), /bug-fix: xai\/grok-4\.7:low/); } finally { project.dispose(); }
   const untrusted = harness({ trusted: false, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "a/b:low" } } } });
-  try { assert.match(text(await untrusted.call("p3stack_roles", {})), /bug-fix: grok-4\.7-xhigh-fast \(default hint\)/); } finally { untrusted.dispose(); }
+  try {
+    const result = await untrusted.call("p3stack_roles", {});
+    assert.match(text(result), /skipped .*project\/\.pi\/p3stack\.json.*project is untrusted/);
+    assert.match(text(result), /bug-fix: xai\/grok-4\.7:xhigh/);
+  } finally { untrusted.dispose(); }
   const broken = harness({ files: { "agent/p3stack.json": { roles: { "bug-fix": 7 } } } });
   try {
     const result = await broken.call("p3stack_roles", {});
     assert.match(text(result), /ignored .*p3stack\.json: role "bug-fix" must be a model or a list of models/);
-    assert.match(text(result), /bug-fix: grok-4\.7-xhigh-fast \(default hint\)/);
+    assert.match(text(result), /bug-fix: xai\/grok-4\.7:xhigh/);
   } finally { broken.dispose(); }
+});
+
+test("roles resolve against the live allowlist, clamp thinking down, and report missing selections", async () => {
+  const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude-subscription/claude-opus-5-5:xhigh"] };
+  const h = harness({ subagents: catalog });
+  try {
+    const first = (await h.call("p3stack_roles", {})).structuredContent;
+    assert.equal(first.roles["swarm workers"], "xai/grok-4.7:high");
+    assert.equal(first.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:xhigh");
+    assert.deepEqual(first.roles["architect runners"], ["claude-subscription/claude-opus-5-5:xhigh", "xai/grok-4.7:high"]);
+    catalog.models = ["xai/grok-4.7:low"];
+    const second = (await h.call("p3stack_roles", {})).structuredContent;
+    assert.equal(second.roles["swarm workers"], "xai/grok-4.7:low");
+    assert.equal(second.roles["judgment and prose"], undefined);
+    assert.match(second.problems.join("\n"), /judgment and prose.*no live catalog selection/);
+  } finally { h.dispose(); }
+});
+
+test("a registered T3 catalog takes precedence and returns ready targets with advertised thinking options", async () => {
+  const h = harness({ subagents: { spawnEnabled: true, models: [] }, t3: { providers: [
+    { providerInstanceId: "pi-main", canRunChildTask: true, models: [
+      { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "low" }, { id: "high" }] }] },
+      { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
+    ] },
+    { providerInstanceId: "unavailable", canRunChildTask: false, models: [{ id: "claude-opus-5-5" }] },
+  ] } });
+  try {
+    const result = (await h.call("p3stack_roles", {})).structuredContent;
+    assert.deepEqual(result.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
+    assert.deepEqual(result.roles["swarm workers"], { providerInstanceId: "pi-main", model: "xai/grok-4.7", options: [{ id: "thinkingLevel", value: "high" }] });
+  } finally { h.dispose(); }
+});
+
+test("T3 bridge MCP envelopes resolve roles and preserve the inherited target without guessing options", async () => {
+  const h = harness({ t3: { content: [], structuredContent: {
+    inheritedProviderInstanceId: "pi-main", inheritedModel: "claude-subscription/claude-opus-5-5",
+    providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude-subscription/claude-opus-5-5" }] }],
+  } }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
+  try {
+    const roles = (await h.call("p3stack_roles", {})).structuredContent.roles;
+    assert.deepEqual(roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5" });
+    assert.deepEqual(roles["bug-fix"], roles["judgment and prose"]);
+  } finally { h.dispose(); }
+});
+
+test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or text", async () => {
+  const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [
+    { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
+    { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "high" }] }] },
+  ] }] };
+  for (const structuredContent of [{ content: [], structuredContent: capabilities }, undefined]) {
+    const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: [] } });
+    h.ctx.executeTool = async (name, args) => {
+      assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
+      assert.deepEqual(args, {});
+      return {
+        toolCall: { type: "toolCall", id: "call/1", name, arguments: args },
+        result: { content: [{ type: "text", text: JSON.stringify(capabilities) }], structuredContent, details: {} },
+        isError: false,
+      };
+    };
+    try {
+      const result = await h.call("p3stack_roles", {});
+      assert.deepEqual(result.structuredContent.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
+      assert.equal(Object.keys(result.structuredContent.roles).length, 17);
+      assert.deepEqual(result.structuredContent.problems, []);
+    } finally { h.dispose(); }
+  }
+});
+
+test("a failed Pi tool-call outcome reports the T3 failure and resolves the subagents allowlist", async () => {
+  const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude-subscription/claude-opus-5-5" }] }] };
+  const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: ["claude-subscription/claude-opus-5-5:low", "xai/grok-4.7:low"] } });
+  h.ctx.executeTool = async (name, args) => {
+    assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
+    assert.deepEqual(args, {});
+    return {
+      toolCall: { type: "toolCall", id: "call/1", name, arguments: args },
+      result: { content: [{ type: "text", text: "T3 unavailable" }], structuredContent: capabilities, details: {} },
+      isError: true,
+    };
+  };
+  try {
+    const result = await h.call("p3stack_roles", {});
+    assert.equal(result.structuredContent.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:low");
+    assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:low");
+    assert.equal(Object.keys(result.structuredContent.roles).length, 17);
+    assert.equal(result.structuredContent.problems.length, 1);
+    assert.match(text(result), /T3 catalog call failed/);
+  } finally { h.dispose(); }
+});
+
+test("inherit-parent resolves to an exact permitted identity and disabled catalogs never invent a model", async () => {
+  const h = harness({ parent: { provider: "claude-subscription", id: "claude-opus-5-5" }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
+  try { assert.equal((await h.call("p3stack_roles", {})).structuredContent.roles["bug-fix"], "claude-subscription/claude-opus-5-5:xhigh"); } finally { h.dispose(); }
+  for (const subagents of ["old", { spawnEnabled: false, models: ["xai/grok-4.7:xhigh"] }] as Subagents[]) {
+    const h = harness({ subagents });
+    try {
+      const result = (await h.call("p3stack_roles", {})).structuredContent;
+      assert.deepEqual(result.roles, {});
+      assert.ok(result.problems.length);
+    } finally { h.dispose(); }
+  }
 });
 
 test("the mode toggle persists, adds a prompt section while on, and shows only in the terminal", async () => {
@@ -99,30 +242,27 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
   try {
     await h.command("p3stack", "on");
     assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true } });
-    assert.deepEqual(h.statuses, [], "T3 shows no status, so none is set outside the terminal");
+    assert.deepEqual(h.statuses, [], "no status row is added");
+    assert.deepEqual(h.footers, [], "no footer is set outside the terminal");
+    assert.deepEqual(h.notices.at(-1), ["p3stack is on.", "info"]);
     const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
     const section = event.systemPromptOptions.sections["p3stack"];
-    assert.match(section, /poteto-mode is on.*skills\/poteto-mode\/SKILL\.md/s);
-    assert.match(section, /Role models \(no role defaults file.*\n- bug-fix: grok-4\.7-xhigh-fast/s, "the role table rides along");
+    assert.match(section, /^Read .*skills\/poteto-mode\/SKILL\.md and follow it\.$/);
+    assert.doesNotMatch(section, /Role models|bug-fix|grok|claude/);
+    assert.equal(section.split("\n").length, 1, "only the router belongs in the section");
     const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
     assert.equal(reminders.length, 1, "each user turn gets a reminder beside the request");
     assert.equal(reminders[0].display, false);
-    assert.match(reminders[0].content, /^\[poteto-mode is on\] Before anything else, route this request: read .*poteto-mode\/SKILL\.md/);
+    assert.match(reminders[0].content, /^\[poteto-mode is on\] Before anything else, route this request\. Read .*poteto-mode\/SKILL\.md/);
+    assert.match(reminders[0].content, /call `p3stack_roles` for the role models/);
+    assert.doesNotMatch(reminders[0].content, /role models above/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
     await h.command("p3stack", "off");
+    assert.deepEqual(h.notices.at(-1), ["p3stack is off.", "info"]);
     const off = await h.emit("before_agent_start", { systemPromptOptions: { sections: { "p3stack": "stale" } } });
     assert.equal(off.systemPromptOptions.sections["p3stack"], undefined);
     assert.deepEqual(await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } }), [], "no reminder while off");
   } finally { h.dispose(); }
-  // Pi's footer only loads inside Pi; here the terminal falls back to a status row.
-  const tui = harness({ mode: "tui" });
-  try {
-    await tui.emit("session_start");
-    await tui.command("p3stack", "on");
-    assert.deepEqual(tui.statuses.at(-1), ["p3stack", "poteto-mode"]);
-    await tui.command("p3stack", "off");
-    assert.deepEqual(tui.statuses.at(-1), ["p3stack", undefined]);
-  } finally { tui.dispose(); }
   const resumed = harness({ hasUI: false, branch: [{ type: "custom", customType: "p3stack", data: { on: true } }] });
   try {
     await resumed.emit("session_start");
@@ -131,35 +271,104 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
   } finally { resumed.dispose(); }
 });
 
-// Pi-tui's width rules for these cases: the potato and the ellipsis glyphs are 2 and 1 wide.
-const measure = {
-  visibleWidth: (line: string) => [...line.replace(/\x1b\[[0-9;]*m/g, "")].reduce((width, char) => width + (char === "🥔" ? 2 : 1), 0),
-  truncateToWidth: (line: string, width: number, ellipsis = "") => { let out = ""; for (const char of line) { if (measure.visibleWidth(out + char + ellipsis) > width) break; out += char; } return out + ellipsis; },
-};
-
-test("the potato goes before the working directory without widening the footer", () => {
-  assert.deepEqual(prefixFooter(["~/code (main)", "stats", "statuses"], 40, "🥔 ", measure), ["🥔 ~/code (main)", "stats", "statuses"]);
-  assert.deepEqual(prefixFooter(["~/code", "stats"], 40, "", measure), ["~/code", "stats"], "no potato while the mode is off");
-  const labelled = "~/code" + " ".repeat(10) + "subagents: 1/2"; // 30 wide, as subagents right-aligns it
-  assert.equal(prefixFooter([labelled, "stats"], 30, "🥔 ", measure)[0], "🥔 ~/code" + " ".repeat(7) + "subagents: 1/2", "a right-aligned label keeps its place");
-  assert.equal(prefixFooter(["~/a/very/long/project/path", "stats"], 20, "🥔 ", measure)[0], "🥔 ~/a/very/long/...");
+test("the TUI sets a footer while on and restores the stock footer while off or switching branches", async () => {
+  const restore = asTerminal(), branch: unknown[] = [];
+  const h = harness({ mode: "tui", branch });
+  try {
+    await h.emit("session_start");
+    assert.equal(h.footers.at(-1), undefined);
+    await h.command("p3stack", "on");
+    assert.equal(typeof h.footers.at(-1), "function");
+    await h.command("p3stack", "off");
+    assert.equal(h.footers.at(-1), undefined);
+    branch.push({ type: "custom", customType: "p3stack", data: { on: true } });
+    await h.emit("session_tree");
+    assert.equal(typeof h.footers.at(-1), "function");
+    branch.length = 0;
+    await h.emit("session_tree");
+    assert.equal(h.footers.at(-1), undefined);
+    assert.deepEqual(h.statuses, []);
+  } finally { h.dispose(); restore(); }
 });
 
-test("the footer hook decorates Pi's renderer until it is removed, and leaves later wrappers alone", () => {
-  class Footer { render(width: number) { return [`~/code ${width}`, "stats"]; } }
-  let on = true;
-  const remove = installFooterPrefix(Footer.prototype, () => on ? "🥔 " : "", measure);
-  assert.deepEqual(new Footer().render(40), ["🥔 ~/code 40", "stats"]);
-  on = false;
-  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"]);
-  on = true;
-  remove();
-  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"], "removed");
-  const removeAgain = installFooterPrefix(Footer.prototype, () => { throw new Error("broken"); }, measure);
-  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"], "a failing decoration keeps the stock footer");
-  const later = Footer.prototype.render = function (this: Footer, width: number) { return [`later ${width}`]; };
-  removeAgain();
-  assert.equal(Footer.prototype.render, later, "another extension's later wrapper is not overwritten");
+test("T3 never sets a terminal footer or status row", async () => {
+  const previous = process.env.T3_MCP_URL;
+  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+  try {
+    for (const mode of ["rpc", "tui"]) {
+      const h = harness({ mode });
+      try {
+        await h.emit("session_start");
+        await h.command("p3stack", "on");
+        await h.command("p3stack", "off");
+        assert.deepEqual(h.footers, []);
+        assert.deepEqual(h.statuses, []);
+      } finally { h.dispose(); }
+    }
+  } finally { if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
+});
+
+test("the on footer prefixes the directory and matches Pi's stock rendering byte for byte", async () => {
+  const restore = asTerminal(), h = harness({ mode: "tui" });
+  const settingsManager = SettingsManager.inMemory();
+  const sessionManager = SessionManager.inMemory(h.cwd);
+  const resourceLoader = new DefaultResourceLoader({ cwd: h.cwd, agentDir: h.agentDir, settingsManager, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true });
+  const model: NonNullable<ExtensionContext["model"]> = { provider: "footer-fixture", id: "model-🅿️", name: "Footer fixture", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 272000, maxTokens: 1000 };
+  const { session } = await createAgentSession({ cwd: h.cwd, agentDir: h.agentDir, model, thinkingLevel: "low", sessionManager, settingsManager, resourceLoader });
+  try {
+    initTheme("dark", false);
+    const { theme } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+    const contextUsage = { tokens: 23000, contextWindow: 272000, percent: 8.5 };
+    mock.method(session, "getContextUsage", () => contextUsage);
+    Object.assign(h.ctx, { model, thinkingLevel: session.thinkingLevel, sessionManager, getContextUsage: () => contextUsage });
+    let branch: string | null = "p3stack/pr-04-mode-extension", renders = 0;
+    let changed = () => {};
+    const footerData = { getGitBranch: () => branch, getExtensionStatuses: () => new Map<string, string>(), getAvailableProviderCount: () => 2, onBranchChange: (callback: () => void) => { changed = callback; return () => { changed = () => {}; }; } };
+    await h.command("p3stack", "on");
+    const factory = h.footers.at(-1);
+    assert.equal(typeof factory, "function");
+    const tui = new TuiMainScreen(new ProcessTerminal());
+    mock.method(tui, "requestRender", () => { renders++; });
+    const footer = factory!(tui, theme, footerData);
+    const stock = new FooterComponent(session, footerData);
+    const prefix = "🅿️ ";
+    assert.equal(stripTerminalSequences(footer.render(200)[0]!), `${prefix}${h.cwd} (${branch})`);
+    for (const percent of [0, 75, 95, null]) {
+      Object.assign(contextUsage, { percent });
+      for (const enabled of [true, false]) {
+        writeFileSync(join(h.agentDir, "settings.json"), JSON.stringify({ compaction: { enabled } }));
+        stock.setAutoCompactEnabled(enabled);
+        for (const width of [200, 100, 40, 10, 3, 1]) {
+          footer.invalidate();
+          const actual = footer.render(width), expected = stock.render(width);
+          assert.equal(actual.length, 2);
+          assert.equal(actual[1], expected[1], `stock stats at width ${width}, context ${percent}, auto ${enabled}`);
+          assert.ok(actual.every(line => visibleWidth(line) <= width));
+          if (width === 200) assert.equal(actual[0], prefix + expected[0]);
+          else assert.equal(actual[0], truncateToWidth(prefix + stock.render(1000)[0]!, width, theme.fg("dim", "...")));
+        }
+      }
+    }
+    sessionManager.appendSessionInfo("named session");
+    branch = null;
+    changed();
+    assert.equal(renders, 1);
+    assert.equal(footer.render(200)[0], prefix + stock.render(200)[0]);
+    sessionManager.appendMessage({ role: "assistant", api: model.api, provider: model.provider, model: model.id, content: [], usage: { input: 1234, output: 56, cacheRead: 3000, cacheWrite: 400, totalTokens: 4690, cost: { input: 0.1, output: 0.02, cacheRead: 0.03, cacheWrite: 0.04, total: 0.19 } }, stopReason: "stop", timestamp: Date.now() });
+    assert.equal(footer.render(200)[1], stock.render(200)[1]);
+    model.provider = "kimi-coding";
+    assert.equal(footer.render(200)[1], stock.render(200)[1]);
+    assert.match(stripTerminalSequences(footer.render(200)[1]!), /\$0\.190 \(sub\)/);
+    model.reasoning = false;
+    assert.equal(footer.render(200)[1], stock.render(200)[1]);
+    Object.assign(h.ctx, { thinkingLevel: "off" });
+    session.setThinkingLevel("off");
+    model.reasoning = true;
+    assert.equal(footer.render(200)[1], stock.render(200)[1]);
+    footer.dispose?.();
+    changed();
+    assert.equal(renders, 1);
+  } finally { session.dispose(); h.dispose(); restore(); mock.restoreAll(); }
 });
 
 test("while the mode is on, delegated briefs start with the poteto-agent recipe, once", async () => {
@@ -186,7 +395,7 @@ test("a Child with neither edit, write nor subagent_spawn gets the short read-on
     await h.command("p3stack", "on");
     const reader: any = { toolName: "subagent_spawn", input: { task: "Audit stats.ts.", tools: ["read", "bash", "grep"] } };
     await h.emit("tool_call", reader);
-    assert.match(reader.input.task, /^You are a read-only delegate in a poteto-mode run\. .*do not read the poteto-mode skill.*\n\nAudit stats\.ts\.$/s);
+    assert.match(reader.input.task, /^You are a read-only delegate in a poteto-mode run\. .*Do not read the poteto-mode skill.*\n\nAudit stats\.ts\.$/s);
     assert.doesNotMatch(reader.input.task, /poteto-agent\.md/);
     const again = reader.input.task;
     await h.emit("tool_call", reader);
@@ -203,6 +412,66 @@ test("a Child with neither edit, write nor subagent_spawn gets the short read-on
   } finally { h.dispose(); }
 });
 
+test("T3 research and review roles get a short recipe while writing and unspecified roles keep the full recipe", async () => {
+  const h = harness();
+  try {
+    await h.command("p3stack", "on");
+    for (const role of ["research", "review", "implement", undefined]) {
+      const event = { toolName: "mcp__t3-code__delegate_task", input: { role, task: "Inspect the change." } };
+      await h.emit("tool_call", event);
+      if (role === "research" || role === "review") {
+        assert.match(event.input.task, /^You are a read-only delegate/);
+        assert.doesNotMatch(event.input.task, /poteto-agent\.md/);
+      } else assert.match(event.input.task, /^Before any work, read .*poteto-agent\.md/);
+      const once = event.input.task;
+      await h.emit("tool_call", event);
+      assert.equal(event.input.task, once);
+    }
+  } finally { h.dispose(); }
+});
+
+test("doctor records every T3 tool exposure, the bridge hash, and explicit provider-before-bridge ordering", async () => {
+  const h = harness({ extraTools: [
+    { name: "mcp__t3-code__delegate_task", exposure: "direct" },
+    { name: "mcp__t3-code__hidden", exposure: "hidden" },
+    { name: "mcp__other__tool", exposure: "codemode" },
+  ] });
+  const argv = process.argv, previous = process.env.T3_PI_MCP_EXTENSION_PATH;
+  const bridge = join(h.root, "bridge.ts"), provider = join(h.root, "claude-subscription", "index.ts");
+  writeFileSync(bridge, "bridge content\n");
+  process.env.T3_PI_MCP_EXTENSION_PATH = bridge;
+  try {
+    for (const [args, expected] of [
+      [["-e", provider, "--extension", bridge], true],
+      [[`--extension=${bridge}`, `--extension=${provider}`], false],
+      [["a prompt naming", provider, bridge], false],
+    ] as [string[], boolean][]) {
+      process.argv = ["node", "pi", ...args];
+      await h.command("p3stack", "doctor");
+      const report = JSON.parse(readFileSync(join(h.agentDir, "p3stack", "t3-contract.json"), "utf8"));
+      assert.deepEqual(report.tools, [{ name: "mcp__t3-code__delegate_task", exposure: "direct" }, { name: "mcp__t3-code__hidden", exposure: "hidden" }]);
+      assert.equal(report.extension.sha256, createHash("sha256").update("bridge content\n").digest("hex"));
+      assert.equal(report.claudeSubscriptionBeforeBridge, expected);
+    }
+  } finally {
+    process.argv = argv;
+    if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
+    h.dispose();
+  }
+  const terminal = harness({ hasUI: false });
+  delete process.env.T3_PI_MCP_EXTENSION_PATH;
+  try {
+    await terminal.command("p3stack", "doctor");
+    const report = JSON.parse(readFileSync(join(terminal.agentDir, "p3stack", "t3-contract.json"), "utf8"));
+    assert.deepEqual(report.tools, []);
+    assert.equal(report.extension.sha256, null);
+    assert.equal(report.claudeSubscriptionBeforeBridge, false);
+  } finally {
+    if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
+    terminal.dispose();
+  }
+});
+
 test("ask_user asks through the UI, and without one says to apply the stated default", async () => {
   const h = harness({ answers: ["beta", "Other (type an answer)", "gamma", undefined] });
   try {
@@ -217,7 +486,6 @@ test("ask_user asks through the UI, and without one says to apply the stated def
   } finally { headless.dispose(); }
 });
 
-// The suite also runs with a fake T3_MCP_URL; tests of terminal behaviour pin the host.
 function asTerminal() {
   const previous = process.env.T3_MCP_URL;
   delete process.env.T3_MCP_URL;
@@ -226,7 +494,7 @@ function asTerminal() {
 
 test("/p3stack-setup maps a budget and two models onto every role and writes the file", async () => {
   const restore = asTerminal();
-  const h = harness({ answers: ["unlimited — max thinking", "xai/grok-4.7:xhigh", "claude-subscription/claude-opus-5-5:max"] });
+  const h = harness({ answers: ["unlimited, max thinking", "xai/grok-4.7:xhigh", "claude-subscription/claude-opus-5-5:max"] });
   try {
     await h.command("p3stack-setup");
     const written = JSON.parse(readFileSync(join(h.agentDir, "p3stack.json"), "utf8"));
@@ -253,7 +521,6 @@ test("/p3stack-setup defers to the skill under T3 and does nothing without a UI"
 
 test("/p3stack-setup offers only models the subagents policy permits, and never writes one it cannot check", async () => {
   const restore = asTerminal();
-  // Harnesses own PI_CODING_AGENT_DIR, so one at a time.
   const run = async (subagents: Subagents, answers: string[], check: (h: ReturnType<typeof harness>, written: unknown) => void) => {
     const h = harness({ subagents, answers });
     try {
@@ -264,13 +531,13 @@ test("/p3stack-setup offers only models the subagents policy permits, and never 
     } finally { h.dispose(); }
   };
   try {
-    await run({ spawnEnabled: true, models: ["xai/grok-4.7:high", "xai/grok-4.7:xhigh"] }, ["large — xhigh thinking", "xai/grok-4.7:xhigh", "xai/grok-4.7:xhigh"], (h, written) => {
+    await run({ spawnEnabled: true, models: ["xai/grok-4.7:high", "xai/grok-4.7:xhigh"] }, ["large, xhigh thinking", "xai/grok-4.7:xhigh", "xai/grok-4.7:xhigh"], (h, written) => {
       assert.match(h.asked[1]!, /\[xai\/grok-4\.7:xhigh\]$/, "Opus is authenticated but not permitted");
       assert.equal((written as { roles: Record<string, string> }).roles["bug-fix"], "xai/grok-4.7:xhigh");
     });
     await run("old", [], (h, written) => { assert.match(h.notices.at(-1)![0], /\/skill:setup-pstack/); assert.equal(written, undefined); });
     await run({ spawnEnabled: false, models: [] }, [], (h, written) => { assert.match(h.notices.at(-1)![0], /does not permit spawning/); assert.equal(written, undefined); });
-    await run({ spawnEnabled: true, models: ["xai/grok-4.7:xhigh"] }, ["small — medium thinking"], (h, written) => {
+    await run({ spawnEnabled: true, models: ["xai/grok-4.7:xhigh"] }, ["small, medium thinking"], (h, written) => {
       assert.match(h.notices.at(-1)![0], /No permitted model offers thinking at or below medium/);
       assert.equal(written, undefined);
     });
