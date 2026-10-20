@@ -29,7 +29,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
     setStatus: (key: string, text?: string) => statuses.push([key, text]),
   };
   const ctx = {
-    cwd, hasUI, mode, model: parent, getThinkingLevel: () => "xhigh", isProjectTrusted: () => trusted,
+    cwd, hasUI, mode, model: parent, isProjectTrusted: () => trusted,
     executeTool: async (name: string, args: unknown) => {
       assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
       assert.deepEqual(args, {});
@@ -40,6 +40,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
     sessionManager: { getBranch: () => branch },
   };
   factory({
+    getThinkingLevel: () => "xhigh",
     registerTool: (tool: any) => tools.set(tool.name, tool),
     registerCommand: (name: string, command: any) => commands.set(name, command),
     on: (name: string, handler: Function) => handlers.set(name, [...handlers.get(name) ?? [], handler]),

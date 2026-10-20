@@ -101,6 +101,7 @@ export interface Target {
 type Selection = { model: string; level?: string; value: string | Target; inherited?: Target };
 export interface Catalog { spawnEnabled: boolean; models: string[] }
 interface CatalogApi {
+  getThinkingLevel(): string;
   getAllTools(): { name: string }[];
   events: { emit(channel: string, data: unknown): void };
 }
@@ -109,7 +110,6 @@ interface RoleContext {
   isProjectTrusted(): boolean;
   modelRegistry: { getAvailable(): ModelInfo[] };
   model?: { provider: string; id: string };
-  getThinkingLevel(): string;
   executeTool(name: string, args: object): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }>;
 }
 
@@ -184,7 +184,7 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext) {
   let catalog: Selection[];
   try { catalog = await selections(pi, ctx); }
   catch (error) { return { source: defaults.source, budget: defaults.budget, roles, problems: [...problems, `catalog unavailable, ${String(error)}`] }; }
-  const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}:${ctx.getThinkingLevel()}` : undefined;
+  const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}:${pi.getThinkingLevel()}` : undefined;
   for (const [role, { value }] of Object.entries(defaults.roles)) {
     const resolved = (Array.isArray(value) ? value : [value]).map(hint => {
       const selection = resolveHint(hint, catalog, parent);

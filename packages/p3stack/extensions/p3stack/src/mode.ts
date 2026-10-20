@@ -15,12 +15,12 @@ export interface Context {
   ui: Ui;
   isProjectTrusted(): boolean;
   model?: { provider: string; id: string };
-  getThinkingLevel(): string;
   executeTool(name: string, args: object): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }>;
   modelRegistry: { getAvailable(): ModelInfo[] };
   sessionManager: { getBranch(): { type: string; customType?: string; data?: unknown }[] };
 }
 export interface Pi {
+  getThinkingLevel(): string;
   registerTool(tool: object): void;
   registerCommand(name: string, command: { description: string; handler: (args: string, ctx: Context) => Promise<void> }): void;
   on(event: string, handler: (event: any, ctx: Context) => unknown): void;
