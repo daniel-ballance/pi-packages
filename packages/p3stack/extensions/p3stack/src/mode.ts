@@ -1,12 +1,14 @@
+import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { doctor } from "./doctor.ts";
-import type { ModelInfo } from "./roles.ts";
+import { modeFooter } from "./footer.ts";
+import { detectHost } from "./host.ts";
 
 interface Ui {
   select(title: string, options: string[]): Promise<string | undefined>;
   input(title: string, placeholder?: string): Promise<string | undefined>;
   confirm(title: string, message: string): Promise<boolean>;
   notify(message: string, type?: "info" | "warning" | "error"): void;
-  setStatus(key: string, text: string | undefined): void;
+  setFooter: ExtensionUIContext["setFooter"];
 }
 export interface Context {
   cwd: string;
@@ -14,14 +16,16 @@ export interface Context {
   mode?: string;
   ui: Ui;
   isProjectTrusted(): boolean;
-  model?: { provider: string; id: string };
+  model?: ExtensionContext["model"];
+  thinkingLevel?: ExtensionContext["thinkingLevel"];
+  getContextUsage: ExtensionContext["getContextUsage"];
   executeTool(name: string, args: unknown): Promise<{
     toolCall: { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> };
     result: { content: unknown; details: unknown; structuredContent?: unknown; isError?: boolean };
     isError: boolean;
   }>;
-  modelRegistry: { getAvailable(): ModelInfo[] };
-  sessionManager: { getBranch(): { type: string; customType?: string; data?: unknown }[] };
+  modelRegistry: Pick<ExtensionContext["modelRegistry"], "getAvailable" | "isUsingOAuth" | "getProvider" | "find">;
+  sessionManager: Pick<ExtensionContext["sessionManager"], "getBranch" | "getEntries" | "getSessionName">;
 }
 export interface Pi {
   getThinkingLevel(): string;
@@ -38,7 +42,7 @@ const MODE = "p3stack";
 export function registerMode(pi: Pi, modeSkill: string) {
   let modeOn = false;
   const showMode = (ctx: Context) => {
-    if (ctx.mode === "tui") ctx.ui.setStatus(MODE, modeOn ? "p3stack on" : undefined);
+    if (ctx.hasUI && ctx.mode === "tui" && detectHost() === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx) : undefined);
   };
   const rebuild = (_event: unknown, ctx: Context) => {
     modeOn = false;
@@ -70,7 +74,7 @@ export function registerMode(pi: Pi, modeSkill: string) {
         pi.appendEntry(MODE, { on: modeOn });
         showMode(ctx);
       }
-      if (ctx.hasUI) ctx.ui.notify(want === "on" || want === "off" || want === "status" || !want ? `poteto-mode is ${modeOn ? "on" : "off"}.` : "Usage: /p3stack on | off | status | doctor", "info");
+      if (ctx.hasUI) ctx.ui.notify(want === "on" || want === "off" || want === "status" || !want ? `p3stack is ${modeOn ? "on" : "off"}.` : "Usage: /p3stack on | off | status | doctor", "info");
     },
   });
   return () => modeOn;

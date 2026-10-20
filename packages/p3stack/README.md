@@ -58,7 +58,7 @@ The package also loads a small hand-written extension:
 
 | Piece | Does |
 |---|---|
-| `/p3stack on\|off\|status` | Keeps poteto-mode on across turns and session branches. The prompt section contains only the router skill path. A hidden reminder tells the model to call `p3stack_roles` before delegation. The TUI status row reads `p3stack on` while enabled and clears on `off`. RPC, JSON, and print modes do not set a status. |
+| `/p3stack on\|off\|status` | Keeps poteto-mode on across turns and session branches. The prompt section contains only the router skill path. A hidden reminder tells the model to call `p3stack_roles` before delegation. The TUI directory line starts with `🅿️ ` while enabled, without an added status row. Turning it off restores Pi's stock footer. Toggle notices read `p3stack is on.` or `p3stack is off.`. T3, RPC, JSON, and print modes do not set a footer or status. |
 | `ask_user` | Asks the human a product or preference question, with choices or free text. Works in a terminal and under T3 Code (T3 shows Pi's dialogs as pending requests); without a UI it tells the model to apply its stated default and say so. |
 | `p3stack_roles` | Reads role hints from `.pi/p3stack.json` in a trusted project, else `~/.pi/agent/p3stack.json`, else the skill defaults. Resolves them against the live T3 catalog when its tool is registered, otherwise the subagents catalog over Pi's event bus. A failed T3 tool call reports a problem and falls back to the subagents catalog. Without either catalog, uses Pi's available models. Returns exact `provider/model:thinking` identities or ready T3 targets. Reports unavailable roles and skipped untrusted project files. |
 | `/p3stack doctor` | Writes `~/.pi/agent/p3stack/t3-contract.json` with all registered T3 tool names and exposures, the SHA-256 of `T3_PI_MCP_EXTENSION_PATH`, and whether explicit extension arguments load claude-subscription before that bridge. Missing bridge configuration appears in `problems`. |
@@ -171,7 +171,7 @@ applies.
 | Watch a pull request | `gh` polling, or a watcher Child | `watch_pull_request`, from the top-level thread only; a delegated task polls with `gh` |
 | Model setup | `/p3stack-setup` | `/skill:setup-pstack` |
 | `ask_user` | Terminal dialog | Shown in T3 as a pending request |
-| Todo widget and p3stack status row | Shown | Not shown. Tool results carry the todo text, and `/p3stack status` reports the mode. |
+| Todo widget and p3stack footer prefix | Shown | Not shown. Tool results carry the todo text, and `/p3stack status` reports the mode. |
 
 ### One role file for both hosts
 

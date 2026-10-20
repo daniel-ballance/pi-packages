@@ -320,7 +320,7 @@ test("the on footer prefixes the directory and matches Pi's stock rendering byte
     const { theme } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
     const contextUsage = { tokens: 23000, contextWindow: 272000, percent: 8.5 };
     mock.method(session, "getContextUsage", () => contextUsage);
-    Object.assign(h.ctx, { model, sessionManager, getContextUsage: () => contextUsage });
+    Object.assign(h.ctx, { model, thinkingLevel: session.thinkingLevel, sessionManager, getContextUsage: () => contextUsage });
     let branch: string | null = "p3stack/pr-04-mode-extension", renders = 0;
     let changed = () => {};
     const footerData = { getGitBranch: () => branch, getExtensionStatuses: () => new Map<string, string>(), getAvailableProviderCount: () => 2, onBranchChange: (callback: () => void) => { changed = callback; return () => { changed = () => {}; }; } };
@@ -355,6 +355,15 @@ test("the on footer prefixes the directory and matches Pi's stock rendering byte
     assert.equal(renders, 1);
     assert.equal(footer.render(200)[0], prefix + stock.render(200)[0]);
     sessionManager.appendMessage({ role: "assistant", api: model.api, provider: model.provider, model: model.id, content: [], usage: { input: 1234, output: 56, cacheRead: 3000, cacheWrite: 400, totalTokens: 4690, cost: { input: 0.1, output: 0.02, cacheRead: 0.03, cacheWrite: 0.04, total: 0.19 } }, stopReason: "stop", timestamp: Date.now() });
+    assert.equal(footer.render(200)[1], stock.render(200)[1]);
+    model.provider = "kimi-coding";
+    assert.equal(footer.render(200)[1], stock.render(200)[1]);
+    assert.match(stripTerminalSequences(footer.render(200)[1]!), /\$0\.190 \(sub\)/);
+    model.reasoning = false;
+    assert.equal(footer.render(200)[1], stock.render(200)[1]);
+    Object.assign(h.ctx, { thinkingLevel: "off" });
+    session.setThinkingLevel("off");
+    model.reasoning = true;
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
     footer.dispose?.();
     changed();
