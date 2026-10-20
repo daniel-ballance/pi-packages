@@ -14,7 +14,7 @@ pi install /path/to/pi-packages/packages/p3stack
 
 The root repository is not an install identity. Do not add the nested component directories as additional packages. p3stack already loads their extensions and subagents' skills. mcp-client is not included.
 
-Run `/p3stack on` to enable the router. In print or JSON mode, pass the command and task in the same invocation so mode state survives until the prompt. `/p3stack off` removes the mode reminder. `/p3stack status` reports its state. A terminal status row shows `p3stack on` while enabled.
+Run `/p3stack on` to enable the router. In print or JSON mode, pass the command and task in the same invocation so mode state survives until the prompt. `/p3stack off` removes the mode reminder. `/p3stack status` reports its state. In the terminal TUI, the directory line starts with `🅿️ ` while enabled, with no added status row. Toggle notices read `p3stack is on.` or `p3stack is off.`.
 
 `skills/p3stack-mode/SKILL.md` chooses the route, then reads poteto-mode and the selected procedure. Pocock's `tdd` keeps its name. pstack's older `tdd` is emitted as `regression-test`. The registry decides names and exclusions before loading, with no global skill filters.
 
