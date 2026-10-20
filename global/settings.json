@@ -23,7 +23,6 @@
     {
       "source": "../../Code/pi-packages/packages/p3stack",
       "skills": [
-        "!skills/tdd/SKILL.md",
         "!skills/code-review/SKILL.md",
         "!skills/diagnosing-bugs/SKILL.md",
         "!skills/codebase-design/SKILL.md",

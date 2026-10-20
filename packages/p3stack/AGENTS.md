@@ -44,7 +44,7 @@ a `vendor` root, a `map` of input prefixes to output prefixes, an optional
 The sources are `cursor-plugins` and `matt-pocock`. Each source uses its own map and exclusions.
 A source's optional `required` list names output paths that it must supply.
 The Pocock source excludes `tdd` until PR-07 resolves its name collision.
-The six-skill exclusion filter in `global/settings.json` is temporary. PR-07 removes it.
+The five-skill exclusion filter in `global/settings.json` is temporary. PR-07 removes it.
 If two sources emit the same path, generation fails with the path and both names
 before it writes output.
 
@@ -79,7 +79,8 @@ Rules apply in this order. The same sources and rules give byte-identical output
    longer applies fails with its name; rebase it. Keep patches rare: prefer a
    token or a section.
 
-`extra/` files are added after the rule kinds and are not rewritten. The
+`extra/` files are added after tokens and sections but before patches and are
+not rewritten by token or section rules. The
 **coupling lint** then scans every emitted file for the tokens in
 `rules/lint.json` and fails with `file:line: token`. The fix is always a new or
 corrected rule, never an edit to the output. `lint.json` also requires dependency
