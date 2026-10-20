@@ -474,6 +474,27 @@ test("setup offers and the help setup sentence come from upstream through the pa
 });
 
 const packageDir = fileURLToPath(new URL("..", import.meta.url));
+test("the router renders the registry tables with existing route targets and no template output", () => {
+  const out = mkdtempSync(join(tmpdir(), "p3stack-router-"));
+  try {
+    generate({ packageDir, outDir: out });
+    const router = readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8");
+    assert.doesNotMatch(router, /\{\{(?:routes|chains)\}\}/);
+    assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
+    const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
+    for (const { request, target } of routes) {
+      assert.ok(router.includes(request), request);
+      const path = target.startsWith("p3stack-mode/playbooks/") ? target : target.startsWith("playbooks/") ? `poteto-mode/${target}` : `${target}/SKILL.md`;
+      assert.ok(existsSync(join(out, "skills", path)), target);
+      assert.ok(router.includes(path.replace(/^poteto-mode\//, "../poteto-mode/").replace(/^p3stack-mode\//, "")) || router.includes(`../${path}`), target);
+    }
+    for (const { anchor, skill } of JSON.parse(readFileSync(join(packageDir, "registry/chains.json"), "utf8"))) {
+      assert.ok(router.includes(anchor), anchor);
+      assert.ok(router.includes(`../${skill}/SKILL.md`), skill);
+    }
+  } finally { rmSync(out, { recursive: true, force: true }); }
+});
+
 test("the package ships the Pocock license and initializes both source checkouts", () => {
   const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
   assert.ok(manifest.files.includes("LICENSE-matt-pocock"));

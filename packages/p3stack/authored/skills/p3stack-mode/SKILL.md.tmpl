@@ -1,0 +1,27 @@
+---
+name: p3stack-mode
+description: Route requests through the p3stack registry and poteto-mode workflows.
+disable-model-invocation: true
+---
+
+# p3stack mode
+
+Read [poteto-mode](../poteto-mode/SKILL.md) in full and follow it. Where these rules differ, this router wins, including over poteto-mode's Playbooks selection. Select the route before loading supporting principles or workflow skills.
+
+## Routes
+
+Match the request and grant below. Read the target first, then follow it. Paths are relative to this skill directory. A request to review someone else's PR uses the external review route. Review my change starts with no-comments.
+
+{{routes}}
+
+## Chains
+
+Apply each matching chain at its anchor in table order. When no failing reproduction exists, read diagnosing-bugs before the Bug fix playbook. Then continue that playbook after diagnosis.
+
+{{chains}}
+
+## Grants and context
+
+Under the default grant, use the interview skills and ask the human about product choices. Under full autonomy, replace grill-with-docs and grilling with sharpen followed by architect. Infer covered choices from repository evidence and report them. Explicit operator gates and irreversible actions still pause. A tdd test seam is not a module boundary. Architect owns module boundaries, and tdd confirms the test seam within them.
+
+Keep context focused on the selected route. Read its dependencies when their trigger applies, rather than loading every linked skill. Before handing work off or compacting, save decisions, evidence paths, and unresolved questions in durable notes.
