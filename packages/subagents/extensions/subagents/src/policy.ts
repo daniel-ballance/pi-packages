@@ -39,7 +39,7 @@ export interface LocalModel {
   cost: unknown; thinkingLevels: readonly string[]; api?: string; type?: string;
 }
 // The built-in policy, used only when no subagents.json exists. It is a menu across the
-// common providers so that multi-model workflows (pistack's roles, cross-family review)
+// common providers so that multi-model workflows (p3stack's roles, cross-family review)
 // work with no setup; entries the user cannot reach are dropped silently. Unlike a user's
 // file, where every optional field is off until set, it turns on nesting and loops.
 const MENU: { id: string; description: string }[] = [

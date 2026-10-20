@@ -74,7 +74,7 @@ Do not add these without re-reading the reason.
 | `improve-codebase-architecture` | Skipped for now. Needs the HTML report pipeline and a whole-codebase survey habit that is not in play yet. |
 | `prototype` | Skipped for now. Its HTML/branch prototype shapes fit awkwardly against terminal-UI work. |
 | `resolving-merge-conflicts` | Removed upstream; it was never bundled here. |
-| `implement-spec`, `pr`, `retro` | Graduated upstream, but overlap pistack's orchestration, shipping and reflection workflows. |
+| `implement-spec`, `pr`, `retro` | Graduated upstream, but overlap p3stack's orchestration, shipping and reflection workflows. |
 | `chief-of-staff` | Experimental multi-system personal workflow; outside this collection's engineering scope. |
 
 ## The translation rules
@@ -162,7 +162,7 @@ Account for every adopted-skill change, renamed resource, and new upstream skill
 the allowlist admits nothing automatically. Keep the local `CONTEXT.md` contract:
 upstream's glossary rename must not create a second vocabulary store in repos
 already using this collection. Update translation rules, never generated files.
-Re-run the project `pistack-pocock-unification` skill after a sync, then run the
+Re-run the project `p3stack-pocock-unification` skill after a sync, then run the
 canonical root `./scripts/check.sh` from the repository root before pushing.
 
 ## Before first use

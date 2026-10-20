@@ -126,9 +126,9 @@ function labelForPath(filePath, skills) {
   return basename(dirname(filePath));
 }
 
-function isInsidePistackPackage(filePath) {
+function isInsideP3stackPackage(filePath) {
   const parts = filePath.split(/[/\\]/).filter(Boolean);
-  return parts.some((part, index) => part === "packages" && parts[index + 1] === "pistack");
+  return parts.some((part, index) => part === "packages" && parts[index + 1] === "p3stack");
 }
 
 function isPocockPackage(skill) {
@@ -146,14 +146,14 @@ function readSkillDirNames(skillsDir) {
   });
 }
 
-function pistackSkillNames(skills, scannedDir) {
+function p3stackSkillNames(skills, scannedDir) {
   const loaded = skills.find(
-    (skill) => skill.sourceInfo.origin === "package" && basename(skill.sourceInfo.baseDir ?? "") === "pistack",
+    (skill) => skill.sourceInfo.origin === "package" && basename(skill.sourceInfo.baseDir ?? "") === "p3stack",
   );
   const candidates = [
     loaded?.sourceInfo.baseDir ? join(loaded.sourceInfo.baseDir, "skills") : undefined,
-    join(scannedDir, "packages", "pistack", "skills"),
-    join(repoRoot, "packages", "pistack", "skills"),
+    join(scannedDir, "packages", "p3stack", "skills"),
+    join(repoRoot, "packages", "p3stack", "skills"),
   ];
   for (const dir of candidates) {
     const names = readSkillDirNames(dir);
@@ -167,16 +167,16 @@ function violations(scannedDir, skills, diagnostics) {
   for (const diagnostic of diagnostics) {
     const collision = diagnostic.collision;
     if (diagnostic.type !== "collision" || !collision) continue;
-    if (!isInsidePistackPackage(collision.loserPath)) continue;
+    if (!isInsideP3stackPackage(collision.loserPath)) continue;
     const winner = labelForPath(collision.winnerPath, skills);
     failures.push(
-      `collision ${collision.name} loser is inside packages/pistack at ${collision.loserPath}, winner is ${winner}`,
+      `collision ${collision.name} loser is inside packages/p3stack at ${collision.loserPath}, winner is ${winner}`,
     );
   }
-  const names = pistackSkillNames(skills, scannedDir);
+  const names = p3stackSkillNames(skills, scannedDir);
   for (const skill of skills) {
     if (!isPocockPackage(skill) || !names.has(skill.name)) continue;
-    failures.push(`loaded pi-pocock-skills skill ${skill.name} matches packages/pistack/skills/${skill.name}`);
+    failures.push(`loaded pi-pocock-skills skill ${skill.name} matches packages/p3stack/skills/${skill.name}`);
   }
   return failures;
 }

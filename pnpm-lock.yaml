@@ -119,7 +119,7 @@ importers:
 
   packages/pi-pocock-skills: {}
 
-  packages/pistack:
+  packages/p3stack:
     dependencies:
       commander:
         specifier: 15.0.0

@@ -12,13 +12,13 @@
       "./packages/claude-subscription/extensions/claude-subscription/index.ts",
       "./packages/computer-use/extensions/computer-use/index.ts",
       "./packages/mcp-client/extensions/mcp-client/index.ts",
-      "./packages/pistack/extensions/pistack/index.ts",
+      "./packages/p3stack/extensions/p3stack/index.ts",
       "./packages/self-reload/extensions/self-reload/index.ts",
       "./packages/subagents/extensions/subagents/index.ts",
       "./packages/todo/extensions/todo/index.ts",
       "./packages/web-search/extensions/web-search/index.ts"
     ],
-    "skills": ["./packages/pi-pocock-skills/skills", "./packages/subagents/skills", "./packages/pistack/skills", "!packages/pi-pocock-skills/skills/tdd"],
+    "skills": ["./packages/pi-pocock-skills/skills", "./packages/subagents/skills", "./packages/p3stack/skills", "!packages/pi-pocock-skills/skills/tdd"],
     "prompts": ["./packages/*/prompts/**/*.md"],
     "themes": ["./packages/*/themes/**/*.json"]
   },
