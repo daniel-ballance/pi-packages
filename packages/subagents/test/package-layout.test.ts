@@ -12,13 +12,10 @@ import { tempRoot } from "./support/temp-root.js";
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "p3stack", "self-reload", "subagents", "todo", "web-search"];
 const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
-const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
-// p3stack wins a shared name: the collection leaves out pi-pocock-skills' tdd, because
-// poteto-mode's playbooks refer to the skill only by name and expect p3stack's.
 const p3stackSkills = readdirSync(join(root, "packages/p3stack/skills"), { withFileTypes: true })
   .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/p3stack/skills", entry.name, "SKILL.md")))
   .map(entry => entry.name);
-const expectedSkills = [...engineeringSkills.filter(name => name !== "tdd"), "subagents", "workflows", ...p3stackSkills].sort();
+const expectedSkills = ["subagents", "workflows", ...p3stackSkills].sort();
 
 async function load(source: string, base = root) {
   const temp = tempRoot("pi-package-discovery-");
@@ -67,8 +64,7 @@ test("repository root discovers exactly the public extensions and both skill col
   assert.deepEqual(result.skillDiagnostics, []);
 });
 
-test("project settings leave pi-pocock-skills to the user's filter", async () => {
-  // A project entry for the same package replaces the user entry, so pocock's tdd would beat p3stack's here.
+test("project settings do not reference the retired pi-pocock-skills package", async () => {
   const settings = JSON.parse(await readFile(join(root, ".pi/settings.json"), "utf8"));
   const sources = (settings.packages ?? []).map((entry: string | { source: string }) => typeof entry === "string" ? entry : entry.source);
   assert.deepEqual(sources.filter((source: string) => source.includes("pi-pocock-skills")), []);
@@ -158,7 +154,6 @@ test("individual packages still discover their public resources", async () => {
     assert.deepEqual(result.extensions, [`packages/${name}/extensions/${name}/index.ts`]);
     assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
   }
-  assert.deepEqual((await load(join(root, "packages/pi-pocock-skills"))).skills, engineeringSkills);
   // p3stack is generated: every emitted SKILL.md, its own tdd included, must load
   // under its directory name when the package is installed on its own.
   const p3stackDir = join(root, "packages/p3stack/skills");
