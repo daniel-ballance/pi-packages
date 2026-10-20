@@ -110,7 +110,7 @@ interface RoleContext {
   isProjectTrusted(): boolean;
   modelRegistry: { getAvailable(): ModelInfo[] };
   model?: { provider: string; id: string };
-  executeTool(name: string, args: object): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }>;
+  executeTool: Context["executeTool"];
 }
 
 export function readCatalog(pi: CatalogApi): Catalog | undefined {
@@ -144,14 +144,18 @@ function t3Selections(data: unknown): Selection[] {
   });
 }
 
-async function selections(pi: CatalogApi, ctx: RoleContext): Promise<Selection[]> {
+async function selections(pi: CatalogApi, ctx: RoleContext, problems: string[]): Promise<Selection[]> {
   if (pi.getAllTools().some(tool => tool.name === "mcp__t3-code__orchestrator_capabilities")) {
-    const result = await ctx.executeTool("mcp__t3-code__orchestrator_capabilities", {});
-    const payload = record(result.structuredContent);
-    if (result.isError || payload.isError) throw new Error("T3 catalog call failed");
-    const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
-    const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
-    return t3Selections(data);
+    const outcome = await ctx.executeTool("mcp__t3-code__orchestrator_capabilities", {});
+    if (outcome.isError) problems.push("T3 catalog call failed, using the subagents catalog");
+    else {
+      const result = outcome.result;
+      const payload = record(result.structuredContent);
+      if (result.isError || payload.isError) throw new Error("T3 catalog call failed");
+      const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
+      const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
+      return t3Selections(data);
+    }
   }
   const catalog = readCatalog(pi);
   if (!catalog && pi.getAllTools().some(tool => tool.name === "subagent_catalog")) throw new Error("subagents catalog did not reply");
@@ -182,7 +186,7 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext) {
   const roles: Record<string, string | Target | (string | Target)[]> = {};
   const problems = [...defaults.problems];
   let catalog: Selection[];
-  try { catalog = await selections(pi, ctx); }
+  try { catalog = await selections(pi, ctx, problems); }
   catch (error) { return { source: defaults.source, budget: defaults.budget, roles, problems: [...problems, `catalog unavailable, ${String(error)}`] }; }
   const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}:${pi.getThinkingLevel()}` : undefined;
   for (const [role, { value }] of Object.entries(defaults.roles)) {

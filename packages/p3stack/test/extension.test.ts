@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import p3stack from "../extensions/p3stack/index.ts";
+import type { Context } from "../extensions/p3stack/src/mode.ts";
 import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/p3stack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
@@ -30,10 +31,14 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   };
   const ctx = {
     cwd, hasUI, mode, model: parent, isProjectTrusted: () => trusted,
-    executeTool: async (name: string, args: unknown) => {
+    executeTool: async (name: string, args: unknown): ReturnType<Context["executeTool"]> => {
       assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
       assert.deepEqual(args, {});
-      return { content: [{ type: "text", text: JSON.stringify(t3) }], structuredContent: t3, details: {} };
+      return {
+        toolCall: { type: "toolCall", id: "call/1", name, arguments: args },
+        result: { content: [{ type: "text", text: JSON.stringify(t3) }], structuredContent: t3, details: {} },
+        isError: false,
+      };
     },
     get ui() { if (!hasUI) throw new Error("touched ui without UI"); return ui; },
     modelRegistry: { getAvailable: () => [opus, grok] },
@@ -53,7 +58,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
   const dispose = () => { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; rmSync(root, { recursive: true, force: true }); };
-  return { root, cwd, agentDir, tools, commands, emit, reminders, call, command, entries, notices, statuses, asked, dispose };
+  return { root, cwd, agentDir, ctx, tools, commands, emit, reminders, call, command, entries, notices, statuses, asked, dispose };
 }
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
 
@@ -165,6 +170,53 @@ test("T3 bridge MCP envelopes resolve roles and preserve the inherited target wi
     const roles = (await h.call("p3stack_roles", {})).structuredContent.roles;
     assert.deepEqual(roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5" });
     assert.deepEqual(roles["bug-fix"], roles["judgment and prose"]);
+  } finally { h.dispose(); }
+});
+
+test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or text", async () => {
+  const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [
+    { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
+    { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "high" }] }] },
+  ] }] };
+  for (const structuredContent of [{ content: [], structuredContent: capabilities }, undefined]) {
+    const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: [] } });
+    h.ctx.executeTool = async (name, args) => {
+      assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
+      assert.deepEqual(args, {});
+      return {
+        toolCall: { type: "toolCall", id: "call/1", name, arguments: args },
+        result: { content: [{ type: "text", text: JSON.stringify(capabilities) }], structuredContent, details: {} },
+        isError: false,
+      };
+    };
+    try {
+      const result = await h.call("p3stack_roles", {});
+      assert.deepEqual(result.structuredContent.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
+      assert.equal(Object.keys(result.structuredContent.roles).length, 17);
+      assert.deepEqual(result.structuredContent.problems, []);
+    } finally { h.dispose(); }
+  }
+});
+
+test("a failed Pi tool-call outcome reports the T3 failure and resolves the subagents allowlist", async () => {
+  const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude-subscription/claude-opus-5-5" }] }] };
+  const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: ["claude-subscription/claude-opus-5-5:low", "xai/grok-4.7:low"] } });
+  h.ctx.executeTool = async (name, args) => {
+    assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
+    assert.deepEqual(args, {});
+    return {
+      toolCall: { type: "toolCall", id: "call/1", name, arguments: args },
+      result: { content: [{ type: "text", text: "T3 unavailable" }], structuredContent: capabilities, details: {} },
+      isError: true,
+    };
+  };
+  try {
+    const result = await h.call("p3stack_roles", {});
+    assert.equal(result.structuredContent.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:low");
+    assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:low");
+    assert.equal(Object.keys(result.structuredContent.roles).length, 17);
+    assert.equal(result.structuredContent.problems.length, 1);
+    assert.match(text(result), /T3 catalog call failed/);
   } finally { h.dispose(); }
 });
 

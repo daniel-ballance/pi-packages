@@ -15,7 +15,11 @@ export interface Context {
   ui: Ui;
   isProjectTrusted(): boolean;
   model?: { provider: string; id: string };
-  executeTool(name: string, args: object): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }>;
+  executeTool(name: string, args: unknown): Promise<{
+    toolCall: { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> };
+    result: { content: unknown; details: unknown; structuredContent?: unknown; isError?: boolean };
+    isError: boolean;
+  }>;
   modelRegistry: { getAvailable(): ModelInfo[] };
   sessionManager: { getBranch(): { type: string; customType?: string; data?: unknown }[] };
 }
