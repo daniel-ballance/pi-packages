@@ -57,8 +57,16 @@ export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
     const hidden = /^disable-model-invocation:\s*true\s*$/m.test(text);
     if (hidden !== (row.invocation === "user")) problems.push(`${path} has a different invocation`);
   }
+  const outputNames = new Set(), expected = new Set(emitted.map(row => `${row.name}/SKILL.md`));
+  for (const path of skillPaths(join(outDir, "skills"))) {
+    const name = readFileSync(join(outDir, "skills", path), "utf8").match(/^name:\s*(.+)$/m)?.[1];
+    if (outputNames.has(name)) problems.push(`Duplicate emitted name ${name} in skills/${path}`);
+    outputNames.add(name);
+    if (!expected.has(path)) problems.push(`Unregistered emitted skill skills/${path}`);
+  }
   for (const row of routes) if (!targetExists(row.target)) problems.push(`Route ${row.request} has missing target ${row.target}`);
   for (const row of chains) {
+    if (!/^playbooks\/[a-z0-9-]+\.md$/.test(row.playbook)) problems.push(`Chain ${row.id} has invalid playbook ${row.playbook}`);
     if (!targetExists(row.skill)) problems.push(`Chain ${row.id} has missing skill ${row.skill}`);
     const path = playbookPath(row.playbook), absolute = join(outDir, path);
     const text = existsSync(absolute) ? readFileSync(absolute, "utf8") : "";

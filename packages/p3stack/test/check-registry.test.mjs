@@ -130,6 +130,12 @@ for (const [name, mutate, diagnostic] of [
   ["doubled anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the sketch.\nImplement the sketch.\n"), /chain.*first-chain.*anchor.*2/i],
   ["missing anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the revised sketch.\n"), /chain.*first-chain.*anchor.*0/i],
   ["missing chain skill", f => f.write("registry/chains.json", [{ id: "absent-chain", playbook: "playbooks/feature.md", anchor: "Implement the sketch.", position: "before", skill: "absent", when: "Always." }]), /chain.*absent-chain.*absent/i],
+  ["duplicate generated name", f => f.write("skills/extra/SKILL.md", f.skill("first")), /duplicate emitted name.*first/i],
+  ["unregistered generated skill", f => f.write("skills/extra/SKILL.md", f.skill("extra")), /unregistered emitted skill.*skills\/extra\/SKILL.md/i],
+  ["chain outside a playbook", f => {
+    f.write("skills/poteto-mode/not-a-playbook.md", "Implement the sketch.\n");
+    f.write("registry/chains.json", [{ id: "outside-chain", playbook: "not-a-playbook.md", anchor: "Implement the sketch.", position: "before", skill: "first", when: "Always." }]);
+  }, /chain.*outside-chain.*playbook/i],
   ["duplicate upstream row", f => f.write("registry/skills.json", [...f.skills, f.skills[0]]), /duplicate.*row.*skills\/first\/SKILL.md/i],
   ["stale upstream row", f => f.write("registry/skills.json", [...f.skills, { ...f.skills[0], path: "skills/gone/SKILL.md", name: "gone" }]), /stale.*skills\/gone\/SKILL.md/i],
 ]) {
