@@ -38,7 +38,8 @@ class LinkTests(unittest.TestCase):
         for name in FILES:
             target = (directory or self.agent) / name
             self.assertTrue(target.is_symlink(), target)
-            self.assertEqual(target.resolve(), self.repo / name)
+            # macOS puts temp dirs under /var, a symlink to /private/var.
+            self.assertEqual(target.resolve(), (self.repo / name).resolve())
 
     def test_check_is_read_only_and_link_is_idempotent(self):
         self.assertNotEqual(self.run_link("--check").returncode, 0)
