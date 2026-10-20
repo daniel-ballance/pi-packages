@@ -220,7 +220,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
 
   const startSession = (ctx: ExtensionContext) => {
     context = ctx;
-    // Other extensions (pistack's setup) read which models a Child may use. Commands
+    // Other extensions (p3stack's setup) read which models a Child may use. Commands
     // cannot call tools, so the bus carries a synchronous reply; nothing else is shared.
     stopCatalogEvents ??= pi.events.on(CATALOG_CHANNEL, request => {
       const reply = (request as { reply?: unknown } | undefined)?.reply;

@@ -10,15 +10,15 @@ import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-codin
 import { tempRoot } from "./support/temp-root.js";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
-const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "pistack", "self-reload", "subagents", "todo", "web-search"];
+const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "p3stack", "self-reload", "subagents", "todo", "web-search"];
 const expectedPaths = collectionExtensions.map(name => `packages/${name}/extensions/${name}/index.ts`);
 const engineeringSkills = ["code-review", "codebase-design", "diagnosing-bugs", "domain-modeling", "grill-with-docs", "grilling", "implement", "research", "tdd", "wait-what", "writing-for-agents"];
-// pistack wins a shared name: the collection leaves out pi-pocock-skills' tdd, because
-// poteto-mode's playbooks refer to the skill only by name and expect pistack's.
-const pistackSkills = readdirSync(join(root, "packages/pistack/skills"), { withFileTypes: true })
-  .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/pistack/skills", entry.name, "SKILL.md")))
+// p3stack wins a shared name: the collection leaves out pi-pocock-skills' tdd, because
+// poteto-mode's playbooks refer to the skill only by name and expect p3stack's.
+const p3stackSkills = readdirSync(join(root, "packages/p3stack/skills"), { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/p3stack/skills", entry.name, "SKILL.md")))
   .map(entry => entry.name);
-const expectedSkills = [...engineeringSkills.filter(name => name !== "tdd"), "subagents", "workflows", ...pistackSkills].sort();
+const expectedSkills = [...engineeringSkills.filter(name => name !== "tdd"), "subagents", "workflows", ...p3stackSkills].sort();
 
 async function load(source: string, base = root) {
   const temp = tempRoot("pi-package-discovery-");
@@ -63,12 +63,12 @@ test("repository root discovers exactly the public extensions and both skill col
   const result = await load(root);
   assert.deepEqual(result.extensions, expectedPaths);
   assert.deepEqual(result.skills, expectedSkills);
-  assert.equal(result.skillPaths.tdd, "packages/pistack/skills/tdd/SKILL.md");
+  assert.equal(result.skillPaths.tdd, "packages/p3stack/skills/tdd/SKILL.md");
   assert.deepEqual(result.skillDiagnostics, []);
 });
 
 test("project settings leave pi-pocock-skills to the user's filter", async () => {
-  // A project entry for the same package replaces the user entry, so pocock's tdd would beat pistack's here.
+  // A project entry for the same package replaces the user entry, so pocock's tdd would beat p3stack's here.
   const settings = JSON.parse(await readFile(join(root, ".pi/settings.json"), "utf8"));
   const sources = (settings.packages ?? []).map((entry: string | { source: string }) => typeof entry === "string" ? entry : entry.source);
   assert.deepEqual(sources.filter((source: string) => source.includes("pi-pocock-skills")), []);
@@ -153,23 +153,23 @@ test("pnpm production workspace resolves every extension without development dep
 });
 
 test("individual packages still discover their public resources", async () => {
-  for (const name of collectionExtensions.filter(name => name !== "pistack")) {
+  for (const name of collectionExtensions.filter(name => name !== "p3stack")) {
     const result = await load(join(root, "packages", name));
     assert.deepEqual(result.extensions, [`packages/${name}/extensions/${name}/index.ts`]);
     assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
   }
   assert.deepEqual((await load(join(root, "packages/pi-pocock-skills"))).skills, engineeringSkills);
-  // pistack is generated: every emitted SKILL.md, its own tdd included, must load
+  // p3stack is generated: every emitted SKILL.md, its own tdd included, must load
   // under its directory name when the package is installed on its own.
-  const pistackDir = join(root, "packages/pistack/skills");
+  const p3stackDir = join(root, "packages/p3stack/skills");
   const ownSkills = [];
-  for (const entry of await readdir(pistackDir, { withFileTypes: true })) {
-    if (entry.isDirectory() && await stat(join(pistackDir, entry.name, "SKILL.md")).then(() => true, () => false)) ownSkills.push(entry.name);
+  for (const entry of await readdir(p3stackDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && await stat(join(p3stackDir, entry.name, "SKILL.md")).then(() => true, () => false)) ownSkills.push(entry.name);
   }
   assert.ok(ownSkills.includes("tdd"));
-  const pistack = await load(join(root, "packages/pistack"));
-  assert.deepEqual(pistack.skills, ownSkills.sort());
-  assert.deepEqual(pistack.extensions, ["packages/pistack/extensions/pistack/index.ts"]);
+  const p3stack = await load(join(root, "packages/p3stack"));
+  assert.deepEqual(p3stack.skills, ownSkills.sort());
+  assert.deepEqual(p3stack.extensions, ["packages/p3stack/extensions/p3stack/index.ts"]);
 });
 
 test("every package has resource directories and packs its declared extension implementation", async () => {
