@@ -53,6 +53,9 @@ function collect(packageDir, sources, executables, problems) {
       owners.set(output, source.name);
       if (isExecutable(join(vendor, path))) executables.add(output);
     }
+    for (const path of source.required ?? []) {
+      if (owners.get(path) !== source.name) problems.push(`${source.name}: ${path}: required upstream file is missing`);
+    }
   }
   return { files, owners };
 }
@@ -195,6 +198,19 @@ function lint(outDir, deny, problems) {
   }
 }
 
+function lintResources(packageDir, outDir) {
+  const skills = join(outDir, "skills");
+  const directories = readdirSync(skills, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && existsSync(join(skills, entry.name, "SKILL.md")))
+    .map(entry => join(skills, entry.name)).sort();
+  if (!directories.length) throw new Error("No generated skills found; refusing an empty resource check.");
+  try {
+    execFileSync(process.execPath, [join(packageDir, "../../scripts/lint-skill/lint-skill.mjs"), "--resource-root", skills, ...directories], { stdio: "pipe" });
+  } catch (error) {
+    throw new Error(`Staged skills failed lint-skill.\n${String(error.stdout ?? "")}\n${String(error.stderr ?? error.message)}`);
+  }
+}
+
 export function generate({ packageDir, outDir }) {
   const rules = join(packageDir, "rules");
   const sources = sourcesOf(readJson(join(rules, "manifest.json")));
@@ -213,9 +229,14 @@ export function generate({ packageDir, outDir }) {
   if (problems.length) throw new Error(problems.join("\n"));
   // Patches are rewritten under the caller's umask; keep only the executable bit.
   for (const path of walk(outDir)) chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
-  const lintProblems = [];
-  lint(outDir, readJson(join(rules, "lint.json"), { deny: [] }).deny, lintProblems);
-  if (lintProblems.length) throw new Error(`Coupling lint: Cursor-only tokens remain; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
+  const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
+  lint(outDir, checks.deny, lintProblems);
+  for (const { file, contains } of checks.require ?? []) {
+    const text = existsSync(join(outDir, file)) ? readFileSync(join(outDir, file), "utf8") : "";
+    for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);
+  }
+  if (lintProblems.length) throw new Error(`Coupling lint: untranslated tokens or missing dependencies; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
+  if (checks.resources) lintResources(packageDir, outDir);
   return infos;
 }
 

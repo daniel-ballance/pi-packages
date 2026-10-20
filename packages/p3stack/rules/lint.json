@@ -25,6 +25,20 @@
     "Custom Mode",
     "Task call",
     "`Task`",
-    "pstack-models"
-  ]
+    "pstack-models",
+    "Skill tool",
+    "in the foreground",
+    "GLOSSARY.",
+    "GLOSSARY-",
+    "docs/agents/issue-tracker.md",
+    "The issue tracker should have been provided",
+    "workflow in the tracker doc"
+  ],
+  "require": [
+    {
+      "file": "skills/implement/SKILL.md",
+      "contains": ["(../tdd/SKILL.md)", "(../code-review/SKILL.md)"]
+    }
+  ],
+  "resources": true
 }

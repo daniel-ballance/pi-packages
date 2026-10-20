@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -445,6 +445,222 @@ test("setup offers and the help setup sentence come from upstream through the pa
     assert.equal(help.includes("docs/harness/"), false);
     assert.equal(help.includes("not part of the collection manifest"), false);
   } finally { rmSync(out, { recursive: true, force: true }); }
+});
+
+const packageDir = fileURLToPath(new URL("..", import.meta.url));
+test("the package ships the Pocock license and initializes both source checkouts", () => {
+  const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
+  assert.ok(manifest.files.includes("LICENSE-matt-pocock"));
+  assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/matt-pocock/);
+});
+
+const pocockNames = ["grilling", "grill-with-docs", "domain-modeling", "codebase-design", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "wait-what", "implement"];
+
+function pocockFixture() {
+  const temp = mkdtempSync(join(process.env.P3STACK_FIXTURE_ROOT ?? tmpdir(), "p3stack-pocock-"));
+  const root = join(temp, "repo/packages/p3stack");
+  mkdirSync(join(temp, "repo/scripts"), { recursive: true });
+  symlinkSync(join(packageDir, "../../scripts/lint-skill"), join(temp, "repo/scripts/lint-skill"));
+  for (const name of ["rules", "extra", "overlays", "patches", "vendor/pstack"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
+  const oldVendor = join(packageDir, "../pi-pocock-skills/vendor/matt-pocock");
+  cpSync(existsSync(oldVendor) ? oldVendor : join(packageDir, "vendor/matt-pocock"), join(root, "vendor/matt-pocock"), { recursive: true });
+  const manifestPath = join(root, "rules/manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  for (const source of manifest.sources) delete source.upstream;
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  for (const directory of ["rules", "overlays"]) {
+    for (const path of readdirSync(join(root, directory), { recursive: true })) {
+      const file = join(root, directory, path);
+      if (statSync(file).isFile()) writeFileSync(file, readFileSync(file, "utf8").replaceAll("{{upstream.commit}}", "fixture-pin"));
+    }
+  }
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });
+  const input = path => join(root, "vendor/matt-pocock/skills", path);
+  const read = path => readFileSync(join(root, "skills", path), "utf8");
+  const rewrite = (path, from, to) => writeFileSync(input(path), readFileSync(input(path), "utf8").replaceAll(from, to));
+  const dispose = () => rmSync(temp, { recursive: true, force: true });
+  return { root, run, input, read, rewrite, dispose };
+}
+
+function pocockCase(name, body) {
+  test(`Pocock ${name}`, () => {
+    const fixture = pocockFixture();
+    try { body(fixture); } finally { fixture.dispose(); }
+  });
+}
+
+pocockCase("1 check reports mismatches without replacing committed output", ({ root, run, read }) => {
+  assert.equal(run().status, 0);
+  writeFileSync(join(root, "skills/grilling/SKILL.md"), "committed marker\n");
+  const checked = run("--check");
+  assert.equal(checked.status, 1);
+  assert.match(checked.stderr, /skills\/grilling\/SKILL\.md/);
+  assert.equal(read("grilling/SKILL.md"), "committed marker\n");
+});
+
+pocockCase("2 missing adopted skills fail by name", ({ run, input }) => {
+  rmSync(input("engineering/research"), { recursive: true });
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /matt-pocock.*skills\/research\/SKILL\.md.*missing/);
+});
+
+pocockCase("3 duplicate names in two buckets fail", ({ run, input }) => {
+  cpSync(input("engineering/research"), input("productivity/research"), { recursive: true });
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /skills\/research\/SKILL\.md.*matt-pocock.*both emit/);
+});
+
+pocockCase("4 ordered rule minima detect upstream drift", ({ run, input, rewrite }) => {
+  for (const path of readdirSync(input(""), { recursive: true }).filter(path => path.endsWith(".md"))) rewrite(path, "sub-agents", "child-workers");
+  assert.match(run().stderr, /subagent-plural: 0 matches/);
+});
+
+pocockCase("5 tracker and collection rules retain counted drift guards", ({ run, rewrite }) => {
+  for (const [rule, path, source] of [
+    ["tracker-precondition", "code-review", "The issue tracker should have been provided to you."],
+    ["tracker-spec-source", "code-review", "fetched via the workflow in the tracker doc."],
+    ["tracker-ticket", "implement", "fetch it from the issue tracker and state its title"],
+    ["subagent-review-collect", "code-review", "in the foreground"],
+  ]) {
+    rewrite(`engineering/${path}/SKILL.md`, source, "upstream changed this wording");
+    const result = run();
+    assert.equal(result.status, 1);
+    assert.ok(result.stderr.includes(`${rule}: 0 matches`), result.stderr);
+  }
+});
+
+pocockCase("6 unrecognized harness wording names the file", ({ run, input }) => {
+  const file = input("engineering/research/SKILL.md");
+  writeFileSync(file, readFileSync(file, "utf8") + "\nUse the Skill tool for another task.\n");
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /skills\/research\/SKILL\.md:\d+: Skill tool/);
+});
+
+pocockCase("7 invalid optional regexes are errors", ({ root, run }) => {
+  const file = join(root, "rules/tokens.json"), rules = JSON.parse(readFileSync(file, "utf8"));
+  const rule = rules.find(({ id, source }) => id === "clear-to-new" && source === "matt-pocock");
+  assert.ok(rule);
+  rule.find = "(";
+  writeFileSync(file, JSON.stringify(rules));
+  assert.match(run().stderr, /Invalid regular expression/);
+});
+
+pocockCase("8 glossary resource collisions fail instead of overwriting", ({ run, input }) => {
+  cpSync(input("engineering/domain-modeling/GLOSSARY-FORMAT.md"), input("engineering/domain-modeling/CONTEXT-FORMAT.md"));
+  assert.match(run().stderr, /skills\/domain-modeling\/CONTEXT-FORMAT\.md.*both emit/);
+});
+
+pocockCase("9 failed validation preserves committed output", ({ root, run, input, read }) => {
+  assert.equal(run().status, 0);
+  const before = read("grilling/SKILL.md") + "\npreserve this output\n";
+  writeFileSync(join(root, "skills/grilling/SKILL.md"), before);
+  rmSync(input("engineering/research"), { recursive: true });
+  assert.equal(run().status, 1);
+  assert.equal(read("grilling/SKILL.md"), before);
+});
+
+pocockCase("10 translation preserves semantics and is deterministic", ({ root, run, read }) => {
+  const first = run();
+  assert.equal(first.status, 0, first.stderr);
+  for (const name of pocockNames) assert.ok(existsSync(join(root, "skills", name, "SKILL.md")), name);
+  assert.match(read("diagnosing-bugs/SKILL.md"), /\[HITL loop template\]\(scripts\/hitl-loop.template.sh\)/);
+  assert.match(read("grill-with-docs/SKILL.md"), /\[grilling\]\(\.\.\/grilling\/SKILL.md\)/);
+  assert.match(read("research/SKILL.md"), /\[child delegation guidance\]\(\.\.\/poteto-mode\/references\/host-capabilities.md\)/);
+  assert.match(read("implement/SKILL.md"), /\[tdd\]\(\.\.\/tdd\/SKILL.md\)/);
+  assert.match(read("implement/SKILL.md"), /\[code-review\]\(\.\.\/code-review\/SKILL.md\)/);
+  assert.match(read("implement/SKILL.md"), /If no tracker is configured, ask for the ticket text/);
+  assert.match(read("code-review/SKILL.md"), /collect and verify both reports before aggregating/);
+  assert.match(read("code-review/SKILL.md"), /Search the repo for every file/);
+  assert.match(read("diagnosing-bugs/SKILL.md"), /prove the mutation landed/);
+  assert.match(read("grilling/SKILL.md"), /"yes" accepts your recommended answer/);
+  assert.match(read("domain-modeling/SKILL.md"), /\[CONTEXT-FORMAT.md\]\(\.\/CONTEXT-FORMAT.md\)/);
+  assert.match(read("domain-modeling/CONTEXT-FORMAT.md"), /\[Ordering\]\(\.\/src\/ordering\/CONTEXT.md\)/);
+  assert.equal(existsSync(join(root, "skills/domain-modeling/GLOSSARY-FORMAT.md")), false);
+  assert.equal(existsSync(join(root, "skills/references/CHILD-DELEGATION.md")), false);
+  assert.equal(existsSync(join(root, "skills/research/agents")), false);
+  assert.match(read("tdd/SKILL.md"), /TDD Bug Fix/);
+  assert.equal(existsSync(join(root, "skills/to-spec/SKILL.md")), false);
+  const before = pocockNames.map(name => read(`${name}/SKILL.md`));
+  assert.equal(run().status, 0);
+  assert.deepEqual(pocockNames.map(name => read(`${name}/SKILL.md`)), before);
+  assert.equal(run("--check").status, 0, run("--check").stderr);
+});
+
+pocockCase("11 legacy slash invocations keep links and protect paths", ({ run, input, read }) => {
+  const file = input("engineering/implement/SKILL.md");
+  writeFileSync(file, readFileSync(file, "utf8") + "\nUse /tdd and /code-review, /to-spec, /clear. Keep ../research/SKILL.md.\nargument-hint: ignored\n");
+  assert.equal(run().status, 0);
+  assert.match(read("implement/SKILL.md"), /\[\/skill:tdd\]\(\.\.\/tdd\/SKILL.md\)/);
+  assert.match(read("implement/SKILL.md"), /\[\/skill:code-review\]\(\.\.\/code-review\/SKILL.md\)/);
+  assert.match(read("implement/SKILL.md"), /\/skill:to-spec, \/new. Keep ..\/research\/SKILL.md/);
+  assert.doesNotMatch(read("implement/SKILL.md"), /argument-hint:/);
+});
+
+pocockCase("12 dependency closure does not depend on invocation spelling", ({ run, input, rewrite }) => {
+  rewrite("engineering/implement/SKILL.md", 'Call the Skill tool with "tdd"', "Use the testing helper");
+  const file = input("engineering/research/SKILL.md");
+  writeFileSync(file, readFileSync(file, "utf8") + '\nCall the Skill tool with "tdd".\n');
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /skills\/implement\/SKILL.md.*tdd.*dependency/);
+});
+
+pocockCase("13 failed staging preserves the old tree without a shell move", ({ root, run }) => {
+  assert.equal(run().status, 0);
+  const output = join(root, "blocked");
+  writeFileSync(output, "not a directory");
+  const before = readFileSync(join(root, "skills/grilling/SKILL.md"));
+  assert.throws(() => generate({ packageDir: root, outDir: output }), /ENOTDIR|EEXIST/);
+  assert.deepEqual(readFileSync(join(root, "skills/grilling/SKILL.md")), before);
+});
+
+pocockCase("14 failed resource validation leaves no recovery step", ({ root, run, input, read }) => {
+  assert.equal(run().status, 0);
+  const before = read("research/SKILL.md");
+  const file = input("engineering/research/SKILL.md");
+  writeFileSync(file, readFileSync(file, "utf8") + "\n[missing](references/missing-report.md)\n");
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Referenced resource does not exist/);
+  assert.equal(read("research/SKILL.md"), before);
+  assert.equal(readdirSync(root).some(name => /backup|sync\./.test(name)), false);
+});
+
+pocockCase("15 unknown and extra CLI arguments fail before writing", ({ root, run }) => {
+  assert.equal(run("--bogus").status, 2);
+  assert.equal(run("--check", "extra").status, 2);
+  assert.equal(existsSync(join(root, "skills")), false);
+});
+
+pocockCase("16 staged lint rejects unbundled skills in both modes", ({ run, input }) => {
+  const file = input("engineering/research/SKILL.md");
+  writeFileSync(file, readFileSync(file, "utf8") + "\n[unbundled](../not-bundled/SKILL.md)\n");
+  for (const args of [[], ["--check"]]) {
+    const result = run(...args);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Referenced resource does not exist/);
+  }
+});
+
+pocockCase("17 staged lint rejects missing resources in both modes", ({ run, input }) => {
+  const file = input("engineering/research/SKILL.md");
+  writeFileSync(file, readFileSync(file, "utf8") + "\n[missing](references/missing-report.md)\n");
+  for (const args of [[], ["--check"]]) {
+    const result = run(...args);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /references\/missing/);
+  }
+});
+
+pocockCase("18 unavailable staged linter refuses replacement", ({ root, run }) => {
+  rmSync(join(root, "../../scripts/lint-skill"));
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /lint-skill.mjs/);
+  assert.equal(existsSync(join(root, "skills")), false);
 });
 
 test("{{upstream.commit}} without an upstream checkout fails with the rule that uses it", () => {

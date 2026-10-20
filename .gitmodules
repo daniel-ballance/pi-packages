@@ -1,5 +1,5 @@
 [submodule "packages/pi-pocock-skills/vendor/matt-pocock"]
-	path = packages/pi-pocock-skills/vendor/matt-pocock
+	path = packages/p3stack/vendor/matt-pocock
 	url = https://github.com/mattpocock/skills.git
 [submodule "packages/pistack/vendor/pstack"]
 	path = packages/p3stack/vendor/pstack
