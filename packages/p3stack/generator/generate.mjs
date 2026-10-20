@@ -7,6 +7,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./git-env.mjs";
 import { checkRegistry, loadRegistry } from "./check-registry.mjs";
+import { lintHosts } from "./lint-hosts.mjs";
 import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
 const readJson = (path, fallback) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
@@ -257,6 +258,8 @@ export function generate({ packageDir, outDir }) {
     for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);
   }
   if (lintProblems.length) throw new Error(`Coupling lint: untranslated tokens or missing dependencies; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
+  const hostProblems = lintHosts(outDir);
+  if (hostProblems.length) throw new Error(`Host lint failed. Keep tool names in the host map.\n${hostProblems.join("\n")}`);
   if (registry) checkRegistry({ packageDir, outDir, registry });
   if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources);
   return infos;

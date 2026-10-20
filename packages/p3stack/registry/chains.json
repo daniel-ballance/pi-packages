@@ -48,6 +48,14 @@
     "when": "After no-comments. Keep standards and spec findings separate."
   },
   {
+    "id": "opening-pr-host-link",
+    "playbook": "playbooks/opening-a-pr.md",
+    "anchor": "**Forge.**",
+    "position": "before",
+    "skill": "poteto-mode",
+    "when": "Read Pull requests in the host capabilities when opening a PR and before handback. Follow its host integration after creation."
+  },
+  {
     "id": "skill-authoring-style",
     "playbook": "playbooks/authoring-a-skill.md",
     "anchor": "1. Use the skill-authoring procedure (**Author a skill** in the host capabilities).",

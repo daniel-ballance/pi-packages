@@ -1,0 +1,22 @@
+{
+  "version": "0.1.1-nightly.20261018.3302",
+  "bridgeSha256": "8cc49f380d825f869d2b50b1fd512cb71fe8d3e869d78e6fcd8ea5d3e6fbb24f",
+  "statePaths": [
+    {
+      "path": "runtime/service-state.json",
+      "versionField": "activeVersion"
+    },
+    {
+      "path": "userdata/server-runtime.json",
+      "versionField": "serverVersion"
+    }
+  ],
+  "directTools": [
+    "orchestrator_capabilities",
+    "delegate_task",
+    "task_status"
+  ],
+  "beforeAgentStartReturn": {
+    "systemPrompt": "string"
+  }
+}

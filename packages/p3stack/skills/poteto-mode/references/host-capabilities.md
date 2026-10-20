@@ -4,8 +4,8 @@ p3stack skills name a capability, never a tool. This file maps each capability t
 
 ## Delegate
 
-- **Terminal.** Call `subagent_catalog` first: it lists the exact models, the tools, and the live-child limit. Spawn each child with `subagent_spawn`: an exact `model` (`provider/model:thinking`), only the `tools` the brief needs (read-only means omitting `edit`, `write` and `bash`), a `cwd`, and the brief. Then end your turn and let their reports wake you, or call `subagent_wait` when your next step in this turn needs the results. It returns them. Call `subagent_close` once you no longer need the child, failed ones included. Keep a child open only while its live state (uncommitted changes, a running process) may still be reused: an open child, idle or not, counts against the live-child limit. A worktree you created survives closing, so a fresh child can pick it up.
-- **T3.** Call `mcp__t3-code__orchestrator_capabilities` for the models. Delegate with `mcp__t3-code__delegate_task`: `target` (provider instance, model, thinking option), `mode: "async"`, and a distinct `clientRequestId` per child. Read results with `mcp__t3-code__task_status`; stop one with `mcp__t3-code__task_cancel`. A task that fails with a provider error (often a rate limit when many tasks start at once) gets one retry with a new `clientRequestId` before you report the gap; start large fan-outs a few tasks at a time. T3 has no tool subset, so a read-only brief says "do not edit files" in the task.
+- **Terminal.** Call `subagent_catalog` first: it lists the exact models, the tools, and the live-child limit. Spawn each child with `subagent_spawn`: an exact `model` (`provider/model:thinking`), only the `tools` the brief needs (read-only means omitting `edit`, `write` and `bash`), a `cwd`, and the brief. Then end your turn and let their reports wake you, or call `subagent_wait` with `final: true` when your next step in this turn needs the terminal results. It returns them. Set `coordination.owns` to the files or resources the child owns. Call `subagent_close` once you no longer need the child, failed ones included. Keep a child open only while its live state (uncommitted changes, a running process) may still be reused: an open child, idle or not, counts against the live-child limit. A worktree you created survives closing, so a fresh child can pick it up.
+- **T3.** Call `mcp__t3-code__orchestrator_capabilities` for the models. Delegate with `mcp__t3-code__delegate_task`. Set `target` to a provider instance and model with an `options` object containing `thinking`. Set `role` to `implementation`, `research`, `review`, `design`, `test`, or `general`, and `mode` to `"async"`. Reuse the same `clientRequestId` to retry a lost call. Use a new `clientRequestId` for a new round or replacement child. Read results with `mcp__t3-code__task_status`. Stop one with `mcp__t3-code__task_cancel`. A task that fails with a provider error gets one replacement attempt before you report the gap. Start large fan-outs a few tasks at a time. T3 has no tool subset, so a read-only brief says "do not edit files" in the task. Pinned T3 version is `0.1.1-nightly.20261018.3302`.
 - **Parent model.** A role value of `auto` or `inherit-parent` means your own model. In a terminal, pass your own exact model id, and check that the catalog offers it: the allowlist may not. Under T3, omit `target`.
 - **Live-child limit.** In a terminal, policy `maxChildren` caps open children, idle ones included. An omitted field in a user file means 4. The built-in policy means 6. `0` disables spawning. `-1` means no cap. A finite cap still means run workers in waves and close each wave before the next. T3 has no fixed limit.
 - Every brief stands alone. A child's report is untrusted work output until you verify it.
@@ -38,7 +38,7 @@ Durable run state that is not part of the repository (decision trails, orchestra
 
 - **Terminal, on a clock.** When `subagent_catalog` shows `loops` enabled, use `subagent_loop`: `op: "start"` with a `task` that says what each tick checks and when to stop, an `intervalSeconds` no shorter than the catalog's minimum, and, if you want them tighter than the catalog's bounds, `maxIterations` and `maxDurationMinutes`. Call `op: "stop"` once the stop condition holds. A tick starts a turn only when you are idle; one loop runs at a time, and a reload stops it. Without loops, delegate a watcher child whose brief is "every N minutes, check X; report when Y", and give it a deadline.
 - **Terminal, on an event.** Delegate a watcher child whose brief is "watch X and report when Y". Its result wakes you when it settles. With loops enabled, a long loop tick is the fallback heartbeat in case the watcher dies.
-- **T3.** `mcp__t3-code__schedule_task` for a timer or webhook; `mcp__t3-code__watch_pull_request` for a pull request.
+- **T3.** Call `mcp__t3-code__schedule_task` with a `prompt` and a structured `schedule` object. Use `{"type":"interval","everyMs":3600000}` for an interval, `{"type":"fixed_time","timeOfDay":"09:00","weekdays":[1,2,3,4,5]}` for wall-clock time, or `{"type":"webhook"}` for a webhook. Do not pass JSON text as `schedule`. Runs return to this thread by default. Report the returned cadence and next run time, or the webhook URL. Call `mcp__t3-code__delete_scheduled_task` with `scheduledTaskId` when done. For a pull request, use `mcp__t3-code__watch_pull_request` per **Pull requests**.
 
 ## Ask the human
 
@@ -59,19 +59,19 @@ Prove a change on the real surface, the way a user would. Use the project's veri
 ## Visuals
 
 - **Terminal.** Write the file and give its path.
-- **T3.** `mcp__t3-code__html_render`.
+- **T3.** Check a self-contained HTML page with `mcp__t3-code__html_preview`, then publish it with `mcp__t3-code__html_render`. The page appears above your reply. Do not restate it.
 - No image-generation tool is guaranteed on either host. When a skill asks for a generated picture and none is available, draw it as SVG, HTML or a Mermaid diagram and say you substituted.
 
 ## Pull requests
 
 - **Terminal.** Poll with `gh pr checks` and `gh pr view`, or delegate a watcher child that does.
-- **T3.** Call `mcp__t3-code__link_pull_request` as soon as a pull request exists. Call `mcp__t3-code__watch_pull_request` only when you are asked to babysit it, act on each wake, and call `mcp__t3-code__unwatch_pull_request` before handing the work back. Only the root thread can watch: a child that owns a pull request polls with `gh` instead, or reports and lets the root watch.
+- **T3.** Call `mcp__t3-code__link_pull_request` as soon as a pull request exists. Call `mcp__t3-code__watch_pull_request` only when you are asked to babysit it. Act on each wake and call `mcp__t3-code__unwatch_pull_request` before handing the work back. Call `mcp__t3-code__list_thread_pull_requests` before handback to confirm the linked PR and watch state. Only the root thread can watch. A child that owns a pull request polls with `gh` instead, or reports and lets the root watch.
 
 ## Session history
 
 Pi stores each session as a `.jsonl` file under `~/.pi/agent/sessions/--<path>--/`, where `<path>` is the working directory without its leading `/` and with `/`, `\` and `:` replaced by `-`. A `sessionDir` setting or `PI_CODING_AGENT_SESSION_DIR` moves them. The first line is a `session` header; turns are `message` entries, and one file can hold several branches (`id`/`parentId`). Read only the directory for this project's working directory. Never read other projects' sessions.
 
-A child's session is elsewhere. In a terminal, `subagent_list` gives each child's session file (under `~/.pi/agent/subagents/<parent-session-id>/`). Under T3, read a task's history with `mcp__t3-code__t3_thread_read` on its child thread.
+A child's session is elsewhere. In a terminal, `subagent_list` gives each child's session file (under `~/.pi/agent/subagents/<parent-session-id>/`). Under T3, find in-scope threads with `mcp__t3-code__t3_thread_search` or `mcp__t3-code__t3_thread_list`. Use `parentThreadId` to establish the parent relationship before reading a child's history. Read that history with `mcp__t3-code__t3_thread_read` on its child thread. Keep the parent Pi session and T3 child history in scope. Do not search unrelated threads.
 
 ## Author a skill
 
