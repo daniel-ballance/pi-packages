@@ -9,6 +9,8 @@ Audit the current pins first. Select audit-only or bump mode from the operator's
 
 `Bump <source> to <ref> and open its maintenance PR.`
 
+An explicit bump request authorizes every scoped input repair named in the failure classes, including registry rows, token rules, patches, and pin inputs, without another question, and requires an approval pause only before `gh pr create` if the request says to pause.
+
 For all upstream tips, use `Bump every vendored source to its upstream tip and open a maintenance PR for each checkout.`. In bump mode, a successful audit continues to the bump procedure. The audit-only stop does not apply. The [nightly prompt](references/nightly.md) uses that exact upstream-tip request.
 
 Work in the repository that contains this package. Read its `AGENTS.md` and `packages/p3stack/AGENTS.md`. Run every command below from the repository root. Package commands use `npm --prefix packages/p3stack` or an explicit package path. Keep a Markdown checklist and receipt paths outside the checkout.
