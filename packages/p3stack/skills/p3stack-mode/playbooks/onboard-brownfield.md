@@ -36,7 +36,7 @@ Finish with the verification recipe, evidence path, and any unproven steps.
 
 Under full autonomy, run [domain-modeling](../domain-modeling/SKILL.md) without asking for permission. Resolve observable terminology from the code and existing domain docs. Label unresolved product meanings as assumptions.
 
-Under the default grant, ask whether to run the domain-modeling pass before proceeding. If the user declines, keep the step as skipped with that reason. If the user accepts, run the pass. If a reply is unavailable, pause at this gate and return the map so far.
+Under the default grant, ask whether to run the domain-modeling pass. If the user declines, keep the step as skipped with that reason. If the user accepts, run the pass. While the answer is pending, end the turn immediately with the map so far. Leave the architecture survey pending until the user answers.
 
 Keep resolved terms, contradictions, and proposed glossary entries in the answer. The read-only scope also applies to `CONTEXT.md` and ADRs.
 
