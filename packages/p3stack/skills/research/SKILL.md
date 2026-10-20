@@ -3,7 +3,7 @@ name: research
 description: Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent.
 ---
 
-Read [child delegation guidance](../references/CHILD-DELEGATION.md) before using child delegation.
+Read [child delegation guidance](../poteto-mode/references/host-capabilities.md) before using child delegation.
 
 For substantial research, when child and retrieval tools are available, spawn a bounded child so you can keep working while it reads. For a trivial lookup, or when those tools are unavailable, research directly.
 

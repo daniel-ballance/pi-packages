@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,6 +52,9 @@ function collect(packageDir, sources, executables, problems) {
       files.set(output, decode(bytes) ?? bytes);
       owners.set(output, source.name);
       if (isExecutable(join(vendor, path))) executables.add(output);
+    }
+    for (const path of source.required ?? []) {
+      if (owners.get(path) !== source.name) problems.push(`${source.name}: ${path}: required upstream file is missing`);
     }
   }
   return { files, owners };
@@ -195,6 +198,19 @@ function lint(outDir, deny, problems) {
   }
 }
 
+function lintResources(packageDir, outDir, owners, sources) {
+  const skills = join(outDir, "skills");
+  const directories = readdirSync(skills, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && sources.includes(owners.get(`skills/${entry.name}/SKILL.md`)))
+    .map(entry => join(skills, entry.name)).sort();
+  if (!directories.length) throw new Error("No generated skills found; refusing an empty resource check.");
+  try {
+    execFileSync(process.execPath, [join(packageDir, "../../scripts/lint-skill/lint-skill.mjs"), "--resource-root", skills, ...directories], { stdio: "pipe" });
+  } catch (error) {
+    throw new Error(`Staged skills failed lint-skill.\n${String(error.stdout ?? "")}\n${String(error.stderr ?? error.message)}`);
+  }
+}
+
 export function generate({ packageDir, outDir }) {
   const rules = join(packageDir, "rules");
   const sources = sourcesOf(readJson(join(rules, "manifest.json")));
@@ -213,9 +229,14 @@ export function generate({ packageDir, outDir }) {
   if (problems.length) throw new Error(problems.join("\n"));
   // Patches are rewritten under the caller's umask; keep only the executable bit.
   for (const path of walk(outDir)) chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
-  const lintProblems = [];
-  lint(outDir, readJson(join(rules, "lint.json"), { deny: [] }).deny, lintProblems);
-  if (lintProblems.length) throw new Error(`Coupling lint: Cursor-only tokens remain; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
+  const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
+  lint(outDir, checks.deny, lintProblems);
+  for (const { file, contains } of checks.require ?? []) {
+    const text = existsSync(join(outDir, file)) ? readFileSync(join(outDir, file), "utf8") : "";
+    for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);
+  }
+  if (lintProblems.length) throw new Error(`Coupling lint: untranslated tokens or missing dependencies; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
+  if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources);
   return infos;
 }
 
@@ -273,13 +294,42 @@ function gitlinkDrift(packageDir, source, info) {
   return pin === info.commit ? [] : [`${source.name}: checkout pin ${info.commit} differs from gitlink ${pin ?? "missing"}`];
 }
 
+const BACKUPS = ".backups";
+
+export function installGenerated({ packageDir, outDir, copy = cpSync }) {
+  const backupsDir = join(outDir, BACKUPS), changed = [];
+  mkdirSync(backupsDir);
+  try {
+    for (const root of generatedRoots(packageDir)) {
+      const destination = join(packageDir, root);
+      const backup = existsSync(destination) || isLink(destination) ? join(backupsDir, root) : undefined;
+      if (backup) renameSync(destination, backup);
+      changed.push({ destination, backup });
+      if (existsSync(join(outDir, root))) copy(join(outDir, root), destination, { recursive: true });
+    }
+  } catch (error) {
+    const failures = [];
+    for (const { destination, backup } of changed.reverse()) {
+      try {
+        rmSync(destination, { recursive: true, force: true });
+        if (backup) renameSync(backup, destination);
+      } catch (restoreError) { failures.push(`${destination}: ${restoreError.message}`); }
+    }
+    if (failures.length) throw new Error(`${error.message}\n${failures.join("\n")}\nrecovery copies retained at ${backupsDir}`, { cause: error });
+    rmSync(backupsDir, { recursive: true, force: true });
+    throw error;
+  }
+  rmSync(backupsDir, { recursive: true, force: true });
+}
+
 function main(args) {
   if (args.length > 1 || (args.length === 1 && args[0] !== "--check")) {
     console.error("Usage: node generator/generate.mjs [--check]");
     return 2;
   }
   const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
-  const outDir = mkdtempSync(join(tmpdir(), "p3stack-"));
+  const stagingParent = args[0] === "--check" ? tmpdir() : packageDir;
+  const outDir = mkdtempSync(join(stagingParent, ".p3stack-"));
   try {
     const infos = generate({ packageDir, outDir });
     const sources = readJson(join(packageDir, "rules/manifest.json")).sources;
@@ -302,10 +352,7 @@ function main(args) {
       console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs.\n  ${problems.join("\n  ")}`);
       return 1;
     }
-    for (const root of generatedRoots(packageDir)) {
-      rmSync(join(packageDir, root), { recursive: true, force: true });
-      if (existsSync(join(outDir, root))) cpSync(join(outDir, root), join(packageDir, root), { recursive: true });
-    }
+    installGenerated({ packageDir, outDir });
     if (pin !== undefined) {
       const manifest = readJson(manifestPath);
       manifest.p3stack = { ...manifest.p3stack, upstream: pin };
@@ -317,7 +364,7 @@ function main(args) {
     console.error(error.message);
     return 1;
   } finally {
-    rmSync(outDir, { recursive: true, force: true });
+    if (!existsSync(join(outDir, BACKUPS))) rmSync(outDir, { recursive: true, force: true });
   }
 }
 

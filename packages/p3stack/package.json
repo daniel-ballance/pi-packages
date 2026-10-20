@@ -18,10 +18,11 @@
     "themes",
     "AGENTS.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "LICENSE-matt-pocock"
   ],
   "scripts": {
-    "sync": "git -C ../.. submodule update --init packages/p3stack/vendor/pstack && node generator/generate.mjs",
+    "sync": "git -C ../.. submodule update --init packages/p3stack/vendor/pstack packages/p3stack/vendor/matt-pocock && node generator/generate.mjs",
     "generate": "node generator/generate.mjs",
     "bump": "node generator/update-upstream.mjs",
     "update-upstream": "node generator/update-upstream.mjs",

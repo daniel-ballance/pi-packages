@@ -1,4 +1,4 @@
-Read [child delegation guidance](../references/CHILD-DELEGATION.md) before using child delegation.
+Read [child delegation guidance](../poteto-mode/references/host-capabilities.md) before using child delegation.
 
 # Design It Twice
 

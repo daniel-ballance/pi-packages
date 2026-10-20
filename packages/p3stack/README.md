@@ -183,4 +183,4 @@ project. The role table is not injected into each turn. `p3stack_roles` resolves
 ## License
 
 MIT, from upstream; see [LICENSE](LICENSE). Upstream pin:
-<!-- p3stack:upstream -->`cursor/plugins` [`88d4751`](https://github.com/cursor/plugins/tree/88d47514b82e7c44f00f2b2a72ff6dd12158038c/pstack), pstack 0.15.29<!-- /p3stack:upstream -->.
+<!-- p3stack:upstream -->`cursor/plugins` [`88d4751`](https://github.com/cursor/plugins/tree/88d47514b82e7c44f00f2b2a72ff6dd12158038c/pstack), pstack 0.15.29; `mattpocock/skills` [`5beb35b`](https://github.com/mattpocock/skills/tree/5beb35b040e3de97e54fa9e386d7e42d15c295c2)<!-- /p3stack:upstream -->.

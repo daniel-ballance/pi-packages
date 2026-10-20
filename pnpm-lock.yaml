@@ -117,8 +117,6 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
-  packages/pi-pocock-skills: {}
-
   packages/p3stack:
     dependencies:
       commander:
