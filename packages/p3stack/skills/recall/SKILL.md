@@ -10,6 +10,8 @@ disable-model-invocation: true
 
 Keep it tight and on-topic. Read only what the in-scope threads need, then stop.
 
+Before searching, read **Session history** in the [host capabilities](../poteto-mode/references/host-capabilities.md). Use its host-specific sources for parent sessions and child history. Give every history-mining child that section and the same scope.
+
 Your context lives in two records. Your own chat history holds what you did and decided. The shared record holds everything that happened around the same code under other names: the symptoms users keep reporting, the fixes that shipped and got reverted, the errors still firing in prod. That second record is what the **why** skill searches, across source control, the issue tracker, chat and issue channels, long-form docs, and error tracking. A feature with a long bug tail keeps most of its story there, so don't reconstruct it from your transcripts alone.
 
 Sessions live at `~/.pi/agent/sessions/--<path>--/<timestamp>_<id>.jsonl`, where `<path>` is the working directory with the leading slash dropped and each "/" turned into "-" (so `/Users/you/proj` becomes `--Users-you-proj--`; see **Session history** in the [host capabilities](../poteto-mode/references/host-capabilities.md)). Every line is one session entry.
