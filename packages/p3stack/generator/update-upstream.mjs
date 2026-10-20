@@ -1,20 +1,10 @@
 #!/usr/bin/env node
-// Move the vendored upstream to a new commit and regenerate.
-//
-//   node generator/update-upstream.mjs <source> [ref]
-//
-// Fetches the upstream checkout, moves it to <ref>, lists upstream's commits to
-// the emitted subtree, then regenerates. When a rule no longer fits, generation
-// fails naming it and the checkout stays at <ref>: fix the rule and run
-// node generator/generate.mjs until it passes. Commit the checkout's new
-// gitlink together with the regenerated output.
-
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./git-env.mjs";
-import { sourcePathClassifier } from "./source-paths.mjs";
+import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
 const generator = join(dirname(fileURLToPath(import.meta.url)), "generate.mjs");
 
@@ -25,8 +15,8 @@ function main(args) {
   }
   const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(generator), ".."));
   const manifest = JSON.parse(readFileSync(join(packageDir, "rules/manifest.json"), "utf8"));
-  const source = manifest.sources.find(({ name }) => name === args[0]);
-  if (!source) { console.error(`Unknown source "${args[0]}". Available sources: ${manifest.sources.map(({ name }) => name).join(", ")}`); return 1; }
+  const sources = sourcesOf(manifest), source = sources.find(({ name }) => name === args[0]);
+  if (!source) { console.error(`Unknown source "${args[0]}". Available sources: ${sources.map(({ name }) => name).join(", ")}`); return 1; }
   const { vendor, upstream } = source;
   if (!upstream) { console.error(`${source.name}: rules/manifest.json names no upstream checkout`); return 1; }
   const checkout = join(packageDir, upstream.checkout), subtree = relative(checkout, join(packageDir, vendor)) || ".";

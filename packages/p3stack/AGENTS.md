@@ -50,10 +50,10 @@ Rules apply in this order. The same sources and rules give byte-identical output
    `find` is a JavaScript regular expression and `replace` may use `$1`.
    `files` limits the rule to output paths matching a regular expression.
    `source` limits it to files from that named source. Without `source`, the rule
-   applies to all sources. `min` counts matches only within the selected scope. Rules count
-   then apply in order, so a later rule sees an earlier rule's output. `min` is
-   a tripwire: a rule matching fewer times fails generation with its id, which
-   means upstream reworded the text. In `find`, `{{skills.names}}` expands to
+   applies to all sources. `min` counts matches only within the selected scope.
+   Rules apply in order, so a later rule sees an earlier rule's output. A rule
+   with fewer matches than `min` fails generation with its id.
+   In `find`, `{{skills.names}}` expands to
    a regex alternation of the emitted `skills/<name>/SKILL.md` directory names,
    escaped and sorted in code-unit order. The final slash-command rule uses it
    so new upstream skills get Pi commands without maintaining a second list.
@@ -104,7 +104,7 @@ own script tests; `npm run check` typechecks `watch-pr`.
 - A recurring upstream sentence gets one global rule, not one per skill.
 - Never write an upstream commit into a rule. A link into upstream uses
   `{{upstream.commit}}` in a token `replace` or an overlay, and the generator
-  fills in the pinned commit. The README states the pin between
+  fills in that file's source commit. The README states all source pins between
   `<!-- p3stack:upstream -->` markers, which the generator rewrites.
 - Default model hints such as `claude-opus-5-5-xhigh` stay as written; the
   capabilities reference explains how to resolve them on Pi.
@@ -138,8 +138,8 @@ The command requires a source name. It fetches only that source's checkout,
 moves it to the ref, and classifies changed paths against that source's map and
 exclusions before it regenerates all sources. `cursor-plugins` uses `vendor/pstack`
 and the `pstack/` subtree. Unknown names and dirty checkouts fail before a fetch.
-`npm run update-upstream -- <source> [ref]` remains an alias. The report distinguishes emitted paths, explicit exclusions, and
-paths not emitted. Review every path marked `review scope`: it may be a new
+`npm run update-upstream -- <source> [ref]` remains an alias.
+The report distinguishes emitted paths, explicit exclusions, and paths not emitted. Review every path marked `review scope`: it may be a new
 capability the manifest does not yet include. `plugin.json` is not emitted but
 supplies the plugin name and version. Inspect the full upstream commits too
 (`git -C vendor/pstack show --stat <sha>`); packaging can live outside
@@ -149,9 +149,15 @@ moved the checkout, recover its source delta with
 `git -C vendor/pstack diff --name-status <old-pin> HEAD -- pstack`.
 The old pin is in the base branch's package metadata.
 
-Generation records the pin in `package.json`
-(`p3stack.upstream`) and the README markers and fills `{{upstream.commit}}`;
-`--check` fails while any of them disagree with the checkout.
+Generation records every source pin between the README markers. Sources with
+`plugin.json` also include the plugin name and version. The `cursor-plugins` pin
+stays in `package.json` as `p3stack.upstream`. `{{upstream.commit}}` expands to
+the source commit of the file a token rule or section overlay rewrites.
+
+`--check` compares every submodule checkout with its staged gitlink and checks
+all README pins. Standalone source clones have no gitlink to compare. The check
+also checks `p3stack.upstream` for `cursor-plugins` and reports the generated file
+and byte counts on success. It writes nothing.
 
 When it fails, each line names a token rule, section or patch upstream no
 longer fits, and the checkout stays at the new commit. Read the upstream commit

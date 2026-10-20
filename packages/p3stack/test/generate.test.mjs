@@ -110,6 +110,27 @@ test("a source-scoped token minimum cannot count matches from another source", (
   } finally { dispose(); }
 });
 
+test("source names must be nonempty and unique", () => {
+  for (const name of ["", "cursor-plugins"]) {
+    const sources = JSON.parse(manifest()).sources;
+    sources.push({ name, vendor: "vendor/other", map: [] });
+    const { root, out, dispose } = fixture({ "rules/manifest.json": JSON.stringify({ sources }) });
+    try {
+      assert.throws(() => generate({ packageDir: root, outDir: out }), /source.*name/i);
+      assert.equal(existsSync(out), false);
+    } finally { dispose(); }
+  }
+});
+
+test("a token rule with an unknown source fails even without a minimum", () => {
+  const { root, out, dispose } = twoSources({
+    "rules/tokens.json": JSON.stringify([{ id: "typo", source: "missing", find: "Use", replace: "Run" }]),
+  });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /typo.*unknown source.*missing/i);
+  } finally { dispose(); }
+});
+
 test("tokens, sections and the file map produce the translated tree", () => {
   const { root, out, read, dispose } = fixture({});
   try {
