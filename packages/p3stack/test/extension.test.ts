@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import pistack from "../extensions/p3stack/index.ts";
+import p3stack from "../extensions/p3stack/index.ts";
 import { installFooterPrefix, prefixFooter } from "../extensions/p3stack/src/footer.ts";
 import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/p3stack/src/roles.ts";
 
@@ -15,7 +15,7 @@ const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", me
 // subagents: absent, loaded but too old to reply on the bus, or replying with this catalog.
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
 function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "pistack-ext-")), cwd = join(root, "project"), agentDir = join(root, "agent");
+  const root = mkdtempSync(join(tmpdir(), "p3stack-ext-")), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
   const previous = process.env.PI_CODING_AGENT_DIR;
@@ -35,7 +35,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
     modelRegistry: { getAvailable: () => [opus, grok] },
     sessionManager: { getBranch: () => branch },
   };
-  pistack({
+  p3stack({
     registerTool: (tool: any) => tools.set(tool.name, tool),
     registerCommand: (name: string, command: any) => commands.set(name, command),
     on: (name: string, handler: Function) => handlers.set(name, [...handlers.get(name) ?? [], handler]),
@@ -69,11 +69,11 @@ test("with a subagents catalog, only its identities are offered, at the highest 
   assert.deepEqual(candidates("unlimited", [], catalog), ["xai/grok-4.7:high", "p/deep:xhigh"]);
 });
 
-test("pistack_roles answers with the role table as text, from the file or the default hints", async () => {
-  const h = harness({ files: { "agent/pistack.json": { budget: "large (xhigh)", roles: { "swarm workers": "xai/grok-4.7:xhigh" } } } });
+test("p3stack_roles answers with the role table as text, from the file or the default hints", async () => {
+  const h = harness({ files: { "agent/p3stack.json": { budget: "large (xhigh)", roles: { "swarm workers": "xai/grok-4.7:xhigh" } } } });
   try {
-    const result = await h.call("pistack_roles", {});
-    assert.match(text(result), /^Role defaults from .*agent\/pistack\.json \(budget large \(xhigh\)\)/);
+    const result = await h.call("p3stack_roles", {});
+    assert.match(text(result), /^Role defaults from .*agent\/p3stack\.json \(budget large \(xhigh\)\)/);
     assert.match(text(result), /swarm workers: xai\/grok-4\.7:xhigh\n/);
     assert.match(text(result), /judgment and prose: claude-opus-5-5-xhigh \(default hint\)/);
     assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:xhigh");
@@ -82,14 +82,14 @@ test("pistack_roles answers with the role table as text, from the file or the de
 });
 
 test("a trusted project's file wins over the personal one, and a broken file is reported, not used", async () => {
-  const project = harness({ trusted: true, files: { "project/.pi/pistack.json": { roles: { "bug-fix": "a/b:low" } }, "agent/pistack.json": { roles: { "bug-fix": "c/d:high" } } } });
-  try { assert.match(text(await project.call("pistack_roles", {})), /bug-fix: a\/b:low/); } finally { project.dispose(); }
-  const untrusted = harness({ trusted: false, files: { "project/.pi/pistack.json": { roles: { "bug-fix": "a/b:low" } } } });
-  try { assert.match(text(await untrusted.call("pistack_roles", {})), /bug-fix: grok-4\.7-xhigh-fast \(default hint\)/); } finally { untrusted.dispose(); }
-  const broken = harness({ files: { "agent/pistack.json": { roles: { "bug-fix": 7 } } } });
+  const project = harness({ trusted: true, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "a/b:low" } }, "agent/p3stack.json": { roles: { "bug-fix": "c/d:high" } } } });
+  try { assert.match(text(await project.call("p3stack_roles", {})), /bug-fix: a\/b:low/); } finally { project.dispose(); }
+  const untrusted = harness({ trusted: false, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "a/b:low" } } } });
+  try { assert.match(text(await untrusted.call("p3stack_roles", {})), /bug-fix: grok-4\.7-xhigh-fast \(default hint\)/); } finally { untrusted.dispose(); }
+  const broken = harness({ files: { "agent/p3stack.json": { roles: { "bug-fix": 7 } } } });
   try {
-    const result = await broken.call("pistack_roles", {});
-    assert.match(text(result), /ignored .*pistack\.json: role "bug-fix" must be a model or a list of models/);
+    const result = await broken.call("p3stack_roles", {});
+    assert.match(text(result), /ignored .*p3stack\.json: role "bug-fix" must be a model or a list of models/);
     assert.match(text(result), /bug-fix: grok-4\.7-xhigh-fast \(default hint\)/);
   } finally { broken.dispose(); }
 });
@@ -97,11 +97,11 @@ test("a trusted project's file wins over the personal one, and a broken file is 
 test("the mode toggle persists, adds a prompt section while on, and shows only in the terminal", async () => {
   const h = harness();
   try {
-    await h.command("pistack-mode", "on");
-    assert.deepEqual(h.entries.at(-1), { customType: "pistack-mode", data: { on: true } });
+    await h.command("p3stack", "on");
+    assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true } });
     assert.deepEqual(h.statuses, [], "T3 shows no status, so none is set outside the terminal");
     const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
-    const section = event.systemPromptOptions.sections["pistack-mode"];
+    const section = event.systemPromptOptions.sections["p3stack"];
     assert.match(section, /poteto-mode is on.*skills\/poteto-mode\/SKILL\.md/s);
     assert.match(section, /Role models \(no role defaults file.*\n- bug-fix: grok-4\.7-xhigh-fast/s, "the role table rides along");
     const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
@@ -109,25 +109,25 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
     assert.equal(reminders[0].display, false);
     assert.match(reminders[0].content, /^\[poteto-mode is on\] Before anything else, route this request: read .*poteto-mode\/SKILL\.md/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
-    await h.command("pistack-mode", "off");
-    const off = await h.emit("before_agent_start", { systemPromptOptions: { sections: { "pistack-mode": "stale" } } });
-    assert.equal(off.systemPromptOptions.sections["pistack-mode"], undefined);
+    await h.command("p3stack", "off");
+    const off = await h.emit("before_agent_start", { systemPromptOptions: { sections: { "p3stack": "stale" } } });
+    assert.equal(off.systemPromptOptions.sections["p3stack"], undefined);
     assert.deepEqual(await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } }), [], "no reminder while off");
   } finally { h.dispose(); }
   // Pi's footer only loads inside Pi; here the terminal falls back to a status row.
   const tui = harness({ mode: "tui" });
   try {
     await tui.emit("session_start");
-    await tui.command("pistack-mode", "on");
-    assert.deepEqual(tui.statuses.at(-1), ["pistack", "poteto-mode"]);
-    await tui.command("pistack-mode", "off");
-    assert.deepEqual(tui.statuses.at(-1), ["pistack", undefined]);
+    await tui.command("p3stack", "on");
+    assert.deepEqual(tui.statuses.at(-1), ["p3stack", "poteto-mode"]);
+    await tui.command("p3stack", "off");
+    assert.deepEqual(tui.statuses.at(-1), ["p3stack", undefined]);
   } finally { tui.dispose(); }
-  const resumed = harness({ hasUI: false, branch: [{ type: "custom", customType: "pistack-mode", data: { on: true } }] });
+  const resumed = harness({ hasUI: false, branch: [{ type: "custom", customType: "p3stack", data: { on: true } }] });
   try {
     await resumed.emit("session_start");
     const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
-    assert.ok(event.systemPromptOptions.sections["pistack-mode"], "rebuilt from the branch");
+    assert.ok(event.systemPromptOptions.sections["p3stack"], "rebuilt from the branch");
   } finally { resumed.dispose(); }
 });
 
@@ -168,7 +168,7 @@ test("while the mode is on, delegated briefs start with the poteto-agent recipe,
     const spawn: any = { toolName: "subagent_spawn", input: { task: "Fix the bug." } };
     await h.emit("tool_call", spawn);
     assert.equal(spawn.input.task, "Fix the bug.", "mode off: untouched");
-    await h.command("pistack-mode", "on");
+    await h.command("p3stack", "on");
     await h.emit("tool_call", spawn);
     assert.match(spawn.input.task, /^Before any work, read .*agents\/poteto-agent\.md.*\n\nFix the bug\.$/s);
     const again = spawn.input.task;
@@ -183,7 +183,7 @@ test("while the mode is on, delegated briefs start with the poteto-agent recipe,
 test("a Child with neither edit, write nor subagent_spawn gets the short read-only recipe instead of the full skill", async () => {
   const h = harness();
   try {
-    await h.command("pistack-mode", "on");
+    await h.command("p3stack", "on");
     const reader: any = { toolName: "subagent_spawn", input: { task: "Audit stats.ts.", tools: ["read", "bash", "grep"] } };
     await h.emit("tool_call", reader);
     assert.match(reader.input.task, /^You are a read-only delegate in a poteto-mode run\. .*do not read the poteto-mode skill.*\n\nAudit stats\.ts\.$/s);
@@ -224,42 +224,42 @@ function asTerminal() {
   return () => { if (previous !== undefined) process.env.T3_MCP_URL = previous; };
 }
 
-test("/pistack-setup maps a budget and two models onto every role and writes the file", async () => {
+test("/p3stack-setup maps a budget and two models onto every role and writes the file", async () => {
   const restore = asTerminal();
   const h = harness({ answers: ["unlimited — max thinking", "xai/grok-4.7:xhigh", "claude-subscription/claude-opus-5-5:max"] });
   try {
-    await h.command("pistack-setup");
-    const written = JSON.parse(readFileSync(join(h.agentDir, "pistack.json"), "utf8"));
+    await h.command("p3stack-setup");
+    const written = JSON.parse(readFileSync(join(h.agentDir, "p3stack.json"), "utf8"));
     assert.equal(written.budget, "unlimited (max)");
     assert.equal(written.roles["swarm workers"], "xai/grok-4.7:xhigh");
     assert.equal(written.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:max");
     assert.deepEqual(written.roles["interrogate reviewers"], ["claude-subscription/claude-opus-5-5:max", "xai/grok-4.7:xhigh"]);
-    assert.match(h.notices.at(-1)![0], /Wrote .*pistack\.json/);
+    assert.match(h.notices.at(-1)![0], /Wrote .*p3stack\.json/);
   } finally { h.dispose(); restore(); }
 });
 
-test("/pistack-setup defers to the skill under T3 and does nothing without a UI", async () => {
+test("/p3stack-setup defers to the skill under T3 and does nothing without a UI", async () => {
   const previous = process.env.T3_MCP_URL;
   process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
   const h = harness();
   try {
-    await h.command("pistack-setup");
+    await h.command("p3stack-setup");
     assert.match(h.notices.at(-1)![0], /\/skill:setup-pstack/);
     assert.deepEqual(h.asked, []);
   } finally { h.dispose(); if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
   const headless = harness({ hasUI: false });
-  try { await headless.command("pistack-setup"); } finally { headless.dispose(); }
+  try { await headless.command("p3stack-setup"); } finally { headless.dispose(); }
 });
 
-test("/pistack-setup offers only models the subagents policy permits, and never writes one it cannot check", async () => {
+test("/p3stack-setup offers only models the subagents policy permits, and never writes one it cannot check", async () => {
   const restore = asTerminal();
   // Harnesses own PI_CODING_AGENT_DIR, so one at a time.
   const run = async (subagents: Subagents, answers: string[], check: (h: ReturnType<typeof harness>, written: unknown) => void) => {
     const h = harness({ subagents, answers });
     try {
-      await h.command("pistack-setup");
+      await h.command("p3stack-setup");
       let written: unknown;
-      try { written = JSON.parse(readFileSync(join(h.agentDir, "pistack.json"), "utf8")); } catch { written = undefined; }
+      try { written = JSON.parse(readFileSync(join(h.agentDir, "p3stack.json"), "utf8")); } catch { written = undefined; }
       check(h, written);
     } finally { h.dispose(); }
   };

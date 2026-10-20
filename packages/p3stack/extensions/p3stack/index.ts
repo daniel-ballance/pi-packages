@@ -1,4 +1,4 @@
-// pistack's hand-written extension: the poteto-mode toggle, ask_user, the role
+// p3stack's hand-written extension: the poteto-mode toggle, ask_user, the role
 // table and its setup command. The skills it serves are generated; see AGENTS.md.
 // Written against the subset of Pi's extension API it uses, so the package needs
 // no Pi SDK of its own; the package-layout test loads it through Pi's real loader.
@@ -34,8 +34,8 @@ interface Pi {
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const modeSkill = join(packageDir, "skills", "poteto-mode", "SKILL.md");
 const agentRecipe = join(packageDir, "agents", "poteto-agent.md");
-const MODE = "pistack-mode";
-const TURN = "pistack-mode-turn";
+const MODE = "p3stack";
+const TURN = "p3stack-turn";
 /** Opens the short recipe for Children that only investigate. */
 const READER = "You are a read-only delegate in a poteto-mode run.";
 const OTHER = "Other (type an answer)";
@@ -61,10 +61,10 @@ function roleTable(ctx: Context) {
   const resolved = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
   const lines = Object.entries(resolved.roles).map(([role, { value }]) => `- ${role}: ${format(value)}`);
   const from = resolved.source === "default hints" ? "no role defaults file, so these are the skills' default hints" : resolved.source;
-  return [`Role models (${from}). Resolve each per **Models and role defaults** in the host capabilities reference; pistack_roles returns the same table.`, ...resolved.problems.map(problem => `Problem: ${problem}`), ...lines].join("\n");
+  return [`Role models (${from}). Resolve each per **Models and role defaults** in the host capabilities reference; p3stack_roles returns the same table.`, ...resolved.problems.map(problem => `Problem: ${problem}`), ...lines].join("\n");
 }
 
-export default function pistack(pi: Pi) {
+export default function p3stack(pi: Pi) {
   let modeOn = false;
   let restoreFooter: (() => void) | undefined;
 
@@ -73,7 +73,7 @@ export default function pistack(pi: Pi) {
   const showMode = (ctx: Context) => {
     if (ctx.mode !== "tui") return;
     // Clearing a status is also how an extension gets Pi to redraw the footer.
-    ctx.ui.setStatus("pistack", modeOn && !restoreFooter ? "poteto-mode" : undefined);
+    ctx.ui.setStatus("p3stack", modeOn && !restoreFooter ? "poteto-mode" : undefined);
   };
   const rebuild = async (_event: unknown, ctx: Context) => {
     modeOn = false;
@@ -100,8 +100,8 @@ export default function pistack(pi: Pi) {
     return { message: { customType: TURN, display: false, content: `[poteto-mode is on] Before anything else, route this request: read ${modeSkill} if you have not read it in this session, pick the matching playbook, read that playbook, put its steps in the todo list verbatim, and follow them. Delegate on the role models above. Only a question about the mode itself skips this.` } };
   });
 
-  pi.registerCommand("pistack-mode", {
-    description: "Turn poteto-mode on or off for this session: /pistack-mode on | off | status",
+  pi.registerCommand("p3stack", {
+    description: "Turn poteto-mode on or off for this session: /p3stack on | off | status",
     handler: async (args, ctx) => {
       const want = args.trim();
       if (want === "on" || want === "off") {
@@ -109,7 +109,7 @@ export default function pistack(pi: Pi) {
         pi.appendEntry(MODE, { on: modeOn });
         showMode(ctx);
       }
-      if (ctx.hasUI) ctx.ui.notify(want === "on" || want === "off" || want === "status" || !want ? `poteto-mode is ${modeOn ? "on" : "off"}.` : "Usage: /pistack-mode on | off | status", "info");
+      if (ctx.hasUI) ctx.ui.notify(want === "on" || want === "off" || want === "status" || !want ? `poteto-mode is ${modeOn ? "on" : "off"}.` : "Usage: /p3stack on | off | status", "info");
     },
   });
 
@@ -156,8 +156,8 @@ export default function pistack(pi: Pi) {
   });
 
   registerHostAware(pi as { registerTool(tool: object): void }, {
-    name: "pistack_roles", label: "pistack Roles",
-    description: "The model each pistack role uses (role defaults file, else the skill's default hint). Resolve hints per the host capabilities reference.",
+    name: "p3stack_roles", label: "p3stack Roles",
+    description: "The model each p3stack role uses (role defaults file, else the skill's default hint). Resolve hints per the host capabilities reference.",
     parameters: Type.Object({}, { additionalProperties: false }),
     outputSchema: Type.Object({ source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([Type.String(), Type.Array(Type.String())])), problems: Type.Array(Type.String()) }),
     async execute(_call: string, _args: unknown, _signal: unknown, _update: unknown, ctx: Context) {
@@ -175,8 +175,8 @@ export default function pistack(pi: Pi) {
     return catalog as typeof catalog;
   };
 
-  pi.registerCommand("pistack-setup", {
-    description: "Choose a thinking budget, a code model and a judgment model, and write ~/.pi/agent/pistack.json for every pistack role",
+  pi.registerCommand("p3stack-setup", {
+    description: "Choose a thinking budget, a code model and a judgment model, and write ~/.pi/agent/p3stack.json for every p3stack role",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) return;
       // Under T3, roles name T3 targets that only the model can list; the skill does that.
@@ -191,7 +191,7 @@ export default function pistack(pi: Pi) {
       }
       const models = ctx.modelRegistry.getAvailable();
       if (!catalog && !models.length) { ctx.ui.notify("No models are available to Pi; configure one first.", "warning"); return; }
-      const budgetLabel = await ctx.ui.select("Thinking budget for pistack roles", BUDGETS.map(budget => budget.label));
+      const budgetLabel = await ctx.ui.select("Thinking budget for p3stack roles", BUDGETS.map(budget => budget.label));
       const budget = BUDGETS.find(entry => entry.label === budgetLabel);
       if (!budget) { ctx.ui.notify("Setup cancelled; nothing written.", "info"); return; }
       const names = candidates(budget.name as Budget, models, catalog?.models);
@@ -203,7 +203,7 @@ export default function pistack(pi: Pi) {
         ...CODE_ROLES.map(role => [role, code]), ...JUDGMENT_ROLES.map(role => [role, judgment]),
         ...PANEL_ROLES.map(role => [role, [judgment, code]]),
       ]);
-      const path = join(agentDir(), "pistack.json");
+      const path = join(agentDir(), "p3stack.json");
       if (existsSync(path) && !await ctx.ui.confirm("Replace the role defaults?", `${path} exists; setup rewrites it whole.`)) { ctx.ui.notify("Kept the existing file.", "info"); return; }
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, JSON.stringify({ budget: `${budget.name} (${budget.level})`, roles }, null, 2) + "\n");

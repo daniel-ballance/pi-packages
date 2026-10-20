@@ -2,7 +2,7 @@
 // row, instead of a status row of its own. Pi has no API for decorating its footer, so
 // this wraps FooterComponent's renderer the way the subagents package does.
 
-/** Pi-tui's width helpers, passed in because pistack carries no Pi SDK of its own. */
+/** Pi-tui's width helpers, passed in because p3stack carries no Pi SDK of its own. */
 export interface Measure {
   visibleWidth(text: string): number;
   truncateToWidth(text: string, width: number, ellipsis?: string): string;

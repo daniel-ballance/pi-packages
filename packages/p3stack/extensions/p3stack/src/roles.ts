@@ -1,4 +1,4 @@
-// Role defaults: which model each pistack role uses. Skills name roles; this
+// Role defaults: which model each p3stack role uses. Skills name roles; this
 // resolves them from the role defaults file, or falls back to the default hints.
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -82,9 +82,9 @@ function problemsIn(data: unknown): string[] {
   return problems;
 }
 
-/** A trusted project's .pi/pistack.json wins over the personal file; neither means the hints. */
+/** A trusted project's .pi/p3stack.json wins over the personal file; neither means the hints. */
 export function resolveRoles(cwd: string, projectTrusted: boolean): Resolved {
-  const candidates = [...projectTrusted ? [join(cwd, ".pi", "pistack.json")] : [], join(agentDir(), "pistack.json")];
+  const candidates = [...projectTrusted ? [join(cwd, ".pi", "p3stack.json")] : [], join(agentDir(), "p3stack.json")];
   const roles = Object.fromEntries(Object.entries(DEFAULT_ROLES).map(([role, value]) => [role, { value, fromFile: false }]));
   for (const path of candidates) {
     if (!existsSync(path)) continue;
