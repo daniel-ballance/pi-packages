@@ -41,12 +41,13 @@ function main(args) {
     console.log(log ? `Upstream commits touching ${subtree}/:\n${log.replace(/^/gm, "  ")}` : `No upstream commits touch ${subtree}/.`);
     const changes = git("diff", "--name-status", "--no-renames", "-z", from, to, "--", subtree).split("\0").slice(0, -1);
     if (changes.length) {
-      const classify = sourcePathClassifier(source);
+      const skills = manifest.registry ? JSON.parse(readFileSync(join(packageDir, "registry/skills.json"), "utf8")) : undefined;
+      const classify = sourcePathClassifier(source, skills);
       console.log(`Changed upstream source paths for ${source.name} (manifest scope):`);
       for (let index = 0; index < changes.length; index += 2) {
         const [status, path] = changes.slice(index, index + 2);
         const { kind, output } = classify(relative(subtree, path).split("\\").join("/"));
-        const scope = output === undefined ? ` (${kind}${kind === "not emitted" ? "; review scope" : ""})` : ` -> ${output}`;
+        const scope = output === undefined ? ` (${kind}${["not emitted", "unclassified"].includes(kind) ? "; review scope" : ""})` : ` -> ${output}`;
         console.log(`  ${status} ${path}${scope}`);
       }
     }

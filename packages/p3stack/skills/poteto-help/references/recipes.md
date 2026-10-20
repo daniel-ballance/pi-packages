@@ -17,7 +17,7 @@ Swap in the real paths, skills, and done checks. Informal wording works.
 
 - Bug: `/skill:poteto-mode <symptom>. repro first, then fix and verify.`
 - Bug in an app: `/skill:poteto-mode repro this with /skill:verify-<app>. if it repros on main, fix it and show me a video as proof.`
-- Bug with a cheap test: `/skill:poteto-mode repro <bug> first. if there's a cheap test path, /skill:tdd it. then fix and rerun.`
+- Bug with a cheap test: `/skill:poteto-mode repro <bug> first. if there's a cheap test path, /skill:regression-test it. then fix and rerun.`
 - Feature: `/skill:poteto-mode add <behavior>. <current output> stays byte-identical. verify both.`
 - Refactor: `/skill:poteto-mode move <code> into one module, zero behavior change. record the current output first and prove it's unchanged after.`
 - Perf: `/skill:poteto-mode <operation> takes <time> on <fixture>. trace it, fix the measured cause, show me before and after.`

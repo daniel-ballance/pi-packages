@@ -70,7 +70,7 @@ The default answer is `/skill:poteto-mode`, which runs most of the others when i
 | Get several attempts at one brief, merged into the best one | [`/skill:arena`](../arena/SKILL.md) |
 | Run parallel checks over slices, or race workers, as parallel subagents | [`/skill:swarm`](../swarm/SKILL.md) |
 | Have different models review a diff and try to break it | [`/skill:interrogate`](../interrogate/SKILL.md) |
-| Fix a bug test-first when a cheap local test exists | [`/skill:tdd`](../tdd/SKILL.md) |
+| Fix a bug test-first when a cheap local test exists | [`/skill:regression-test`](../regression-test/SKILL.md) |
 | Apply TypeScript rules to `.ts` or `.tsx` work | [`/skill:typescript-best-practices`](../typescript-best-practices/SKILL.md) |
 | Strip comments before review, using a reviewer that didn't write them | [`/skill:no-comments`](../no-comments/SKILL.md) |
 | Clean AI tells out of prose | [`/skill:unslop`](../unslop/SKILL.md) |

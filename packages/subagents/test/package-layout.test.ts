@@ -42,9 +42,11 @@ async function load(source: string, base = root) {
   }
 }
 
-test("extracted research preferences and history are absent; the operational proposal remains", async () => {
+test("retired research and skill-report files are absent; the operational proposal remains", async () => {
   for (const path of [
     ".pi/model-selection.json",
+    "scripts/skill-report.mjs",
+    ".pi/skills/p3stack-pocock-unification",
     ".pi/skills/refresh-subagent-models/SKILL.md",
     "docs/subagents-model-selection",
     "docs/subagents-pareto-exploration.md",
@@ -56,7 +58,7 @@ test("extracted research preferences and history are absent; the operational pro
   assert.ok((await stat(join(root, "packages/subagents/proposals/2026-10-01-builtin-extensions-and-0.99-upgrade.md"))).isFile());
 });
 
-test("repository root discovers exactly the public extensions and both skill collections", async () => {
+test("repository root discovers exactly the public extensions and unified skill collection", async () => {
   const result = await load(root);
   assert.deepEqual(result.extensions, expectedPaths);
   assert.deepEqual(result.skills, expectedSkills);

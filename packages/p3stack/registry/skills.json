@@ -1,0 +1,1355 @@
+[
+  {
+    "source": "cursor-plugins",
+    "path": "automations/benny/skills/reproduce-and-fix-issues/SKILL.md",
+    "action": "drop",
+    "reason": "Requires Cursor Slack automation and must not run as a standalone skill."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "automations/benny/skills/setup-benny/SKILL.md",
+    "action": "drop",
+    "reason": "Requires Cursor Slack automation and must not run as a standalone skill."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "automations/benny/skills/triage-issue-reports/SKILL.md",
+    "action": "drop",
+    "reason": "Requires Cursor Slack automation and must not run as a standalone skill."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/architect/SKILL.md",
+    "action": "emit",
+    "name": "architect",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/arena/SKILL.md",
+    "action": "emit",
+    "name": "arena",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/automate-me/SKILL.md",
+    "action": "emit",
+    "name": "automate-me",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/benchmark-checklist/SKILL.md",
+    "action": "emit",
+    "name": "benchmark-checklist",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/blast-radius/SKILL.md",
+    "action": "emit",
+    "name": "blast-radius",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/bro/SKILL.md",
+    "action": "emit",
+    "name": "bro",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/correct/SKILL.md",
+    "action": "emit",
+    "name": "correct",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/create-formal-verification-skill/SKILL.md",
+    "action": "emit",
+    "name": "create-formal-verification-skill",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/create-verification-skill/SKILL.md",
+    "action": "emit",
+    "name": "create-verification-skill",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/figure-it-out/SKILL.md",
+    "action": "emit",
+    "name": "figure-it-out",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/how/SKILL.md",
+    "action": "emit",
+    "name": "how",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/in-your-own-words/SKILL.md",
+    "action": "emit",
+    "name": "in-your-own-words",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/interrogate/SKILL.md",
+    "action": "emit",
+    "name": "interrogate",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/ketchup/SKILL.md",
+    "action": "emit",
+    "name": "ketchup",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/maintain-formal-verification-skill/SKILL.md",
+    "action": "emit",
+    "name": "maintain-formal-verification-skill",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/maintain-verification-skill/SKILL.md",
+    "action": "emit",
+    "name": "maintain-verification-skill",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/make-bot-ui/SKILL.md",
+    "action": "drop",
+    "reason": "Requires the Cursor Grok Bot UI backend."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/no-comments/SKILL.md",
+    "action": "emit",
+    "name": "no-comments",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/poteto-help/SKILL.md",
+    "action": "emit",
+    "name": "poteto-help",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/poteto-mode/SKILL.md",
+    "action": "emit",
+    "name": "poteto-mode",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-attack-the-premise/SKILL.md",
+    "action": "emit",
+    "name": "principle-attack-the-premise",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-boundary-discipline/SKILL.md",
+    "action": "emit",
+    "name": "principle-boundary-discipline",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-build-the-lever/SKILL.md",
+    "action": "emit",
+    "name": "principle-build-the-lever",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-encode-lessons-in-structure/SKILL.md",
+    "action": "emit",
+    "name": "principle-encode-lessons-in-structure",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-exhaust-the-design-space/SKILL.md",
+    "action": "emit",
+    "name": "principle-exhaust-the-design-space",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-experience-first/SKILL.md",
+    "action": "emit",
+    "name": "principle-experience-first",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-explain-the-number/SKILL.md",
+    "action": "emit",
+    "name": "principle-explain-the-number",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-fix-root-causes/SKILL.md",
+    "action": "emit",
+    "name": "principle-fix-root-causes",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-foundational-thinking/SKILL.md",
+    "action": "emit",
+    "name": "principle-foundational-thinking",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-guard-the-context-window/SKILL.md",
+    "action": "emit",
+    "name": "principle-guard-the-context-window",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-laziness-protocol/SKILL.md",
+    "action": "emit",
+    "name": "principle-laziness-protocol",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-make-operations-idempotent/SKILL.md",
+    "action": "emit",
+    "name": "principle-make-operations-idempotent",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md",
+    "action": "emit",
+    "name": "principle-migrate-callers-then-delete-legacy-apis",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-minimize-reader-load/SKILL.md",
+    "action": "emit",
+    "name": "principle-minimize-reader-load",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-model-the-domain/SKILL.md",
+    "action": "emit",
+    "name": "principle-model-the-domain",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-never-block-on-the-human/SKILL.md",
+    "action": "emit",
+    "name": "principle-never-block-on-the-human",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-outcome-oriented-execution/SKILL.md",
+    "action": "emit",
+    "name": "principle-outcome-oriented-execution",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-prove-it-works/SKILL.md",
+    "action": "emit",
+    "name": "principle-prove-it-works",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-redesign-from-first-principles/SKILL.md",
+    "action": "emit",
+    "name": "principle-redesign-from-first-principles",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-separate-before-serializing-shared-state/SKILL.md",
+    "action": "emit",
+    "name": "principle-separate-before-serializing-shared-state",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-sequence-verifiable-units/SKILL.md",
+    "action": "emit",
+    "name": "principle-sequence-verifiable-units",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-subtract-before-you-add/SKILL.md",
+    "action": "emit",
+    "name": "principle-subtract-before-you-add",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-test-behavior-not-implementation/SKILL.md",
+    "action": "emit",
+    "name": "principle-test-behavior-not-implementation",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/principle-type-system-discipline/SKILL.md",
+    "action": "emit",
+    "name": "principle-type-system-discipline",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/recall/SKILL.md",
+    "action": "emit",
+    "name": "recall",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/reflect/SKILL.md",
+    "action": "emit",
+    "name": "reflect",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/setup-pstack/SKILL.md",
+    "action": "emit",
+    "name": "setup-pstack",
+    "invocation": "model",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/sharpen/SKILL.md",
+    "action": "emit",
+    "name": "sharpen",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/show-me-your-work/SKILL.md",
+    "action": "emit",
+    "name": "show-me-your-work",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/swarm/SKILL.md",
+    "action": "emit",
+    "name": "swarm",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/tdd/SKILL.md",
+    "action": "emit",
+    "name": "regression-test",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/teach/SKILL.md",
+    "action": "emit",
+    "name": "teach",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/technical-writing/SKILL.md",
+    "action": "emit",
+    "name": "technical-writing",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/typescript-best-practices/SKILL.md",
+    "action": "emit",
+    "name": "typescript-best-practices",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/unslop/SKILL.md",
+    "action": "emit",
+    "name": "unslop",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "cursor-plugins",
+    "path": "skills/why/SKILL.md",
+    "action": "emit",
+    "name": "why",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the existing pstack procedure or principle."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/ask-matt/SKILL.md",
+    "action": "drop",
+    "reason": "One router is sufficient. p3stack-mode composes poteto-mode."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/code-review/SKILL.md",
+    "action": "emit",
+    "name": "code-review",
+    "invocation": "model",
+    "phases": [
+      "review-own-work"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Standards and spec review stays separate from adversarial review."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/codebase-design/SKILL.md",
+    "action": "emit",
+    "name": "codebase-design",
+    "invocation": "model",
+    "phases": [
+      "align-and-design"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the shared deep-module vocabulary."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/diagnosing-bugs/SKILL.md",
+    "action": "emit",
+    "name": "diagnosing-bugs",
+    "invocation": "model",
+    "phases": [
+      "debug"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the red reproduction loop before Bug fix."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/domain-modeling/SKILL.md",
+    "action": "emit",
+    "name": "domain-modeling",
+    "invocation": "model",
+    "phases": [
+      "docs"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep glossary and ADR authoring."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/grill-with-docs/SKILL.md",
+    "action": "emit",
+    "name": "grill-with-docs",
+    "invocation": "user",
+    "phases": [
+      "align-and-design"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the documented interview entry point."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/implement/SKILL.md",
+    "action": "emit",
+    "name": "implement",
+    "invocation": "user",
+    "phases": [
+      "implement"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the user-invoked single-ticket builder outside mode routing."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/implement-spec/SKILL.md",
+    "action": "emit",
+    "name": "implement-spec",
+    "invocation": "user",
+    "phases": [
+      "orchestrate-and-autonomy"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Admit the tracker ticket-graph runner for owner work."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/improve-codebase-architecture/SKILL.md",
+    "action": "emit",
+    "name": "improve-codebase-architecture",
+    "invocation": "user",
+    "phases": [
+      "understand-codebase"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Admit the whole-repo architecture survey."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/pr/SKILL.md",
+    "action": "emit",
+    "name": "pr",
+    "invocation": "model",
+    "phases": [
+      "ship-pr"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep PR body guidance outside mode routing."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/prototype/SKILL.md",
+    "action": "drop",
+    "reason": "Use the Prototype playbook instead of a second prototype procedure."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/research/SKILL.md",
+    "action": "emit",
+    "name": "research",
+    "invocation": "model",
+    "phases": [
+      "research"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep cited research from outside the repository."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/retro/SKILL.md",
+    "action": "emit",
+    "name": "retro",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Admit environment retrospectives, distinct from skill reflection."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+    "action": "emit",
+    "name": "setup-matt-pocock-skills",
+    "invocation": "user",
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Admit tracker configuration required by the owner skills."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/tdd/SKILL.md",
+    "action": "emit",
+    "name": "tdd",
+    "invocation": "model",
+    "phases": [
+      "test"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep confirmed-seam TDD under its upstream name."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/to-spec/SKILL.md",
+    "action": "emit",
+    "name": "to-spec",
+    "invocation": "user",
+    "phases": [
+      "plan"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Admit tracker specs, distinct from PR checklist plans."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/to-tickets/SKILL.md",
+    "action": "emit",
+    "name": "to-tickets",
+    "invocation": "user",
+    "phases": [
+      "plan"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Admit vertical ticket slices with blocking edges."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/triage/SKILL.md",
+    "action": "emit",
+    "name": "triage",
+    "invocation": "user",
+    "phases": [
+      "review-others-work"
+    ],
+    "roles": [
+      "owner"
+    ],
+    "reason": "Admit incoming issues and external PR intake."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/wayfinder/SKILL.md",
+    "action": "emit",
+    "name": "wayfinder",
+    "invocation": "user",
+    "phases": [
+      "plan"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Admit the decision-ticket map for large efforts."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/engineering/wizard/SKILL.md",
+    "action": "emit",
+    "name": "wizard",
+    "invocation": "model",
+    "phases": [
+      "implement"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Admit scripts for steps only a human can perform."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/in-progress/chief-of-staff/SKILL.md",
+    "action": "drop",
+    "reason": "Experimental personal workflow outside the coding program."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/in-progress/claude-handoff/SKILL.md",
+    "action": "drop",
+    "reason": "Requires the Claude Code background launcher."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/in-progress/loop-me/SKILL.md",
+    "action": "drop",
+    "reason": "Personal workflow specifications are outside the coding program."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/in-progress/setup-ts-deep-modules/SKILL.md",
+    "action": "drop",
+    "reason": "In-progress repository setup is not admitted."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/in-progress/writing-beats/SKILL.md",
+    "action": "drop",
+    "reason": "In-progress article writing is outside the engineering scope."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/in-progress/writing-fragments/SKILL.md",
+    "action": "drop",
+    "reason": "In-progress article writing is outside the engineering scope."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/in-progress/writing-shape/SKILL.md",
+    "action": "drop",
+    "reason": "In-progress article writing is outside the engineering scope."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/misc/git-guardrails-claude-code/SKILL.md",
+    "action": "drop",
+    "reason": "Frozen misc skill outside the supported engineering workflow."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/misc/migrate-to-shoehorn/SKILL.md",
+    "action": "drop",
+    "reason": "Frozen misc skill outside the supported engineering workflow."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/misc/scaffold-exercises/SKILL.md",
+    "action": "drop",
+    "reason": "Frozen misc skill outside the supported engineering workflow."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/misc/setup-pre-commit/SKILL.md",
+    "action": "drop",
+    "reason": "Frozen misc skill outside the supported engineering workflow."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/productivity/grill-me/SKILL.md",
+    "action": "drop",
+    "reason": "Alias of grilling with no separate procedure."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/productivity/grilling/SKILL.md",
+    "action": "emit",
+    "name": "grilling",
+    "invocation": "model",
+    "phases": [
+      "align-and-design"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the shared human interview."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/productivity/handoff/SKILL.md",
+    "action": "emit",
+    "name": "handoff",
+    "invocation": "user",
+    "phases": [
+      "orchestrate-and-autonomy"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep portable handoff notes across tools and people."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/productivity/teach/SKILL.md",
+    "action": "drop",
+    "reason": "Keep pstack teach rather than a separate multi-session curriculum."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/productivity/to-questionnaire/SKILL.md",
+    "action": "drop",
+    "reason": "Defer outside-stakeholder questionnaires until needed."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/productivity/wait-what/SKILL.md",
+    "action": "drop",
+    "reason": "Use bro for plain-language restatements."
+  },
+  {
+    "source": "matt-pocock",
+    "path": "skills/productivity/writing-for-agents/SKILL.md",
+    "action": "emit",
+    "name": "writing-for-agents",
+    "invocation": "model",
+    "phases": [
+      "author-skills"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Keep the agent-document authoring procedure."
+  },
+  {
+    "source": "owner-plugins",
+    "path": "dyl-stack/skills/build-figma/SKILL.md",
+    "action": "drop",
+    "reason": "Requires a separate Figma design workflow outside owner review."
+  },
+  {
+    "source": "owner-plugins",
+    "path": "dyl-stack/skills/dyl-mode/SKILL.md",
+    "action": "emit",
+    "name": "dyl-mode",
+    "invocation": "user",
+    "phases": [
+      "review-others-work"
+    ],
+    "roles": [
+      "owner"
+    ],
+    "reason": "Admit the owner review procedure and its Dylan lens."
+  },
+  {
+    "source": "owner-plugins",
+    "path": "dyl-stack/skills/dyl-ready-pr/SKILL.md",
+    "action": "drop",
+    "reason": "Use Babysit for author-side merge readiness."
+  },
+  {
+    "source": "owner-plugins",
+    "path": "dyl-stack/skills/dyl-review/SKILL.md",
+    "action": "emit",
+    "name": "dyl-review",
+    "invocation": "user",
+    "phases": [
+      "review-others-work"
+    ],
+    "roles": [
+      "owner"
+    ],
+    "reason": "Admit the owner review procedure and its Dylan lens."
+  },
+  {
+    "source": "owner-plugins",
+    "path": "dyl-stack/skills/principle-the-algorithm/SKILL.md",
+    "action": "drop",
+    "reason": "Keep the Dylan lens inline without adding another principle catalog."
+  },
+  {
+    "source": "owner-plugins",
+    "path": "thermos/skills/thermo-nuclear-code-quality-review/SKILL.md",
+    "action": "emit",
+    "name": "thermo-nuclear-code-quality-review",
+    "invocation": "user",
+    "phases": [
+      "review-others-work"
+    ],
+    "roles": [
+      "owner"
+    ],
+    "reason": "Admit the owner review procedure and its Dylan lens."
+  },
+  {
+    "source": "owner-plugins",
+    "path": "thermos/skills/thermo-nuclear-review/SKILL.md",
+    "action": "emit",
+    "name": "thermo-nuclear-review",
+    "invocation": "user",
+    "phases": [
+      "review-others-work"
+    ],
+    "roles": [
+      "owner"
+    ],
+    "reason": "Admit the owner review procedure and its Dylan lens."
+  },
+  {
+    "source": "owner-plugins",
+    "path": "thermos/skills/thermos/SKILL.md",
+    "action": "emit",
+    "name": "thermos",
+    "invocation": "user",
+    "phases": [
+      "review-others-work"
+    ],
+    "roles": [
+      "owner"
+    ],
+    "reason": "Admit the owner review procedure and its Dylan lens."
+  }
+]
