@@ -19,7 +19,7 @@ else
 fi
 
 shopt -s nullglob
-package_jsons=("$ROOT"/packages/*/package.json)
+package_jsons=("$ROOT"/packages/*/package.json "$ROOT"/packages/p3stack/*/package.json)
 for package_json in "${package_jsons[@]}"; do
   package_dir="${package_json%/package.json}"
   if [[ ! -f "$package_dir/package-lock.json" ]]; then

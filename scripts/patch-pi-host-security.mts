@@ -3,6 +3,7 @@
 // npm honors the Pi SDK's published shrinkwrap ahead of our outer security pins.
 import { cp, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -143,9 +144,13 @@ const rootCache = await cachePath(join(root, "node_modules"));
 const plans: Plan[] = [];
 const visited = new Set<string>();
 for (const host of selected) {
-  const directory = scopeName === "pi-packages-repo" ? join(root, "packages", host.packageName) : root;
-  const hostCache = await cachePath(join(directory, "node_modules"));
-  const sdk = await realpath(join(directory, "node_modules", host.alias));
+  const directory = scopeName === "pi-packages-repo" ?
+    join(root, "packages", host.packageName === "mcp-client" ? "" : "p3stack", host.packageName) : root;
+  const moduleRoot = createRequire(join(directory, "package.json")).resolve.paths(host.alias)
+    ?.find(path => existsSync(join(path, host.alias, "package.json")));
+  if (moduleRoot === undefined) throw new Error(`Missing development Pi host: ${host.packageName}`);
+  const hostCache = await cachePath(moduleRoot);
+  const sdk = await realpath(join(moduleRoot, host.alias));
   inside(sdk);
   const manifest = await json(join(sdk, "package.json"));
   if (manifest.name !== sdkName || typeof manifest.main !== "string") {
