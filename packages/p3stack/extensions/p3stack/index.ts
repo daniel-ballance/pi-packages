@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
+import { doctor } from "./src/doctor.ts";
 import { detectHost, registerHostAware } from "./src/host.ts";
 import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, liveRoles, type Budget, type ModelInfo } from "./src/roles.ts";
 
@@ -29,7 +30,7 @@ interface Pi {
   registerCommand(name: string, command: { description: string; handler: (args: string, ctx: Context) => Promise<void> }): void;
   on(event: string, handler: (event: any, ctx: Context) => unknown): void;
   appendEntry(customType: string, data: unknown): void;
-  getAllTools(): { name: string }[];
+  getAllTools(): { name: string; exposure?: string }[];
   events: { emit(channel: string, data: unknown): void };
 }
 
@@ -72,15 +73,20 @@ export default function p3stack(pi: Pi) {
   });
 
   pi.registerCommand("p3stack", {
-    description: "Turn poteto-mode on or off for this session: /p3stack on | off | status",
+    description: "Turn poteto-mode on or off, show status, or write the T3 contract report. /p3stack on | off | status | doctor",
     handler: async (args, ctx) => {
       const want = args.trim();
+      if (want === "doctor") {
+        const file = doctor(pi);
+        if (ctx.hasUI) ctx.ui.notify(`Wrote ${file}`, "info");
+        return;
+      }
       if (want === "on" || want === "off") {
         modeOn = want === "on";
         pi.appendEntry(MODE, { on: modeOn });
         showMode(ctx);
       }
-      if (ctx.hasUI) ctx.ui.notify(want === "on" || want === "off" || want === "status" || !want ? `poteto-mode is ${modeOn ? "on" : "off"}.` : "Usage: /p3stack on | off | status", "info");
+      if (ctx.hasUI) ctx.ui.notify(want === "on" || want === "off" || want === "status" || !want ? `poteto-mode is ${modeOn ? "on" : "off"}.` : "Usage: /p3stack on | off | status | doctor", "info");
     },
   });
 

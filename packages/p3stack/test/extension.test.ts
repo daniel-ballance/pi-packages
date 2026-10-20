@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", me
 
 // subagents: absent, loaded but too old to reply on the bus, or replying with this catalog.
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
-function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined } = {}) {
+function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[] } = {}) {
   const root = mkdtempSync(join(tmpdir(), "p3stack-ext-")), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
@@ -44,7 +45,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
     registerCommand: (name: string, command: any) => commands.set(name, command),
     on: (name: string, handler: Function) => handlers.set(name, [...handlers.get(name) ?? [], handler]),
     appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
-    getAllTools: () => [...tools.values(), ...subagents ? [{ name: "subagent_catalog" }] : [], ...t3 ? [{ name: "mcp__t3-code__orchestrator_capabilities" }] : []],
+    getAllTools: () => [...tools.values(), ...extraTools, ...subagents ? [{ name: "subagent_catalog" }] : [], ...t3 ? [{ name: "mcp__t3-code__orchestrator_capabilities" }] : []],
     events: { emit: (channel: string, data: { reply(value: unknown): void }) => { if (channel === "subagents:catalog" && subagents && subagents !== "old") data.reply(subagents); } },
   } as never);
   const emit = async (name: string, event: any = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); return event; };
@@ -242,6 +243,48 @@ test("T3 research and review roles get a short recipe while writing and unspecif
       assert.equal(event.input.task, once);
     }
   } finally { h.dispose(); }
+});
+
+test("doctor records every T3 tool exposure, the bridge hash, and explicit provider-before-bridge ordering", async () => {
+  const h = harness({ extraTools: [
+    { name: "mcp__t3-code__delegate_task", exposure: "direct" },
+    { name: "mcp__t3-code__hidden", exposure: "hidden" },
+    { name: "mcp__other__tool", exposure: "codemode" },
+  ] });
+  const argv = process.argv, previous = process.env.T3_PI_MCP_EXTENSION_PATH;
+  const bridge = join(h.root, "bridge.ts"), provider = join(h.root, "claude-subscription", "index.ts");
+  writeFileSync(bridge, "bridge content\n");
+  process.env.T3_PI_MCP_EXTENSION_PATH = bridge;
+  try {
+    for (const [args, expected] of [
+      [["-e", provider, "--extension", bridge], true],
+      [[`--extension=${bridge}`, `--extension=${provider}`], false],
+      [["a prompt naming", provider, bridge], false],
+    ] as [string[], boolean][]) {
+      process.argv = ["node", "pi", ...args];
+      await h.command("p3stack", "doctor");
+      const report = JSON.parse(readFileSync(join(h.agentDir, "p3stack", "t3-contract.json"), "utf8"));
+      assert.deepEqual(report.tools, [{ name: "mcp__t3-code__delegate_task", exposure: "direct" }, { name: "mcp__t3-code__hidden", exposure: "hidden" }]);
+      assert.equal(report.extension.sha256, createHash("sha256").update("bridge content\n").digest("hex"));
+      assert.equal(report.claudeSubscriptionBeforeBridge, expected);
+    }
+  } finally {
+    process.argv = argv;
+    if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
+    h.dispose();
+  }
+  const terminal = harness({ hasUI: false });
+  delete process.env.T3_PI_MCP_EXTENSION_PATH;
+  try {
+    await terminal.command("p3stack", "doctor");
+    const report = JSON.parse(readFileSync(join(terminal.agentDir, "p3stack", "t3-contract.json"), "utf8"));
+    assert.deepEqual(report.tools, []);
+    assert.equal(report.extension.sha256, null);
+    assert.equal(report.claudeSubscriptionBeforeBridge, false);
+  } finally {
+    if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
+    terminal.dispose();
+  }
 });
 
 test("ask_user asks through the UI, and without one says to apply the stated default", async () => {
