@@ -23,7 +23,7 @@ function fixture(t) {
   write("home/.t3/runtime/service-state.json", { activeVersion: "fixture-version" });
   write("home/.t3/caches/pi-t3-mcp-extension.ts", bridge);
   write("empty-home/.keep", "");
-  write("extra/skills/poteto-mode/references/host-capabilities.md", tools.map(name => `\`mcp__t3-code__${name}\``).join("\n") + "\n`mcp__t3-code__html_preview`\n");
+  write("extra/skills/poteto-mode/references/host-capabilities.md", tools.map(name => `\`mcp__t3-code__${name}\``).join("\n") + "\n`mcp__t3-code__html_preview`\n`mcp__t3-code__preview_*`\n");
   const doctor = {
     tools: [...tools.map(name => ({ name: `mcp__t3-code__${name}`, exposure: "direct" })), { name: "mcp__t3-code__html_preview", exposure: "deferred" }],
     extension: { path: "/fixture/bridge.ts", sha256: hash(bridge) },

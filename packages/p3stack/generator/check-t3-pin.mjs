@@ -18,7 +18,7 @@ function doctorProblems(dump, pin, hostMap) {
   const expected = new Set(pin.directTools.map(name => prefix + name));
   const direct = new Set(dump.tools.filter(tool => tool.exposure === "direct").map(tool => tool.name));
   const available = new Set(dump.tools.map(tool => tool.name));
-  const documented = new Set([...hostMap.matchAll(/mcp__t3-code__[a-z][a-z0-9_]*\b/g)].map(match => match[0]));
+  const documented = new Set([...hostMap.matchAll(/`(mcp__t3-code__[a-z][a-z0-9_]*)`/g)].map(match => match[1]));
   const problems = dump.problems.map(problem => `doctor reported ${problem}`);
   for (const name of expected) {
     if (!documented.has(name)) problems.push(`host map is missing pinned direct tool ${name}`);
