@@ -84,17 +84,115 @@ function problemsIn(data: unknown): string[] {
 
 /** A trusted project's .pi/p3stack.json wins over the personal file; neither means the hints. */
 export function resolveRoles(cwd: string, projectTrusted: boolean): Resolved {
-  const candidates = [...projectTrusted ? [join(cwd, ".pi", "p3stack.json")] : [], join(agentDir(), "p3stack.json")];
+  const project = join(cwd, ".pi", "p3stack.json");
+  const skipped = !projectTrusted && existsSync(project) ? [`skipped ${project} because the project is untrusted`] : [];
+  const candidates = [...projectTrusted ? [project] : [], join(agentDir(), "p3stack.json")];
   const roles = Object.fromEntries(Object.entries(DEFAULT_ROLES).map(([role, value]) => [role, { value, fromFile: false }]));
   for (const path of candidates) {
     if (!existsSync(path)) continue;
     let data: unknown;
-    try { data = JSON.parse(readFileSync(path, "utf8")); } catch (error) { return { source: "default hints", roles, problems: [`ignored ${path}: ${(error as Error).message}`] }; }
+    try { data = JSON.parse(readFileSync(path, "utf8")); } catch (error) { return { source: "default hints", roles, problems: [...skipped, `ignored ${path}: ${(error as Error).message}`] }; }
     const problems = problemsIn(data);
-    if (problems.length) return { source: "default hints", roles, problems: problems.map(problem => `ignored ${path}: ${problem}`) };
+    if (problems.length) return { source: "default hints", roles, problems: [...skipped, ...problems.map(problem => `ignored ${path}: ${problem}`)] };
     const file = data as { budget?: string; roles?: Record<string, RoleValue> };
     for (const [role, value] of Object.entries(file.roles ?? {})) roles[role] = { value, fromFile: true };
-    return { source: path, budget: file.budget, roles, problems: [] };
+    return { source: path, budget: file.budget, roles, problems: skipped };
   }
-  return { source: "default hints", roles, problems: [] };
+  return { source: "default hints", roles, problems: skipped };
+}
+
+export interface Target {
+  providerInstanceId: string;
+  model: string;
+  options?: { id: string; value: string }[];
+}
+type Selection = { model: string; level?: string; value: string | Target };
+export interface Catalog { spawnEnabled: boolean; models: string[] }
+interface CatalogApi {
+  getAllTools(): { name: string }[];
+  events: { emit(channel: string, data: unknown): void };
+}
+interface RoleContext {
+  cwd: string;
+  isProjectTrusted(): boolean;
+  modelRegistry: { getAvailable(): ModelInfo[] };
+  model?: { provider: string; id: string };
+  getThinkingLevel(): string;
+  executeTool(name: string, args: object): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }>;
+}
+
+export function readCatalog(pi: CatalogApi): Catalog | undefined {
+  let catalog: Catalog | undefined;
+  pi.events.emit("subagents:catalog", { reply: (value: Catalog) => { catalog = value; } });
+  return catalog;
+}
+
+const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
+
+function t3Selections(data: unknown): Selection[] {
+  return array(record(data).providers).flatMap(raw => {
+    const provider = record(raw);
+    if (provider.canRunChildTask !== true || typeof provider.providerInstanceId !== "string") return [];
+    return array(provider.models).flatMap(raw => {
+      const model = record(raw);
+      if (typeof model.id !== "string") return [];
+      const target: Target = { providerInstanceId: provider.providerInstanceId as string, model: model.id };
+      const thinking = array(model.options).map(record).find(option => option.type === "select" && /thinking|reasoning|effort/i.test(String(option.id)));
+      if (!thinking) return [{ model: model.id, value: target }];
+      return array(thinking.options).flatMap(raw => {
+        const choice = record(raw);
+        return typeof choice.id === "string" && LEVELS.includes(choice.id)
+          ? [{ model: model.id as string, level: choice.id, value: { ...target, options: [{ id: String(thinking.id), value: choice.id }] } }]
+          : [];
+      });
+    });
+  });
+}
+
+async function selections(pi: CatalogApi, ctx: RoleContext): Promise<Selection[]> {
+  if (pi.getAllTools().some(tool => tool.name === "mcp__t3-code__orchestrator_capabilities")) {
+    const result = await ctx.executeTool("mcp__t3-code__orchestrator_capabilities", {});
+    if (result.isError) throw new Error("T3 catalog call failed");
+    const content = array(result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
+    return t3Selections(result.structuredContent ?? JSON.parse(content));
+  }
+  const catalog = readCatalog(pi);
+  if (!catalog && pi.getAllTools().some(tool => tool.name === "subagent_catalog")) throw new Error("subagents catalog did not reply");
+  if (catalog && !catalog.spawnEnabled) throw new Error("subagents policy does not permit spawning");
+  const identities = catalog?.models ?? ctx.modelRegistry.getAvailable().flatMap(model => supportedLevels(model).map(level => `${model.provider}/${model.id}:${level}`));
+  return identities.flatMap(value => {
+    const at = value.lastIndexOf(":");
+    return at > 0 && LEVELS.includes(value.slice(at + 1)) ? [{ model: value.slice(0, at), level: value.slice(at + 1), value }] : [];
+  });
+}
+
+function resolveHint(hint: string, catalog: Selection[], parent: string | undefined): Selection | undefined {
+  if (hint === "auto" || hint === "inherit-parent") return catalog.find(entry => typeof entry.value === "string" && entry.value === parent);
+  const wanted = hint;
+  const match = /^(.*?)(?::|-)(off|minimal|low|medium|high|xhigh|max)(?:-fast)?$/.exec(wanted);
+  const name = match?.[1] ?? wanted;
+  const level = match?.[2];
+  const matches = catalog.filter(entry => entry.model === name || ((!name.includes("/") || !entry.model.includes("/")) && entry.model.split("/").at(-1) === name.split("/").at(-1)));
+  return matches.filter(entry => !level || entry.level === undefined || LEVELS.indexOf(entry.level) <= LEVELS.indexOf(level))
+    .sort((a, b) => LEVELS.indexOf(b.level ?? "off") - LEVELS.indexOf(a.level ?? "off"))[0];
+}
+
+export async function liveRoles(pi: CatalogApi, ctx: RoleContext) {
+  const defaults = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
+  const roles: Record<string, string | Target | (string | Target)[]> = {};
+  const problems = [...defaults.problems];
+  let catalog: Selection[];
+  try { catalog = await selections(pi, ctx); }
+  catch (error) { return { source: defaults.source, budget: defaults.budget, roles, problems: [...problems, `catalog unavailable, ${String(error)}`] }; }
+  const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}:${ctx.getThinkingLevel()}` : undefined;
+  for (const [role, { value }] of Object.entries(defaults.roles)) {
+    const resolved = (Array.isArray(value) ? value : [value]).map(hint => {
+      const selection = resolveHint(hint, catalog, parent);
+      if (!selection) problems.push(`${role} has no live catalog selection for ${hint}`);
+      return selection?.value;
+    });
+    if (resolved.every(value => value !== undefined)) roles[role] = Array.isArray(value) ? resolved : resolved[0]!;
+  }
+  return { source: defaults.source, budget: defaults.budget, roles, problems };
 }

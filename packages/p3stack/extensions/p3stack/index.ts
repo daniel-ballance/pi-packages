@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { detectHost, registerHostAware } from "./src/host.ts";
-import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, resolveRoles, type Budget, type ModelInfo } from "./src/roles.ts";
+import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, liveRoles, type Budget, type ModelInfo } from "./src/roles.ts";
 
 interface Ui {
   select(title: string, options: string[]): Promise<string | undefined>;
@@ -18,6 +18,9 @@ interface Ui {
 }
 interface Context {
   cwd: string; hasUI: boolean; mode?: string; ui: Ui; isProjectTrusted(): boolean;
+  model?: { provider: string; id: string };
+  getThinkingLevel(): string;
+  executeTool(name: string, args: object): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }>;
   modelRegistry: { getAvailable(): ModelInfo[] };
   sessionManager: { getBranch(): { type: string; customType?: string; data?: unknown }[] };
 }
@@ -41,7 +44,9 @@ const OTHER = "Other (type an answer)";
 // The subagents package replies synchronously on this channel; see its README.
 const CATALOG_CHANNEL = "subagents:catalog";
 const text = (body: string, structuredContent?: unknown) => ({ content: [{ type: "text", text: body }], details: structuredContent ?? {}, ...(structuredContent ? { structuredContent } : {}) });
-const format = (value: string | string[]) => Array.isArray(value) ? value.join(", ") : value;
+const format = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
+const targetSchema = Type.Object({ providerInstanceId: Type.String(), model: Type.String(), options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), value: Type.String() }))) });
+const selectionSchema = Type.Union([Type.String(), targetSchema]);
 
 export default function p3stack(pi: Pi) {
   let modeOn = false;
@@ -123,15 +128,15 @@ export default function p3stack(pi: Pi) {
 
   registerHostAware(pi as { registerTool(tool: object): void }, {
     name: "p3stack_roles", label: "p3stack Roles",
-    description: "The model each p3stack role uses (role defaults file, else the skill's default hint). Resolve hints per the host capabilities reference.",
+    description: "Resolve every p3stack role against the live catalog. Return exact provider/model:thinking identities or ready T3 targets, and report unavailable roles.",
     parameters: Type.Object({}, { additionalProperties: false }),
-    outputSchema: Type.Object({ source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([Type.String(), Type.Array(Type.String())])), problems: Type.Array(Type.String()) }),
+    reachesTools: () => ["mcp__t3-code__orchestrator_capabilities"],
+    outputSchema: Type.Object({ source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), problems: Type.Array(Type.String()) }),
     async execute(_call: string, _args: unknown, _signal: unknown, _update: unknown, ctx: Context) {
-      const resolved = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
-      const lines = Object.entries(resolved.roles).map(([role, { value, fromFile }]) => `${role}: ${format(value)}${fromFile ? "" : " (default hint)"}`);
+      const resolved = await liveRoles(pi, ctx);
+      const lines = Object.entries(resolved.roles).map(([role, value]) => `${role}: ${format(value)}`);
       const head = `Role defaults from ${resolved.source}${resolved.budget ? ` (budget ${resolved.budget})` : ""}.`;
-      const roles = Object.fromEntries(Object.entries(resolved.roles).map(([role, { value }]) => [role, value]));
-      return text([head, ...resolved.problems, ...lines].join("\n"), { source: resolved.source, ...(resolved.budget ? { budget: resolved.budget } : {}), roles, problems: resolved.problems });
+      return text([head, ...resolved.problems, ...lines].join("\n"), resolved);
     },
   }, { duplicatesT3: false });
 
