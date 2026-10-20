@@ -172,7 +172,7 @@ function addExtras(files, extraDir, executables) {
 
 function renderRegistry(files, { routes, chains }) {
   const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
-  const link = target => `[${target}](${target.startsWith("playbooks/") ? `../poteto-mode/${target}` : `../${target}/SKILL.md`})`;
+  const link = target => `[${target}](${target.startsWith("p3stack-mode/playbooks/") ? target.slice("p3stack-mode/".length) : target.startsWith("playbooks/") ? `../poteto-mode/${target}` : `../${target}/SKILL.md`})`;
   const table = (title, columns, rows) => `# ${title}\n\n| ${columns.join(" | ")} |\n| ${columns.map(() => "---").join(" | ")} |\n${rows.map(row => `| ${row.map(cell).join(" | ")} |`).join("\n")}\n`;
   files.set("skills/p3stack-mode/references/routes.md", table("Routes", ["Request", "Grant", "Target"], routes.map(row => [row.request, row.grant, link(row.target)])));
   files.set("skills/p3stack-mode/references/chains.md", table("Chains", ["Id", "Playbook", "Anchor", "Position", "Skill", "When"], chains.map(row => [row.id, link(row.playbook), row.anchor, row.position, link(row.skill), row.when])));

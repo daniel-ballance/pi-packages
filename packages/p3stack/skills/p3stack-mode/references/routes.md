@@ -33,4 +33,4 @@
 | Prepare steps only a human can perform | any | [wizard](../wizard/SKILL.md) |
 | Handle a task with no matching playbook | any | [figure-it-out](../figure-it-out/SKILL.md) |
 | Cut a release | any | [release](../release/SKILL.md) |
-| Onboard to an existing repository | any | [onboard-brownfield](../onboard-brownfield/SKILL.md) |
+| Onboard to an existing repository | any | [p3stack-mode/playbooks/onboard-brownfield.md](playbooks/onboard-brownfield.md) |

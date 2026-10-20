@@ -6,7 +6,7 @@ import { sourcesOf } from "./source-paths.mjs";
 
 const json = path => JSON.parse(readFileSync(path, "utf8"));
 const key = row => `${row.source}/${row.path}`;
-export const playbookPath = target => `skills/poteto-mode/${target}`;
+export const playbookPath = target => target.startsWith("p3stack-mode/") ? `skills/${target}` : `skills/poteto-mode/${target}`;
 
 function skillPaths(root, prefix = "", templates = false) {
   if (!existsSync(root)) return [];
@@ -53,7 +53,7 @@ export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
   const { skills, routes, chains } = registry;
   const emitted = skills.filter(row => row.action === "emit");
   const names = new Set(emitted.map(row => row.name)), problems = [];
-  const targetExists = target => names.has(target) || (typeof target === "string" && /^playbooks\/[a-z0-9-]+\.md$/.test(target) && existsSync(join(outDir, playbookPath(target))));
+  const targetExists = target => names.has(target) || (typeof target === "string" && /^(?:p3stack-mode\/)?playbooks\/[a-z0-9-]+\.md$/.test(target) && existsSync(join(outDir, playbookPath(target))));
   for (const row of emitted) {
     const path = `skills/${row.name}/SKILL.md`, absolute = join(outDir, path);
     if (!existsSync(absolute)) { problems.push(`Missing emitted skill ${path}`); continue; }
