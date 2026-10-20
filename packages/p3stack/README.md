@@ -180,6 +180,12 @@ project. The role table is not injected into each turn. `p3stack_roles` resolves
 
 `PI_CODING_AGENT_DIR` replaces `~/.pi/agent` for role files, setup, and doctor reports.
 
+## Maintain p3stack
+
+Run `/skill:maintain-p3stack` to audit the current pins for every vendored source and the authored registry. A clean audit prints a status for each source, changes no files, and opens no PR. It does not claim that remote upstream is unchanged.
+
+Request an upstream-tip bump to continue through scope review, generator repairs, checks, and source update PRs. The procedure never merges or installs tools. Sources that share a checkout stay in one PR. Independent sources get separate PRs. See the [maintenance procedure](authored/skills/maintain-p3stack/SKILL.md), [nightly task prompt](authored/skills/maintain-p3stack/references/nightly.md), and [bump notes](docs/bumps/README.md).
+
 ## License
 
 MIT, from upstream; see [LICENSE](LICENSE). Upstream pin:

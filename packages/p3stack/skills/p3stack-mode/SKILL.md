@@ -52,6 +52,7 @@ Match the request and grant below. After poteto-mode, read the target and follow
 | Handle a task with no matching playbook | any | `<this file's directory>/../figure-it-out/SKILL.md` |
 | Cut a release | any | `<this file's directory>/../release/SKILL.md` |
 | Onboard to an existing repository | any | `<this file's directory>/../p3stack-mode/playbooks/onboard-brownfield.md` |
+| Audit p3stack pins or refresh its upstream sources | any | `<this file's directory>/../maintain-p3stack/SKILL.md` |
 
 ## Chains
 

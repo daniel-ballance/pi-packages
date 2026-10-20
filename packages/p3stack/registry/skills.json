@@ -1395,5 +1395,19 @@
       "owner"
     ],
     "reason": "Compose the registry routes and chains with poteto-mode."
+  },
+  {
+    "source": "p3stack",
+    "path": "skills/maintain-p3stack/SKILL.md",
+    "action": "emit",
+    "name": "maintain-p3stack",
+    "invocation": "model",
+    "phases": [
+      "maintain"
+    ],
+    "roles": [
+      "owner"
+    ],
+    "reason": "Audit source pins and prepare verified upstream update PRs without merging."
   }
 ]
