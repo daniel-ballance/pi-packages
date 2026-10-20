@@ -39,6 +39,36 @@ Name dependency-refresh or host-contract work kept separate. Record anything blo
 
 For every newly classified skill, include the exact source-relative path and its emit or drop verdict in the PR body. For a min-match repair, include the rule id and the literal old and new `find` values. The notes retain the full decision list. These body details let the reviewer identify the repair without opening another file.
 
+### Include a min-match repair
+
+Copy this literal block into the PR body for each min-match repair. Replace every placeholder with the rule's verbatim value. Preserve the literal `find` strings, including regex backslashes, without JSON escaping.
+
+````markdown
+## Min-match repair
+
+Rule id
+```text
+<rule-id>
+```
+
+Old find
+```text
+<old-find>
+```
+
+New find
+```text
+<new-find>
+```
+
+Unchanged min
+```text
+<min>
+```
+````
+
+Before `gh pr create`, run `grep -F -- '<rule-id>' <body-file>`, `grep -F -- '<old-find>' <body-file>`, and `grep -F -- '<new-find>' <body-file>` with the actual values. Require exit code 0 from all three commands. If any value is missing, fix the body file and repeat the greps before creating the PR.
+
 ### Include a section-hash diff
 
 Include this block in the PR body itself for each changed section. Replace every placeholder. Paste the full upstream section diff, not a receipt link or only the hash change. Keep the receipt link as additional evidence.
