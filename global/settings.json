@@ -20,16 +20,7 @@
     "../../Code/pi-packages/packages/subagents",
     "../../Code/pi-packages/packages/claude-subscription",
     "../../Code/pi-packages/packages/todo",
-    {
-      "source": "../../Code/pi-packages/packages/p3stack",
-      "skills": [
-        "!skills/code-review/SKILL.md",
-        "!skills/diagnosing-bugs/SKILL.md",
-        "!skills/codebase-design/SKILL.md",
-        "!skills/implement/SKILL.md",
-        "!skills/wait-what/SKILL.md"
-      ]
-    }
+    "../../Code/pi-packages/packages/p3stack"
   ],
   "tuiMode": "fullscreen"
 }

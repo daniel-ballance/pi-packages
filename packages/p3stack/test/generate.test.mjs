@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { generate, installGenerated, sectionHash } from "../generator/generate.mjs";
+import { generate, sectionHash } from "../generator/generate.mjs";
 import { gitEnv } from "../generator/git-env.mjs";
 
 const cli = fileURLToPath(new URL("../generator/generate.mjs", import.meta.url));
@@ -460,8 +460,17 @@ test("the collection and global settings use only the unified skill source", () 
   for (const lock of ["package-lock.json", "pnpm-lock.yaml"]) assert.equal(readFileSync(join(packageDir, "../..", lock), "utf8").includes("pi-pocock-skills"), false, lock);
   const settings = JSON.parse(readFileSync(join(packageDir, "../../global/settings.json"), "utf8"));
   assert.equal(settings.packages.some(entry => JSON.stringify(entry).includes("pi-pocock-skills")), false);
-  const source = settings.packages.find(entry => typeof entry === "object" && entry.source.endsWith("/p3stack"));
-  assert.deepEqual(source?.skills, ["!skills/code-review/SKILL.md", "!skills/diagnosing-bugs/SKILL.md", "!skills/codebase-design/SKILL.md", "!skills/implement/SKILL.md", "!skills/wait-what/SKILL.md"]);
+  const source = settings.packages.find(entry => (typeof entry === "string" ? entry : entry.source).endsWith("/p3stack"));
+  assert.equal(source, "../../Code/pi-packages/packages/p3stack");
+});
+
+test("the root gate uses the registry instead of the retired skill-report and decision directory", () => {
+  const root = join(packageDir, "../..");
+  const check = readFileSync(join(root, "scripts/check.sh"), "utf8");
+  assert.match(check, /node packages\/p3stack\/generator\/check-registry\.mjs/);
+  assert.doesNotMatch(check, /skill-report/);
+  assert.equal(existsSync(join(root, "scripts/skill-report.mjs")), false);
+  assert.equal(existsSync(join(root, ".pi/skills/p3stack-pocock-unification")), false);
 });
 
 const pocockNames = ["grilling", "grill-with-docs", "domain-modeling", "codebase-design", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "tdd", "implement", "triage", "setup-matt-pocock-skills", "to-spec", "to-tickets", "wayfinder", "implement-spec", "improve-codebase-architecture", "pr", "retro", "handoff", "wizard"];
@@ -615,68 +624,25 @@ pocockCase("12 dependency closure does not depend on invocation spelling", ({ ru
   assert.match(result.stderr, /skills\/implement\/SKILL.md.*tdd.*dependency/);
 });
 
-pocockCase("13 a final-root install failure restores every old root", ({ root, run }) => {
+pocockCase("13 failed staging preserves the old tree without a shell move", ({ root, run }) => {
   assert.equal(run().status, 0);
-  const originals = new Map(["LICENSE", "agents/poteto-agent.md", "skills/grilling/SKILL.md"].map(path => {
-    const text = readFileSync(join(root, path), "utf8") + "\nold output sentinel\n";
-    writeFileSync(join(root, path), text);
-    return [path, text];
-  }));
-  rmSync(join(root, "LICENSE-matt-pocock"));
-  const outDir = join(root, "staged");
-  generate({ packageDir: root, outDir });
-  assert.throws(() => installGenerated({ packageDir: root, outDir, copy: (source, destination, options) => {
-    if (destination === join(root, "skills")) {
-      mkdirSync(destination);
-      writeFileSync(join(destination, "partial"), "incomplete output");
-      throw new Error("EIO forced final-root install failure");
-    }
-    cpSync(source, destination, options);
-  } }), /EIO forced final-root install failure/);
-  for (const [path, text] of originals) assert.equal(readFileSync(join(root, path), "utf8"), text);
-  assert.equal(existsSync(join(root, "skills/partial")), false);
-  assert.equal(existsSync(join(root, "LICENSE-matt-pocock")), false);
-  assert.equal(existsSync(join(outDir, ".backups")), false);
-  installGenerated({ packageDir: root, outDir });
-  for (const path of originals.keys()) assert.deepEqual(readFileSync(join(root, path)), readFileSync(join(outDir, path)));
-  assert.equal(existsSync(join(root, "LICENSE-matt-pocock")), true);
-  assert.equal(existsSync(join(outDir, ".backups")), false);
+  const output = join(root, "blocked");
+  writeFileSync(output, "not a directory");
+  const before = readFileSync(join(root, "skills/grilling/SKILL.md"));
+  assert.throws(() => generate({ packageDir: root, outDir: output }), /ENOTDIR|EEXIST/);
+  assert.deepEqual(readFileSync(join(root, "skills/grilling/SKILL.md")), before);
 });
 
-pocockCase("14 failed restoration retains its sentinel at the reported recovery path", ({ root, run }) => {
+pocockCase("14 failed resource validation leaves no recovery step", ({ root, run, input, read }) => {
   assert.equal(run().status, 0);
-  const originals = new Map(["LICENSE", "LICENSE-matt-pocock", "agents/poteto-agent.md", "skills/grilling/SKILL.md"].map(path => {
-    const text = readFileSync(join(root, path), "utf8") + "\nretained recovery sentinel\n";
-    writeFileSync(join(root, path), text);
-    return [path, text];
-  }));
-  const staging = join(root, "staging"), injection = join(root, "fail-install.mjs");
-  mkdirSync(staging);
-  writeFileSync(injection, `
-import fs from "node:fs";
-import { syncBuiltinESMExports } from "node:module";
-const copy = fs.cpSync, move = fs.renameSync;
-fs.cpSync = (source, destination, options) => {
-  if (destination === process.env.P3STACK_PACKAGE_DIR + "/skills") throw new Error("EIO forced final-root install failure");
-  return copy(source, destination, options);
-};
-fs.renameSync = (source, destination) => {
-  if (source.endsWith("/.backups/skills")) throw new Error("EIO forced restoration failure");
-  return move(source, destination);
-};
-syncBuiltinESMExports();
-`);
-  const result = spawnSync(process.execPath, ["--import", injection, cli], {
-    cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root, TMPDIR: staging },
-  });
+  const before = read("research/SKILL.md");
+  const file = input("engineering/research/SKILL.md");
+  writeFileSync(file, readFileSync(file, "utf8") + "\n[missing](references/missing-report.md)\n");
+  const result = run();
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /EIO forced final-root install failure/);
-  assert.match(result.stderr, /EIO forced restoration failure/);
-  const recovery = /recovery copies retained at (.+)/.exec(result.stderr)?.[1];
-  assert.ok(recovery, result.stderr);
-  assert.equal(readFileSync(join(recovery, "skills/grilling/SKILL.md"), "utf8"), originals.get("skills/grilling/SKILL.md"));
-  for (const [path, text] of originals) if (!path.startsWith("skills/")) assert.equal(readFileSync(join(root, path), "utf8"), text);
-  assert.deepEqual(readdirSync(recovery), ["skills"]);
+  assert.match(result.stderr, /Referenced resource does not exist/);
+  assert.equal(read("research/SKILL.md"), before);
+  assert.equal(readdirSync(root).some(name => /backup|sync\./.test(name)), false);
 });
 
 pocockCase("15 unknown and extra CLI arguments fail before writing", ({ root, run }) => {

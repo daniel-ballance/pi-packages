@@ -46,6 +46,7 @@ fi
 
 printf '\n%s\n' '== global Pi configuration =='
 python3 -B -m unittest discover -s global/tests
+node packages/p3stack/generator/check-registry.mjs
 (
   cd "$ROOT/packages/subagents"
   POLICY_PATH="$ROOT/global/subagents.json" node --import tsx --input-type=module -e '
