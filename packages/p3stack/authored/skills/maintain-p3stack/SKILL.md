@@ -40,6 +40,21 @@ Change inputs in `registry/`, `rules/`, `overlays/`, `patches/`, `extra/`, or `a
 
    Run `npm --prefix packages/p3stack run generate`. For each failure, read [failure classes](references/failure-classes.md) and repair the named input. Keep a reason for every registry drop. Repeat until generation passes. Review section changes before accepting a new hash. Record rule ids, changed matches, section diffs, and route decisions for the bump note.
 6. Review `git diff -- packages/p3stack/skills packages/p3stack/agents` against the decision list. Account for every semantic change. Save the intended diff, regenerate, and compare the new diff with that snapshot. The difference between the two generations must be empty, not the intended bump diff.
+   1. After a re-route and regeneration, run `npm --prefix packages/p3stack run check`. A `references/missing` error is a required repair, not a stop. Add a scoped entry in `packages/p3stack/rules/tokens.json` on the referencing skill before the global slash-command rule. For example, when `sharpen` was deleted, replace the help row's link and description with a surviving `architect` target. Adapt this example to the actual upstream row.
+
+      ```json
+      {
+        "id": "help-deleted-sharpen",
+        "source": "cursor-plugins",
+        "files": "^skills/poteto-help/SKILL\\.md$",
+        "min": 1,
+        "find": "\\| Get a prompt rewritten deeper[^\\n]*\\|[^\\n]*\\.\\./sharpen/SKILL\\.md\\)[^\\n]*\\|",
+        "replace": "| Design a subsystem before implementation | [`/architect`](../architect/SKILL.md) |"
+      }
+      ```
+
+      A per-file patch in `packages/p3stack/patches/` against the post-rule referencing skill is the alternative. Never edit `vendor/` or generated `skills/`. Regenerate with `npm --prefix packages/p3stack run generate` and rerun `npm --prefix packages/p3stack run check` until it exits 0.
+
 7. If routes or chains changed, execute `npm --prefix packages/p3stack run eval:routing` as its own tool call. Require every case to pass and save the stream. Run it even if another validation step fails. Do not chain the eval behind checks or tests.
 8. Confirm that step 3 staged the intended gitlink. Stage the intended maintenance changes before the pin check, because `--check` compares the staged gitlink. Run `npm --prefix packages/p3stack run check`, `npm --prefix packages/p3stack test`, `node packages/p3stack/generator/check-registry.mjs`, and `node packages/p3stack/generator/check-t3-pin.mjs`. Require exit code 0 from each command. Run the loader check below. Run `./scripts/check.sh` and require exit code 0 with the exact final line `Root check passed.`. Keep all receipts.
 9. If lockfiles are stale, stop this source update and dispatch a separate dependency refresh using the root's `docs/dependency-refresh-2026-10-18.md`. That procedure includes tool updates and merge steps outside this skill's authority. Report the handoff instead of executing those steps here.
@@ -64,6 +79,8 @@ Keep this separate from source bumps. Run `node packages/p3stack/generator/check
 3. Review `git diff --name-only`. For a version-only repair, require exactly `packages/p3stack/rules/t3-pin.json`, `packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md`, and `packages/p3stack/skills/poteto-mode/references/host-capabilities.md`. Write receipts outside the checkout. Create no source bump note. Read `packages/p3stack/skills/poteto-mode/playbooks/opening-a-pr.md`. Follow it for a separate host-contract PR with those receipts, no vendor, route, or dependency changes, and no merge. End with the loader and fresh-process smoke above.
 
 ## Finish
+
+Not done while `npm run check` reports `references/missing`.
 
 An audit-only run is done when every source has a status, the authored registry result is reported, both loader checks pass, and status is empty. It creates no PR.
 
