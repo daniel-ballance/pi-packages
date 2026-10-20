@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { parsePolicy, SubagentPolicy } from "../extensions/subagents/src/policy.js";
 import { permitsMcpTool } from "../extensions/subagents/src/child-policy.js";
+import { tempRoot } from "./support/temp-root.js";
 
 test("new policy fields are strict and omitted fields confer no new grants", () => {
   const base = { version: 1, models: [] };
@@ -32,7 +32,7 @@ test("new policy fields are strict and omitted fields confer no new grants", () 
 });
 
 test("compile links provider/tool resources, rejects missing selections, and omits virtual models", () => {
-  const root = mkdtempSync(join(tmpdir(), "builtin-policy-unit-"));
+  const root = tempRoot("builtin-policy-unit-");
   const provider = join(root, "provider.mjs");
   writeFileSync(provider, "export default () => {}");
   const config = { version: 1, models: [{ id: "test/stub:off" }, { id: "test/virtual:off" }],
@@ -59,7 +59,7 @@ test("compile links provider/tool resources, rejects missing selections, and omi
 });
 
 test("alwaysExtensions and alwaysTools join every composition and must be available", () => {
-  const root = mkdtempSync(join(tmpdir(), "always-policy-unit-"));
+  const root = tempRoot("always-policy-unit-");
   const provider = join(root, "provider.mjs");
   writeFileSync(provider, "export default () => {}");
   const base = { version: 1, models: [{ id: "test/stub:off" }], extensions: [provider, "builtin:codemode"], tools: ["custom", "codemode", "read"] };
@@ -94,7 +94,7 @@ test("alwaysExtensions and alwaysTools join every composition and must be availa
 });
 
 test("a model from an extension provider needs its extension selected, since Children start without extensions", () => {
-  const root = mkdtempSync(join(tmpdir(), "extension-provider-unit-"));
+  const root = tempRoot("extension-provider-unit-");
   const provider = join(root, "provider.mjs");
   writeFileSync(provider, "export default () => {}");
   const model = (prov: string) => ({ provider: prov, id: "m", api: "test", input: ["text"], cost: {}, contextWindow: 1, maxTokens: 1, thinkingLevels: ["off"] });
@@ -130,7 +130,7 @@ test("a model from an extension provider needs its extension selected, since Chi
 });
 
 test("a mapped provider file that is missing or absent from the catalog does not spawn", () => {
-  const root = mkdtempSync(join(tmpdir(), "mapped-miss-unit-"));
+  const root = tempRoot("mapped-miss-unit-");
   const missing = join(root, "missing.mjs");
   const directory = join(root, "not-a-file");
   mkdirSync(directory);
@@ -165,7 +165,7 @@ test("a mapped provider file that is missing or absent from the catalog does not
 });
 
 test("a stale allowlist entry before the mapped file does not block that spawn or hide the allowlist error", () => {
-  const root = mkdtempSync(join(tmpdir(), "stale-allowlist-unit-"));
+  const root = tempRoot("stale-allowlist-unit-");
   const provider = join(root, "provider.mjs");
   const stale = join(root, "gone.mjs");
   writeFileSync(provider, "export default () => {}");

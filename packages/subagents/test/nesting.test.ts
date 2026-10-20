@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, connect, type Socket } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -11,11 +10,12 @@ import { PeerClient, servePeer } from "../extensions/subagents/src/peer-transpor
 import childGuard from "../extensions/subagents/src/child-guard.js";
 import { relayWait, type WaitArgs } from "../extensions/subagents/src/wait.js";
 import { fitDelegatedReply } from "../extensions/subagents/src/nesting.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const base = { version: 1, models: [{ id: "p/m:off" }], tools: ["read", "subagent_spawn", "subagent_wait"] };
 
 function policy(config: Record<string, unknown>) {
-  const root = mkdtempSync(join(tmpdir(), "nesting-policy-")), agentDir = join(root, "agent");
+  const root = tempRoot("nesting-policy-"), agentDir = join(root, "agent");
   mkdirSync(agentDir);
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify(config));
   const environment: PolicyEnvironment = {

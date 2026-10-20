@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { access, chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, chmod, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -11,9 +10,10 @@ import { cardsFromDetails, listingLine } from "../extensions/subagents/src/card.
 import { JsonlDecoder, RpcChild } from "../extensions/subagents/src/rpc.js";
 import { managerWorkflowHost, type AgentJob } from "../extensions/subagents/src/workflow-host.js";
 import type { SubagentPolicy } from "../extensions/subagents/src/policy.js";
+import { tempRoot } from "./support/temp-root.js";
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 async function setup(limit: ChildLimit = parseChildLimit(4)) {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-test-"));
+  const dir = tempRoot("subagent-test-");
   const notices: Notice[] = [];
   const costs: number[] = [];
   const manager = new SubagentManager(dir, n => notices.push(n), () => costs.push(manager.overview().totals.reportedCost), limit);
@@ -31,7 +31,7 @@ test("JSONL framing preserves Unicode separators and split records", () => {
 });
 
 test("UI response transport awaits stdin write callback errors", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-rpc-write-"));
+  const dir = tempRoot("subagent-rpc-write-");
   const rpc = new RpcChild({
     executable: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], cwd: dir, env: process.env,
     event() {}, stderr() {}, exit() {},
@@ -52,7 +52,7 @@ test("UI response transport awaits stdin write callback errors", async () => {
 });
 
 test("human SIGKILL rejects signal failure and unconfirmed close, then permits retry", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-rpc-kill-"));
+  const dir = tempRoot("subagent-rpc-kill-");
   const rpc = new RpcChild({
     executable: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], cwd: dir, env: process.env,
     event() {}, stderr() {}, exit() {},

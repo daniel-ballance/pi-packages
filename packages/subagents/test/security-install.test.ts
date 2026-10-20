@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
 import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { tempRoot } from "./support/temp-root.js";
 
 const execute = promisify(execFile);
 const script = fileURLToPath(new URL("../../../scripts/patch-pi-host-security.mts", import.meta.url));
@@ -82,7 +82,7 @@ async function run(value: Fixture, args: readonly string[] = []): Promise<string
 }
 
 async function withFixture(body: (value: Fixture, directory: string) => Promise<void>): Promise<void> {
-  const directory = await mkdtemp(join(tmpdir(), "pi-security-install-"));
+  const directory = tempRoot("pi-security-install-");
   try {
     await body(await fixture(join(directory, "checkout")), directory);
   } finally {

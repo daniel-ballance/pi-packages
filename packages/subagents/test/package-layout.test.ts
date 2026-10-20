@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { cp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { git as runGit, gitEnv } from "./git.js";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { tempRoot } from "./support/temp-root.js";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 const collectionExtensions = ["claude-subscription", "computer-use", "mcp-client", "pistack", "self-reload", "subagents", "todo", "web-search"];
@@ -21,10 +21,11 @@ const pistackSkills = readdirSync(join(root, "packages/pistack/skills"), { withF
 const expectedSkills = [...engineeringSkills.filter(name => name !== "tdd"), "subagents", "workflows", ...pistackSkills].sort();
 
 async function load(source: string, base = root) {
-  const temp = await mkdtemp(join(tmpdir(), "pi-package-discovery-"));
+  const temp = tempRoot("pi-package-discovery-");
   const previousHome = process.env.HOME;
   process.env.HOME = temp; // Also isolate the conventional ~/.agents/skills path.
   try {
+    runGit(["init", "--quiet", "--template=", temp]);
     const loader = new DefaultResourceLoader({
       cwd: temp, agentDir: temp,
       settingsManager: SettingsManager.inMemory({ packages: [source] }),
@@ -74,7 +75,7 @@ test("project settings leave pi-pocock-skills to the user's filter", async () =>
 });
 
 test("Pi Git installation resolves every extension without development dependencies or bundled Pi peers", async () => {
-  const temp = await mkdtemp(join(tmpdir(), "pi-production-install-"));
+  const temp = tempRoot("pi-production-install-");
   const source = join(temp, "repo.git");
   try {
     await mkdir(source);
@@ -127,7 +128,7 @@ test("Pi Git installation resolves every extension without development dependenc
 test("pnpm production workspace resolves every extension without development dependencies", {
   skip: process.env.PACKAGE_MANAGER !== "pnpm" ? "covered by pnpm CI jobs" : false,
 }, async () => {
-  const temp = await mkdtemp(join(tmpdir(), "pi-pnpm-production-"));
+  const temp = tempRoot("pi-pnpm-production-");
   try {
     for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "packages"]) {
       await cp(join(root, name), join(temp, name), {

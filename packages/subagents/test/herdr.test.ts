@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { HerdrStatus } from "../extensions/subagents/src/herdr.js";
+import { tempRoot } from "./support/temp-root.js";
 
 type Request = { id: string; method: string; params: Record<string, any> };
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -144,7 +144,7 @@ test("only enabled inside a herdr pane", () => {
 });
 
 test("writes newline-delimited JSON requests to herdr's socket", { skip: process.platform === "win32" }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "subagents-herdr-"));
+  const dir = tempRoot("subagents-herdr-");
   const socket = join(dir, "herdr.sock");
   const received: Request[] = [];
   const server = createServer(connection => connection.on("data", data => {

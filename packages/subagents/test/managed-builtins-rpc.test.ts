@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import { SubagentPolicy, type Composition } from "../extensions/subagents/src/policy.js";
+import { tempRoot } from "./support/temp-root.js";
 const fixture = fileURLToPath(new URL("./fixtures/builtin-probe-provider.mjs", import.meta.url));
 const server = fileURLToPath(new URL("./fixtures/builtin-probe-mcp.mjs", import.meta.url));
 const guard = fileURLToPath(new URL("../extensions/subagents/src/child-guard.ts", import.meta.url));
@@ -14,7 +14,7 @@ const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-age
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 function setup(options: { project?: boolean; trusted?: boolean; credentials?: boolean; warming?: boolean; suppress?: boolean; exposure?: string } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "managed-builtins-")), agentDir = join(root, "agent");
+  const root = tempRoot("managed-builtins-"), agentDir = join(root, "agent");
   mkdirSync(agentDir); mkdirSync(join(root, ".pi"));
   const previous = process.env;
   process.env = { PATH: previous.PATH, HOME: root, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1",

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { JsonlDecoder } from "../extensions/subagents/src/rpc.js";
+import { tempRoot } from "./support/temp-root.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const extension = fileURLToPath(new URL("../extensions/subagents/index.ts", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/notification-provider.mjs", import.meta.url));
@@ -14,7 +14,7 @@ const executableArgs = process.env.PEER_TEST_EXECUTABLE ? [] : [cli];
 
 for (const mode of ["message", "abort"] as const) {
   test(`real parent RPC: ${mode === "message" ? "a steer typed during an unbounded wait ends it" : "aborting an unbounded wait leaves the worker running"}`, { timeout: 20000, skip: process.platform === "win32" }, async () => {
-    const root = mkdtempSync(join(tmpdir(), "wait-parent-rpc-"));
+    const root = tempRoot("wait-parent-rpc-");
     const agentDir = join(root, "agent"), bin = join(root, "bin");
     mkdirSync(agentDir); mkdirSync(bin);
     writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec ${[executable, ...executableArgs].map(arg => JSON.stringify(arg)).join(" ")} "$@"\n`, { mode: 0o700 });

@@ -5,12 +5,13 @@
 // package, real child processes and scripted offline models.
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer, type Server } from "node:net";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
+import { tempRoot } from "./support/temp-root.js";
 
 const enabled = process.env.HERDR_E2E === "1" && process.platform !== "win32";
 const skip = enabled ? false : "set HERDR_E2E=1 (requires herdr and pi on PATH)";
@@ -132,7 +133,7 @@ async function activeWindow(pane: Pane, first: string, timeout = 20000) {
 
 before(async () => {
   if (!enabled) return;
-  root = mkdtempSync(join(tmpdir(), "subagents-herdr-e2e-"));
+  root = tempRoot("subagents-herdr-e2e-");
   mkdirSync(join(root, "home"));
   writeFileSync(join(root, "workflow.json"), JSON.stringify({ version: 1, name: "e2e workflow", cwd: root,
     limits: { concurrency: 1, maxAttempts: 2, timeoutSeconds: 60 },

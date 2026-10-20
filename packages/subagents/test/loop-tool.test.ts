@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { asHost } from "./host-env.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const loops = { enabled: true, minIntervalMs: 1000, maxIterations: 2, maxDurationMs: 60_000 };
 
 // The real extension with a fake Pi: a policy file in a private agent directory.
 function harness(policy: Record<string, unknown>, hasUI = true) {
-  const agentDir = mkdtempSync(join(tmpdir(), "loop-agent-"));
+  const agentDir = tempRoot("loop-agent-");
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "p/m:off" }], ...policy }));
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
@@ -13,6 +12,7 @@ import { cleanText, inspectorPage, inspectorSource, type InspectorSource } from 
 import { workflowMap } from "../extensions/subagents/src/workflow-map.js";
 import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import { Workflows } from "../extensions/subagents/src/workflows.js";
+import { tempRoot } from "./support/temp-root.js";
 import { demoSource } from "./fixtures/inspector-demo.js";
 
 const plain = (lines: string[]) => lines.map(stripVTControlCharacters).join("\n");
@@ -389,7 +389,7 @@ test("activity retains bounded real tool events and partial text, never hidden t
 });
 
 test("real manager streams activity; browsing preserves workflow and agent notices/read cursors", async () => {
-  const root = mkdtempSync(join(tmpdir(), "inspector-test-"));
+  const root = tempRoot("inspector-test-");
   const manager = new SubagentManager(join(root, "agents"));
   const workflows = new Workflows(join(root, "workflows"), { authorize() {}, agents: async jobs => jobs.map(() => "report"), command: async () => ({ code: 0, stdout: "" }) });
   try {

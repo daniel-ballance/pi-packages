@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 import { cliEnv } from "./host-env.js";
+import { tempRoot } from "./support/temp-root.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const fixture = fileURLToPath(new URL("./fixtures/nest-parent-provider.mjs", import.meta.url));
 const childFixture = fileURLToPath(new URL("./fixtures/nest-child-provider.mjs", import.meta.url));
 const extension = fileURLToPath(new URL("../extensions/subagents/index.ts", import.meta.url));
 
 test("a coordinator Child delegates to a worker through the root manager, within its subtree, and closing it cascades", { timeout: 90000, skip: process.platform === "win32" }, async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "nest-parent-"))), agentDir = join(root, "agent"), bin = join(root, "bin"), work = join(root, "work");
+  const root = tempRoot("nest-parent-"), agentDir = join(root, "agent"), bin = join(root, "bin"), work = join(root, "work");
   mkdirSync(agentDir); mkdirSync(bin); mkdirSync(work);
   if (process.env.PEER_TEST_EXECUTABLE) writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec '${process.env.PEER_TEST_EXECUTABLE}' "$@"\n`, { mode: 0o700 });
   else writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec '${process.execPath}' '${cli}' "$@"\n`, { mode: 0o700 });

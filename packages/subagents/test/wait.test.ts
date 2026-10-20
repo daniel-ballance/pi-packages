@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { cardsFromDetails } from "../extensions/subagents/src/card.js";
 import { parseChildLimit, type ChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import { messageLatch, waitReport, withCurrentReviews, type WaitEnd } from "../extensions/subagents/src/wait.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
 async function setup(limit: ChildLimit = parseChildLimit(4), parentMessageLimit = 0) {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-wait-"));
+  const dir = tempRoot("subagent-wait-");
   const manager = new SubagentManager(dir, () => {}, () => {}, limit, undefined, 0, parentMessageLimit);
   const spawn = async (name: string, task = name, parentId?: string) => {
     const child = await manager.spawn({ name, task, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId });

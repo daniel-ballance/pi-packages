@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { asHost } from "./host-env.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const guidance = "The limit of 1 counts every live child in the whole tree (1 live). You can close only your own idle children. If you have none to reuse or close, do not retry. If you have a way to message your parent, ask it for a slot. Otherwise report the limit in your final reply.";
 
 test("a nested spawn at the live cap is told not to retry, and a root spawn is not", { timeout: 20000, skip: process.platform === "win32" }, async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "capacity-guidance-")));
+  const root = tempRoot("capacity-guidance-");
   const repo = join(root, "repo"), agentDir = join(root, "agent"), bin = join(root, "bin");
   mkdirSync(repo); mkdirSync(agentDir); mkdirSync(bin);
   writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(root, "pi.mjs"))} "$@"\n`, { mode: 0o700 });

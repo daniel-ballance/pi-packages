@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -10,12 +9,13 @@ import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 import { Workflows } from "../extensions/subagents/src/workflows.js";
 import { managerWorkflowHost, type AgentJob } from "../extensions/subagents/src/workflow-host.js";
 import type { WorkflowDefinition } from "../extensions/subagents/src/workflow-definition.js";
+import { tempRoot } from "./support/temp-root.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/workflow-provider.mjs", import.meta.url));
 const guard = fileURLToPath(new URL("../extensions/subagents/src/child-guard.ts", import.meta.url));
 
 test("real workflow host leaves a halted worker process alive for human supervision", { timeout: 30000 }, async () => {
-  const root = mkdtempSync(join(tmpdir(), "workflow-halt-rpc-")), agentDir = join(root, "agent"); mkdirSync(agentDir);
+  const root = tempRoot("workflow-halt-rpc-"), agentDir = join(root, "agent"); mkdirSync(agentDir);
   const previous = { PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR, PI_OFFLINE: process.env.PI_OFFLINE };
   process.env.PI_CODING_AGENT_DIR = agentDir; process.env.PI_OFFLINE = "1";
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "workflow-test/stub:off" }], tools: ["read"], extensions: [provider] }));
@@ -43,7 +43,7 @@ test("real workflow host leaves a halted worker process alive for human supervis
 });
 
 test("real Pi workflows: DAG, repair, improvement, reviewer, scoped peer group and cleanup", { timeout: 60000 }, async () => {
-  const root = mkdtempSync(join(tmpdir(), "workflows-rpc-")), agentDir = join(root, "agent"); mkdirSync(agentDir);
+  const root = tempRoot("workflows-rpc-"), agentDir = join(root, "agent"); mkdirSync(agentDir);
   const previous = { PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR, PI_OFFLINE: process.env.PI_OFFLINE };
   process.env.PI_CODING_AGENT_DIR = agentDir; process.env.PI_OFFLINE = "1";
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "workflow-test/stub:off" }], tools: ["write", "read", "bash", "peer_send"], extensions: [provider], peerMessageLimit: 2 }));

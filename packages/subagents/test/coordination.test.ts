@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "../extensions/subagents/src/coordination.js";
+import { tempRoot } from "./support/temp-root.js";
 
 test("coordination normalizes paths, warns about ancestors/outputs and excludes stopped workers", () => {
-  const cwd = mkdtempSync(join(tmpdir(), "coordination-"));
+  const cwd = tempRoot("coordination-");
   try {
     const declaration = normalizeCoordination({ owns: ["src", "./src"], outputs: ["reports/result.md"] }, cwd);
     assert.deepEqual(declaration?.owns, [join(cwd, "src")]);
@@ -24,7 +24,7 @@ test("coordination normalizes paths, warns about ancestors/outputs and excludes 
 });
 
 test("missing outputs behind symlink aliases resolve to the same declaration", { skip: process.platform === "win32" }, () => {
-  const cwd = mkdtempSync(join(tmpdir(), "coordination-alias-"));
+  const cwd = tempRoot("coordination-alias-");
   try {
     mkdirSync(join(cwd, "real")); symlinkSync(join(cwd, "real"), join(cwd, "alias"));
     assert.deepEqual(normalizeCoordination({ owns: ["alias/new/file.ts"] }, cwd), normalizeCoordination({ owns: ["real/new/file.ts"] }, cwd));

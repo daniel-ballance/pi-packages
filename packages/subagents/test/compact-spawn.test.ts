@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { subagentRenderers } from "../extensions/subagents/src/render.js";
 import { asHost } from "./host-env.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const marker = "TASK-MARKER-9f3a";
 const task = `${marker}\n${"x".repeat(2048)}`.slice(0, 2048);
@@ -17,7 +17,7 @@ function keys(value: unknown): string[] {
 }
 
 async function withSpawn(run: (spawn: (args: Record<string, unknown>) => Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }>, repo: string, root: string) => Promise<void>) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "compact-spawn-")));
+  const root = tempRoot("compact-spawn-");
   const repo = join(root, "repo"), agentDir = join(root, "agent"), bin = join(root, "bin");
   mkdirSync(repo); mkdirSync(agentDir); mkdirSync(bin);
   writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(root, "compact-spawn-pi.mjs"))} "$@"\n`, { mode: 0o700 });
