@@ -30,9 +30,7 @@
     "in the foreground",
     "GLOSSARY.",
     "GLOSSARY-",
-    "docs/agents/issue-tracker.md",
-    "The issue tracker should have been provided",
-    "workflow in the tracker doc"
+    "Task("
   ],
   "require": [
     {

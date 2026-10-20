@@ -11,9 +11,10 @@ Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
 
 | Path | Kind | Owner |
 |---|---|---|
-| `vendor/pstack` | git submodule, `cursor/plugins`; the generator reads only `pstack/` | upstream |
-| `vendor/matt-pocock` | git submodule, `mattpocock/skills`; ten selected skills | upstream |
-| `rules/manifest.json` | named sources with their vendor roots, path maps, exclusions, and upstream checkouts | hand-written |
+| `vendor/pstack` | git submodule, `cursor/plugins`; pstack, dyl-stack, and thermos | upstream |
+| `vendor/matt-pocock` | git submodule, `mattpocock/skills` | upstream |
+| `registry/` | skill verdicts, emitted names, invocation, routes, and chains | hand-written |
+| `rules/manifest.json` | named sources with their vendor roots, path maps, resource exclusions, and upstream checkouts | hand-written |
 | `rules/tokens.json` | token rewrites | hand-written |
 | `rules/sections.json` + `overlays/` | section replacements | hand-written |
 | `patches/*.patch` | per-file patches, the escape hatch | hand-written |
@@ -41,10 +42,15 @@ so install the workspace first.
 `rules/manifest.json` contains a `sources` array. Each source has a unique `name`,
 a `vendor` root, a `map` of input prefixes to output prefixes, an optional
 `exclude` list of regular expressions, and optional `upstream` checkout details.
-The sources are `cursor-plugins` and `matt-pocock`. Each source uses its own map and exclusions.
+The sources are `cursor-plugins`, `matt-pocock`, and `owner-plugins`. The owner
+source reads dyl-stack and thermos from the same Cursor checkout, with no new pin.
 A source's optional `required` list names output paths that it must supply.
-The Pocock source excludes `tdd` until PR-07 resolves its name collision.
-The five-skill exclusion filter in `global/settings.json` is temporary. PR-07 removes it.
+`registry/skills.json` classifies every upstream skill under each source's
+`skillRoots`, which defaults to `skills/`. Drop rows exclude the whole skill
+directory. Emit rows own the output name and invocation. Resource exclusions
+remain in the manifest. pstack's `tdd` becomes `regression-test`; Pocock keeps `tdd`.
+`node generator/check-registry.mjs` checks coverage, unique names, route and chain
+targets, and exact chain anchors. Generation checks these before replacing output.
 If two sources emit the same path, generation fails with the path and both names
 before it writes output.
 
@@ -79,8 +85,7 @@ Rules apply in this order. The same sources and rules give byte-identical output
    longer applies fails with its name; rebase it. Keep patches rare: prefer a
    token or a section.
 
-`extra/` files are added after tokens and sections but before patches and are
-not rewritten by token or section rules. The
+`extra/` files are added after the rule kinds and are not rewritten. The
 **coupling lint** then scans every emitted file for the tokens in
 `rules/lint.json` and fails with `file:line: token`. The fix is always a new or
 corrected rule, never an edit to the output. `lint.json` also requires dependency
@@ -147,7 +152,7 @@ npm run bump -- matt-pocock <ref>     # update the Pocock source
 The command requires a source name. It fetches only that source's checkout,
 moves it to the ref, and classifies changed paths against that source's map and
 exclusions before it regenerates all sources. `cursor-plugins` uses `vendor/pstack`
-and the `pstack/` subtree. Unknown names and dirty checkouts fail before a fetch.
+and the `pstack/` subtree. `owner-plugins` uses that same checkout's sibling trees. Unknown names and dirty checkouts fail before a fetch.
 `npm run update-upstream -- <source> [ref]` remains an alias.
 The report distinguishes emitted paths, explicit exclusions, and paths not emitted. Review every path marked `review scope`: it may be a new
 capability the manifest does not yet include. `plugin.json` is not emitted but
@@ -188,7 +193,7 @@ that broke it (`git -C vendor/pstack show <sha>`), then fix the rule:
 Rerun `node generator/generate.mjs` until it passes, then review
 `git diff -- skills agents` for upstream changing a decision, not just a
 sentence. Regenerate a second time and confirm the diff is unchanged.
-Re-check skill coverage with the repository's
-[`p3stack-pocock-unification` skill](../../.pi/skills/p3stack-pocock-unification/SKILL.md).
+Classify every new or renamed upstream skill in `registry/skills.json`.
+The checker names unclassified paths and stale rows. Keep a reason for each drop.
 Run `npm run check`, `npm test`, and the repository's `./scripts/check.sh`
 before committing `vendor/pstack` with the regenerated output and rule changes.

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./git-env.mjs";
+import { checkRegistry, loadRegistry } from "./check-registry.mjs";
 import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
 const readJson = (path, fallback) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
@@ -36,10 +37,10 @@ function decode(bytes) {
 
 const isExecutable = path => (statSync(path).mode & 0o111) !== 0;
 
-function collect(packageDir, sources, executables, problems) {
+function collect(packageDir, sources, executables, problems, skills) {
   const files = new Map(), owners = new Map();
   for (const source of sources) {
-    const vendor = join(packageDir, source.vendor), classify = sourcePathClassifier(source);
+    const vendor = join(packageDir, source.vendor), classify = sourcePathClassifier(source, skills);
     for (const path of walk(vendor).map(file => file.split("\\").join("/"))) {
       const { output } = classify(path);
       if (output === undefined) continue;
@@ -213,15 +214,26 @@ function lintResources(packageDir, outDir, owners, sources) {
 
 export function generate({ packageDir, outDir }) {
   const rules = join(packageDir, "rules");
-  const sources = sourcesOf(readJson(join(rules, "manifest.json")));
+  const manifest = readJson(join(rules, "manifest.json")), sources = sourcesOf(manifest);
   const infos = sources.map(source => upstreamInfo(packageDir, source)).filter(Boolean);
+  const registry = manifest.registry ? loadRegistry(packageDir, sources) : undefined;
   const problems = [], executables = new Set();
-  const { files, owners } = collect(packageDir, sources, executables, problems);
+  const { files, owners } = collect(packageDir, sources, executables, problems, registry?.skills);
   const expanders = new Map(sources.map(source => [source.name, expander(infos.find(info => info.source === source.name)?.commit, problems)]));
   const expand = (text, where, path) => expanders.get(owners.get(path))(text, where);
   const upstream = new Map(files);
   applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems);
   applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
+  if (registry) {
+    for (const row of registry.skills.filter(row => row.action === "emit")) {
+      const path = `skills/${row.name}/SKILL.md`, text = files.get(path);
+      if (typeof text !== "string") { problems.push(`Registry skill ${row.name} is not mapped to ${path}`); continue; }
+      const hidden = /^disable-model-invocation:\s*true\s*$/m.test(text);
+      if (hidden === (row.invocation === "user")) continue;
+      const visible = text.replace(/^disable-model-invocation:.*\n/gm, "");
+      files.set(path, row.invocation === "user" ? visible.replace(/^---\n/, "---\ndisable-model-invocation: true\n") : visible);
+    }
+  }
   addExtras(files, join(packageDir, "extra"), executables);
   if (problems.length) throw new Error(problems.join("\n"));
   writeFiles(files, executables, outDir);
@@ -236,6 +248,7 @@ export function generate({ packageDir, outDir }) {
     for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);
   }
   if (lintProblems.length) throw new Error(`Coupling lint: untranslated tokens or missing dependencies; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
+  if (registry) checkRegistry({ packageDir, outDir, registry });
   if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources);
   return infos;
 }

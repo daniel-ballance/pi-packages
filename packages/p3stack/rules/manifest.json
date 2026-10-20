@@ -1,8 +1,10 @@
 {
+  "registry": true,
   "sources": [
     {
       "name": "cursor-plugins",
       "vendor": "vendor/pstack/pstack",
+      "skillRoots": ["skills/", "automations/"],
       "map": [
         {
           "from": "skills/",
@@ -18,7 +20,6 @@
         }
       ],
       "exclude": [
-        "^skills/make-bot-ui/",
         "^skills/poteto-mode/scripts/(bootstrap\\.ts|bun\\.lock|package\\.json)$"
       ],
       "upstream": {
@@ -49,24 +50,28 @@
         }
       ],
       "exclude": [
-        "^skills/(engineering|productivity)/(?!(grilling|grill-with-docs|domain-modeling|codebase-design|code-review|writing-for-agents|diagnosing-bugs|research|wait-what|implement)/)",
         "^skills/[^/]+/[^/]+/agents/"
-      ],
-      "required": [
-        "skills/grilling/SKILL.md",
-        "skills/grill-with-docs/SKILL.md",
-        "skills/domain-modeling/SKILL.md",
-        "skills/codebase-design/SKILL.md",
-        "skills/code-review/SKILL.md",
-        "skills/writing-for-agents/SKILL.md",
-        "skills/diagnosing-bugs/SKILL.md",
-        "skills/research/SKILL.md",
-        "skills/wait-what/SKILL.md",
-        "skills/implement/SKILL.md"
       ],
       "upstream": {
         "repository": "mattpocock/skills",
         "checkout": "vendor/matt-pocock",
+        "branch": "main"
+      }
+    },
+    {
+      "name": "owner-plugins",
+      "vendor": "vendor/pstack",
+      "skillRoots": ["dyl-stack/skills/", "thermos/skills/"],
+      "map": [
+        { "from": "dyl-stack/skills/dyl-mode/SKILL.md", "to": "skills/dyl-mode/SKILL.md" },
+        { "from": "dyl-stack/skills/dyl-mode/references/requirements.md", "to": "skills/dyl-mode/references/requirements.md" },
+        { "from": "dyl-stack/skills/dyl-review/", "to": "skills/dyl-review/" },
+        { "from": "thermos/skills/", "to": "skills/" },
+        { "from": "thermos/agents/", "to": "agents/" }
+      ],
+      "upstream": {
+        "repository": "cursor/plugins",
+        "checkout": "vendor/pstack",
         "branch": "main"
       }
     }

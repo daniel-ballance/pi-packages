@@ -464,14 +464,14 @@ test("the collection and global settings use only the unified skill source", () 
   assert.deepEqual(source?.skills, ["!skills/code-review/SKILL.md", "!skills/diagnosing-bugs/SKILL.md", "!skills/codebase-design/SKILL.md", "!skills/implement/SKILL.md", "!skills/wait-what/SKILL.md"]);
 });
 
-const pocockNames = ["grilling", "grill-with-docs", "domain-modeling", "codebase-design", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "wait-what", "implement"];
+const pocockNames = ["grilling", "grill-with-docs", "domain-modeling", "codebase-design", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "tdd", "implement", "triage", "setup-matt-pocock-skills", "to-spec", "to-tickets", "wayfinder", "implement-spec", "improve-codebase-architecture", "pr", "retro", "handoff", "wizard"];
 
 function pocockFixture() {
   const temp = mkdtempSync(join(process.env.P3STACK_FIXTURE_ROOT ?? tmpdir(), "p3stack-pocock-"));
   const root = join(temp, "repo/packages/p3stack");
   mkdirSync(join(temp, "repo/scripts"), { recursive: true });
   symlinkSync(join(packageDir, "../../scripts/lint-skill"), join(temp, "repo/scripts/lint-skill"));
-  for (const name of ["rules", "extra", "overlays", "patches", "vendor/pstack"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
+  for (const name of ["rules", "registry", "extra", "overlays", "patches", "vendor/pstack"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
   const oldVendor = join(packageDir, "../pi-pocock-skills/vendor/matt-pocock");
   cpSync(existsSync(oldVendor) ? oldVendor : join(packageDir, "vendor/matt-pocock"), join(root, "vendor/matt-pocock"), { recursive: true });
   const manifestPath = join(root, "rules/manifest.json");
@@ -512,14 +512,14 @@ pocockCase("2 missing adopted skills fail by name", ({ run, input }) => {
   rmSync(input("engineering/research"), { recursive: true });
   const result = run();
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /matt-pocock.*skills\/research\/SKILL\.md.*missing/);
+  assert.match(result.stderr, /Stale registry row matt-pocock\/skills\/engineering\/research\/SKILL\.md/);
 });
 
 pocockCase("3 duplicate names in two buckets fail", ({ run, input }) => {
   cpSync(input("engineering/research"), input("productivity/research"), { recursive: true });
   const result = run();
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /skills\/research\/SKILL\.md.*matt-pocock.*both emit/);
+  assert.match(result.stderr, /Unclassified skill matt-pocock\/skills\/productivity\/research\/SKILL\.md/);
 });
 
 pocockCase("4 ordered rule minima detect upstream drift", ({ run, input, rewrite }) => {
@@ -527,18 +527,14 @@ pocockCase("4 ordered rule minima detect upstream drift", ({ run, input, rewrite
   assert.match(run().stderr, /subagent-plural: 0 matches/);
 });
 
-pocockCase("5 tracker and collection rules retain counted drift guards", ({ run, rewrite }) => {
-  for (const [rule, path, source] of [
-    ["tracker-precondition", "code-review", "The issue tracker should have been provided to you."],
-    ["tracker-spec-source", "code-review", "fetched via the workflow in the tracker doc."],
-    ["tracker-ticket", "implement", "fetch it from the issue tracker and state its title"],
-    ["subagent-review-collect", "code-review", "in the foreground"],
-  ]) {
-    rewrite(`engineering/${path}/SKILL.md`, source, "upstream changed this wording");
-    const result = run();
-    assert.equal(result.status, 1);
-    assert.ok(result.stderr.includes(`${rule}: 0 matches`), result.stderr);
-  }
+pocockCase("5 tracker prerequisites survive and review collection retains its drift guard", ({ run, read, rewrite }) => {
+  const first = run();
+  assert.equal(first.status, 0, first.stderr);
+  assert.match(read("code-review/SKILL.md"), /The issue tracker should have been provided/);
+  assert.match(read("triage/SKILL.md"), /docs\/agents\/issue-tracker.md/);
+  assert.match(read("implement/SKILL.md"), /fetch it from the issue tracker and state its title/);
+  rewrite("engineering/code-review/SKILL.md", "in the foreground", "upstream changed this wording");
+  assert.match(run().stderr, /subagent-review-collect: 0 matches/);
 });
 
 pocockCase("6 unrecognized harness wording names the file", ({ run, input }) => {
@@ -581,7 +577,7 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.match(read("research/SKILL.md"), /\[child delegation guidance\]\(\.\.\/poteto-mode\/references\/host-capabilities.md\)/);
   assert.match(read("implement/SKILL.md"), /\[tdd\]\(\.\.\/tdd\/SKILL.md\)/);
   assert.match(read("implement/SKILL.md"), /\[code-review\]\(\.\.\/code-review\/SKILL.md\)/);
-  assert.match(read("implement/SKILL.md"), /If no tracker is configured, ask for the ticket text/);
+  assert.match(read("implement/SKILL.md"), /fetch it from the issue tracker and state its title/);
   assert.match(read("code-review/SKILL.md"), /collect and verify both reports before aggregating/);
   assert.match(read("code-review/SKILL.md"), /Search the repo for every file/);
   assert.match(read("diagnosing-bugs/SKILL.md"), /prove the mutation landed/);
@@ -591,8 +587,9 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.equal(existsSync(join(root, "skills/domain-modeling/GLOSSARY-FORMAT.md")), false);
   assert.equal(existsSync(join(root, "skills/references/CHILD-DELEGATION.md")), false);
   assert.equal(existsSync(join(root, "skills/research/agents")), false);
-  assert.match(read("tdd/SKILL.md"), /TDD Bug Fix/);
-  assert.equal(existsSync(join(root, "skills/to-spec/SKILL.md")), false);
+  assert.match(read("regression-test/SKILL.md"), /TDD Bug Fix/);
+  assert.match(read("tdd/SKILL.md"), /confirmed seam|confirm.*user/i);
+  assert.equal(existsSync(join(root, "skills/wait-what/SKILL.md")), false);
   const before = pocockNames.map(name => read(`${name}/SKILL.md`));
   assert.equal(run().status, 0);
   assert.deepEqual(pocockNames.map(name => read(`${name}/SKILL.md`)), before);
