@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { harness, SESSION, type Run } from "./support/delegate.js";
+
+function denialCwd(t: TestContext): string {
+  const cwd = mkdtempSync("/tmp/cs-");
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const notes = join(cwd, "notes.txt");
+  assert.ok(notes.length <= 80, notes);
+  return cwd;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -101,6 +110,7 @@ test("resume continues the named Claude Code session instead of starting one", a
 });
 
 test("an edit reaches the user with the tool and the path, and each answer does what it says", async t => {
+  const cwd = denialCwd(t);
   const answered: (string | undefined)[] = [];
   const h = harness(t, async run => {
     await run.claude.user();
@@ -121,13 +131,13 @@ test("an edit reaches the user with the tool and the path, and each answer does 
     run.finished("Edited what I was allowed to.");
   });
   h.answers.push("Allow once", "Deny", /^Always allow edits under/, "Allow once");
-  const { result, text } = await h.run({ task: "Rename beta.", access: "edit" });
+  const { result, text } = await h.run({ task: "Rename beta.", access: "edit", cwd });
 
   assert.deepEqual(answered.map(answer => answer?.replace(/:.*/, "")), ["allow", "deny", "allow", "allow", "allow", "deny"]);
   assert.equal(h.questions.length, 5, "the fourth edit was covered by the answer to the third");
   const [first, , third, , outside] = h.questions;
-  assert.equal(first.title, `Claude Code asks to use Edit:\n\n  ${join(h.cwd, "notes.txt")}\n  - beta\n  + beta2\n\nWorking directory: ${h.cwd}`);
-  assert.deepEqual(first.options, ["Allow once", `Always allow edits under ${h.cwd} for this session`, "Deny"]);
+  assert.equal(first.title, `Claude Code asks to use Edit:\n\n  ${join(cwd, "notes.txt")}\n  - beta\n  + beta2\n\nWorking directory: ${cwd}`);
+  assert.deepEqual(first.options, ["Allow once", `Always allow edits under ${cwd} for this session`, "Deny"]);
   assert.deepEqual(third.options, first.options);
   assert.match(outside.title, /\n {2}\/etc\/hosts\n/);
   assert.deepEqual(outside.options, ["Allow once", "Always allow edits under /etc for this session", "Deny"], "always inside the project says nothing about /etc");
@@ -135,7 +145,7 @@ test("an edit reaches the user with the tool and the path, and each answer does 
   assert.match(answered[1] ?? "", /^deny: The user declined this Edit call\. Do not retry/);
   assert.match(answered[5] ?? "", /^deny: The user declined/, "a dismissed dialog is a refusal");
   assert.deepEqual(result.details.denials, [
-    { id: "toolu_2", tool: "Edit", target: join(h.cwd, "notes.txt"), reason: "declined by the user" },
+    { id: "toolu_2", tool: "Edit", target: join(cwd, "notes.txt"), reason: "declined by the user" },
     { id: "toolu_6", tool: "Edit", target: "/etc/hosts", reason: "declined by the user" },
   ]);
   assert.deepEqual(result.details.tools.map(line => line.status), ["done", "denied", "done", "done", "done", "denied"]);
@@ -188,6 +198,7 @@ test("requests made at once are asked one at a time, and an always answer settle
 });
 
 test("without a UI, whatever needs approval is refused with a reason the model can act on", async t => {
+  const cwd = denialCwd(t);
   const answered: string[] = [];
   const h = harness(t, async run => {
     await run.claude.user();
@@ -199,11 +210,11 @@ test("without a UI, whatever needs approval is refused with a reason the model c
     run.finished("I could not edit notes.txt.");
   });
   h.caller.hasUI = false;
-  const { result, text } = await h.run({ task: "Edit the notes.", access: "edit" });
+  const { result, text } = await h.run({ task: "Edit the notes.", access: "edit", cwd });
   assert.equal(h.questions.length, 0);
   assert.match(answered[0], /^Edit needs the user's approval, and Pi is running without an interactive UI \(print or JSON mode\)/);
   assert.match(answered[0], /Do not retry/);
-  assert.deepEqual(result.details.denials, [{ id: "toolu_1", tool: "Edit", target: join(h.cwd, "notes.txt"), reason: "no UI to approve it" }]);
+  assert.deepEqual(result.details.denials, [{ id: "toolu_1", tool: "Edit", target: join(cwd, "notes.txt"), reason: "no UI to approve it" }]);
   assert.match(text, /^I could not edit notes\.txt\./);
   assert.match(text, /\[not run: Edit .*notes\.txt \(no UI to approve it\)\]$/);
   assert.equal(result.isError, undefined, "the run itself finished");

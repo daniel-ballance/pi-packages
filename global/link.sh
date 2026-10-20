@@ -29,6 +29,16 @@ for name in "${FILES[@]}"; do
   fi
 done
 
+# BSD mv exits 64 for -T and already replaces a symlink to a directory.
+# GNU mv needs -T for that replace. A no-operand probe exits 1 there.
+mv_replace=(-T -f)
+if (( ! check_only )); then
+  mv -T >/dev/null 2>&1 || mv_probe=$?
+  if [[ "${mv_probe:-0}" -eq 64 ]]; then
+    mv_replace=(-f)
+  fi
+fi
+
 rc=0
 for name in "${FILES[@]}"; do
   want="$REPO_DIR/$name"
@@ -54,7 +64,7 @@ for name in "${FILES[@]}"; do
   temporary="$(mktemp -d "$AGENT_DIR/.pi-link.XXXXXXXX")"
   trap 'rm -rf -- "$temporary"' EXIT
   ln -s "$want" "$temporary/$name"
-  mv -Tf -- "$temporary/$name" "$target"
+  mv "${mv_replace[@]}" -- "$temporary/$name" "$target"
   rmdir "$temporary"
   trap - EXIT
   echo "linked  $target -> $want"
