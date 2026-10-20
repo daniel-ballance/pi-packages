@@ -24,7 +24,14 @@ async function setup(limit: ChildLimit = parseChildLimit(4), parentMessageLimit 
     for (const receipt of receipts) manager.acknowledgeRead(receipt, true, byRoot);
   };
   const printedBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value, null, 2));
-  return { manager, spawn, settled, acknowledge, printedBytes, async cleanup() { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); } };
+  const replaceUpdates = (id: string, rows: { kind: string; text: string }[]) => {
+    const record = manager.get(id);
+    record.status = "idle";
+    record.updates = rows.map((row, index) => ({ cursor: index + 1, kind: row.kind, text: row.text, time: record.updatedAt }));
+    record.cursor = rows.length;
+    record.readCursor = 0;
+  };
+  return { manager, spawn, settled, acknowledge, printedBytes, replaceUpdates, async cleanup() { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); } };
 }
 
 test("a default report returns new reports inline without echoes, and acknowledging it ends the child's notices", async () => {
@@ -162,6 +169,34 @@ test("a final report that does not fit stays unread and earlier reports are ackn
     assert.equal(report.agents[0].unread, 1);
     s.acknowledge(receipts);
     assert.deepEqual(s.manager.read(id, undefined, false).updates.filter(update => update.kind === "assistant").map(update => update.text), [`2:${"y".repeat(2000)}`]);
+  } finally { await s.cleanup(); }
+});
+
+for (const kind of ["aborted", "completed", "extension_error"]) {
+  test(`final returns a settled ${kind} report when no assistant exists and acknowledges the rest`, async () => {
+    const s = await setup();
+    try {
+      const id = await s.spawn("settled");
+      s.replaceUpdates(id, [{ kind: "sent", text: "sent" }, { kind, text: kind }, { kind: "lifecycle", text: "lifecycle" }]);
+      const { report, receipts } = waitReport(s.manager, s.settled(id), true, undefined, undefined, true);
+      assert.deepEqual(report.agents[0].reports, [{ kind, text: kind }]);
+      assert.equal(report.agents[0].unread, 0);
+      s.acknowledge(receipts);
+      assert.deepEqual(s.manager.read(id, undefined, false).updates, []);
+    } finally { await s.cleanup(); }
+  });
+}
+
+test("final returns the aborted report when an assistant precedes it and acknowledges the rest", async () => {
+  const s = await setup();
+  try {
+    const id = await s.spawn("cancelled");
+    s.replaceUpdates(id, [{ kind: "assistant", text: "progress" }, { kind: "aborted", text: "aborted" }, { kind: "lifecycle", text: "lifecycle" }]);
+    const { report, receipts } = waitReport(s.manager, s.settled(id), true, undefined, undefined, true);
+    assert.deepEqual(report.agents[0].reports, [{ kind: "aborted", text: "aborted" }]);
+    assert.equal(report.agents[0].unread, 0);
+    s.acknowledge(receipts);
+    assert.deepEqual(s.manager.read(id, undefined, false).updates, []);
   } finally { await s.cleanup(); }
 });
 

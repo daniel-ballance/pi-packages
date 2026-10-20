@@ -117,9 +117,10 @@ function reportPlan(updates: readonly Update[], final: boolean, status: Status):
   if (!final) return { mode: "prefix" };
   const reports = updates.filter(update => REPORT_KINDS.has(update.kind));
   const last = reports.at(-1);
-  if (last && FINAL_TERMINAL.has(last.kind)) return { mode: "one", cursor: last.cursor };
-  if (BUSY.has(status)) return reports.some(update => update.kind === "message") ? { mode: "prefix" } : { mode: "skip" };
-  return { mode: "one", cursor: [...reports].reverse().find(update => update.kind === "assistant")?.cursor };
+  if (BUSY.has(status) && !(last && FINAL_TERMINAL.has(last.kind))) {
+    return reports.some(update => update.kind === "message") ? { mode: "prefix" } : { mode: "skip" };
+  }
+  return { mode: "one", cursor: last?.cursor };
 }
 
 function takePage(updates: readonly Update[], plan: Exclude<ReportPlan, { mode: "skip" }>, budget: { bytes: number; lines: number }) {
