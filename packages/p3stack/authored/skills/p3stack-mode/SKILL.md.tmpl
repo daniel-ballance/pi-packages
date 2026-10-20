@@ -6,7 +6,9 @@ disable-model-invocation: true
 
 # p3stack mode
 
-First read [poteto-mode](../poteto-mode/SKILL.md) in full. Finish that read before any other tool call. Follow it, except this router wins where its rules differ. Then select the route and applicable chains before reading any supporting skill. Read only the selected first target next.
+First read poteto-mode in full at `<this file's directory>/../poteto-mode/SKILL.md`. Replace `<this file's directory>` with the absolute directory containing the p3stack-mode/SKILL.md you just read. For example, if this file is `<package>/skills/p3stack-mode/SKILL.md`, read poteto-mode at `<package>/skills/poteto-mode/SKILL.md`. Use that same directory substitution for every Read path below.
+
+Finish the poteto-mode read before any other tool call. Follow it, except this router wins where its rules differ. Then select the route and applicable chains before reading any supporting skill. Read only the selected first target next.
 
 ## Grants
 
@@ -14,13 +16,13 @@ Determine the grant before choosing a route. "Be fully autonomous" selects full-
 
 ## Routes
 
-Match the request and grant below. After poteto-mode, read the target and follow it. Resolve every Read path from this p3stack-mode directory. A request to review someone else's PR uses the external review route. Review my change starts with no-comments.
+Match the request and grant below. After poteto-mode, read the target and follow it. A request to review someone else's PR uses the external review route. Review my change starts with no-comments.
 
 {{routes}}
 
 ## Chains
 
-Apply each matching chain at its anchor in table order. For a reported bug without a failing reproduction, the first target is ../diagnosing-bugs/SKILL.md, before even reading the Bug fix playbook. Continue Bug fix after diagnosis.
+Apply each matching chain at its anchor in table order. For a reported bug without a failing reproduction, the first target is diagnosing-bugs, before even reading the Bug fix playbook. Continue Bug fix after diagnosis.
 
 {{chains}}
 

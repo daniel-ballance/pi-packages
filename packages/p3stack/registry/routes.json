@@ -10,7 +10,7 @@
   { "request": "Plan a program of PRs", "grant": "any", "target": "playbooks/multi-phase-plan.md" },
   { "request": "Build new or changed behavior", "grant": "any", "target": "playbooks/feature.md" },
   { "request": "Fix a reported bug", "grant": "any", "target": "playbooks/bug-fix.md" },
-  { "request": "Investigate measured slowness", "grant": "any", "target": "playbooks/perf-issue.md" },
+  { "request": "Investigate measured slowness when a timing or throughput number is given", "grant": "any", "target": "playbooks/perf-issue.md" },
   { "request": "Improve one measured metric repeatedly", "grant": "any", "target": "playbooks/hillclimb.md" },
   { "request": "Restructure code without changing behavior", "grant": "any", "target": "playbooks/refactoring.md" },
   { "request": "Review my change", "grant": "any", "target": "no-comments" },

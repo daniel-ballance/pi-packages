@@ -480,17 +480,25 @@ test("the router renders the registry tables with existing route targets and no 
     generate({ packageDir, outDir: out });
     const router = readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8");
     assert.doesNotMatch(router, /\{\{(?:routes|chains)\}\}/);
+    assert.doesNotMatch(router, /\/home\/|\/tmp\//);
+    assert.ok(router.includes("<package>/skills/p3stack-mode/SKILL.md"));
+    assert.ok(router.includes("<package>/skills/poteto-mode/SKILL.md"));
     assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
     const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
     for (const { request, target } of routes) {
       assert.ok(router.includes(request), request);
       const path = target.startsWith("p3stack-mode/playbooks/") ? target : target.startsWith("playbooks/") ? `poteto-mode/${target}` : `${target}/SKILL.md`;
       assert.ok(existsSync(join(out, "skills", path)), target);
-      assert.ok(router.includes(path.replace(/^poteto-mode\//, "../poteto-mode/").replace(/^p3stack-mode\//, "")) || router.includes(`../${path}`), target);
+      assert.ok(router.includes(`\`<this file's directory>/../${path}\``), target);
     }
     for (const { anchor, skill } of JSON.parse(readFileSync(join(packageDir, "registry/chains.json"), "utf8"))) {
       assert.ok(router.includes(anchor), anchor);
-      assert.ok(router.includes(`../${skill}/SKILL.md`), skill);
+      assert.ok(router.includes(`\`<this file's directory>/../${skill}/SKILL.md\``), skill);
+    }
+    const paths = [...router.matchAll(/`<this file's directory>\/([^`]+)`/g)];
+    assert.ok(paths.length > routes.length);
+    for (const [, path] of paths) {
+      assert.ok(existsSync(join(out, "skills/p3stack-mode", path)), path);
     }
   } finally { rmSync(out, { recursive: true, force: true }); }
 });

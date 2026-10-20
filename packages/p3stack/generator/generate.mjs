@@ -179,8 +179,9 @@ function renderRegistry(files, { routes, chains }) {
   files.set("skills/p3stack-mode/references/chains.md", table("Chains", ["Id", "Playbook", "Anchor", "Position", "Skill", "When"], chains.map(row => [row.id, link(row.playbook), row.anchor, row.position, link(row.skill), row.when])));
   const template = "skills/p3stack-mode/SKILL.md.tmpl";
   if (!files.has(template)) return;
-  const routesTable = table("Routes", ["Request", "Grant", "Read"], routes.map(row => [row.request, row.grant, path(row.target)])).replace(/^# Routes\n\n/, "").trimEnd();
-  const chainsTable = table("Chains", ["Playbook", "Anchor", "Position", "Read", "When"], chains.map(row => [path(row.playbook), row.anchor, row.position, path(row.skill), row.when])).replace(/^# Chains\n\n/, "").trimEnd();
+  const readPath = target => `\`<this file's directory>/${path(target)}\``;
+  const routesTable = table("Routes", ["Request", "Grant", "Read"], routes.map(row => [row.request, row.grant, readPath(row.target)])).replace(/^# Routes\n\n/, "").trimEnd();
+  const chainsTable = table("Chains", ["Playbook", "Anchor", "Position", "Read", "When"], chains.map(row => [readPath(row.playbook), row.anchor, row.position, readPath(row.skill), row.when])).replace(/^# Chains\n\n/, "").trimEnd();
   files.set("skills/p3stack-mode/SKILL.md", files.get(template).toString().replaceAll("{{routes}}", routesTable).replaceAll("{{chains}}", chainsTable));
   files.delete(template);
 }
