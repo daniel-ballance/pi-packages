@@ -40,5 +40,5 @@
       "contains": ["(../tdd/SKILL.md)", "(../code-review/SKILL.md)"]
     }
   ],
-  "resources": true
+  "resources": ["matt-pocock"]
 }

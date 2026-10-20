@@ -83,9 +83,10 @@ Rules apply in this order. The same sources and rules give byte-identical output
 **coupling lint** then scans every emitted file for the tokens in
 `rules/lint.json` and fails with `file:line: token`. The fix is always a new or
 corrected rule, never an edit to the output. `lint.json` also requires dependency
-links through `require` entries with `file` and `contains` fields. With `resources`
-set to true, generation runs the repository's `lint-skill` on the staged tree
-before it replaces committed output. A missing linter refuses replacement.
+links through `require` entries with `file` and `contains` fields. `resources`
+names the sources whose staged skills must pass the repository's `lint-skill`
+before generation replaces committed output. A missing linter refuses replacement.
+The Pocock source keeps its former staged validation. `npm run check` lints every skill.
 
 ## Helper scripts
 

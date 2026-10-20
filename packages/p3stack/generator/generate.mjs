@@ -198,10 +198,10 @@ function lint(outDir, deny, problems) {
   }
 }
 
-function lintResources(packageDir, outDir) {
+function lintResources(packageDir, outDir, owners, sources) {
   const skills = join(outDir, "skills");
   const directories = readdirSync(skills, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && existsSync(join(skills, entry.name, "SKILL.md")))
+    .filter(entry => entry.isDirectory() && sources.includes(owners.get(`skills/${entry.name}/SKILL.md`)))
     .map(entry => join(skills, entry.name)).sort();
   if (!directories.length) throw new Error("No generated skills found; refusing an empty resource check.");
   try {
@@ -236,7 +236,7 @@ export function generate({ packageDir, outDir }) {
     for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);
   }
   if (lintProblems.length) throw new Error(`Coupling lint: untranslated tokens or missing dependencies; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
-  if (checks.resources) lintResources(packageDir, outDir);
+  if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources);
   return infos;
 }
 

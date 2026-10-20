@@ -665,6 +665,18 @@ pocockCase("17 staged lint rejects missing resources in both modes", ({ run, inp
   }
 });
 
+pocockCase("staged resource checks keep their source scope", ({ run, root, input }) => {
+  const cursorFile = join(root, "vendor/pstack/pstack/skills/bro/SKILL.md");
+  writeFileSync(cursorFile, readFileSync(cursorFile, "utf8") + "\n[missing](references/not-bundled.md)\n");
+  const cursor = run();
+  assert.equal(cursor.status, 0, cursor.stderr);
+  const file = input("engineering/research/SKILL.md");
+  writeFileSync(file, readFileSync(file, "utf8") + "\n[missing](references/not-bundled.md)\n");
+  const pocock = run();
+  assert.equal(pocock.status, 1);
+  assert.match(pocock.stderr, /skills\/research.*|Referenced resource does not exist/);
+});
+
 pocockCase("18 unavailable staged linter refuses replacement", ({ root, run }) => {
   rmSync(join(root, "../../scripts/lint-skill"));
   const result = run();
