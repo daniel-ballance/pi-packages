@@ -506,7 +506,7 @@ function pocockFixture() {
   const root = join(temp, "repo/packages/p3stack");
   mkdirSync(join(temp, "repo/scripts"), { recursive: true });
   symlinkSync(join(packageDir, "../../scripts/lint-skill"), join(temp, "repo/scripts/lint-skill"));
-  for (const name of ["rules", "registry", "extra", "overlays", "patches", "vendor/pstack"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
+  for (const name of ["rules", "registry", "extra", "authored", "overlays", "patches", "vendor/pstack"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
   const oldVendor = join(packageDir, "../pi-pocock-skills/vendor/matt-pocock");
   cpSync(existsSync(oldVendor) ? oldVendor : join(packageDir, "vendor/matt-pocock"), join(root, "vendor/matt-pocock"), { recursive: true });
   const manifestPath = join(root, "rules/manifest.json");

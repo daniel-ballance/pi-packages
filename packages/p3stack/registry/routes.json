@@ -28,5 +28,7 @@
   { "request": "Review the session's environment", "grant": "any", "target": "retro" },
   { "request": "Write or change a skill", "grant": "any", "target": "playbooks/authoring-a-skill.md" },
   { "request": "Prepare steps only a human can perform", "grant": "any", "target": "wizard" },
-  { "request": "Handle a task with no matching playbook", "grant": "any", "target": "figure-it-out" }
+  { "request": "Handle a task with no matching playbook", "grant": "any", "target": "figure-it-out" },
+  { "request": "Cut a release", "grant": "any", "target": "release" },
+  { "request": "Onboard to an existing repository", "grant": "any", "target": "onboard-brownfield" }
 ]
