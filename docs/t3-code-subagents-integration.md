@@ -1,4 +1,6 @@
-# T3 Code ↔ Pi subagents integration
+# Retired T3 Code and Pi subagents integration
+
+> Retired by the pinned host map and one-package consolidation. See [About p3stack](p3stack.md) for the current host contract. The integration notes below are historical.
 
 Research date: **2026-10-06**. The findings and evidence limits below describe the initial read-only research phase.
 

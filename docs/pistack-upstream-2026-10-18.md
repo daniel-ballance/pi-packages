@@ -1,4 +1,6 @@
-# pistack upstream update — 2026-10-18
+# Retired pistack upstream update of 2026-10-18
+
+> Retired by the one-package consolidation. See [About p3stack](p3stack.md) for current maintenance. The update record below is historical.
 
 ## Source review
 

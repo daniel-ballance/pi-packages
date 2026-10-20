@@ -1,4 +1,6 @@
-# pistack: design brief
+# Retired p3stack design brief
+
+> Retired by the one-package consolidation. See [About p3stack](p3stack.md) for the current registry, router, host map, and maintenance loop. The historical design below is not an installation procedure.
 
 The package this brief describes is now named p3stack.
 
