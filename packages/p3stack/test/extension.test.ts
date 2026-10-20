@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
+import { createAgentSession, DefaultResourceLoader, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import p3stack from "../extensions/p3stack/index.ts";
 import type { Context } from "../extensions/p3stack/src/mode.ts";
 import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/p3stack/src/roles.ts";
@@ -21,13 +23,14 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const tools = new Map<string, any>(), commands = new Map<string, any>(), handlers = new Map<string, Function[]>();
-  const entries: unknown[] = [], notices: [string, string?][] = [], statuses: [string, string | undefined][] = [], asked: string[] = [];
+  const entries: unknown[] = [], notices: [string, string?][] = [], statuses: [string, string | undefined][] = [], footers: Parameters<ExtensionUIContext["setFooter"]>[0][] = [], asked: string[] = [];
   const ui = {
     select: async (title: string, options: string[]) => { asked.push(`${title} [${options.join(" | ")}]`); return answers.shift(); },
     input: async (title: string) => { asked.push(title); return answers.shift(); },
     confirm: async (title: string) => { asked.push(title); return answers.shift() === "yes"; },
     notify: (message: string, type?: string) => notices.push([message, type]),
     setStatus: (key: string, text?: string) => statuses.push([key, text]),
+    setFooter: (factory: Parameters<ExtensionUIContext["setFooter"]>[0]) => footers.push(factory),
   };
   const ctx = {
     cwd, hasUI, mode, model: parent, isProjectTrusted: () => trusted,
@@ -41,8 +44,9 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
       };
     },
     get ui() { if (!hasUI) throw new Error("touched ui without UI"); return ui; },
-    modelRegistry: { getAvailable: () => [opus, grok] },
-    sessionManager: { getBranch: () => branch },
+    modelRegistry: { getAvailable: () => [opus, grok], isUsingOAuth: () => false, getProvider: () => undefined },
+    getContextUsage: (): ReturnType<ExtensionContext["getContextUsage"]> => undefined,
+    sessionManager: { getBranch: () => branch, getEntries: (): SessionEntry[] => [], getSessionName: (): string | undefined => undefined },
   };
   factory({
     getThinkingLevel: () => "xhigh",
@@ -58,7 +62,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
   const dispose = () => { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; rmSync(root, { recursive: true, force: true }); };
-  return { root, cwd, agentDir, ctx, tools, commands, emit, reminders, call, command, entries, notices, statuses, asked, dispose };
+  return { root, cwd, agentDir, ctx, tools, commands, emit, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
 }
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
 
@@ -238,7 +242,9 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
   try {
     await h.command("p3stack", "on");
     assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true } });
-    assert.deepEqual(h.statuses, [], "T3 shows no status, so none is set outside the terminal");
+    assert.deepEqual(h.statuses, [], "no status row is added");
+    assert.deepEqual(h.footers, [], "no footer is set outside the terminal");
+    assert.deepEqual(h.notices.at(-1), ["p3stack is on.", "info"]);
     const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
     const section = event.systemPromptOptions.sections["p3stack"];
     assert.match(section, /^Read .*skills\/poteto-mode\/SKILL\.md and follow it\.$/);
@@ -252,24 +258,108 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
     assert.doesNotMatch(reminders[0].content, /role models above/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
     await h.command("p3stack", "off");
+    assert.deepEqual(h.notices.at(-1), ["p3stack is off.", "info"]);
     const off = await h.emit("before_agent_start", { systemPromptOptions: { sections: { "p3stack": "stale" } } });
     assert.equal(off.systemPromptOptions.sections["p3stack"], undefined);
     assert.deepEqual(await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } }), [], "no reminder while off");
   } finally { h.dispose(); }
-  const tui = harness({ mode: "tui" });
-  try {
-    await tui.emit("session_start");
-    await tui.command("p3stack", "on");
-    assert.deepEqual(tui.statuses.at(-1), ["p3stack", "p3stack on"]);
-    await tui.command("p3stack", "off");
-    assert.deepEqual(tui.statuses.at(-1), ["p3stack", undefined]);
-  } finally { tui.dispose(); }
   const resumed = harness({ hasUI: false, branch: [{ type: "custom", customType: "p3stack", data: { on: true } }] });
   try {
     await resumed.emit("session_start");
     const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
     assert.ok(event.systemPromptOptions.sections["p3stack"], "rebuilt from the branch");
   } finally { resumed.dispose(); }
+});
+
+test("the TUI sets a footer while on and restores the stock footer while off or switching branches", async () => {
+  const restore = asTerminal(), branch: unknown[] = [];
+  const h = harness({ mode: "tui", branch });
+  try {
+    await h.emit("session_start");
+    assert.equal(h.footers.at(-1), undefined);
+    await h.command("p3stack", "on");
+    assert.equal(typeof h.footers.at(-1), "function");
+    await h.command("p3stack", "off");
+    assert.equal(h.footers.at(-1), undefined);
+    branch.push({ type: "custom", customType: "p3stack", data: { on: true } });
+    await h.emit("session_tree");
+    assert.equal(typeof h.footers.at(-1), "function");
+    branch.length = 0;
+    await h.emit("session_tree");
+    assert.equal(h.footers.at(-1), undefined);
+    assert.deepEqual(h.statuses, []);
+  } finally { h.dispose(); restore(); }
+});
+
+test("T3 never sets a terminal footer or status row", async () => {
+  const previous = process.env.T3_MCP_URL;
+  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+  try {
+    for (const mode of ["rpc", "tui"]) {
+      const h = harness({ mode });
+      try {
+        await h.emit("session_start");
+        await h.command("p3stack", "on");
+        await h.command("p3stack", "off");
+        assert.deepEqual(h.footers, []);
+        assert.deepEqual(h.statuses, []);
+      } finally { h.dispose(); }
+    }
+  } finally { if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
+});
+
+test("the on footer prefixes the directory and matches Pi's stock rendering byte for byte", async () => {
+  const restore = asTerminal(), h = harness({ mode: "tui" });
+  const settingsManager = SettingsManager.inMemory();
+  const sessionManager = SessionManager.inMemory(h.cwd);
+  const resourceLoader = new DefaultResourceLoader({ cwd: h.cwd, agentDir: h.agentDir, settingsManager, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true });
+  const model: NonNullable<ExtensionContext["model"]> = { provider: "footer-fixture", id: "model-🅿️", name: "Footer fixture", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 272000, maxTokens: 1000 };
+  const { session } = await createAgentSession({ cwd: h.cwd, agentDir: h.agentDir, model, thinkingLevel: "low", sessionManager, settingsManager, resourceLoader });
+  try {
+    initTheme("dark", false);
+    const { theme } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+    const contextUsage = { tokens: 23000, contextWindow: 272000, percent: 8.5 };
+    mock.method(session, "getContextUsage", () => contextUsage);
+    Object.assign(h.ctx, { model, sessionManager, getContextUsage: () => contextUsage });
+    let branch: string | null = "p3stack/pr-04-mode-extension", renders = 0;
+    let changed = () => {};
+    const footerData = { getGitBranch: () => branch, getExtensionStatuses: () => new Map<string, string>(), getAvailableProviderCount: () => 2, onBranchChange: (callback: () => void) => { changed = callback; return () => { changed = () => {}; }; } };
+    await h.command("p3stack", "on");
+    const factory = h.footers.at(-1);
+    assert.equal(typeof factory, "function");
+    const tui = new TuiMainScreen(new ProcessTerminal());
+    mock.method(tui, "requestRender", () => { renders++; });
+    const footer = factory!(tui, theme, footerData);
+    const stock = new FooterComponent(session, footerData);
+    const prefix = "🅿️ ";
+    assert.equal(stripTerminalSequences(footer.render(200)[0]!), `${prefix}${h.cwd} (${branch})`);
+    for (const percent of [0, 75, 95, null]) {
+      Object.assign(contextUsage, { percent });
+      for (const enabled of [true, false]) {
+        writeFileSync(join(h.agentDir, "settings.json"), JSON.stringify({ compaction: { enabled } }));
+        stock.setAutoCompactEnabled(enabled);
+        for (const width of [200, 100, 40, 10, 3, 1]) {
+          footer.invalidate();
+          const actual = footer.render(width), expected = stock.render(width);
+          assert.equal(actual.length, 2);
+          assert.equal(actual[1], expected[1], `stock stats at width ${width}, context ${percent}, auto ${enabled}`);
+          assert.ok(actual.every(line => visibleWidth(line) <= width));
+          if (width === 200) assert.equal(actual[0], prefix + expected[0]);
+          else assert.equal(actual[0], truncateToWidth(prefix + stock.render(1000)[0]!, width, theme.fg("dim", "...")));
+        }
+      }
+    }
+    sessionManager.appendSessionInfo("named session");
+    branch = null;
+    changed();
+    assert.equal(renders, 1);
+    assert.equal(footer.render(200)[0], prefix + stock.render(200)[0]);
+    sessionManager.appendMessage({ role: "assistant", api: model.api, provider: model.provider, model: model.id, content: [], usage: { input: 1234, output: 56, cacheRead: 3000, cacheWrite: 400, totalTokens: 4690, cost: { input: 0.1, output: 0.02, cacheRead: 0.03, cacheWrite: 0.04, total: 0.19 } }, stopReason: "stop", timestamp: Date.now() });
+    assert.equal(footer.render(200)[1], stock.render(200)[1]);
+    footer.dispose?.();
+    changed();
+    assert.equal(renders, 1);
+  } finally { session.dispose(); h.dispose(); restore(); mock.restoreAll(); }
 });
 
 test("while the mode is on, delegated briefs start with the poteto-agent recipe, once", async () => {
