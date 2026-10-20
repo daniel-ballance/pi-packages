@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -18,7 +18,7 @@ const config = {
 for (const mode of ["generator", "sync", "async"]) {
   for (const fails of [false, true]) {
     test(`${mode} ${fails ? "falls back when discovery fails" : "discovers repository variables lazily"} and keeps command config`, { skip: process.platform === "win32" }, () => {
-      const bin = mkdtempSync(join(tmpdir(), "p3stack-git-env-"));
+      const bin = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-git-env-")));
       const log = join(bin, "calls");
       const output = join(bin, "env.json");
       writeFileSync(join(bin, "git"), `#!/bin/sh

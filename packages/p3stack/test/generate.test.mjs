@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,7 @@ const manifest = fields => JSON.stringify({ sources: [{
   exclude: [], ...fields,
 }] });
 function fixture(files) {
-  const root = mkdtempSync(join(tmpdir(), "p3stack-generate-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-generate-")));
   const defaults = {
     "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\nicon: crown\n---\n\n# Demo\n\nUse the Task tool.\n\n## Subagents\n\nCursor-only text.\n\n## Next\n\nKept.\n",
     "vendor/up/skills/demo/scripts/run.sh": "echo hi\n",
@@ -425,7 +425,7 @@ test("a heading inside a fence is not a child of the leaf that contains it", () 
 
 test("setup offers and the help setup sentence come from upstream through the package rules", () => {
   const packageDir = fileURLToPath(new URL("..", import.meta.url));
-  const out = mkdtempSync(join(tmpdir(), "p3stack-rules-"));
+  const out = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-rules-")));
   try {
     generate({ packageDir, outDir: out });
     const setup = readFileSync(join(out, "skills/setup-pstack/SKILL.md"), "utf8");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +22,7 @@ function write(root, files) {
 }
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "p3stack-update-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-update-")));
   const origin = join(root, "origin"), pkg = join(root, "pkg");
   mkdirSync(origin);
   git(origin, "init", "-q");
@@ -99,7 +99,8 @@ test("check compares the second source checkout with its staged gitlink", () => 
   try {
     const second = addSecondSource(f, true), pin = git(second, "rev-parse", "HEAD");
     assert.equal(f.run(generateCli).status, 0);
-    assert.equal(f.run(generateCli, "--check").status, 0);
+    const checked = f.run(generateCli, "--check");
+    assert.equal(checked.status, 0, checked.stderr);
     const tip = f.commit({ "up/plugin.json": JSON.stringify({ name: "up", version: "1.0.1" }) }, "new pin");
     git(second, "fetch", "-q", "origin");
     git(second, "checkout", "-q", "--detach", tip);
