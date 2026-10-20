@@ -23,12 +23,16 @@ export function loadRegistry(packageDir, sources) {
   const chains = json(join(packageDir, "registry/chains.json"));
   const upstream = new Set(sources.flatMap(source => (source.skillRoots ?? ["skills/"]).flatMap(root =>
     skillPaths(join(packageDir, source.vendor, root)).map(path => `${source.name}/${root}${path}`))));
+  for (const path of skillPaths(join(packageDir, "authored/skills"))) upstream.add(`p3stack/skills/${path}`);
   const rows = new Set(), names = new Set(), problems = [];
   for (const row of skills) {
     const id = key(row);
     if (rows.has(id)) problems.push(`Duplicate registry row ${id}`);
     rows.add(id);
-    if (!upstream.has(id)) problems.push(`Stale registry row ${id}`);
+    if (!upstream.has(id)) problems.push(row.source === "p3stack" ? `Missing authored skill authored/${row.path}` : `Stale registry row ${id}`);
+    if (row.source === "p3stack" && row.action === "emit" && row.path !== `skills/${row.name}/SKILL.md`) {
+      problems.push(`Authored skill ${id} must emit at ${row.path}`);
+    }
     if (typeof row.reason !== "string" || !row.reason.trim()) problems.push(`${id} needs a reason`);
     if (row.action === "drop") continue;
     if (row.action !== "emit") { problems.push(`${id} has invalid action ${row.action}`); continue; }

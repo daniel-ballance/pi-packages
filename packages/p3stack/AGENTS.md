@@ -20,6 +20,7 @@ Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
 | `patches/*.patch` | per-file patches, the escape hatch | hand-written |
 | `rules/lint.json` | coupling lint deny-list | hand-written |
 | `extra/` | Pi-native files added to the output as they are | hand-written |
+| `authored/` | p3stack-owned skills and playbooks copied after `extra/` | hand-written |
 | `generator/` | the generator, the upstream updater and the lint wrapper | hand-written |
 | `extensions/p3stack/` | mode toggle, `ask_user`, `p3stack_roles`, `/p3stack-setup` | hand-written |
 | `skills/`, `LICENSE`, `LICENSE-matt-pocock` | generated | `generator/generate.mjs` |
@@ -86,7 +87,10 @@ Rules apply in this order. The same sources and rules give byte-identical output
    token or a section.
 
 `extra/` files are added after tokens and sections but before patches and are
-not rewritten by token or section rules. The
+not rewritten by token or section rules.
+`authored/` files are copied after `extra/` without rewrites. Register each authored
+skill as `source: "p3stack"` with its path relative to `authored/`. Its frontmatter
+must match the registry name and invocation. The
 **coupling lint** then scans every emitted file for the tokens in
 `rules/lint.json` and fails with `file:line: token`. The fix is always a new or
 corrected rule, never an edit to the output. `lint.json` also requires dependency

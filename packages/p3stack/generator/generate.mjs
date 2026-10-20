@@ -234,7 +234,7 @@ export function generate({ packageDir, outDir }) {
   applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems);
   applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
   if (registry) {
-    for (const row of registry.skills.filter(row => row.action === "emit")) {
+    for (const row of registry.skills.filter(row => row.action === "emit" && row.source !== "p3stack")) {
       const path = `skills/${row.name}/SKILL.md`, text = files.get(path);
       if (typeof text !== "string") { problems.push(`Registry skill ${row.name} is not mapped to ${path}`); continue; }
       const hidden = /^disable-model-invocation:\s*true\s*$/m.test(text);
@@ -244,6 +244,7 @@ export function generate({ packageDir, outDir }) {
     }
   }
   addExtras(files, join(packageDir, "extra"), executables);
+  addExtras(files, join(packageDir, "authored"), executables);
   if (registry) renderRegistry(files, registry);
   if (problems.length) throw new Error(problems.join("\n"));
   writeFiles(files, executables, outDir);

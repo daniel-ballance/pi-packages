@@ -1351,5 +1351,25 @@
       "owner"
     ],
     "reason": "Admit the owner review procedure and its Dylan lens."
+  },
+  {
+    "source": "p3stack",
+    "path": "skills/release/SKILL.md",
+    "action": "emit",
+    "name": "release",
+    "invocation": "model",
+    "phases": ["release"],
+    "roles": ["owner"],
+    "reason": "Prepare notes and local versions with an explicit publication pause."
+  },
+  {
+    "source": "p3stack",
+    "path": "skills/onboard-brownfield/SKILL.md",
+    "action": "emit",
+    "name": "onboard-brownfield",
+    "invocation": "model",
+    "phases": ["understand-codebase"],
+    "roles": ["contributor", "owner"],
+    "reason": "Map an existing repository through the brownfield onboarding playbook."
   }
 ]
