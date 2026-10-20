@@ -41,7 +41,7 @@ For every newly classified skill, include the exact source-relative path and its
 
 ### Include a min-match repair
 
-Copy this literal block into the PR body for each min-match repair. Replace every placeholder with the rule's verbatim value. Preserve the literal `find` strings, including regex backslashes, without JSON escaping.
+Set `body_file=<receipt-dir>/pr-body.md` to a receipt path outside the checkout. Write the complete PR body to `"$body_file"`, not to the bump note. Copy this literal block into that file for each min-match repair. Replace every placeholder with the rule's verbatim value. Preserve the literal `find` strings, including regex backslashes, without JSON escaping.
 
 ````markdown
 ## Min-match repair
@@ -67,7 +67,7 @@ Unchanged min
 ```
 ````
 
-Before `gh pr create`, run `grep -F -- '<rule-id>' <body-file>`, `grep -F -- '<old-find>' <body-file>`, and `grep -F -- '<new-find>' <body-file>` with the actual values. Require exit code 0 from all three commands. If any value is missing, fix the body file and repeat the greps before creating the PR.
+Before `gh pr create --body-file "$body_file"`, run `grep -F -- '<rule-id>' "$body_file"`, `grep -F -- '<old-find>' "$body_file"`, and `grep -F -- '<new-find>' "$body_file"` with the actual values. Require exit code 0 from all three commands. If any value is missing, fix `"$body_file"` and repeat the greps. The PR body is this exact file. Pass it with `--body-file "$body_file"`. Do not grep the bump note or switch to an inline `--body`.
 
 ### Include a section-hash diff
 
