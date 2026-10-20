@@ -27,7 +27,8 @@ async function load(source: string, base = root) {
   try {
     const loader = new DefaultResourceLoader({
       cwd: temp, agentDir: temp,
-      settingsManager: SettingsManager.inMemory({ packages: [source] }),
+      // A trusted temp cwd under the operator home would load ancestor .agents/skills.
+      settingsManager: SettingsManager.inMemory({ packages: [source] }, { projectTrusted: false }),
     });
     await loader.reload();
     assert.deepEqual(loader.getExtensions().errors, []);
