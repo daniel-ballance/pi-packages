@@ -110,6 +110,16 @@ own script tests; `npm run check` typechecks `watch-pr`.
 
 ## Updating upstream
 
+Generation and `--check` require clean inputs under `vendor/pstack/pstack`,
+including ignored files, executable-bit changes, and `plugin.json`. The status
+probe forces `core.fileMode=true` without changing the clone's configuration.
+They also reject `skip-worktree` and
+`assume-unchanged` index flags, which can hide edits from Git status. The error
+lists the paths. Preserve local work elsewhere, then restore the vendored source
+and clear those flags before regenerating. Keep upstream edits out of the
+checkout while generation runs. This check is not a snapshot or a lock against
+concurrent writers. Local rules, overlays, patches, and extras remain editable.
+
 ```sh
 npm run update-upstream             # the tip of upstream main
 npm run update-upstream -- <ref>    # or a commit or tag
@@ -123,7 +133,10 @@ capability the manifest does not yet include. `plugin.json` is not emitted but
 supplies the plugin name and version. Inspect the full upstream commits too
 (`git -C vendor/pstack show --stat <sha>`); packaging can live outside
 `pstack/`. Use the canonical `pstack/` sources, not upstream's generated
-`harness/pstack/` copies for other hosts.
+`harness/pstack/` copies for other hosts. If a failed update or a rerun already
+moved the checkout, recover its source delta with
+`git -C vendor/pstack diff --name-status <old-pin> HEAD -- pstack`.
+The old pin is in the base branch's package metadata.
 
 Generation records the pin in `package.json`
 (`pistack.upstream`) and the README markers and fills `{{upstream.commit}}`;

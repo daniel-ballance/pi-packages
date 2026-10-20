@@ -1,23 +1,22 @@
 # Current decisions
 
-Last run: 2026-10-20, pistack upstream `cursor/plugins@d457567` (pstack 0.15.28), pi-pocock-skills upstream `5beb35b`.
+Last run: 2026-10-20, pistack upstream `cursor/plugins@88d4751` (pstack 0.15.29), pi-pocock-skills upstream `5beb35b`.
 
-The pi-pocock-skills pin moves from `49dd158` to `5beb35b`. Upstream changed only
-the excluded `chief-of-staff` skill and its changeset. All eleven adopted skill
-trees are unchanged, and the generated collection is byte-identical. All eleven
-coverage verdicts below remain unchanged. Invocation flags, playbooks, kept
-dependencies, and cross-package pointers are unchanged. No settings or
-collection-filter edits are needed.
+The pstack refresh changes `sharpen` to return a rewritten prompt rather than
+execute the task. Its help and example agree. The concurrent Pocock refresh
+moves `49dd158` to `5beb35b`, changing only the excluded `chief-of-staff` skill
+and its changeset. All eleven adopted Pocock skill trees are unchanged.
+No skills, playbooks, or invocation flags were added or removed. All eleven
+coverage verdicts below remain unchanged. Kept dependencies and cross-package
+pointers are unchanged. No settings or collection-filter edits are needed.
 
-`skill-report --check` passed for home and the main checkout before the pin
-change, and for home and the update worktree afterward. The package checks,
-tests, and canonical root check pass at the new pin. Isolated Pi 1.3.0 loader
-checks of the candidate collection and filtered packages select pistack's `tdd`
-without skill or extension diagnostics. Fresh interactive CLI and T3 prompt
-lists were not exercised. See the
-[sync audit](../../../docs/pi-pocock-sync-2026-10-20.md). The previous run added
-pstack's `maintain-formal-verification-skill` and is recorded in the
-[pistack update validation](../../../docs/pistack-upstream-2026-10-19.md).
+`skill-report --check` passes for home, the main checkout, and the update worktree.
+Live settings still select the main checkout. The root check's isolated Pi 1.3.0
+loader tests load the candidate collection and pistack package directly and verify
+that pistack's `tdd` wins without skill diagnostics. Fresh interactive CLI and T3
+prompt lists were not exercised. See the
+[pistack update validation](../../../docs/pistack-upstream-2026-10-20.md) and
+[Pocock sync audit](../../../docs/pi-pocock-sync-2026-10-20.md).
 
 ## Coverage table
 
