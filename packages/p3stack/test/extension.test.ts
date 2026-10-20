@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import p3stack from "../extensions/p3stack/index.ts";
-import { installFooterPrefix, prefixFooter } from "../extensions/p3stack/src/footer.ts";
 import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/p3stack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
@@ -114,12 +113,11 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
     assert.equal(off.systemPromptOptions.sections["p3stack"], undefined);
     assert.deepEqual(await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } }), [], "no reminder while off");
   } finally { h.dispose(); }
-  // Pi's footer only loads inside Pi; here the terminal falls back to a status row.
   const tui = harness({ mode: "tui" });
   try {
     await tui.emit("session_start");
     await tui.command("p3stack", "on");
-    assert.deepEqual(tui.statuses.at(-1), ["p3stack", "poteto-mode"]);
+    assert.deepEqual(tui.statuses.at(-1), ["p3stack", "p3stack on"]);
     await tui.command("p3stack", "off");
     assert.deepEqual(tui.statuses.at(-1), ["p3stack", undefined]);
   } finally { tui.dispose(); }
@@ -129,37 +127,6 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
     const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
     assert.ok(event.systemPromptOptions.sections["p3stack"], "rebuilt from the branch");
   } finally { resumed.dispose(); }
-});
-
-// Pi-tui's width rules for these cases: the potato and the ellipsis glyphs are 2 and 1 wide.
-const measure = {
-  visibleWidth: (line: string) => [...line.replace(/\x1b\[[0-9;]*m/g, "")].reduce((width, char) => width + (char === "🥔" ? 2 : 1), 0),
-  truncateToWidth: (line: string, width: number, ellipsis = "") => { let out = ""; for (const char of line) { if (measure.visibleWidth(out + char + ellipsis) > width) break; out += char; } return out + ellipsis; },
-};
-
-test("the potato goes before the working directory without widening the footer", () => {
-  assert.deepEqual(prefixFooter(["~/code (main)", "stats", "statuses"], 40, "🥔 ", measure), ["🥔 ~/code (main)", "stats", "statuses"]);
-  assert.deepEqual(prefixFooter(["~/code", "stats"], 40, "", measure), ["~/code", "stats"], "no potato while the mode is off");
-  const labelled = "~/code" + " ".repeat(10) + "subagents: 1/2"; // 30 wide, as subagents right-aligns it
-  assert.equal(prefixFooter([labelled, "stats"], 30, "🥔 ", measure)[0], "🥔 ~/code" + " ".repeat(7) + "subagents: 1/2", "a right-aligned label keeps its place");
-  assert.equal(prefixFooter(["~/a/very/long/project/path", "stats"], 20, "🥔 ", measure)[0], "🥔 ~/a/very/long/...");
-});
-
-test("the footer hook decorates Pi's renderer until it is removed, and leaves later wrappers alone", () => {
-  class Footer { render(width: number) { return [`~/code ${width}`, "stats"]; } }
-  let on = true;
-  const remove = installFooterPrefix(Footer.prototype, () => on ? "🥔 " : "", measure);
-  assert.deepEqual(new Footer().render(40), ["🥔 ~/code 40", "stats"]);
-  on = false;
-  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"]);
-  on = true;
-  remove();
-  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"], "removed");
-  const removeAgain = installFooterPrefix(Footer.prototype, () => { throw new Error("broken"); }, measure);
-  assert.deepEqual(new Footer().render(40), ["~/code 40", "stats"], "a failing decoration keeps the stock footer");
-  const later = Footer.prototype.render = function (this: Footer, width: number) { return [`later ${width}`]; };
-  removeAgain();
-  assert.equal(Footer.prototype.render, later, "another extension's later wrapper is not overwritten");
 });
 
 test("while the mode is on, delegated briefs start with the poteto-agent recipe, once", async () => {
