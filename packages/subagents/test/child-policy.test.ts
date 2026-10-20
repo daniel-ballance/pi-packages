@@ -145,6 +145,7 @@ test("a mapped provider file that is missing or absent from the catalog does not
     assert.throws(() => gone.compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
       assert.match(error.message, /mapped file does not exist/);
       assert.equal(error.message.includes(missing), true);
+      assert.match(error.message, /Fix providerExtensions in subagents\.json/);
       return true;
     });
     const filtered = environment({ extensions: [directory], providerExtensions: { bridge: directory } });
@@ -153,6 +154,7 @@ test("a mapped provider file that is missing or absent from the catalog does not
     assert.throws(() => filtered.compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
       assert.match(error.message, /not in the catalog's extensions/);
       assert.equal(error.message.includes(directory), true);
+      assert.match(error.message, /Add that file to extensions/);
       return true;
     });
     const disabled = environment({ extensions: [missing], providerExtensions: { bridge: missing }, models: [{ id: "bridge/m:off" }] });

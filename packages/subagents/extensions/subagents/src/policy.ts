@@ -294,11 +294,11 @@ export class SubagentPolicy {
     }
     let resolved: string;
     try { resolved = this.path(mapped); }
-    catch { throw new Error(`mapped file does not exist: ${mapped}`); }
+    catch { throw new Error(`mapped file does not exist: ${mapped}. Fix providerExtensions in subagents.json.`); }
     let file = false;
     try { file = statSync(resolved).isFile(); }
-    catch { throw new Error(`mapped file does not exist: ${mapped}`); }
-    if (!file || !listed.includes(resolved)) throw new Error(`mapped file is not in the catalog's extensions: ${mapped}`);
+    catch { throw new Error(`mapped file does not exist: ${mapped}. Fix providerExtensions in subagents.json.`); }
+    if (!file || !listed.includes(resolved)) throw new Error(`mapped file is not in the catalog's extensions: ${mapped}. Add that file to extensions.`);
     return resolved;
   }
   private refuseOutside(requested: string, roots: string[]): never {
