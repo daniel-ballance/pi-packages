@@ -184,5 +184,5 @@ Run `npm test` in this directory for the fixture and CLI tests; the root
 from their own `check` script with explicit skill directories and their
 `skills/` directory as the resource root (see
 `packages/pi-pocock-skills/scripts/check-skills.mjs` and
-`packages/pistack/generator/lint-skills.mjs`). Warnings remain visible; strict
+`packages/p3stack/generator/lint-skills.mjs`). Warnings remain visible; strict
 mode is opt-in.

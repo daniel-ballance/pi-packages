@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import pistack from "../extensions/pistack/index.ts";
-import { installFooterPrefix, prefixFooter } from "../extensions/pistack/src/footer.ts";
-import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/pistack/src/roles.ts";
+import pistack from "../extensions/p3stack/index.ts";
+import { installFooterPrefix, prefixFooter } from "../extensions/p3stack/src/footer.ts";
+import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/p3stack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
   ({ provider, id, reasoning, thinkingLevelMap: levels });
