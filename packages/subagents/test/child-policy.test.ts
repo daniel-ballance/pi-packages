@@ -160,3 +160,26 @@ test("a mapped provider file that is missing or absent from the catalog does not
     assert.throws(() => disabled.compile(root, { model: "bridge/m:off", tools: [] }), /No spawnable configuration/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("a stale allowlist entry before the mapped file does not block that spawn or hide the allowlist error", () => {
+  const root = mkdtempSync(join(tmpdir(), "stale-allowlist-unit-"));
+  const provider = join(root, "provider.mjs");
+  const stale = join(root, "gone.mjs");
+  writeFileSync(provider, "export default () => {}");
+  const model = (prov: string) => ({ provider: prov, id: "m", api: "test", input: ["text"], cost: {}, contextWindow: 1, maxTokens: 1, thinkingLevels: ["off"] });
+  const policy = (extensions: string[]) => {
+    writeFileSync(join(root, "subagents.json"), JSON.stringify({ version: 1, tools: ["read"],
+      models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }], extensions, providerExtensions: { bridge: provider } }));
+    return new SubagentPolicy({ cwd: root, agentDir: root, projectTrusted: true, guardPath: "/guard.ts", tools: () => ["read"],
+      models: () => [model("bridge"), model("builtin")] });
+  };
+  try {
+    const selected = policy([stale, provider]).compile(root, { model: "bridge/m:off", tools: [] });
+    assert.ok(selected.cliArgs!.includes(provider), "stale entry listed first still selects the mapped file");
+    assert.throws(() => policy([stale]).compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
+      assert.equal(error.message.includes(provider), true);
+      assert.equal(error.message.includes("allowlist"), true);
+      return true;
+    });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

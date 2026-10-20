@@ -277,7 +277,9 @@ export class SubagentPolicy {
   private extensionListed(file: string) {
     for (const entry of this.config?.extensions ?? []) {
       if (entry.startsWith("builtin:")) continue;
-      if (entry === file || this.path(entry) === this.path(file)) return true;
+      try {
+        if (entry === file || this.path(entry) === this.path(file)) return true;
+      } catch { continue; }
     }
     return false;
   }
