@@ -30,7 +30,7 @@ Read [technical-writing](../technical-writing/SKILL.md). Draft notes grouped by 
 
 Propose a semver bump for each released package. Use major for incompatible public changes, minor for backward-compatible features or deprecations, and patch for backward-compatible fixes. State the old version, proposed version, and evidence. Respect the repository's documented pre-1.0 and prerelease policy. Call out a conflict with pending changesets or tool configuration before changing versions.
 
-Print the notes draft and proposed bump before the local version step.
+Print the notes draft and proposed bump, then continue with the safe local version step in the same turn. The approval pause comes after local preparation, not before it.
 
 ## Prepare versions locally
 
