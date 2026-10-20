@@ -166,8 +166,19 @@ export function waitReport(manager: SubagentManager, end: WaitEnd, collect: bool
     const record = manager.get(news.id);
     const plan = reportPlan(record.updates.filter(update => update.cursor > record.readCursor), final, news.status);
     if (plan.mode === "skip") return news;
-    const page = manager.read(news.id, undefined, false);
-    const { prefix, reports } = takePage(page.updates, plan, budget);
+    const chosen = plan.mode === "one" ? plan.cursor : undefined;
+    const page = manager.read(news.id, chosen === undefined ? undefined : chosen - 1, false);
+    let updates = page.updates;
+    if (chosen !== undefined && page.updates.length) {
+      const start = page.updates[0].cursor;
+      const end = page.updates[page.updates.length - 1].cursor;
+      updates = [
+        ...record.updates.filter(update => update.cursor > record.readCursor && update.cursor < start),
+        ...page.updates,
+        ...record.updates.filter(update => update.cursor > end),
+      ];
+    }
+    const { prefix, reports } = takePage(updates, plan, budget);
     if (!prefix.length && !page.uiRequests.length) return news;
     receipts.push({ id: news.id, updates: prefix, nextCursor: prefix.at(-1)?.cursor ?? record.readCursor, uiRequests: page.uiRequests });
     const acknowledged = prefix.filter(update => REPORT_KINDS.has(update.kind)).length;

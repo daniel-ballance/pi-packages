@@ -187,6 +187,24 @@ for (const kind of ["aborted", "completed", "extension_error"]) {
   });
 }
 
+test("final returns a small last report past the read page and a later read is empty", async () => {
+  const s = await setup();
+  try {
+    const id = await s.spawn("paged");
+    s.replaceUpdates(id, [
+      { kind: "assistant", text: "a".repeat(12000) },
+      { kind: "assistant", text: "b".repeat(12000) },
+      { kind: "assistant", text: "c".repeat(12000) },
+      { kind: "assistant", text: "done" },
+    ]);
+    const { report, receipts } = waitReport(s.manager, s.settled(id), true, undefined, undefined, true);
+    assert.deepEqual(report.agents[0].reports, [{ kind: "assistant", text: "done" }]);
+    assert.equal(report.agents[0].unread, 0);
+    s.acknowledge(receipts);
+    assert.deepEqual(s.manager.read(id, undefined, false).updates, []);
+  } finally { await s.cleanup(); }
+});
+
 test("final returns the aborted report when an assistant precedes it and acknowledges the rest", async () => {
   const s = await setup();
   try {
