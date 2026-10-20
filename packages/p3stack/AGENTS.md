@@ -25,9 +25,9 @@ Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
 ## Commands
 
 ```sh
-node generator/generate.mjs           # regenerate skills/ and LICENSE
-node generator/generate.mjs --check   # fail on drift; writes nothing
-npm run update-upstream [-- <ref>]    # move the upstream pin and regenerate
+npm run generate                      # regenerate skills/ and LICENSE
+npm run generate -- --check            # fail on drift; writes nothing
+npm run bump -- <source> [ref]         # move one source pin and regenerate
 npm run check                         # drift check, then lint-skill on every skill
 npm test                              # generator tests on fixtures
 ```
@@ -130,13 +130,15 @@ checkout while generation runs. This check is not a snapshot or a lock against
 concurrent writers. Local rules, overlays, patches, and extras remain editable.
 
 ```sh
-npm run update-upstream             # the tip of upstream main
-npm run update-upstream -- <ref>    # or a commit or tag
+npm run bump -- cursor-plugins        # the tip of upstream main
+npm run bump -- cursor-plugins <ref>  # or a commit or tag
 ```
 
-It fetches `vendor/pstack`, moves it to the ref, lists upstream's commits to
-`pstack/` and classifies each changed source path against the manifest, then
-regenerates. The report distinguishes emitted paths, explicit exclusions, and
+The command requires a source name. It fetches only that source's checkout,
+moves it to the ref, and classifies changed paths against that source's map and
+exclusions before it regenerates all sources. `cursor-plugins` uses `vendor/pstack`
+and the `pstack/` subtree. Unknown names and dirty checkouts fail before a fetch.
+`npm run update-upstream -- <source> [ref]` remains an alias. The report distinguishes emitted paths, explicit exclusions, and
 paths not emitted. Review every path marked `review scope`: it may be a new
 capability the manifest does not yet include. `plugin.json` is not emitted but
 supplies the plugin name and version. Inspect the full upstream commits too

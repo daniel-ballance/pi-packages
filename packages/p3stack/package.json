@@ -22,6 +22,8 @@
   ],
   "scripts": {
     "sync": "git -C ../.. submodule update --init packages/p3stack/vendor/pstack && node generator/generate.mjs",
+    "generate": "node generator/generate.mjs",
+    "bump": "node generator/update-upstream.mjs",
     "update-upstream": "node generator/update-upstream.mjs",
     "check": "node generator/generate.mjs --check && node generator/lint-skills.mjs && tsc --noEmit -p skills/poteto-mode/scripts/watch-pr/tsconfig.json && tsc --noEmit -p tsconfig.json",
     "test": "npm run test:once && T3_MCP_URL=http://127.0.0.1:1/mcp npm run test:once",

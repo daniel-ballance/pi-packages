@@ -51,12 +51,59 @@ function fixture() {
   });
   git(root, "clone", "-q", origin, join(pkg, "vendor/up"));
   const env = { ...gitEnv(), P3STACK_PACKAGE_DIR: pkg, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "protocol.file.allow", GIT_CONFIG_VALUE_0: "always" };
-  const run = (cli, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd: pkg, encoding: "utf8", env });
+  const rawRun = (cli, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd: pkg, encoding: "utf8", env });
+  const run = (cli, ...args) => rawRun(cli, ...(cli === updateCli ? ["cursor-plugins"] : []), ...args);
+  const bump = (...args) => rawRun(updateCli, ...args);
   assert.equal(run(generateCli).status, 0);
   const commit = (files, message) => { write(origin, files); git(origin, "add", "."); git(origin, "commit", "-qm", message); return git(origin, "rev-parse", "HEAD"); };
   const read = path => readFileSync(join(pkg, path), "utf8");
-  return { root, pkg, origin, run, commit, read, head: () => git(join(pkg, "vendor/up"), "rev-parse", "HEAD"), dispose: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, pkg, origin, run, bump, commit, read, head: () => git(join(pkg, "vendor/up"), "rev-parse", "HEAD"), dispose: () => rmSync(root, { recursive: true, force: true }) };
 }
+
+test("npm scripts expose generation and named-source bumps", () => {
+  const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(scripts.generate, "node generator/generate.mjs");
+  assert.equal(scripts.bump, "node generator/update-upstream.mjs");
+});
+
+test("bump requires a known source before it fetches or changes a checkout", () => {
+  const { bump, head, dispose } = fixture();
+  try {
+    const before = head();
+    const missing = bump();
+    assert.equal(missing.status, 2);
+    assert.match(missing.stderr, /<source> \[ref\]/);
+    const unknown = bump("missing");
+    assert.equal(unknown.status, 1);
+    assert.match(unknown.stderr, /unknown source.*missing.*cursor-plugins/i);
+    assert.equal(head(), before);
+  } finally { dispose(); }
+});
+
+test("a named-source bump moves only that checkout and uses only its scope", () => {
+  const { root, pkg, origin, bump, commit, head, dispose } = fixture();
+  try {
+    const first = head(), second = join(pkg, "vendor/second");
+    git(root, "clone", "-q", origin, second);
+    const manifestPath = join(pkg, "rules/manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.sources.push({
+      name: "second", vendor: "vendor/second/up",
+      upstream: { repository: "acme/second", checkout: "vendor/second", branch: "main" },
+      map: [{ from: "skills/demo/", to: "skills/second/" }], exclude: [],
+    });
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const tip = commit({ "up/skills/demo/SKILL.md": "# Changed\n\nUse the Task tool. See [guide](../../docs/guide/01.md).\n" }, "second source change");
+    const result = bump("second", tip);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(head(), first);
+    assert.equal(git(second, "rev-parse", "HEAD"), tip);
+    assert.match(result.stdout, /second.*acme\/second/);
+    assert.match(result.stdout, /up\/skills\/demo\/SKILL\.md -> skills\/second\/SKILL\.md/);
+    assert.doesNotMatch(result.stdout, / -> skills\/demo\/SKILL\.md/);
+    assert.match(readFileSync(join(pkg, "skills/second/SKILL.md"), "utf8"), /# Changed/);
+  } finally { dispose(); }
+});
 
 test("the pinned commit fills {{upstream.commit}} in rules and the README pin markers", () => {
   const { read, head, dispose } = fixture();
