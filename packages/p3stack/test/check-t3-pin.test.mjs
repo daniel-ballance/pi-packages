@@ -9,6 +9,10 @@ import { test } from "node:test";
 
 const cli = fileURLToPath(new URL("../generator/check-t3-pin.mjs", import.meta.url));
 const tools = ["orchestrator_capabilities", "delegate_task", "task_status"];
+const statePaths = [
+  { path: "runtime/service-state.json", versionField: "activeVersion" },
+  { path: "userdata/server-runtime.json", versionField: "serverVersion" },
+];
 const hash = text => createHash("sha256").update(text).digest("hex");
 
 function fixture(t) {
@@ -19,7 +23,7 @@ function fixture(t) {
     writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
   };
   const bridge = "export const fixtureBridge = true;\n";
-  write("rules/t3-pin.json", { version: "fixture-version", bridgeSha256: hash(bridge), directTools: tools, beforeAgentStartReturn: { systemPrompt: "string" } });
+  write("rules/t3-pin.json", { version: "fixture-version", bridgeSha256: hash(bridge), statePaths, directTools: tools, beforeAgentStartReturn: { systemPrompt: "string" } });
   write("home/.t3/runtime/service-state.json", { activeVersion: "fixture-version" });
   write("home/.t3/caches/pi-t3-mcp-extension.ts", bridge);
   write("empty-home/.keep", "");
@@ -41,7 +45,7 @@ test("pin check matches a fixture state file and bridge without contacting T3", 
   const f = fixture(t);
   const result = f.run(["--state", join(f.root, "home/.t3/runtime/service-state.json"), "--bridge", join(f.root, "home/.t3/caches/pi-t3-mcp-extension.ts")], "empty-home");
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "T3 fixture-version matches rules/t3-pin.json");
+  assert.equal(result.stdout.trim(), `T3 fixture-version matches rules/t3-pin.json\nstate read from ${join(f.root, "home/.t3/runtime/service-state.json")}`);
 });
 
 for (const [name, path, value, diagnostic] of [
@@ -56,18 +60,55 @@ for (const [name, path, value, diagnostic] of [
     const result = f.run();
     assert.equal(result.status, 1, result.stdout);
     assert.match(result.stderr, diagnostic);
+    if (name === "version drift") {
+      const lines = result.stderr.trim().split("\n");
+      assert.equal(lines[0], "activeVersion is other-version, expected fixture-version");
+      assert.equal(lines[1], `state read from ${join(f.root, "home/.t3/runtime/service-state.json")}`);
+    }
   });
 }
 
-test("pin check skips only when T3 is absent", t => {
+test("pin check skips when T3 is absent", t => {
   const f = fixture(t);
   const absent = f.run([], "empty-home");
   assert.equal(absent.status, 0, absent.stderr);
   assert.match(absent.stdout, /skip.*T3.*absent/i);
+});
+
+test("pin check reports legacy serverVersion drift without a bridge", t => {
+  const f = fixture(t);
+  const pin = JSON.parse(readFileSync(new URL("../rules/t3-pin.json", import.meta.url), "utf8"));
+  f.write("rules/t3-pin.json", { ...pin, statePaths });
+  f.write("legacy-home/.t3/userdata/server-runtime.json", { serverVersion: "0.1.1-nightly.20261016.3203" });
+  const result = f.run([], "legacy-home");
+  assert.equal(result.status, 1, result.stdout);
+  const lines = result.stderr.trim().split("\n");
+  assert.equal(lines[0], "activeVersion is 0.1.1-nightly.20261016.3203, expected 0.1.1-nightly.20261018.3302");
+  assert.equal(lines[1], `state read from ${join(f.root, "legacy-home/.t3/userdata/server-runtime.json")}`);
+  assert.ok(lines.includes(`bridge hash unverifiable at ${join(f.root, "legacy-home/.t3/caches/pi-t3-mcp-extension.ts")}`));
+  assert.doesNotMatch(result.stderr, /ENOENT/);
+});
+
+test("pin check skips when runtime exists but neither state file exists", t => {
+  const f = fixture(t);
   rmSync(join(f.root, "home/.t3/runtime/service-state.json"));
-  const broken = f.run();
-  assert.equal(broken.status, 1, broken.stdout);
-  assert.match(broken.stderr, /service-state\.json/);
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /skip.*T3.*no state file/i);
+  assert.ok(result.stdout.includes(join(f.root, "home/.t3/runtime/service-state.json")));
+  assert.ok(result.stdout.includes(join(f.root, "home/.t3/userdata/server-runtime.json")));
+});
+
+test("pin check prefers runtime state when both layouts exist", t => {
+  const f = fixture(t);
+  f.write("home/.t3/runtime/service-state.json", { activeVersion: "runtime-version" });
+  f.write("home/.t3/userdata/server-runtime.json", { serverVersion: "legacy-version" });
+  const result = f.run();
+  assert.equal(result.status, 1, result.stdout);
+  const lines = result.stderr.trim().split("\n");
+  assert.equal(lines[0], "activeVersion is runtime-version, expected fixture-version");
+  assert.equal(lines[1], `state read from ${join(f.root, "home/.t3/runtime/service-state.json")}`);
+  assert.doesNotMatch(result.stderr, /legacy-version/);
 });
 
 test("explicit missing fixture paths fail rather than skip", t => {
@@ -124,6 +165,7 @@ test("pin records the inspected nightly, bridge, direct tools, and prompt return
   const pin = JSON.parse(readFileSync(new URL("../rules/t3-pin.json", import.meta.url), "utf8"));
   assert.equal(pin.version, "0.1.1-nightly.20261018.3302");
   assert.equal(pin.bridgeSha256, "8cc49f380d825f869d2b50b1fd512cb71fe8d3e869d78e6fcd8ea5d3e6fbb24f");
+  assert.deepEqual(pin.statePaths, statePaths);
   assert.deepEqual(pin.directTools, tools);
   assert.deepEqual(pin.beforeAgentStartReturn, { systemPrompt: "string" });
 });
