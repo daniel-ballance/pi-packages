@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { builtInPolicy, DEFAULT_POLICY, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
+import { tempRoot } from "./support/temp-root.js";
 
 test("built-in policy is a multi-provider menu with delegation, nesting and loops on, for use with no setup", () => {
   const policy = parsePolicy(DEFAULT_POLICY);
@@ -41,7 +42,7 @@ const TEST_MODELS = [
 ];
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "subagent-policy-"));
+  const root = tempRoot("subagent-policy-");
   const cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   const environment: PolicyEnvironment = {
