@@ -226,6 +226,24 @@ test("a Child with neither edit, write nor subagent_spawn gets the short read-on
   } finally { h.dispose(); }
 });
 
+test("T3 research and review roles get a short recipe while writing and unspecified roles keep the full recipe", async () => {
+  const h = harness();
+  try {
+    await h.command("p3stack", "on");
+    for (const role of ["research", "review", "implement", undefined]) {
+      const event = { toolName: "mcp__t3-code__delegate_task", input: { role, task: "Inspect the change." } };
+      await h.emit("tool_call", event);
+      if (role === "research" || role === "review") {
+        assert.match(event.input.task, /^You are a read-only delegate/);
+        assert.doesNotMatch(event.input.task, /poteto-agent\.md/);
+      } else assert.match(event.input.task, /^Before any work, read .*poteto-agent\.md/);
+      const once = event.input.task;
+      await h.emit("tool_call", event);
+      assert.equal(event.input.task, once);
+    }
+  } finally { h.dispose(); }
+});
+
 test("ask_user asks through the UI, and without one says to apply the stated default", async () => {
   const h = harness({ answers: ["beta", "Other (type an answer)", "gamma", undefined] });
   try {

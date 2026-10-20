@@ -84,17 +84,13 @@ export default function p3stack(pi: Pi) {
     },
   });
 
-  // Every delegated brief starts with a recipe. A Child that can change files reads the
-  // full mode skill, as upstream's poteto-agent does. A Child given neither edit, write
-  // nor subagent_spawn only investigates: in stress tests such workers spent their first turns
-  // reading the 20 KB skill and starting playbooks of their own, so they get a short
-  // recipe instead. Only subagent_spawn says which tools a Child has; under T3 every
-  // brief keeps the full recipe.
   pi.on("tool_call", event => {
     if (!modeOn || !["subagent_spawn", "mcp__t3-code__delegate_task"].includes(event?.toolName)) return;
-    const input = event.input as { task?: unknown; tools?: unknown };
+    const input = event.input as { task?: unknown; tools?: unknown; role?: unknown };
     if (typeof input?.task !== "string" || input.task.includes(agentRecipe) || input.task.startsWith(READER)) return;
-    const readOnly = event.toolName === "subagent_spawn" && Array.isArray(input.tools) && !["edit", "write", "subagent_spawn"].some(tool => (input.tools as unknown[]).includes(tool));
+    const readOnly = event.toolName === "subagent_spawn"
+      ? Array.isArray(input.tools) && !["edit", "write", "subagent_spawn"].some(tool => (input.tools as unknown[]).includes(tool))
+      : input.role === "research" || input.role === "review";
     input.task = readOnly
       ? `${READER} Answer only this brief: do not read the poteto-mode skill, start a playbook, or delegate. Prove each claim (run read-only commands where they settle it) and cite file:line evidence. Report in the shape the brief asks, plainly and briefly; your report is input to your parent's decision.\n\n${input.task}`
       : `Before any work, read ${agentRecipe} and follow it; the poteto-mode skill is at ${modeSkill}.\n\n${input.task}`;
