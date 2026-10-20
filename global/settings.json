@@ -16,10 +16,6 @@
   ],
   "hideThinkingBlock": true,
   "packages": [
-    "../../Code/pi-packages/packages/web-search",
-    "../../Code/pi-packages/packages/subagents",
-    "../../Code/pi-packages/packages/claude-subscription",
-    "../../Code/pi-packages/packages/todo",
     "../../Code/pi-packages/packages/p3stack"
   ],
   "tuiMode": "fullscreen"
