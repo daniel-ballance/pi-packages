@@ -332,7 +332,7 @@ test("the on footer prefixes the directory and matches Pi's stock rendering byte
     const footer = factory!(tui, theme, footerData);
     const stock = new FooterComponent(session, footerData);
     const prefix = "🅿️ ";
-    assert.equal(stripTerminalSequences(footer.render(200)[0]!), `${prefix}${h.cwd} (${branch})`);
+    assert.equal(footer.render(200)[0], prefix + stock.render(200)[0]);
     for (const percent of [0, 75, 95, null]) {
       Object.assign(contextUsage, { percent });
       for (const enabled of [true, false]) {
