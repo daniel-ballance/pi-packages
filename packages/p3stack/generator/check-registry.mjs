@@ -8,11 +8,12 @@ const json = path => JSON.parse(readFileSync(path, "utf8"));
 const key = row => `${row.source}/${row.path}`;
 export const playbookPath = target => `skills/poteto-mode/${target}`;
 
-function skillPaths(root, prefix = "") {
+function skillPaths(root, prefix = "", templates = false) {
   if (!existsSync(root)) return [];
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
     const path = prefix + entry.name;
-    if (entry.isDirectory()) return skillPaths(join(root, entry.name), path + "/");
+    if (entry.isDirectory()) return skillPaths(join(root, entry.name), path + "/", templates);
+    if (templates && entry.name === "SKILL.md.tmpl") return [path.slice(0, -5)];
     return entry.name === "SKILL.md" ? [path] : [];
   });
 }
@@ -23,7 +24,7 @@ export function loadRegistry(packageDir, sources) {
   const chains = json(join(packageDir, "registry/chains.json"));
   const upstream = new Set(sources.flatMap(source => (source.skillRoots ?? ["skills/"]).flatMap(root =>
     skillPaths(join(packageDir, source.vendor, root)).map(path => `${source.name}/${root}${path}`))));
-  for (const path of skillPaths(join(packageDir, "authored/skills"))) upstream.add(`p3stack/skills/${path}`);
+  for (const path of skillPaths(join(packageDir, "authored/skills"), "", true)) upstream.add(`p3stack/skills/${path}`);
   const rows = new Set(), names = new Set(), problems = [];
   for (const row of skills) {
     const id = key(row);

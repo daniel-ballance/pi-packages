@@ -55,6 +55,16 @@ test("registry admits authored p3stack skills at their emitted paths", t => {
   assert.equal(result.stdout.trim(), "2 emitted, 0 dropped, 0 unclassified");
 });
 
+test("registry discovers authored skill templates and requires their registry rows", t => {
+  const f = fixture(t);
+  f.write("authored/skills/router/SKILL.md.tmpl", f.skill("router"));
+  assert.match(f.run().stderr, /Unclassified skill p3stack\/skills\/router\/SKILL\.md/);
+  f.write("skills/router/SKILL.md", f.skill("router"));
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], source: "p3stack", path: "skills/router/SKILL.md", name: "router" }]);
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("registry rejects an authored row whose file is missing", t => {
   const f = fixture(t);
   f.write("skills/release/SKILL.md", f.skill("release"));
