@@ -6,22 +6,26 @@ disable-model-invocation: true
 
 # p3stack mode
 
-Read [poteto-mode](../poteto-mode/SKILL.md) in full and follow it. Where these rules differ, this router wins, including over poteto-mode's Playbooks selection. Select the route before loading supporting principles or workflow skills.
+First read [poteto-mode](../poteto-mode/SKILL.md) in full. Finish that read before any other tool call. Follow it, except this router wins where its rules differ. Then select the route and applicable chains before reading any supporting skill. Read only the selected first target next.
+
+## Grants
+
+Determine the grant before choosing a route. "Be fully autonomous" selects full-autonomy rows, not default rows. Under full autonomy, design starts with sharpen, then architect. Replace grill-with-docs and grilling with that sequence. Infer covered choices from repository evidence and report them. Under the default grant, use the interview skills and ask the human about product choices. Explicit operator gates and irreversible actions still pause.
 
 ## Routes
 
-Match the request and grant below. Read the target first, then follow it. Paths are relative to this skill directory. A request to review someone else's PR uses the external review route. Review my change starts with no-comments.
+Match the request and grant below. After poteto-mode, read the target and follow it. Resolve every Read path from this p3stack-mode directory. A request to review someone else's PR uses the external review route. Review my change starts with no-comments.
 
 {{routes}}
 
 ## Chains
 
-Apply each matching chain at its anchor in table order. When no failing reproduction exists, read diagnosing-bugs before the Bug fix playbook. Then continue that playbook after diagnosis.
+Apply each matching chain at its anchor in table order. For a reported bug without a failing reproduction, the first target is ../diagnosing-bugs/SKILL.md, before even reading the Bug fix playbook. Continue Bug fix after diagnosis.
 
 {{chains}}
 
-## Grants and context
+## Seams and context
 
-Under the default grant, use the interview skills and ask the human about product choices. Under full autonomy, replace grill-with-docs and grilling with sharpen followed by architect. Infer covered choices from repository evidence and report them. Explicit operator gates and irreversible actions still pause. A tdd test seam is not a module boundary. Architect owns module boundaries, and tdd confirms the test seam within them.
+A tdd test seam is not a module boundary. Architect owns module boundaries, and tdd confirms the test seam within them.
 
 Keep context focused on the selected route. Read its dependencies when their trigger applies, rather than loading every linked skill. Before handing work off or compacting, save decisions, evidence paths, and unresolved questions in durable notes.

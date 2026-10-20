@@ -495,6 +495,16 @@ test("the router renders the registry tables with existing route targets and no 
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
 
+test("the router precedence overlay is locked to upstream Playbooks", () => {
+  const sections = JSON.parse(readFileSync(join(packageDir, "rules/sections.json"), "utf8"));
+  const rule = sections.find(row => row.file === "skills/poteto-mode/SKILL.md" && row.heading === "## Playbooks");
+  assert.ok(rule, "the precedence failure requires a Playbooks overlay");
+  const upstream = readFileSync(join(packageDir, "vendor/pstack/pstack/skills/poteto-mode/SKILL.md"), "utf8");
+  assert.equal(rule.upstream, sectionHash(upstream, "## Playbooks"));
+  const mode = readFileSync(join(packageDir, "skills/poteto-mode/SKILL.md"), "utf8");
+  assert.match(mode, /p3stack-mode.*route and chain tables/);
+});
+
 test("the package ships the Pocock license and initializes both source checkouts", () => {
   const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
   assert.ok(manifest.files.includes("LICENSE-matt-pocock"));
