@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -8,11 +7,12 @@ import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { isCancellationError, SubagentManager } from "../extensions/subagents/src/manager.js";
 import { NoticeScheduler } from "../extensions/subagents/src/notifications.js";
 import { summarizeAgents } from "../extensions/subagents/src/usage.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 async function setup(maxChildren = parseChildLimit(4)) {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-workout-"));
+  const dir = tempRoot("subagent-workout-");
   const manager = new SubagentManager(join(dir, "manager"), undefined, undefined, maxChildren);
   const options = { name: "workout", cwd: dir, executable: process.execPath, executableArgs: [fixture] };
   return { dir, manager, options, async cleanup() { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); } };

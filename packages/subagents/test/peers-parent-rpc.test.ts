@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 import { cliEnv } from "./host-env.js";
+import { tempRoot } from "./support/temp-root.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const fixture = fileURLToPath(new URL("./fixtures/peer-parent-provider.mjs", import.meta.url));
 const childFixture = fileURLToPath(new URL("./fixtures/peer-provider.mjs", import.meta.url));
 const extension = fileURLToPath(new URL("../extensions/subagents/index.ts", import.meta.url));
 
 test("real parent tools authorize/inspect child peers without management recursion", { timeout: 45000, skip: process.platform === "win32" }, async () => {
-  const root = mkdtempSync(join(tmpdir(), "peer-parent-")), agentDir = join(root, "agent"), bin = join(root, "bin");
+  const root = tempRoot("peer-parent-"), agentDir = join(root, "agent"), bin = join(root, "bin");
   mkdirSync(agentDir); mkdirSync(bin);
   // Manager launches `pi`; choose a deterministic installed CLI, not a user's provider config.
   if (process.env.PEER_TEST_EXECUTABLE) writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec '${process.env.PEER_TEST_EXECUTABLE}' "$@"\n`, { mode: 0o700 });

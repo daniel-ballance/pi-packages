@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 import { cliEnv } from "./host-env.js";
 import { git as runGit } from "./git.js";
+import { tempRoot } from "./support/temp-root.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const fixture = fileURLToPath(new URL("./fixtures/worktree-parent-provider.mjs", import.meta.url));
 const childFixture = fileURLToPath(new URL("./fixtures/peer-provider.mjs", import.meta.url));
 const extension = fileURLToPath(new URL("../extensions/subagents/index.ts", import.meta.url));
 
 test("a real parent spawns a child in a new git worktree under .pi/worktrees", { timeout: 45000, skip: process.platform === "win32" }, async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "worktree-parent-"))), agentDir = join(root, "agent"), bin = join(root, "bin"), repo = join(root, "repo");
+  const root = tempRoot("worktree-parent-"), agentDir = join(root, "agent"), bin = join(root, "bin"), repo = join(root, "repo");
   mkdirSync(agentDir); mkdirSync(bin); mkdirSync(repo);
   const git = (...args: string[]) => runGit(["-C", repo, ...args], { encoding: "utf8" }).trim();
   git("init", "-q", "-b", "main");

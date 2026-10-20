@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { chmodSync } from "node:fs";
 import { createWorktree, planWorktree, removeWorktree } from "../extensions/subagents/src/worktree.js";
 import { git as runGit } from "./git.js";
+import { tempRoot } from "./support/temp-root.js";
 
 function repo() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "worktree-repo-")));
+  const root = tempRoot("worktree-repo-");
   const git = (...args: string[]) => runGit(["-C", root, ...args], { encoding: "utf8" }).trim();
   git("init", "-q", "-b", "main");
   writeFileSync(join(root, "README.md"), "hello\n");
@@ -48,7 +48,7 @@ test("a base and branch can be chosen, and a bad one fails without leaving anyth
 });
 
 test("outside a git repository the request fails and says why", () => {
-  const plain = realpathSync(mkdtempSync(join(tmpdir(), "not-a-repo-")));
+  const plain = tempRoot("not-a-repo-");
   try {
     assert.throws(() => createWorktree({ cwd: plain, name: "x" }), /not inside a git repository/);
   } finally { rmSync(plain, { recursive: true, force: true }); }
@@ -97,7 +97,7 @@ test("a git failure after git has written the checkout still leaves nothing behi
 });
 
 test("the plan names the destination before anything is created, keeping whitespace in paths", () => {
-  const parent = realpathSync(mkdtempSync(join(tmpdir(), "worktree-space-")));
+  const parent = tempRoot("worktree-space-");
   const root = join(parent, "trailing ");
   mkdirSync(root);
   const git = (...args: string[]) => runGit(["-C", root, ...args], { encoding: "utf8" });

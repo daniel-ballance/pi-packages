@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { parsePolicy, SubagentPolicy } from "../extensions/subagents/src/policy.js";
 import { permitsMcpTool } from "../extensions/subagents/src/child-policy.js";
 import { tempRoot } from "./support/temp-root.js";
@@ -131,7 +130,7 @@ test("a model from an extension provider needs its extension selected, since Chi
 });
 
 test("a mapped provider file that is missing or absent from the catalog does not spawn", () => {
-  const root = mkdtempSync(join(tmpdir(), "mapped-miss-unit-"));
+  const root = tempRoot("mapped-miss-unit-");
   const missing = join(root, "missing.mjs");
   const directory = join(root, "not-a-file");
   mkdirSync(directory);
@@ -166,7 +165,7 @@ test("a mapped provider file that is missing or absent from the catalog does not
 });
 
 test("a stale allowlist entry before the mapped file does not block that spawn or hide the allowlist error", () => {
-  const root = mkdtempSync(join(tmpdir(), "stale-allowlist-unit-"));
+  const root = tempRoot("stale-allowlist-unit-");
   const provider = join(root, "provider.mjs");
   const stale = join(root, "gone.mjs");
   writeFileSync(provider, "export default () => {}");

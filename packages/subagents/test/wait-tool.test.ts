@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -9,6 +8,7 @@ import subagents from "../extensions/subagents/index.js";
 import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import type { ManagementRequest } from "../extensions/subagents/src/peer-transport.js";
 import { asHost } from "./host-env.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
@@ -23,7 +23,7 @@ async function withWaitTool(run: (tools: {
   delegatedWait: (args: Record<string, unknown>) => Promise<unknown>;
   queue: (pending: boolean) => void;
 }) => Promise<void>, extraRecords: Record<string, unknown>[] = []) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "wait-tool-"))), agentDir = join(root, "agent");
+  const root = tempRoot("wait-tool-"), agentDir = join(root, "agent");
   mkdirSync(join(agentDir, "subagents", "s"), { recursive: true });
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "test/fake:medium" }], tools: [], maxDepth: 2 }));
   const bin = join(root, "bin");

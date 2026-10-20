@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { SubagentManager, type Notice } from "../extensions/subagents/src/manager.js";
 import { NoticeScheduler, noticeBatch } from "../extensions/subagents/src/notifications.js";
+import { tempRoot } from "./support/temp-root.js";
 const sleep = (ms = 40) => new Promise(resolve => setTimeout(resolve, ms));
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 const notice = (n: number): Notice => ({ id: `agent-${n}`, name: `worker ${n}`, kind: "completed", text: `result ${n}`, key: `agent-${n}:3:completed`, cursor: 3 });
@@ -128,7 +127,7 @@ test("human intervention bypasses a routine report awaiting history receipt", as
 });
 
 async function managerFixture() {
-  const directory = await mkdtemp(join(tmpdir(), "subagent-notices-"));
+  const directory = tempRoot("subagent-notices-");
   const manager = new SubagentManager(directory);
   const spawn = (task: string) => manager.spawn({ name: "worker", task, cwd: directory, executable: process.execPath, executableArgs: [fixture] });
   return { directory, manager, spawn, async close() { await manager.shutdown(); await rm(directory, { recursive: true, force: true }); } };

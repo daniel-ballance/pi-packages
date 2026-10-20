@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -11,9 +11,10 @@ import { runCommand } from "../extensions/subagents/src/workflow-host.js";
 import { createWorktree, gitEnv } from "../extensions/subagents/src/worktree.js";
 import { asHost } from "./host-env.js";
 import { git } from "./git.js";
+import { tempRoot } from "./support/temp-root.js";
 
 function scratch(label: string) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), `worktree-git-env-${label}-`)));
+  const root = tempRoot(`worktree-git-env-${label}-`);
   const run = (...args: string[]) => git(["-C", root, ...args], { encoding: "utf8" }).trim();
   run("init", "-q", "-b", "main");
   writeFileSync(join(root, "README.md"), "hello\n");
@@ -121,7 +122,7 @@ test("createWorktree and the worktree tool ignore GIT_DIR and write the requeste
 
 test("workflow commands ignore inherited GIT_DIR and run in the named directory", { timeout: 20000, skip: process.platform === "win32" }, async () => {
   await withDecoy(async (_decoy, target) => {
-    const logDir = mkdtempSync(join(realpathSync(tmpdir()), `worktree-git-env-log-${process.pid}-`));
+    const logDir = tempRoot(`worktree-git-env-log-${process.pid}-`);
     try {
       const result = await runCommand(
         'if [ -n "${GIT_DIR+x}" ]; then printf "git_dir %s\n" "$GIT_DIR"; else printf "git_dir unset\n"; fi; printf "toplevel %s\n" "$(git rev-parse --show-toplevel)"',
@@ -172,7 +173,7 @@ test("gitEnv keeps GIT_CONFIG_COUNT and still ignores GIT_DIR", () => {
 });
 
 test("gitEnv discovers repository variables lazily and caches them", { skip: process.platform === "win32" }, () => {
-  const bin = mkdtempSync(join(tmpdir(), "worktree-git-env-discovery-"));
+  const bin = tempRoot("worktree-git-env-discovery-");
   const source = pathToFileURL(join(import.meta.dirname, "../extensions/subagents/src/worktree.ts")).href;
   const log = join(bin, "calls");
   writeFileSync(join(bin, "git"), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DISCOVERY_LOG"\nprintf "%s\\n" GIT_DIR GIT_FUTURE_LOCAL GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS\n', { mode: 0o755 });
@@ -196,7 +197,7 @@ test("gitEnv discovers repository variables lazily and caches them", { skip: pro
 });
 
 test("gitEnv still drops GIT_DIR when git cannot name its variables", () => {
-  const empty = mkdtempSync(join(tmpdir(), "worktree-git-env-nopath-"));
+  const empty = tempRoot("worktree-git-env-nopath-");
   const source = pathToFileURL(join(import.meta.dirname, "../extensions/subagents/src/worktree.ts")).href;
   try {
     const result = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `

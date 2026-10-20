@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
@@ -9,12 +7,13 @@ import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/m
 import { treeOrder } from "../extensions/subagents/src/inspector-data.js";
 import { fitDelegatedReply } from "../extensions/subagents/src/nesting.js";
 import { formatSubagentSummary } from "../extensions/subagents/src/footer.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
 // A coordinator A, its Child B, and B's Child C: the tree the root Manager keeps.
 async function tree(authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], notice: (notice: unknown) => void = () => {}) {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-nesting-"));
+  const dir = tempRoot("subagent-nesting-");
   const manager = new SubagentManager(dir, notice, () => {}, parseChildLimit(4), authorize);
   const spawn = async (name: string, parentId?: string) => (await manager.spawn({ name, task: name, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId })).id;
   const a = await spawn("A"), b = await spawn("B", a), c = await spawn("C", b);
@@ -179,7 +178,7 @@ test("a subtree abort awaits a descendant's abort already in flight and reports 
 });
 
 test("the footer summary counts and costs every level of the tree", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-nesting-cost-"));
+  const dir = tempRoot("subagent-nesting-cost-");
   const manager = new SubagentManager(dir, () => {}, () => {}, parseChildLimit(4));
   const spawn = async (name: string, cost: string, parentId?: string) => (await manager.spawn({
     name, task: name, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId, env: { TEST_COST: cost },

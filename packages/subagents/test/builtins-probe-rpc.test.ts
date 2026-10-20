@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
+import { tempRoot } from "./support/temp-root.js";
 
 // Characterization of Pi itself, separate from the managed-policy regressions.
 const executable = process.env.PEER_TEST_EXECUTABLE ?? process.execPath;
@@ -18,7 +18,7 @@ for (const wrapped of [false, true]) {
   test(`Pi 0.99 built-in characterization: ${wrapped ? "configured factories" : "stock built-ins"}`, {
     timeout: 30000,
   }, async () => {
-    const root = mkdtempSync(join(tmpdir(), "builtin-probe-")), agentDir = join(root, "agent");
+    const root = tempRoot("builtin-probe-"), agentDir = join(root, "agent");
     mkdirSync(agentDir); mkdirSync(join(root, ".pi"));
     writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ codemode: { mode: "on", inlineBudget: 77 }, cacheWarming: "idle" }));
     writeFileSync(join(root, ".pi/settings.json"), JSON.stringify({ codemode: { mode: "only", inlineBudget: 99 }, cacheWarming: "off" }));

@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 import { cliEnv } from "./host-env.js";
+import { tempRoot } from "./support/temp-root.js";
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const parentFixture = fileURLToPath(new URL("./fixtures/workflow-parent-provider.mjs", import.meta.url));
 const childFixture = fileURLToPath(new URL("./fixtures/workflow-provider.mjs", import.meta.url));
 const extension = fileURLToPath(new URL("../extensions/subagents/index.ts", import.meta.url));
 
 test("real parent launches autonomous workflow, gets one completion notice, and inspects evidence", { timeout: 45000, skip: process.platform === "win32" }, async () => {
-  const root = mkdtempSync(join(tmpdir(), "workflow-parent-")), agentDir = join(root, "agent"), bin = join(root, "bin"); mkdirSync(agentDir); mkdirSync(bin);
+  const root = tempRoot("workflow-parent-"), agentDir = join(root, "agent"), bin = join(root, "bin"); mkdirSync(agentDir); mkdirSync(bin);
   writeFileSync(join(bin, "pi"), process.env.PEER_TEST_EXECUTABLE ? `#!/bin/sh\nexec '${process.env.PEER_TEST_EXECUTABLE}' "$@"\n` : `#!/bin/sh\nexec '${process.execPath}' '${cli}' "$@"\n`, { mode: 0o700 });
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "workflow-test/stub:off" }], tools: ["write", "bash"], extensions: [childFixture] }));
   const worker = { model: "workflow-test/stub:off", tools: ["write"], extensions: [childFixture] };

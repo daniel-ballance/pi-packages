@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { SubagentManager } from "../extensions/subagents/src/manager.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const cli = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/provider.mjs", import.meta.url));
 
 for (const task of ["slow-codex", "slow-genuine"]) {
   test(`real Pi RPC abort: ${task} emits error stopReason without masking unrelated failures`, { timeout: 15000 }, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "subagent-real-abort-"));
+    const dir = tempRoot("subagent-real-abort-");
     const manager = new SubagentManager(join(dir, "manager"));
     try {
       const a = await manager.spawn({
@@ -44,7 +44,7 @@ for (const task of ["slow-codex", "slow-genuine"]) {
 }
 
 test("real Pi RPC children: parallel prompts, abort, follow-up, shutdown, and persisted resumption", { timeout: 30000 }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-real-pi-"));
+  const dir = tempRoot("subagent-real-pi-");
   const env = { PI_CODING_AGENT_DIR: join(dir, "config"), PI_OFFLINE: "1", PI_TELEMETRY: "0" };
   const manager = new SubagentManager(join(dir, "manager"));
   let restored: SubagentManager | undefined;

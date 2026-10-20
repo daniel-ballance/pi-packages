@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
 import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
 import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
+import { tempRoot } from "./support/temp-root.js";
 const cli = process.env.PEER_TEST_CLI ?? fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", import.meta.url));
 const provider = fileURLToPath(new URL("./fixtures/peer-provider.mjs", import.meta.url));
 const guard = fileURLToPath(new URL("../extensions/subagents/src/child-guard.ts", import.meta.url));
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 test("real child peer tools: idle prompt, busy steering, limits, graph, resume and cleanup", { timeout: 60000 }, async () => {
-  const root = mkdtempSync(join(tmpdir(), "peers-rpc-"));
+  const root = tempRoot("peers-rpc-");
   const agentDir = join(root, "agent"); mkdirSync(agentDir);
   const previous = { PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR, PI_OFFLINE: process.env.PI_OFFLINE };
   process.env.PI_CODING_AGENT_DIR = agentDir; process.env.PI_OFFLINE = "1";

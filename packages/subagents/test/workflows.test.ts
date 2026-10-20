@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { Workflows, parseVerdict } from "../extensions/subagents/src/workflows.js";
 import { parseWorkflow, type WorkflowDefinition } from "../extensions/subagents/src/workflow-definition.js";
 import type { WorkflowHost, AgentJob } from "../extensions/subagents/src/workflow-host.js";
 import { managerWorkflowHost, runCommand } from "../extensions/subagents/src/workflow-host.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const worker = { model: "test/stub:off", tools: [] };
 const task = (id: string, dependsOn: string[] = []) => ({ id, kind: "task" as const, worker, instructions: id, dependsOn });
@@ -17,7 +17,7 @@ async function settled(engine: Workflows, id: string) {
   assert.fail("Workflow did not settle");
 }
 function setup(overrides: Partial<WorkflowHost> = {}) {
-  const root = mkdtempSync(join(tmpdir(), "workflow-test-"));
+  const root = tempRoot("workflow-test-");
   const host: WorkflowHost = { authorize() {}, agents: async jobs => jobs.map(j => { writeFileSync(join(j.candidate, "value.txt"), j.step); return `Result ${j.step}`; }),
     command: runCommand, ...overrides };
   const engine = new Workflows(join(root, "runs"), host);

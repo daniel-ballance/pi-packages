@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -9,6 +8,7 @@ import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 import { authorizeWorkflow, parseWorkflow } from "../extensions/subagents/src/workflow-definition.js";
 import { managerWorkflowHost } from "../extensions/subagents/src/workflow-host.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const INVALID = /maxChildren must be a positive integer, 0 to disable spawning, or -1 for no limit/;
 
@@ -113,7 +113,7 @@ const until = async (check: () => boolean) => {
 };
 
 async function policyDir(extra: Record<string, unknown> = {}) {
-  const root = await mkdtemp(join(tmpdir(), "child-limit-"));
+  const root = tempRoot("child-limit-");
   const agent = join(root, "agent");
   await mkdir(agent);
   await writeFile(join(agent, "subagents.json"), JSON.stringify({
@@ -213,7 +213,7 @@ test("workflow concurrency 64 authorizes under no limit, fails under a cap of 3,
 });
 
 test("an unlimited manager admits a reservation the old cap would refuse, and its capacity stays finite in JSON", { timeout: 20000 }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "child-limit-open-"));
+  const dir = tempRoot("child-limit-open-");
   const manager = new SubagentManager(dir, undefined, undefined, parseChildLimit(-1));
   try {
     const booked = manager.reserveSlots(100);
@@ -255,7 +255,7 @@ test("an unlimited manager admits a reservation the old cap would refuse, and it
 });
 
 test("a start at the live cap says the limit is tree-wide and does not address a parent", { timeout: 20000 }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "child-limit-tree-"));
+  const dir = tempRoot("child-limit-tree-");
   const manager = new SubagentManager(dir, undefined, undefined, parseChildLimit(1));
   try {
     await manager.spawn({ name: "holder", task: "remember", cwd: dir, executable: process.execPath, executableArgs: [fixture] });
@@ -275,7 +275,7 @@ test("a start at the live cap says the limit is tree-wide and does not address a
 });
 
 test("a full cap refuses one more child without throwing, and off refuses even an empty tree", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "child-limit-full-"));
+  const dir = tempRoot("child-limit-full-");
   try {
     const capped = new SubagentManager(dir, undefined, undefined, parseChildLimit(1));
     assert.equal(capped.capacity().available, 1);
@@ -292,7 +292,7 @@ test("a full cap refuses one more child without throwing, and off refuses even a
 });
 
 test("a reservation that can never fit throws instead of polling", { timeout: 1000 }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "child-limit-slots-"));
+  const dir = tempRoot("child-limit-slots-");
   try {
     const manager = new SubagentManager(dir, undefined, undefined, parseChildLimit(1));
     assert.throws(() => manager.reserveSlots(2), (thrown: unknown) => {

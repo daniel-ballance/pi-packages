@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
@@ -10,12 +8,13 @@ import { noticeBatch } from "../extensions/subagents/src/notifications.js";
 import { parsePolicy } from "../extensions/subagents/src/policy.js";
 import { waitReport } from "../extensions/subagents/src/wait.js";
 import { parseWorkflow } from "../extensions/subagents/src/workflow-definition.js";
+import { tempRoot } from "./support/temp-root.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
 // parent_send arrives over the private pipe; these tests call its manager handler directly.
 async function setup(limit = 3) {
-  const dir = await mkdtemp(join(tmpdir(), "subagent-parent-send-"));
+  const dir = tempRoot("subagent-parent-send-");
   const notices: Notice[] = [];
   const manager = new SubagentManager(dir, notice => notices.push(notice), () => {}, parseChildLimit(4), undefined, 0, limit);
   const spawn = async (name: string, task: string, parentId?: string) =>

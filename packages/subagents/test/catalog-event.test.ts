@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import subagents, { CATALOG_CHANNEL } from "../extensions/subagents/index.js";
 import { asHost } from "./host-env.js";
+import { tempRoot } from "./support/temp-root.js";
 
 test("other extensions read the usable models over the event bus, synchronously", async () => {
-  const agentDir = mkdtempSync(join(tmpdir(), "catalog-agent-"));
+  const agentDir = tempRoot("catalog-agent-");
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "p/m:high" }, { id: "p/gone:off" }] }));
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
