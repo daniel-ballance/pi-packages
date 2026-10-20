@@ -123,6 +123,7 @@ test("a model from an extension provider needs its extension selected, since Chi
       assert.equal(error.message.includes(provider), true);
       assert.equal(error.message.includes("allowlist"), true);
       assert.equal(error.message.includes("(empty)"), true);
+      assert.match(error.message, /add that file to extensions in subagents\.json/);
       return true;
     });
   } finally { rmSync(root, { recursive: true, force: true }); }

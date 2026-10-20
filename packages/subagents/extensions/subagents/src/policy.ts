@@ -290,7 +290,7 @@ export class SubagentPolicy {
     if (!mapped) return undefined;
     if (!this.extensionListed(mapped)) {
       const allowlist = this.config?.extensions ?? [];
-      throw new Error(`Provider extension ${mapped} is not in the extensions allowlist: ${allowlist.join(", ") || "(empty)"}`);
+      throw new Error(`Provider extension ${mapped} is not in the extensions allowlist: ${allowlist.join(", ") || "(empty)"}; add that file to extensions in subagents.json`);
     }
     let resolved: string;
     try { resolved = this.path(mapped); }
