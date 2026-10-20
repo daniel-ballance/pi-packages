@@ -211,9 +211,10 @@ function lint(outDir, deny, problems) {
 export function generate({ packageDir, outDir }) {
   const rules = join(packageDir, "rules");
   const manifest = readJson(join(rules, "manifest.json"));
-  const info = upstreamInfo(packageDir);
+  const source = manifest.sources[0];
+  const info = upstreamInfo(packageDir, source);
   const problems = [], executables = new Set();
-  const files = collect(join(packageDir, manifest.vendor), manifest, executables, problems);
+  const files = collect(join(packageDir, source.vendor), source, executables, problems);
   const upstream = new Map(files), expand = expander(info?.commit, problems);
   applyTokens(files, readJson(join(rules, "tokens.json"), []), expand, problems);
   applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
@@ -231,7 +232,7 @@ export function generate({ packageDir, outDir }) {
 
 // Top-level files and directories the generator owns, replaced whole on sync.
 const generatedRoots = packageDir =>
-  [...new Set(readJson(join(packageDir, "rules/manifest.json")).map.map(({ to }) => to.split("/")[0]))].sort();
+  [...new Set(readJson(join(packageDir, "rules/manifest.json")).sources.flatMap(source => source.map.map(({ to }) => to.split("/")[0])))].sort();
 
 function drift(packageDir, outDir) {
   const problems = [];
@@ -251,8 +252,8 @@ function drift(packageDir, outDir) {
 }
 
 // The upstream checkout's commit and plugin, when the manifest names a checkout.
-export function upstreamInfo(packageDir) {
-  const { vendor, upstream } = readJson(join(packageDir, "rules/manifest.json"));
+export function upstreamInfo(packageDir, source) {
+  const { vendor, upstream } = source;
   if (!upstream) return undefined;
   const checkout = join(packageDir, upstream.checkout);
   const git = (...args) => execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
@@ -287,7 +288,8 @@ function main(args) {
   const outDir = mkdtempSync(join(tmpdir(), "p3stack-"));
   try {
     generate({ packageDir, outDir });
-    const info = upstreamInfo(packageDir), pin = pinOf(info), manifestPath = join(packageDir, "package.json");
+    const source = readJson(join(packageDir, "rules/manifest.json")).sources[0];
+    const info = upstreamInfo(packageDir, source), pin = pinOf(info), manifestPath = join(packageDir, "package.json");
     const readmePath = join(packageDir, "README.md"), readme = existsSync(readmePath) ? readFileSync(readmePath, "utf8") : undefined;
     if (args[0] === "--check") {
       const problems = drift(packageDir, outDir);

@@ -10,7 +10,11 @@ import { gitEnv } from "../generator/git-env.mjs";
 
 const cli = fileURLToPath(new URL("../generator/generate.mjs", import.meta.url));
 
-// A miniature package: an upstream tree under vendor/ plus the hand-written rules.
+const manifest = fields => JSON.stringify({ sources: [{
+  name: "cursor-plugins", vendor: "vendor/up",
+  map: [{ from: "skills/", to: "skills/" }, { from: "LICENSE", to: "LICENSE" }],
+  exclude: [], ...fields,
+}] });
 function fixture(files) {
   const root = mkdtempSync(join(tmpdir(), "p3stack-generate-"));
   const defaults = {
@@ -18,11 +22,7 @@ function fixture(files) {
     "vendor/up/skills/demo/scripts/run.sh": "echo hi\n",
     "vendor/up/README.md": "Not emitted.\n",
     "vendor/up/LICENSE": "MIT\n",
-    "rules/manifest.json": JSON.stringify({
-      vendor: "vendor/up",
-      map: [{ from: "skills/", to: "skills/" }, { from: "LICENSE", to: "LICENSE" }],
-      exclude: [],
-    }),
+    "rules/manifest.json": manifest(),
     "rules/tokens.json": JSON.stringify([
       { id: "task-tool", min: 1, find: "the Task tool", replace: "a child" },
       { id: "skill-name", min: 1, find: "^name: Demo$", flags: "m", replace: "name: demo", files: "^skills/demo/SKILL\\.md$" },
@@ -63,7 +63,7 @@ test("slash commands discover emitted skill paths, including new skills and prin
     "vendor/up/skills/omitted/SKILL.md": "# Omitted\n",
     "vendor/up/agents/helper.md": "Run /future-check.\n",
     "vendor/up/skills/demo/commands.md": "/demo /future-check /principle-future /not-a-skill /omitted /principle-missing\n/skill:future-check docs/future-check https://example.test/future-check ./future-check ../future-check /future-check-more /future-check_word\n",
-    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", map: [{ from: "skills/", to: "skills/" }, { from: "agents/", to: "agents/" }], exclude: ["^skills/omitted/"] }),
+    "rules/manifest.json": manifest({ map: [{ from: "skills/", to: "skills/" }, { from: "agents/", to: "agents/" }], exclude: ["^skills/omitted/"] }),
     "rules/tokens.json": JSON.stringify([{ ...rule, min: 1 }]),
     "rules/sections.json": "[]",
     "rules/lint.json": JSON.stringify({ deny: [] }),
@@ -80,7 +80,7 @@ test("slash command discovery with no emitted skills cannot match a bare slash",
   const rule = JSON.parse(readFileSync(new URL("../rules/tokens.json", import.meta.url), "utf8")).find(({ id }) => id === "slash-skill");
   const { root, out, read, dispose } = fixture({
     "vendor/up/agents/helper.md": "Use /future-check or /anything.\n",
-    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", map: [{ from: "agents/", to: "agents/" }] }),
+    "rules/manifest.json": manifest({ map: [{ from: "agents/", to: "agents/" }] }),
     "rules/tokens.json": JSON.stringify([{ ...rule, min: 0 }]),
     "rules/sections.json": "[]",
     "rules/lint.json": JSON.stringify({ deny: [] }),
@@ -159,7 +159,7 @@ test("the coupling lint names every file, line and token a rule left behind", ()
 
 test("excluded upstream paths are never emitted", () => {
   const { root, out, dispose } = fixture({
-    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", map: [{ from: "skills/", to: "skills/" }], exclude: ["^skills/demo/scripts/"] }),
+    "rules/manifest.json": manifest({ map: [{ from: "skills/", to: "skills/" }], exclude: ["^skills/demo/scripts/"] }),
   });
   try {
     generate({ packageDir: root, outDir: out });
@@ -277,7 +277,7 @@ test("sync records the upstream commit and version in package.json, and check fa
   const { root, dispose } = fixture({
     "vendor/up/plugin.json": JSON.stringify({ name: "up", version: "1.2.3" }),
     "package.json": JSON.stringify({ name: "demo", p3stack: { upstream: "stale" } }, null, 2) + "\n",
-    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", upstream: { repository: "acme/plugins", checkout: "vendor/up" }, map: [{ from: "skills/", to: "skills/" }], exclude: [] }),
+    "rules/manifest.json": manifest({ upstream: { repository: "acme/plugins", checkout: "vendor/up" }, map: [{ from: "skills/", to: "skills/" }] }),
   });
   const git = (...args) => spawnSync("git", ["-C", join(root, "vendor/up"), ...args], { encoding: "utf8", env: gitEnv() });
   const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });

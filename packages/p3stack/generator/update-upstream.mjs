@@ -26,7 +26,8 @@ function main(args) {
   }
   const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(generator), ".."));
   const manifest = JSON.parse(readFileSync(join(packageDir, "rules/manifest.json"), "utf8"));
-  const { vendor, upstream } = manifest;
+  const source = manifest.sources[0];
+  const { vendor, upstream } = source;
   if (!upstream) { console.error("rules/manifest.json names no upstream checkout"); return 1; }
   const checkout = join(packageDir, upstream.checkout), subtree = relative(checkout, join(packageDir, vendor)) || ".";
   if (!existsSync(join(checkout, ".git"))) { console.error(`${upstream.checkout} is not checked out; run npm run sync first`); return 1; }
@@ -49,7 +50,7 @@ function main(args) {
     console.log(log ? `Upstream commits touching ${subtree}/:\n${log.replace(/^/gm, "  ")}` : `No upstream commits touch ${subtree}/.`);
     const changes = git("diff", "--name-status", "--no-renames", "-z", from, to, "--", subtree).split("\0").slice(0, -1);
     if (changes.length) {
-      const classify = sourcePathClassifier(manifest);
+      const classify = sourcePathClassifier(source);
       console.log("Changed upstream source paths (manifest scope):");
       for (let index = 0; index < changes.length; index += 2) {
         const [status, path] = changes.slice(index, index + 2);

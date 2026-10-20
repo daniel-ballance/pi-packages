@@ -12,7 +12,7 @@ Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
 | Path | Kind | Owner |
 |---|---|---|
 | `vendor/pstack` | git submodule, `cursor/plugins`; the generator reads only `pstack/` | upstream |
-| `rules/manifest.json` | which upstream paths are emitted, and where | hand-written |
+| `rules/manifest.json` | named sources with their vendor roots, path maps, exclusions, and upstream checkouts | hand-written |
 | `rules/tokens.json` | token rewrites | hand-written |
 | `rules/sections.json` + `overlays/` | section replacements | hand-written |
 | `patches/*.patch` | per-file patches, the escape hatch | hand-written |
@@ -35,9 +35,14 @@ npm test                              # generator tests on fixtures
 `npm run check` runs the repository's `lint-skill` from `../../scripts/lint-skill`,
 so install the workspace first.
 
-## Rule kinds
+## Sources and rules
 
-Applied in this order; the same upstream and rules give byte-identical output.
+`rules/manifest.json` contains a `sources` array. Each source has a unique `name`,
+a `vendor` root, a `map` of input prefixes to output prefixes, an optional
+`exclude` list of regular expressions, and optional `upstream` checkout details.
+The existing source is `cursor-plugins`.
+
+Rules apply in this order. The same sources and rules give byte-identical output.
 
 1. **Token rewrites** (`rules/tokens.json`): `{id, min, find, flags?, replace, files?}`.
    `find` is a JavaScript regular expression, `replace` may use `$1`, `files`

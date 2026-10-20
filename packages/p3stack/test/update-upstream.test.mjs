@@ -38,12 +38,12 @@ function fixture() {
   write(pkg, {
     "package.json": JSON.stringify({ name: "demo", p3stack: { upstream: "unset" } }, null, 2) + "\n",
     "README.md": "# demo\n\nPin: <!-- p3stack:upstream -->unset<!-- /p3stack:upstream -->.\n",
-    "rules/manifest.json": JSON.stringify({
-      vendor: "vendor/up/up",
+    "rules/manifest.json": JSON.stringify({ sources: [{
+      name: "cursor-plugins", vendor: "vendor/up/up",
       upstream: { repository: "acme/plugins", checkout: "vendor/up", branch: "main" },
       map: [{ from: "skills/", to: "skills/" }],
       exclude: [],
-    }),
+    }] }),
     "rules/tokens.json": JSON.stringify([
       { id: "task-tool", min: 1, find: "the Task tool", replace: "a child" },
       { id: "guide", min: 1, find: "\\]\\((?:\\.\\./)+docs/guide/([^)]+)\\)", replace: "](https://example.test/{{upstream.commit}}/$1)" },
@@ -90,7 +90,7 @@ test("update reports emitted, excluded and unmapped source changes without inclu
   try {
     const manifestPath = join(pkg, "rules/manifest.json");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    manifest.exclude = ["^skills/omitted/"];
+    manifest.sources[0].exclude = ["^skills/omitted/"];
     writeFileSync(manifestPath, JSON.stringify(manifest));
     commit({
       "up/skills/added/SKILL.md": "# Added\n",
