@@ -1,4 +1,6 @@
-# pstack on Pi: research and implementation options
+# Retired pstack on Pi research
+
+> Retired by the one-package consolidation. See [About p3stack](p3stack.md) for the current architecture. The research below records earlier options, not current installation instructions.
 
 Date: **2026-10-15**. Status: **research complete; decisions recorded in
 [p3stack-design.md](p3stack-design.md).** Pi facts below were checked against

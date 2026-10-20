@@ -1,9 +1,8 @@
-# Pi Packages
+# p3stack
 
-A collection of Pi packages that extend the harness with capabilities it does not
-ship: persistent child agents, bounded workflow scheduling, peer messaging between
-children, MCP protocol integration, web search, and self-reload. Each package
-lives under `packages/`.
+One Pi package at `packages/p3stack/` owns the router, generated workflows, and six
+runtime components. The components keep their own tests under that directory.
+`packages/mcp-client/` stays a separate optional replacement for native MCP.
 
 ## Language
 
@@ -181,7 +180,7 @@ _Avoid_: hidden, disabled (both mean unreachable, which deferred is not)
 
 **Role default**:
 The model, with thinking level, that one p3stack role uses unless the skill or the
-human says otherwise, kept in `p3stack.json`. A hint for choosing a Composition's
+human says otherwise, kept in the role file `p3stack.json`. A hint for choosing a Composition's
 model, not a Composition: tools, resources and directories are still chosen per
 Child, and the Allowlist still bounds the model.
 _Avoid_: profile, preset (see Composition)

@@ -33,7 +33,7 @@ node --test shared/*.test.ts scripts/*.test.mjs
 if [[ -f "$ROOT/.pi/subagents.json" ]]; then
   printf '%s\n' '== project subagent policy =='
   (
-    cd "$ROOT/packages/subagents"
+    cd "$ROOT/packages/p3stack/subagents"
     POLICY_PATH="$ROOT/.pi/subagents.json" node --import tsx --input-type=module -e '
       import { readFileSync } from "node:fs";
       import { parsePolicy } from "./extensions/subagents/src/policy.ts";
@@ -50,7 +50,7 @@ node packages/p3stack/generator/check-registry.mjs
 node packages/p3stack/generator/check-t3-pin.mjs
 node packages/p3stack/generator/lint-hosts.mjs
 (
-  cd "$ROOT/packages/subagents"
+  cd "$ROOT/packages/p3stack/subagents"
   POLICY_PATH="$ROOT/global/subagents.json" node --import tsx --input-type=module -e '
     import { readFileSync } from "node:fs";
     import { parsePolicy } from "./extensions/subagents/src/policy.ts";
@@ -64,7 +64,7 @@ printf '\n%s\n' '== lint-skill: test =='
 "$PACKAGE_MANAGER" --prefix scripts/lint-skill run test
 
 shopt -s nullglob
-package_jsons=(packages/*/package.json)
+package_jsons=(packages/*/package.json packages/p3stack/*/package.json)
 if ((${#package_jsons[@]} == 0)); then
   printf '%s\n' 'No packages found under packages/' >&2
   exit 1

@@ -537,7 +537,9 @@ test("the package ships the Pocock license and initializes both source checkouts
 
 test("the collection and global settings use only the unified skill source", () => {
   const rootManifest = JSON.parse(readFileSync(join(packageDir, "../../package.json"), "utf8"));
-  assert.equal(rootManifest.pi.skills.some(path => path.includes("pi-pocock-skills")), false);
+  assert.equal(rootManifest.pi, undefined);
+  const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
+  assert.deepEqual(manifest.pi.skills, ["./skills", "./subagents/skills"]);
   for (const lock of ["package-lock.json", "pnpm-lock.yaml"]) assert.equal(readFileSync(join(packageDir, "../..", lock), "utf8").includes("pi-pocock-skills"), false, lock);
   const settings = JSON.parse(readFileSync(join(packageDir, "../../global/settings.json"), "utf8"));
   assert.equal(settings.packages.some(entry => JSON.stringify(entry).includes("pi-pocock-skills")), false);

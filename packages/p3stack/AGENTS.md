@@ -4,8 +4,8 @@ The Pi edition of Cursor's pstack, **generated** from the vendored upstream.
 `skills/`, `LICENSE`, and `LICENSE-matt-pocock` are generated output. Never edit them by hand: change a
 rule and regenerate. The package check fails on drift.
 
-Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
-(§4.0 is the generator).
+Current architecture is in [`docs/p3stack.md`](../../docs/p3stack.md).
+The generator contract below defines source and output ownership.
 
 ## Inputs and outputs
 

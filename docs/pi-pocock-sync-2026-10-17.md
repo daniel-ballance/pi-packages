@@ -1,4 +1,6 @@
-# Pocock upstream refresh — 2026-10-17
+# Retired Pocock upstream refresh of 2026-10-17
+
+> Retired by the unified generator and one-package consolidation. See [About p3stack](p3stack.md) for current maintenance. The refresh record below is historical.
 
 ## Source and scope
 
