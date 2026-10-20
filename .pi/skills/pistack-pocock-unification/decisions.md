@@ -1,22 +1,23 @@
 # Current decisions
 
-Last run: 2026-10-19, pistack upstream `cursor/plugins@d457567` (pstack 0.15.28), pi-pocock-skills upstream `49dd158`.
+Last run: 2026-10-20, pistack upstream `cursor/plugins@d457567` (pstack 0.15.28), pi-pocock-skills upstream `5beb35b`.
 
-The pstack refresh adds the user-invoked `maintain-formal-verification-skill`,
-improves its creator, and offers formal verification during setup. It maintains
-verification models and checks against covered code. It does not replace a domain
-glossary, research report, or writing procedure. All eleven coverage verdicts
-below remain unchanged. Existing invocation flags, playbooks, kept dependencies,
-and cross-package pointers are unchanged. No settings or collection-filter edits
-are needed.
+The pi-pocock-skills pin moves from `49dd158` to `5beb35b`. Upstream changed only
+the excluded `chief-of-staff` skill and its changeset. All eleven adopted skill
+trees are unchanged, and the generated collection is byte-identical. All eleven
+coverage verdicts below remain unchanged. Invocation flags, playbooks, kept
+dependencies, and cross-package pointers are unchanged. No settings or
+collection-filter edits are needed.
 
-`skill-report --check` passes for home and the update worktree. Live settings
-still select the main checkout. A separate isolated Pi 1.3.0 loader check loads
-the candidate collection and pistack package directly, finds the new skill with
-model invocation disabled, and verifies that pistack's `tdd` wins without skill
-diagnostics. The full root check also passes. Fresh interactive CLI and T3 prompt
+`skill-report --check` passed for home and the main checkout before the pin
+change, and for home and the update worktree afterward. The package checks,
+tests, and canonical root check pass at the new pin. Isolated Pi 1.3.0 loader
+checks of the candidate collection and filtered packages select pistack's `tdd`
+without skill or extension diagnostics. Fresh interactive CLI and T3 prompt
 lists were not exercised. See the
-[update validation](../../../docs/pistack-upstream-2026-10-19.md).
+[sync audit](../../../docs/pi-pocock-sync-2026-10-20.md). The previous run added
+pstack's `maintain-formal-verification-skill` and is recorded in the
+[pistack update validation](../../../docs/pistack-upstream-2026-10-19.md).
 
 ## Coverage table
 
