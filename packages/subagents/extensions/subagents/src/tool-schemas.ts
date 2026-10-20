@@ -60,12 +60,14 @@ export const TOOL_SPECS = {
         "Cancelling the wait stops waiting, NOT the children. No time limit unless timeoutSeconds is set. " +
         "With nothing else to do this turn, end your turn instead: finished children's reports wake you. " +
         "Defaults to all your tracked children. Returned reports are acknowledged. unread counts reports not included (collect:false, or they did not fit): subagent_read that child. " +
+        "final true returns each settled child's last report when that report fits, and acknowledges the earlier updates. A final that does not fit stays unread. A busy child with no message is skipped, unless its last report is error, failure, input_requested, or human_intervention. collect false reads nothing. A result that spills acknowledges nothing. " +
         "To keep waiting past a child that needs input or is held, pass the other ids. Output capped at 30KB/1000 lines.",
       parameters: Type.Object({
         ids: Type.Optional(Type.Array(id)),
         mode: Type.Optional(Type.Unsafe<"any" | "all">({ type: "string", enum: ["any", "all"] })),
         timeoutSeconds: Type.Optional(Type.Integer({ minimum: 0, description: "Return after this many seconds even without news. Omit to wait until there is news." })),
         collect: Type.Optional(Type.Boolean({ description: "Default true: return and acknowledge new reports. false: status only, nothing acknowledged." })),
+        final: Type.Optional(Type.Boolean({ description: "Default false. When true, a settled child returns its last report when that report fits, and the wait acknowledges the earlier updates. A final that does not fit stays unread. A busy child with no message is skipped unless its last report is error, failure, input_requested, or human_intervention. collect false reads nothing. A result that spills acknowledges nothing." })),
       }),
   },
   subagent_close: {

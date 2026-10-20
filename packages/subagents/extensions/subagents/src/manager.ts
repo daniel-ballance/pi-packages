@@ -61,7 +61,7 @@ export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number
 export interface SlotReservation { readonly id: symbol }
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
-const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
+export const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
 export const REPORT_KINDS: ReadonlySet<string> = new Set(["assistant", "message", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
 function enforcePrivatePath(path: string, mode: number, directory: boolean) {
   const stat = lstatSync(path);

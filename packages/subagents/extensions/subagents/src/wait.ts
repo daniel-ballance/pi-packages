@@ -1,5 +1,5 @@
 import type { Static } from "typebox";
-import { REPORT_KINDS, type AgentRecord, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
+import { BUSY, REPORT_KINDS, type AgentRecord, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
 import type { TOOL_SPECS } from "./tool-schemas.js";
 import { MANAGE_TIMEOUT_MS } from "./peer-transport.js";
 
@@ -110,30 +110,79 @@ export function childNews(record: AgentRecord): ChildNews {
   };
 }
 
-export function waitReport(manager: SubagentManager, end: WaitEnd, collect: boolean, callerId?: string,
-  limits: ReportLimits = { bytes: 24_000, lines: 750 }): { readonly report: WaitReport; readonly receipts: readonly ReadReceipt[] } {
-  const statuses = end.ids.map(id => childNews(manager.get(id)));
-  if (!collect) return { report: { wake: end.wake, agents: statuses }, receipts: [] };
-  const used = printed({ wake: end.wake, agents: statuses });
-  let bytes = limits.bytes - used.bytes, lines = limits.lines - used.lines;
-  const receipts: ReadReceipt[] = [];
-  const agents = statuses.map(news => {
-    if (manager.reportsDrainedBy(news.id) !== callerId) return news;
-    const page = manager.read(news.id, undefined, false);
-    const prefix: Update[] = [], reports: Report[] = [];
-    for (const update of page.updates) {
+const FINAL_TERMINAL = new Set(["error", "failure", "input_requested", "human_intervention"]);
+type ReportPlan = { mode: "prefix" } | { mode: "skip" } | { mode: "one"; cursor?: number };
+
+function reportPlan(updates: readonly Update[], final: boolean, status: Status): ReportPlan {
+  if (!final) return { mode: "prefix" };
+  const reports = updates.filter(update => REPORT_KINDS.has(update.kind));
+  const last = reports.at(-1);
+  if (BUSY.has(status) && !(last && FINAL_TERMINAL.has(last.kind))) {
+    return reports.some(update => update.kind === "message") ? { mode: "prefix" } : { mode: "skip" };
+  }
+  return { mode: "one", cursor: last?.cursor };
+}
+
+function takePage(updates: readonly Update[], plan: Exclude<ReportPlan, { mode: "skip" }>, budget: { bytes: number; lines: number }) {
+  const prefix: Update[] = [], reports: Report[] = [];
+  if (plan.mode === "prefix") {
+    for (const update of updates) {
       if (REPORT_KINDS.has(update.kind)) {
         const report = { kind: update.kind, text: update.text };
         const cost = reportCost(report), key = reports.length ? { bytes: 0, lines: 0 } : REPORTS_KEY_COST;
-        if (cost.bytes + key.bytes > bytes || cost.lines + key.lines > lines) break;
-        bytes -= cost.bytes + key.bytes; lines -= cost.lines + key.lines;
+        if (cost.bytes + key.bytes > budget.bytes || cost.lines + key.lines > budget.lines) break;
+        budget.bytes -= cost.bytes + key.bytes; budget.lines -= cost.lines + key.lines;
         reports.push(report);
       }
       prefix.push(update);
     }
+    return { prefix, reports };
+  }
+  for (let index = 0; index < updates.length; index++) {
+    const update = updates[index];
+    if (plan.cursor !== undefined && update.cursor === plan.cursor) {
+      const report = { kind: update.kind, text: update.text };
+      const cost = reportCost(report);
+      if (cost.bytes + REPORTS_KEY_COST.bytes > budget.bytes || cost.lines + REPORTS_KEY_COST.lines > budget.lines) break;
+      budget.bytes -= cost.bytes + REPORTS_KEY_COST.bytes; budget.lines -= cost.lines + REPORTS_KEY_COST.lines;
+      reports.push(report);
+      prefix.push(...updates.slice(index));
+      break;
+    }
+    prefix.push(update);
+  }
+  return { prefix, reports };
+}
+
+export function waitReport(manager: SubagentManager, end: WaitEnd, collect: boolean, callerId?: string,
+  limits: ReportLimits = { bytes: 24_000, lines: 750 }, final = false): { readonly report: WaitReport; readonly receipts: readonly ReadReceipt[] } {
+  const statuses = end.ids.map(id => childNews(manager.get(id)));
+  if (!collect) return { report: { wake: end.wake, agents: statuses }, receipts: [] };
+  const used = printed({ wake: end.wake, agents: statuses });
+  const budget = { bytes: limits.bytes - used.bytes, lines: limits.lines - used.lines };
+  const receipts: ReadReceipt[] = [];
+  const agents = statuses.map(news => {
+    if (manager.reportsDrainedBy(news.id) !== callerId) return news;
+    const record = manager.get(news.id);
+    const plan = reportPlan(record.updates.filter(update => update.cursor > record.readCursor), final, news.status);
+    if (plan.mode === "skip") return news;
+    const chosen = plan.mode === "one" ? plan.cursor : undefined;
+    const page = manager.read(news.id, chosen === undefined ? undefined : chosen - 1, false);
+    let updates = page.updates;
+    if (chosen !== undefined && page.updates.length) {
+      const start = page.updates[0].cursor;
+      const end = page.updates[page.updates.length - 1].cursor;
+      updates = [
+        ...record.updates.filter(update => update.cursor > record.readCursor && update.cursor < start),
+        ...page.updates,
+        ...record.updates.filter(update => update.cursor > end),
+      ];
+    }
+    const { prefix, reports } = takePage(updates, plan, budget);
     if (!prefix.length && !page.uiRequests.length) return news;
-    receipts.push({ id: news.id, updates: prefix, nextCursor: prefix.at(-1)?.cursor ?? manager.get(news.id).readCursor, uiRequests: page.uiRequests });
-    return { ...news, unread: news.unread - reports.length, reports: reports.length ? reports : undefined };
+    receipts.push({ id: news.id, updates: prefix, nextCursor: prefix.at(-1)?.cursor ?? record.readCursor, uiRequests: page.uiRequests });
+    const acknowledged = prefix.filter(update => REPORT_KINDS.has(update.kind)).length;
+    return { ...news, unread: news.unread - acknowledged, reports: reports.length ? reports : undefined };
   });
   return { report: { wake: end.wake, agents }, receipts };
 }

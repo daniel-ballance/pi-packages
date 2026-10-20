@@ -108,6 +108,33 @@ test("a wait that fits reports the result it collected as reviewed", async () =>
   }, [crashed]);
 });
 
+const chatty = {
+  id: "chatty", status: "idle",
+  updates: [
+    { cursor: 1, kind: "sent", text: "task", time: "now" },
+    { cursor: 2, kind: "assistant", text: "1", time: "now" },
+    { cursor: 3, kind: "assistant", text: "2", time: "now" },
+    { cursor: 4, kind: "assistant", text: "done", time: "now" },
+  ],
+  cursor: 4,
+  assignment: { id: "chatty-1", status: "completed", startedAt: "now", finishedAt: "now", resultCursor: 4 },
+  resultReview: { assignmentId: "chatty-1", status: "unreviewed" },
+};
+
+test("final true returns the last assistant report and subagent_read returns nothing new", async () => {
+  await withWaitTool(async ({ wait, read }) => {
+    const details = (await wait({ ids: ["chatty"], final: true })).details as {
+      wake: string; agents: { reports?: { kind: string; text: string }[]; unread: number; resultReview?: { status: string } }[];
+    };
+    assert.equal(details.wake, "settled");
+    assert.deepEqual(details.agents[0].reports, [{ kind: "assistant", text: "done" }]);
+    assert.equal(details.agents[0].unread, 0);
+    assert.equal(details.agents[0].resultReview?.status, "reviewed");
+    const page = (await read({ id: "chatty" })).details as { updates: unknown[] };
+    assert.deepEqual(page.updates, []);
+  }, [chatty]);
+});
+
 test("a wait that spills to a file claims no review, and subagent_read still returns the unread result", async () => {
   await withWaitTool(async ({ wait, read }) => {
     const output = await wait({ ids: ["crashed", "noisy"] });
