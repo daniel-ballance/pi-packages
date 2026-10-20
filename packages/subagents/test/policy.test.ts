@@ -90,7 +90,11 @@ test("deterministic workflow commands require explicit bash permission and an al
     f.put(f.global, { version: 1, models: DEFAULT_POLICY.models, tools: ["bash"] });
     const allowed = new SubagentPolicy(f.environment);
     assert.equal(allowed.commandDirectory(f.cwd), f.cwd);
-    assert.throws(() => allowed.commandDirectory(f.root), /outside allowed/);
+    assert.throws(() => allowed.commandDirectory(f.root), (error: Error) => {
+      assert.equal(error.message.includes(`cwd ${f.root} `), true, error.message);
+      assert.equal(error.message.includes(realpathSync(f.cwd)), true, error.message);
+      return true;
+    });
     writeFileSync(f.global, "broken");
     assert.throws(() => new SubagentPolicy(f.environment).commandDirectory(f.cwd), /require bash/);
   } finally { f.cleanup(); }
