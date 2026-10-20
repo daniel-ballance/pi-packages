@@ -1,22 +1,24 @@
 # Onboard to a brownfield repository
 
-Build a written map of the existing repository. This playbook is read-only. Apply each linked skill within that scope. Return its proposed files in the answer instead of writing them. Preserve the starting working tree, including existing user changes. Leave implementation, configuration edits, tracker writes, and refactors for a separate task.
+Build a written map of the existing repository. Keep the repository read-only. Write evidence and reports outside the checkout. Apply each linked skill within that scope. Return proposed repository files in the answer instead of writing them. Preserve the starting working tree, including existing user changes. Leave implementation, configuration edits, tracker writes, and refactors for a separate task.
 
-Keep a checklist with the steps below. Retain skipped steps with the reason.
+Resolve the links below from the `skills/p3stack-mode/` directory, not its `playbooks/` subdirectory. Read each linked `SKILL.md` in full before following its procedure.
+
+Keep a checklist with the steps below. Retain skipped steps with the reason. Complete each numbered step before loading the next step's skill.
 
 ## 1. Establish the tracker
 
-Record `git status --short` as the baseline. Inspect the README, agent instructions, `docs/agents/issue-tracker.md`, remotes, and any documented local tracker. A remote alone is not proof that issues are enabled.
+Record `git status --short` as the baseline. Inspect the README, agent instructions, `docs/agents/issue-tracker.md`, remotes, and any documented local tracker. A documented local Markdown tracker counts as an existing tracker. A remote alone is not proof that issues are enabled.
 
-If a tracker exists, read [setup-matt-pocock-skills](../setup-matt-pocock-skills/SKILL.md) before the other workflow skills. Run its discovery and configuration assessment. Reuse the existing tracker decisions and return any missing configuration as a draft. Keep labels and repository files unchanged.
+If a tracker exists, read [setup-matt-pocock-skills](../setup-matt-pocock-skills/SKILL.md) as the first workflow skill, even when its configuration already exists. Complete its discovery and configuration assessment before reading `how` or `create-verification-skill`. Reuse existing tracker decisions and return any missing configuration as a draft. Keep labels and repository files unchanged.
 
 If no tracker exists, mark this setup step skipped with the evidence. Continue without creating a tracker.
 
-Finish with the tracker location or the reason for the skip in the checklist.
+Finish with the tracker location and setup assessment, or the reason for the no-tracker skip, in the checklist.
 
 ## 2. Explain the top-level architecture
 
-Run [how](../how/SKILL.md) on the top-level architecture. Trace an actual user entry point through the main modules to storage or external systems. Identify the build and test commands from the repository itself. Cite the paths that support each relationship.
+Read [how](../how/SKILL.md) and follow its procedure on the top-level architecture. Trace an actual user entry point through the main modules to storage or external systems. Identify the build and test commands from the repository itself. Cite the paths that support each relationship.
 
 Use the host's read-only delegation capability when available. If delegation is unavailable, perform the exploration and synthesis yourself and state that limitation.
 
@@ -24,9 +26,9 @@ Finish with the entry points, module responsibilities, dependency direction, and
 
 ## 3. Establish verification
 
-Run [create-verification-skill](../create-verification-skill/SKILL.md). Interview the repository for its launch, drive, observe, and isolation paths. Use an existing verification skill when one already covers the primary user path.
+Read [create-verification-skill](../create-verification-skill/SKILL.md) and follow its procedure. Interview the repository for its launch, drive, observe, and isolation paths. Use an existing verification skill when one already covers the primary user path.
 
-Keep proposed verification files in the answer for this read-only run. Exercise one user path only when it can run without repository or shared-state changes. Save evidence outside the checkout. If startup needs an install, migration, credential, or other write, report the exact blocker instead of repairing the repository. Label an unexecuted verification recipe as a draft.
+Keep proposed verification files in the answer for this read-only run. Exercise one user path only when it can run without repository or shared-state changes. Save the command and its output in an evidence file outside the checkout. If startup needs an install, migration, credential, or other write, report the exact blocker instead of repairing the repository. Label an unexecuted verification recipe as a draft.
 
 Finish with the verification recipe, evidence path, and any unproven steps.
 
@@ -42,7 +44,7 @@ Finish with a domain vocabulary draft or an explicit skipped step.
 
 ## 5. Survey architecture health
 
-Run [improve-codebase-architecture](../improve-codebase-architecture/SKILL.md) using the architecture map, domain vocabulary, and recent change history. Produce its candidate report outside the checkout. Record the report path in the map. Keep the strongest evidence-backed opportunities and distinguish speculation from observed friction.
+Read [improve-codebase-architecture](../improve-codebase-architecture/SKILL.md) and follow its survey procedure using the architecture map, domain vocabulary, and recent change history. Produce its HTML candidate report outside the checkout. If no candidates have evidence, write a report that records that finding rather than skipping the report. Record the report path in the map. Keep the strongest evidence-backed opportunities and distinguish speculation from observed friction.
 
 Stop after the survey and recommendation. Leave candidate selection, the grilling loop, and implementation for a separate task.
 
