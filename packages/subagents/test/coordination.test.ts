@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "../extensions/subagents/src/coordination.js";
+import { tempRoot } from "./support/temp-root.js";
 
 test("coordination normalizes paths, warns about ancestors/outputs and excludes stopped workers", () => {
-  const cwd = mkdtempSync(join(tmpdir(), "coordination-"));
+  const cwd = tempRoot("coordination-");
   try {
     const declaration = normalizeCoordination({ owns: ["src", "./src"], outputs: ["reports/result.md"] }, cwd);
     assert.deepEqual(declaration?.owns, [join(cwd, "src")]);
