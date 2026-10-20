@@ -474,6 +474,22 @@ test("setup offers and the help setup sentence come from upstream through the pa
 });
 
 const packageDir = fileURLToPath(new URL("..", import.meta.url));
+test("the maintenance skill and its references are emitted byte-for-byte from authored inputs", () => {
+  const out = mkdtempSync(join(tmpdir(), "p3stack-maintain-"));
+  try {
+    generate({ packageDir, outDir: out });
+    const directory = "skills/maintain-p3stack";
+    for (const path of ["SKILL.md", "references/failure-classes.md", "references/bump-note.md"]) {
+      const input = join(packageDir, "authored", directory, path);
+      assert.ok(existsSync(input), path);
+      assert.deepEqual(readFileSync(join(out, directory, path)), readFileSync(input), path);
+    }
+    const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
+    assert.ok(routes.some(row => row.target === "maintain-p3stack"));
+    assert.match(readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8"), /\.\.\/maintain-p3stack\/SKILL\.md/);
+  } finally { rmSync(out, { recursive: true, force: true }); }
+});
+
 test("the router renders the registry tables with existing route targets and no template output", () => {
   const out = mkdtempSync(join(tmpdir(), "p3stack-router-"));
   try {

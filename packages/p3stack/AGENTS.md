@@ -136,6 +136,12 @@ own script tests; `npm run check` typechecks `watch-pr`.
 - `lint-skill` warnings about orphan resources are expected: upstream reaches
   playbooks and references by naming convention. Errors fail the check.
 
+## Maintain p3stack
+
+Use [`maintain-p3stack`](authored/skills/maintain-p3stack/SKILL.md) for current-pin audits and upstream refreshes. Its audit stops with one status per vendored source and creates no PR. An explicit bump request continues to source updates, generator repairs, and unmerged PRs. Keep shared-checkout sources in one PR and independent sources separate.
+
+Write changed-source notes in [`docs/bumps/`](docs/bumps/README.md). Keep dependency refreshes and T3 host-contract repairs separate. Use disposable Pi settings for loader checks and smoke tests. The skill does not change the live agent configuration or install tools.
+
 ## Updating upstream
 
 Generation and `--check` require clean inputs under `vendor/pstack/pstack`,

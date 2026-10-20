@@ -30,5 +30,6 @@
   { "request": "Prepare steps only a human can perform", "grant": "any", "target": "wizard" },
   { "request": "Handle a task with no matching playbook", "grant": "any", "target": "figure-it-out" },
   { "request": "Cut a release", "grant": "any", "target": "release" },
-  { "request": "Onboard to an existing repository", "grant": "any", "target": "p3stack-mode/playbooks/onboard-brownfield.md" }
+  { "request": "Onboard to an existing repository", "grant": "any", "target": "p3stack-mode/playbooks/onboard-brownfield.md" },
+  { "request": "Audit p3stack pins or refresh its upstream sources", "grant": "any", "target": "maintain-p3stack" }
 ]

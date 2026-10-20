@@ -34,3 +34,4 @@
 | Handle a task with no matching playbook | any | [figure-it-out](../figure-it-out/SKILL.md) |
 | Cut a release | any | [release](../release/SKILL.md) |
 | Onboard to an existing repository | any | [p3stack-mode/playbooks/onboard-brownfield.md](../p3stack-mode/playbooks/onboard-brownfield.md) |
+| Audit p3stack pins or refresh its upstream sources | any | [maintain-p3stack](../maintain-p3stack/SKILL.md) |
