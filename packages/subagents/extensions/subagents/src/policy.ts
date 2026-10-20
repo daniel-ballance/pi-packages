@@ -69,7 +69,6 @@ export const DEFAULT_POLICY: PolicyFile = {
   maxDepth: 2,
   loops: { enabled: true, minIntervalMs: 60_000, maxIterations: 50, maxDurationMs: 8 * 60 * 60_000 },
 };
-/** The claude-subscription provider ships as an extension, so Children get it only by selecting that file. */
 export function builtInPolicy(claudeSubscription?: string): PolicyFile {
   if (!claudeSubscription) return DEFAULT_POLICY;
   return {
@@ -275,12 +274,37 @@ export class SubagentPolicy {
         "MCP connections require explicit credential inheritance consent; this is not credential isolation."],
     };
   }
+  private extensionListed(file: string) {
+    for (const entry of this.config?.extensions ?? []) {
+      if (entry.startsWith("builtin:")) continue;
+      if (entry === file) return true;
+      try { if (this.path(entry) === this.path(file)) return true; } catch {}
+    }
+    return false;
+  }
+  private mappedProviderFile(model: string) {
+    let provider: string;
+    try { provider = splitModel(model).provider; } catch { return undefined; }
+    const mapped = this.config?.providerExtensions?.[provider];
+    if (!mapped) return undefined;
+    if (!this.extensionListed(mapped)) {
+      const allowlist = this.config?.extensions ?? [];
+      throw new Error(`Provider extension ${mapped} is not in the extensions allowlist: ${allowlist.join(", ") || "(empty)"}`);
+    }
+    try {
+      const resolved = this.path(mapped);
+      return statSync(resolved).isFile() ? resolved : undefined;
+    } catch { return undefined; }
+  }
+  private refuseOutside(requested: string, roots: string[]): never {
+    throw new Error(`cwd ${requested} is outside allowed workingDirectories: ${roots.join(", ") || "(empty)"}. Relative roots resolve against the launch cwd.`);
+  }
   private checkedDirectory(cwd: string, roots: string[]) {
     if (!isAbsolute(cwd)) throw new Error("cwd must be absolute");
     const directory = this.path(cwd);
     if (!statSync(directory).isDirectory() || !roots.some(root => {
       const rel = relative(root, directory); return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
-    })) throw new Error("cwd is outside allowed workingDirectories");
+    })) this.refuseOutside(cwd, roots);
     return directory;
   }
   directory(cwd: string) { return this.checkedDirectory(cwd, this.catalog().workingDirectories); }
@@ -291,9 +315,10 @@ export class SubagentPolicy {
     let existing = path;
     while (!existsSync(existing)) { missing.unshift(basename(existing)); existing = dirname(existing); }
     const real = join(realpathSync(existing), ...missing);
-    if (!this.catalog().workingDirectories.some(root => {
+    const roots = this.catalog().workingDirectories;
+    if (!roots.some(root => {
       const rel = relative(root, real); return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
-    })) throw new Error("cwd is outside allowed workingDirectories");
+    })) this.refuseOutside(path, roots);
     return real;
   }
   commandDirectory(cwd: string) {
@@ -303,10 +328,12 @@ export class SubagentPolicy {
   /** depth: the new Child's depth, 1 for a Child of the root Parent. */
   compile(cwd: string, requested: Composition, depth = 1): Omit<SpawnOptions, "name" | "task"> {
     const catalog = this.catalog();
+    const providerExtension = this.mappedProviderFile(requested.model);
     if (!catalog.spawnEnabled) throw new Error("No spawnable configuration. Inspect subagent_catalog; user diagnostics: /subagents diagnostics.");
     // Always-on entries become part of the saved composition, so resume revalidates them like explicit choices.
     const union = (always: string[], chosen?: string[]) => always.length ? [...new Set([...(chosen ?? []), ...always])] : chosen;
     const selection: Composition = { ...requested, tools: union(catalog.alwaysTools, requested.tools)!, extensions: union(catalog.alwaysExtensions, requested.extensions) };
+    if (providerExtension && catalog.extensions.includes(providerExtension)) selection.extensions = union([providerExtension], selection.extensions);
     if (selection.extensions === undefined) delete selection.extensions;
     const directory = this.checkedDirectory(cwd, catalog.workingDirectories);
     if (!catalog.models.some(m => m.id === selection.model)) throw new Error("Model/thinking selection is not currently allowed and usable; use subagent_catalog.");
@@ -352,7 +379,6 @@ export class SubagentPolicy {
       if (source) toolSources[tool] = source;
     }
     const providerFile = this.config!.providerExtensions?.[splitModel(selection.model).provider];
-    if (providerFile && !(selection.extensions ?? []).includes(this.path(providerFile))) throw new Error("Model requires selecting its provider extension");
     if (!providerFile && !(selection.extensions ?? []).some(e => !e.startsWith("builtin:")) && this.environment.extensionProviders?.().includes(splitModel(selection.model).provider)) {
       throw new Error(`${selection.model} comes from a provider an extension registers, and Children start without extensions: select that extension, or ask the user to map the provider in providerExtensions.`);
     }

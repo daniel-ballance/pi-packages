@@ -45,8 +45,11 @@ test("compile links provider/tool resources, rejects missing selections, and omi
   try {
     assert.deepEqual(policy.catalog().models.map(m => m.id), ["test/stub:off"]);
     assert.ok(policy.diagnostics.some(d => d.includes("Virtual")));
-    assert.throws(() => policy.compile(root, { model: "test/stub:off", tools: [] }), /provider extension/);
-    assert.throws(() => policy.compile(root, { model: "test/stub:off", tools: ["custom"] }), /provider extension/);
+    const bare = policy.compile(root, { model: "test/stub:off", tools: [] });
+    assert.ok(bare.cliArgs!.includes(provider), "mapped provider extension is selected without being named");
+    assert.ok(bare.selection!.extensions!.includes(provider));
+    const withTool = policy.compile(root, { model: "test/stub:off", tools: ["custom"] });
+    assert.equal(withTool.childPolicy!.toolSources.custom, provider);
     assert.throws(() => policy.compile(root, { model: "test/stub:off", tools: ["codemode"], extensions: [provider] }), /requires selecting/);
     const compiled = policy.compile(root, { model: "test/stub:off", tools: ["custom", "read", "codemode"], extensions: [provider, "builtin:codemode"] });
     assert.deepEqual(compiled.childPolicy!.toolSources, { custom: provider, read: "builtin:read", codemode: "/guard.ts" });
@@ -108,8 +111,19 @@ test("a model from an extension provider needs its extension selected, since Chi
     assert.throws(() => unmapped.compile(root, { model: "bridge/m:off", tools: [] }), /comes from a provider an extension registers/);
     assert.ok(unmapped.compile(root, { model: "bridge/m:off", tools: [], extensions: [provider] }), "selecting the extension is enough");
     assert.ok(unmapped.compile(root, { model: "builtin/m:off", tools: [] }));
-    const mapped = environment({ models: [{ id: "bridge/m:off" }], providerExtensions: { bridge: provider } });
-    assert.equal((mapped.catalog().models[0] as { requiresExtension?: string }).requiresExtension, undefined);
-    assert.throws(() => mapped.compile(root, { model: "bridge/m:off", tools: [] }), /requires selecting its provider extension/);
+    const mapped = environment({ models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }], providerExtensions: { bridge: provider } });
+    assert.equal((mapped.catalog().models.find(m => m.id === "bridge/m:off") as { requiresExtension?: string }).requiresExtension, undefined);
+    const selected = mapped.compile(root, { model: "bridge/m:off", tools: [] });
+    assert.ok(selected.cliArgs!.includes(provider));
+    assert.ok(selected.selection!.extensions!.includes(provider));
+    const other = mapped.compile(root, { model: "builtin/m:off", tools: [] });
+    assert.equal(other.cliArgs!.includes(provider), false);
+    const denied = environment({ models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }], extensions: [], providerExtensions: { bridge: provider } });
+    assert.throws(() => denied.compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
+      assert.equal(error.message.includes(provider), true);
+      assert.equal(error.message.includes("allowlist"), true);
+      assert.equal(error.message.includes("(empty)"), true);
+      return true;
+    });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

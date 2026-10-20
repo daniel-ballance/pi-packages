@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -169,7 +169,14 @@ test("compile enforces exact composition, prompt modes, scoped directories and e
     assert.throws(() => policy.compile(f.cwd, { ...selection, tools: ["subagent_spawn"] }), /not allowed/);
     assert.throws(() => policy.compile(f.cwd, { ...selection, extensions: ["/tmp/not-allowed.ts"] }), /not allowed/);
     symlinkSync(f.environment.agentDir, join(f.cwd, "escape"));
-    assert.throws(() => policy.compile(join(f.cwd, "escape"), selection), /outside allowed/);
+    const requested = join(f.cwd, "escape");
+    assert.throws(() => policy.compile(requested, selection), (error: Error) => {
+      assert.equal(error.message.includes(requested), true);
+      assert.equal(error.message.includes(realpathSync(f.cwd)), true);
+      assert.match(error.message, /outside allowed workingDirectories/);
+      assert.match(error.message, /Relative roots resolve against the launch cwd/);
+      return true;
+    });
     rmSync(extension);
     assert.throws(() => policy.compile(f.cwd, selection), /not allowed/);
   } finally { f.cleanup(); }
