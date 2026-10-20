@@ -280,6 +280,32 @@ test("a replaced section that changes upstream fails with its new hash, so the o
   } finally { dispose(); }
 });
 
+test("authored files copy after extras without token rewrites and keep executable modes", () => {
+  const { root, out, read, dispose } = fixture({
+    "extra/skills/demo/references/contract.md": "Extra copy.\n",
+    "authored/skills/demo/references/contract.md": "Authored copy.\n",
+    "authored/skills/release/SKILL.md": "---\nname: release\ndescription: Prepare a release.\n---\n\n# Release\n",
+    "authored/skills/release/scripts/version.sh": "echo version\n",
+    "rules/tokens.json": JSON.stringify([{ id: "authored-untouched", find: "Authored", replace: "Rewritten" }]),
+    "rules/sections.json": "[]",
+    "rules/lint.json": JSON.stringify({ deny: [] }),
+  });
+  try {
+    chmodSync(join(root, "authored/skills/release/scripts/version.sh"), 0o755);
+    generate({ packageDir: root, outDir: out });
+    assert.equal(read("skills/demo/references/contract.md"), "Authored copy.\n");
+    assert.match(read("skills/release/SKILL.md"), /^name: release$/m);
+    assert.equal(statSync(join(out, "skills/release/scripts/version.sh")).mode & 0o111, 0o111);
+  } finally { dispose(); }
+});
+
+test("the coupling lint scans authored files", () => {
+  const { root, out, dispose } = fixture({ "authored/skills/release/SKILL.md": "Use the Task tool.\n" });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /skills\/release\/SKILL\.md:1: Task tool/);
+  } finally { dispose(); }
+});
+
 test("hand-written extras are copied into the output and still linted", () => {
   const { root, out, read, dispose } = fixture({ "extra/skills/demo/references/contract.md": "Delegate.\n" });
   try {

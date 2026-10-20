@@ -72,6 +72,18 @@ test("registry requires coverage and exact emitted paths for authored skills", t
   assert.match(f.run().stderr, /Authored skill.*release.*must emit at skills\/release\/SKILL\.md/);
 });
 
+test("generation copies registered authored skills and validates their invocation", t => {
+  const f = fixture(t);
+  f.write("authored/skills/release/SKILL.md", f.skill("release"));
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], source: "p3stack", path: "skills/release/SKILL.md", name: "release" }]);
+  f.write("registry/chains.json", []);
+  const outDir = join(f.root, "out");
+  generate({ packageDir: f.root, outDir });
+  assert.equal(readFileSync(join(outDir, "skills/release/SKILL.md"), "utf8"), f.skill("release"));
+  f.write("authored/skills/release/SKILL.md", f.skill("release").replace("name: release", "name: release\ndisable-model-invocation: true"));
+  assert.throws(() => generate({ packageDir: f.root, outDir }), /release\/SKILL.md has a different invocation/);
+});
+
 test("generation renders routes and chains from their registry rows", t => {
   const f = fixture(t);
   f.write("vendor/demo/skills/poteto-mode/SKILL.md", f.skill("poteto-mode"));
