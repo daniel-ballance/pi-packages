@@ -143,7 +143,7 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 | `subagent_renew` | Parent explicitly replenishes one direction's allowance |
 | `subagent_peers` | Inspect links/counters and paginated peer-message history |
 | `subagent_read` | Read new output or replay from a cursor; the page also carries the child's `model` and `thinking` |
-| `subagent_wait` | Block until the selected children have news, with no time limit unless `timeoutSeconds` is set. Returns `{ wake, agents }`, a compact status for each child with its new reports, and acknowledges those reports unless `collect:false` |
+| `subagent_wait` | Block until the selected children have news, with no time limit unless `timeoutSeconds` is set. Returns `{ wake, agents }`, a compact status for each child with its new reports, and acknowledges those reports unless `collect:false`. `final:true` keeps only each settled child's last assistant report |
 | `subagent_abort` | Clear queues and cancel work, keeping the child alive |
 | `subagent_close` | Abort and stop a child, dismissing pending notifications but retaining readable results and conversation |
 | `subagent_release_hold` | After discussing a human intervention, release a child or workflow hold without starting work |
@@ -214,6 +214,8 @@ An agent with nothing else to do this turn ends its turn, and finished children'
 To keep waiting past a child that needs input or is held, pass the other children's IDs.
 
 Each entry in `agents` carries the child's `id`, `name`, `status`, `activity`, `error`, `hold`, `uiRequests`, `depth`, `parentId` and `resultReview` (its `status` only) where they apply, plus `unread`, and nothing else from the record. `resultReview` shows the record after the wait's acknowledgement, so a result that spills to a file still shows `unreviewed`. `subagent_list` and `subagent_read` keep the task, usage, paths and timestamps. By default the wait also returns each child's new reports inline as `reports`, oldest first, and acknowledges them, so they do not arrive again as a report message. It leaves out `sent` and `lifecycle` echoes but acknowledges them with the reports around them. Reports share a 24 KB budget that the status entries come out of first, so a large selection trims reports instead of spilling the result to a file. `unread` counts the reports a result did not include. Read those with `subagent_read`. A result that still spills acknowledges nothing. `collect:false` returns status only and acknowledges nothing.
+
+`final` defaults to false, so a wait that omits it returns the same reports as before. With `final: true`, each settled child contributes only its last assistant report. The wait acknowledges every earlier report, so a later `subagent_read` returns nothing new from that child. When the child's last update is `error`, `failure`, `input_requested`, or `human_intervention`, the wait returns that report instead. A child that is still starting, working, waiting for input, or stopping is left unread. The exception is a last update of one of those four, or a `message` the child sent. The 24 KB and 750 line caps are unchanged. `collect: false` still returns status only and acknowledges nothing, including when `final` is true.
 
 A wait collects a child's reports only when they would otherwise reach the caller. A root wait therefore leaves a live coordinator's own children to that coordinator, and a coordinator's wait collects its direct children.
 

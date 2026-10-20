@@ -481,7 +481,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const end = await manager.wait(args.ids ?? [], args.mode ?? "all",
         args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued, callerId);
       signal?.throwIfAborted();
-      const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId);
+      const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId, undefined, args.final ?? false);
       const output = result(report, ctx);
       if (output.details !== report) return output;
       for (const receipt of receipts) manager.acknowledgeRead(receipt, true, !callerId);

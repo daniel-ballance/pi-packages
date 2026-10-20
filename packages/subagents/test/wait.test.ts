@@ -11,9 +11,9 @@ import { messageLatch, waitReport, withCurrentReviews, type WaitEnd } from "../e
 
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
-async function setup(limit: ChildLimit = parseChildLimit(4)) {
+async function setup(limit: ChildLimit = parseChildLimit(4), parentMessageLimit = 0) {
   const dir = await mkdtemp(join(tmpdir(), "subagent-wait-"));
-  const manager = new SubagentManager(dir, () => {}, () => {}, limit);
+  const manager = new SubagentManager(dir, () => {}, () => {}, limit, undefined, 0, parentMessageLimit);
   const spawn = async (name: string, task = name, parentId?: string) => {
     const child = await manager.spawn({ name, task, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId });
     await manager.wait([child.id], "all", 2000);
@@ -55,6 +55,132 @@ test("collect false returns status only and acknowledges nothing", async () => {
     assert.equal(report.agents[0].reports, undefined);
     assert.equal(report.agents[0].unread, 1);
     assert.deepEqual(s.manager.pendingNotices(), before);
+  } finally { await s.cleanup(); }
+});
+
+test("final keeps the last assistant report and acknowledges the rest", async () => {
+  const s = await setup();
+  try {
+    const id = await s.spawn("alpha");
+    await s.manager.send(id, "mid");
+    await s.manager.wait([id], "all", 2000);
+    await s.manager.send(id, "done");
+    await s.manager.wait([id], "all", 2000);
+    const { report, receipts } = waitReport(s.manager, s.settled(id), true, undefined, undefined, true);
+    assert.deepEqual(report.agents[0].reports, [{ kind: "assistant", text: "3:done" }]);
+    assert.equal(report.agents[0].unread, 0);
+    s.acknowledge(receipts);
+    assert.deepEqual(s.manager.read(id, undefined, false).updates, []);
+    assert.deepEqual(s.manager.pendingNotices().filter(notice => notice.id === id), []);
+  } finally { await s.cleanup(); }
+});
+
+test("final returns a human intervention when that is the last update", async () => {
+  const s = await setup();
+  try {
+    const id = await s.spawn("held");
+    const record = s.manager.get(id);
+    record.updates.push({ cursor: record.cursor + 1, kind: "human_intervention", text: "halt", time: record.updatedAt });
+    record.cursor += 1;
+    const { report, receipts } = waitReport(s.manager, { wake: "hold", ids: [id] }, true, undefined, undefined, true);
+    assert.deepEqual(report.agents[0].reports, [{ kind: "human_intervention", text: "halt" }]);
+    s.acknowledge(receipts);
+    assert.equal(s.manager.read(id, undefined, false).updates.some(update => update.kind === "assistant"), false);
+  } finally { await s.cleanup(); }
+});
+
+test("final returns the error report when that is the last update", async () => {
+  const s = await setup();
+  try {
+    const id = await s.spawn("broken", "error");
+    const { report, receipts } = waitReport(s.manager, s.settled(id), true, undefined, undefined, true);
+    assert.deepEqual(report.agents[0].reports?.map(item => item.kind), ["error"]);
+    s.acknowledge(receipts);
+    assert.equal(s.manager.read(id, undefined, false).updates.some(update => update.kind === "assistant"), false);
+  } finally { await s.cleanup(); }
+});
+
+test("final returns an input request and leaves a working sibling unread", async () => {
+  const s = await setup();
+  try {
+    const asking = await s.spawn("asking", "ui");
+    const busy = await s.spawn("busy", "until-abort");
+    const record = s.manager.get(busy);
+    record.updates.push({ cursor: record.cursor + 1, kind: "assistant", text: "still going", time: record.updatedAt });
+    record.cursor += 1;
+    const end = await s.manager.wait([asking, busy], "all", 50);
+    assert.equal(end.wake, "input");
+    const { report, receipts } = waitReport(s.manager, end, true, undefined, undefined, true);
+    assert.equal(report.wake, "input");
+    assert.deepEqual(report.agents[0].reports?.map(item => item.kind), ["input_requested"]);
+    assert.equal(report.agents[1].reports, undefined);
+    assert.equal(receipts.some(receipt => receipt.id === busy), false);
+    s.acknowledge(receipts);
+    assert.equal(s.manager.read(busy, undefined, false).updates.some(update => update.text === "still going"), true);
+    assert.equal(s.manager.read(asking, undefined, false).updates.some(update => update.kind === "input_requested"), false);
+  } finally { await s.cleanup(); }
+});
+
+test("final still returns a message from a working child and acknowledges it", async () => {
+  const s = await setup(parseChildLimit(4), 3);
+  try {
+    const id = await s.spawn("scout", "until-abort");
+    (s.manager as unknown as { messageParent(record: unknown, message: string): void }).messageParent(s.manager.get(id), "change of plan");
+    const end = await s.manager.wait([id], "all", 1000);
+    assert.equal(end.wake, "child_message");
+    const { report, receipts } = waitReport(s.manager, end, true, undefined, undefined, true);
+    assert.deepEqual(report.agents[0].reports, [{ kind: "message", text: "change of plan" }]);
+    s.acknowledge(receipts);
+    assert.equal((await s.manager.wait([id], "all", 50)).wake, "timeout");
+  } finally { await s.cleanup(); }
+});
+
+test("collect false returns status only even when final is true", async () => {
+  const s = await setup();
+  try {
+    const id = await s.spawn("alpha");
+    await s.manager.send(id, "later");
+    await s.manager.wait([id], "all", 2000);
+    const before = s.manager.pendingNotices();
+    const { report, receipts } = waitReport(s.manager, s.settled(id), false, undefined, undefined, true);
+    assert.deepEqual(receipts, []);
+    assert.equal(report.agents[0].reports, undefined);
+    assert.equal(report.agents[0].unread, 2);
+    assert.deepEqual(s.manager.pendingNotices(), before);
+  } finally { await s.cleanup(); }
+});
+
+test("a final report that does not fit stays unread and earlier reports are acknowledged", async () => {
+  const s = await setup();
+  try {
+    const id = await s.spawn("long", "x".repeat(2000));
+    await s.manager.send(id, "y".repeat(2000));
+    await s.manager.wait([id], "all", 2000);
+    const limits = { bytes: s.printedBytes(waitReport(s.manager, s.settled(id), false).report) + 500, lines: 750 };
+    const { report, receipts } = waitReport(s.manager, s.settled(id), true, undefined, limits, true);
+    assert.equal(report.agents[0].reports, undefined);
+    assert.equal(report.agents[0].unread, 1);
+    s.acknowledge(receipts);
+    assert.deepEqual(s.manager.read(id, undefined, false).updates.filter(update => update.kind === "assistant").map(update => update.text), [`2:${"y".repeat(2000)}`]);
+  } finally { await s.cleanup(); }
+});
+
+test("final does not charge earlier reports against the cap", async () => {
+  const s = await setup(parseChildLimit(6));
+  try {
+    const ids = [];
+    for (const name of ["a", "b", "c"]) {
+      const id = await s.spawn(name, `${name}:${"z".repeat(1500)}`);
+      await s.manager.send(id, "done");
+      await s.manager.wait([id], "all", 2000);
+      ids.push(id);
+    }
+    const limits = { bytes: s.printedBytes(waitReport(s.manager, s.settled(...ids), false).report) + 800, lines: 750 };
+    const open = waitReport(s.manager, s.settled(...ids), true, undefined, limits);
+    const closed = waitReport(s.manager, s.settled(...ids), true, undefined, limits, true);
+    assert.ok(s.printedBytes(closed.report) <= limits.bytes);
+    assert.deepEqual(closed.report.agents.map(agent => agent.reports?.map(item => item.text)), [["2:done"], ["2:done"], ["2:done"]]);
+    assert.ok((open.report.agents.reduce((sum, agent) => sum + (agent.reports?.length ?? 0), 0)) < 3);
   } finally { await s.cleanup(); }
 });
 
