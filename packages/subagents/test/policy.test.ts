@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -90,7 +90,11 @@ test("deterministic workflow commands require explicit bash permission and an al
     f.put(f.global, { version: 1, models: DEFAULT_POLICY.models, tools: ["bash"] });
     const allowed = new SubagentPolicy(f.environment);
     assert.equal(allowed.commandDirectory(f.cwd), f.cwd);
-    assert.throws(() => allowed.commandDirectory(f.root), /outside allowed/);
+    assert.throws(() => allowed.commandDirectory(f.root), (error: Error) => {
+      assert.equal(error.message.includes(`cwd ${f.root} `), true, error.message);
+      assert.equal(error.message.includes(realpathSync(f.cwd)), true, error.message);
+      return true;
+    });
     writeFileSync(f.global, "broken");
     assert.throws(() => new SubagentPolicy(f.environment).commandDirectory(f.cwd), /require bash/);
   } finally { f.cleanup(); }
@@ -169,7 +173,14 @@ test("compile enforces exact composition, prompt modes, scoped directories and e
     assert.throws(() => policy.compile(f.cwd, { ...selection, tools: ["subagent_spawn"] }), /not allowed/);
     assert.throws(() => policy.compile(f.cwd, { ...selection, extensions: ["/tmp/not-allowed.ts"] }), /not allowed/);
     symlinkSync(f.environment.agentDir, join(f.cwd, "escape"));
-    assert.throws(() => policy.compile(join(f.cwd, "escape"), selection), /outside allowed/);
+    const requested = join(f.cwd, "escape");
+    assert.throws(() => policy.compile(requested, selection), (error: Error) => {
+      assert.equal(error.message.includes(requested), true);
+      assert.equal(error.message.includes(realpathSync(f.cwd)), true);
+      assert.match(error.message, /outside allowed workingDirectories/);
+      assert.match(error.message, /Relative roots resolve against the launch cwd/);
+      return true;
+    });
     rmSync(extension);
     assert.throws(() => policy.compile(f.cwd, selection), /not allowed/);
   } finally { f.cleanup(); }

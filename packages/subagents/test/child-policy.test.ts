@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parsePolicy, SubagentPolicy } from "../extensions/subagents/src/policy.js";
@@ -45,8 +45,11 @@ test("compile links provider/tool resources, rejects missing selections, and omi
   try {
     assert.deepEqual(policy.catalog().models.map(m => m.id), ["test/stub:off"]);
     assert.ok(policy.diagnostics.some(d => d.includes("Virtual")));
-    assert.throws(() => policy.compile(root, { model: "test/stub:off", tools: [] }), /provider extension/);
-    assert.throws(() => policy.compile(root, { model: "test/stub:off", tools: ["custom"] }), /provider extension/);
+    const bare = policy.compile(root, { model: "test/stub:off", tools: [] });
+    assert.ok(bare.cliArgs!.includes(provider), "mapped provider extension is selected without being named");
+    assert.ok(bare.selection!.extensions!.includes(provider));
+    const withTool = policy.compile(root, { model: "test/stub:off", tools: ["custom"] });
+    assert.equal(withTool.childPolicy!.toolSources.custom, provider);
     assert.throws(() => policy.compile(root, { model: "test/stub:off", tools: ["codemode"], extensions: [provider] }), /requires selecting/);
     const compiled = policy.compile(root, { model: "test/stub:off", tools: ["custom", "read", "codemode"], extensions: [provider, "builtin:codemode"] });
     assert.deepEqual(compiled.childPolicy!.toolSources, { custom: provider, read: "builtin:read", codemode: "/guard.ts" });
@@ -108,8 +111,78 @@ test("a model from an extension provider needs its extension selected, since Chi
     assert.throws(() => unmapped.compile(root, { model: "bridge/m:off", tools: [] }), /comes from a provider an extension registers/);
     assert.ok(unmapped.compile(root, { model: "bridge/m:off", tools: [], extensions: [provider] }), "selecting the extension is enough");
     assert.ok(unmapped.compile(root, { model: "builtin/m:off", tools: [] }));
-    const mapped = environment({ models: [{ id: "bridge/m:off" }], providerExtensions: { bridge: provider } });
-    assert.equal((mapped.catalog().models[0] as { requiresExtension?: string }).requiresExtension, undefined);
-    assert.throws(() => mapped.compile(root, { model: "bridge/m:off", tools: [] }), /requires selecting its provider extension/);
+    const mapped = environment({ models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }], providerExtensions: { bridge: provider } });
+    assert.equal((mapped.catalog().models.find(m => m.id === "bridge/m:off") as { requiresExtension?: string }).requiresExtension, undefined);
+    const selected = mapped.compile(root, { model: "bridge/m:off", tools: [] });
+    assert.ok(selected.cliArgs!.includes(provider));
+    assert.ok(selected.selection!.extensions!.includes(provider));
+    const other = mapped.compile(root, { model: "builtin/m:off", tools: [] });
+    assert.equal(other.cliArgs!.includes(provider), false);
+    const denied = environment({ models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }], extensions: [], providerExtensions: { bridge: provider } });
+    assert.throws(() => denied.compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
+      assert.equal(error.message.includes(provider), true);
+      assert.equal(error.message.includes("allowlist"), true);
+      assert.equal(error.message.includes("(empty)"), true);
+      assert.match(error.message, /add that file to extensions in subagents\.json/);
+      return true;
+    });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a mapped provider file that is missing or absent from the catalog does not spawn", () => {
+  const root = mkdtempSync(join(tmpdir(), "mapped-miss-unit-"));
+  const missing = join(root, "missing.mjs");
+  const directory = join(root, "not-a-file");
+  mkdirSync(directory);
+  const model = (prov: string) => ({ provider: prov, id: "m", api: "test", input: ["text"], cost: {}, contextWindow: 1, maxTokens: 1, thinkingLevels: ["off"] });
+  const environment = (config: object) => {
+    writeFileSync(join(root, "subagents.json"), JSON.stringify({ version: 1, tools: ["read"], models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }], ...config }));
+    return new SubagentPolicy({ cwd: root, agentDir: root, projectTrusted: true, guardPath: "/guard.ts", tools: () => ["read"],
+      models: () => [model("bridge"), model("builtin")] });
+  };
+  try {
+    const gone = environment({ extensions: [missing], providerExtensions: { bridge: missing } });
+    assert.equal(gone.catalog().spawnEnabled, true);
+    assert.throws(() => gone.compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
+      assert.match(error.message, /mapped file does not exist/);
+      assert.equal(error.message.includes(missing), true);
+      assert.match(error.message, /Fix providerExtensions in subagents\.json/);
+      return true;
+    });
+    const filtered = environment({ extensions: [directory], providerExtensions: { bridge: directory } });
+    assert.equal(filtered.catalog().spawnEnabled, true);
+    assert.equal(filtered.catalog().extensions.includes(directory), false);
+    assert.throws(() => filtered.compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
+      assert.match(error.message, /not in the catalog's extensions/);
+      assert.equal(error.message.includes(directory), true);
+      assert.match(error.message, /Add that file to extensions/);
+      return true;
+    });
+    const disabled = environment({ extensions: [missing], providerExtensions: { bridge: missing }, models: [{ id: "bridge/m:off" }] });
+    assert.equal(disabled.catalog().spawnEnabled, false);
+    assert.throws(() => disabled.compile(root, { model: "bridge/m:off", tools: [] }), /No spawnable configuration/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a stale allowlist entry before the mapped file does not block that spawn or hide the allowlist error", () => {
+  const root = mkdtempSync(join(tmpdir(), "stale-allowlist-unit-"));
+  const provider = join(root, "provider.mjs");
+  const stale = join(root, "gone.mjs");
+  writeFileSync(provider, "export default () => {}");
+  const model = (prov: string) => ({ provider: prov, id: "m", api: "test", input: ["text"], cost: {}, contextWindow: 1, maxTokens: 1, thinkingLevels: ["off"] });
+  const policy = (extensions: string[]) => {
+    writeFileSync(join(root, "subagents.json"), JSON.stringify({ version: 1, tools: ["read"],
+      models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }], extensions, providerExtensions: { bridge: provider } }));
+    return new SubagentPolicy({ cwd: root, agentDir: root, projectTrusted: true, guardPath: "/guard.ts", tools: () => ["read"],
+      models: () => [model("bridge"), model("builtin")] });
+  };
+  try {
+    const selected = policy([stale, provider]).compile(root, { model: "bridge/m:off", tools: [] });
+    assert.ok(selected.cliArgs!.includes(provider), "stale entry listed first still selects the mapped file");
+    assert.throws(() => policy([stale]).compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
+      assert.equal(error.message.includes(provider), true);
+      assert.equal(error.message.includes("allowlist"), true);
+      return true;
+    });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

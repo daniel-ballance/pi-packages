@@ -33,7 +33,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts && T3_MCP_URL=http://127.0.0.1:1/mcp tsx --test test/*.test.ts"
+    "test": "env -u PI_SUBAGENT -u PI_SUBAGENT_ALLOWED_TOOLS -u PI_SUBAGENT_PEER_FD -u PI_SUBAGENT_POLICY -u T3_MCP_URL tsx --test test/*.test.ts && env -u PI_SUBAGENT -u PI_SUBAGENT_ALLOWED_TOOLS -u PI_SUBAGENT_PEER_FD -u PI_SUBAGENT_POLICY -u T3_MCP_URL T3_MCP_URL=http://127.0.0.1:1/mcp tsx --test test/*.test.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": ">=1.3.0",

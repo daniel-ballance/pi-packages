@@ -14,7 +14,7 @@ These are the only supported built-ins, plus `"builtin:mcp"` below. Unknown `bui
 { "providerExtensions": { "example-provider": "./providers/local.ts" } }
 ```
 
-The composition must select that file explicitly; the model must already be available in the parent. Known tool-provider files must also be selected. The child checks tool provenance at startup and at execution, using `getAllTools()` rather than only active declarations. Deferred tools can be allowed without being declared to the model.
+`compile` adds that file to the child that uses the mapped provider. The spawn does not have to name it. The model must already be available in the parent. A tool whose source is a different extension still needs that extension selected. The child checks tool provenance at startup and at execution, using `getAllTools()` rather than only active declarations. Deferred tools can be allowed without being declared to the model.
 
 ## MCP: server selection is also a permission
 

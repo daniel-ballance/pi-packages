@@ -44,7 +44,11 @@ async function withSpawnTool(workingDirectories: string[], run: (spawn: (args: R
 
 test("a worktree outside workingDirectories is refused before git writes anything", async () => {
   await withSpawnTool(["./src"], async (spawn, repo, git) => {
-    await assert.rejects(spawn({ name: "outside", task: "x", cwd: join(repo, "src"), model: "p/m:off", tools: [], worktree: true }), /outside allowed workingDirectories/);
+    await assert.rejects(spawn({ name: "outside", task: "x", cwd: join(repo, "src"), model: "p/m:off", tools: [], worktree: true }), (error: Error) => {
+      assert.equal(error.message.includes(`cwd ${join(repo, ".pi", "worktrees")}`), true, error.message);
+      assert.equal(error.message.includes(realpathSync(join(repo, "src"))), true, error.message);
+      return true;
+    });
     assert.equal(existsSync(join(repo, ".pi")), false, "refused before git wrote anything");
     assert.equal(git("worktree", "list").split("\n").length, 1, "no worktree left behind");
     assert.equal(git("branch", "--list", "subagent/*"), "", "no branch left behind");
