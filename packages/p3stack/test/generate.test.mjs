@@ -169,7 +169,7 @@ test("excluded upstream paths are never emitted", () => {
 
 test("check mode reports drift in generated outputs without writing, and sync repairs it", () => {
   const { root, dispose } = fixture({});
-  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, PISTACK_PACKAGE_DIR: root } });
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });
   try {
     assert.equal(run().status, 0, run().stderr);
     assert.equal(run("--check").status, 0, "a fresh sync has no drift");
@@ -250,7 +250,7 @@ test("files that are not valid UTF-8 are copied byte for byte, and executable bi
 
 test("check mode reports a lost executable bit and any symlink in the generated roots", () => {
   const { root, dispose } = fixture({});
-  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, PISTACK_PACKAGE_DIR: root } });
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });
   try {
     chmodSync(join(root, "vendor/up/skills/demo/scripts/run.sh"), 0o755);
     assert.equal(run().status, 0);
@@ -276,23 +276,23 @@ test("patches apply in code-unit order, independent of locale", () => {
 test("sync records the upstream commit and version in package.json, and check fails when they drift", () => {
   const { root, dispose } = fixture({
     "vendor/up/plugin.json": JSON.stringify({ name: "up", version: "1.2.3" }),
-    "package.json": JSON.stringify({ name: "demo", pistack: { upstream: "stale" } }, null, 2) + "\n",
+    "package.json": JSON.stringify({ name: "demo", p3stack: { upstream: "stale" } }, null, 2) + "\n",
     "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", upstream: { repository: "acme/plugins", checkout: "vendor/up" }, map: [{ from: "skills/", to: "skills/" }], exclude: [] }),
   });
   const git = (...args) => spawnSync("git", ["-C", join(root, "vendor/up"), ...args], { encoding: "utf8", env: gitEnv() });
-  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, PISTACK_PACKAGE_DIR: root } });
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });
   try {
     git("init", "-q"); git("add", "."); git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x");
     const sha = git("rev-parse", "HEAD").stdout.trim();
     assert.equal(run().status, 0);
-    assert.equal(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).pistack.upstream, `acme/plugins@${sha} up 1.2.3`);
+    assert.equal(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).p3stack.upstream, `acme/plugins@${sha} up 1.2.3`);
     assert.equal(run("--check").status, 0);
     writeFileSync(join(root, "vendor/up/plugin.json"), JSON.stringify({ name: "up", version: "1.2.4" }));
     assert.equal(git("add", ".").status, 0);
     assert.equal(git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "bump upstream version").status, 0);
     const drift = run("--check");
     assert.equal(drift.status, 1);
-    assert.match(drift.stderr, /package\.json pistack\.upstream/);
+    assert.match(drift.stderr, /package\.json p3stack\.upstream/);
   } finally { dispose(); }
 });
 

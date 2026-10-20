@@ -49,7 +49,7 @@
       "./themes/**/*.json"
     ]
   },
-  "pistack": {
+  "p3stack": {
     "upstream": "cursor/plugins@88d47514b82e7c44f00f2b2a72ff6dd12158038c pstack 0.15.29"
   }
 }

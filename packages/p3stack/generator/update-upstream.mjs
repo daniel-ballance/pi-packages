@@ -24,7 +24,7 @@ function main(args) {
     console.error("Usage: node generator/update-upstream.mjs [ref]");
     return 2;
   }
-  const packageDir = resolve(process.env.PISTACK_PACKAGE_DIR ?? join(dirname(generator), ".."));
+  const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(generator), ".."));
   const manifest = JSON.parse(readFileSync(join(packageDir, "rules/manifest.json"), "utf8"));
   const { vendor, upstream } = manifest;
   if (!upstream) { console.error("rules/manifest.json names no upstream checkout"); return 1; }

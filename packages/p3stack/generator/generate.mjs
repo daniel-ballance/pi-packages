@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Generate pistack from the vendored upstream pstack.
+// Generate p3stack from the vendored upstream pstack.
 //
 //   node generator/generate.mjs          regenerate the generated roots
 //   node generator/generate.mjs --check  regenerate to a temp dir and fail on drift
@@ -271,7 +271,7 @@ export function upstreamInfo(packageDir) {
 const pinOf = info => info && `${info.repository}@${info.commit} ${info.name} ${info.version}`;
 
 // The README states the pin between these markers; the generator keeps it current.
-const README_PIN = /(<!-- pistack:upstream -->)[\s\S]*?(<!-- \/pistack:upstream -->)/g;
+const README_PIN = /(<!-- p3stack:upstream -->)[\s\S]*?(<!-- \/p3stack:upstream -->)/g;
 const readmePin = info =>
   `\`${info.repository}\` [\`${info.commit.slice(0, 7)}\`](https://github.com/${info.repository}/tree/${info.commit}${info.subtree ? `/${info.subtree}` : ""}), ${info.name} ${info.version}`;
 function pinnedReadme(text, info) {
@@ -283,17 +283,17 @@ function main(args) {
     console.error("Usage: node generator/generate.mjs [--check]");
     return 2;
   }
-  const packageDir = resolve(process.env.PISTACK_PACKAGE_DIR ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
-  const outDir = mkdtempSync(join(tmpdir(), "pistack-"));
+  const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
+  const outDir = mkdtempSync(join(tmpdir(), "p3stack-"));
   try {
     generate({ packageDir, outDir });
     const info = upstreamInfo(packageDir), pin = pinOf(info), manifestPath = join(packageDir, "package.json");
     const readmePath = join(packageDir, "README.md"), readme = existsSync(readmePath) ? readFileSync(readmePath, "utf8") : undefined;
     if (args[0] === "--check") {
       const problems = drift(packageDir, outDir);
-      const recorded = pin === undefined ? undefined : readJson(manifestPath).pistack?.upstream;
-      if (recorded !== pin) problems.push(`package.json pistack.upstream is "${recorded}", expected "${pin}"`);
-      if (readme !== undefined && pinnedReadme(readme, info) !== readme) problems.push("README.md: the upstream pin between the pistack:upstream markers is stale");
+      const recorded = pin === undefined ? undefined : readJson(manifestPath).p3stack?.upstream;
+      if (recorded !== pin) problems.push(`package.json p3stack.upstream is "${recorded}", expected "${pin}"`);
+      if (readme !== undefined && pinnedReadme(readme, info) !== readme) problems.push("README.md: the upstream pin between the p3stack:upstream markers is stale");
       if (problems.length === 0) return 0;
       console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs.\n  ${problems.join("\n  ")}`);
       return 1;
@@ -304,7 +304,7 @@ function main(args) {
     }
     if (pin !== undefined) {
       const manifest = readJson(manifestPath);
-      manifest.pistack = { ...manifest.pistack, upstream: pin };
+      manifest.p3stack = { ...manifest.p3stack, upstream: pin };
       writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
     }
     if (readme !== undefined && pinnedReadme(readme, info) !== readme) writeFileSync(readmePath, pinnedReadme(readme, info));

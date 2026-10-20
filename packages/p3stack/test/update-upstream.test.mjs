@@ -24,7 +24,7 @@ function write(root, files) {
 // An upstream repository, and a package whose vendor/up checkout clones it,
 // generated once at the first upstream commit.
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "pistack-update-"));
+  const root = mkdtempSync(join(tmpdir(), "p3stack-update-"));
   const origin = join(root, "origin"), pkg = join(root, "pkg");
   mkdirSync(origin);
   git(origin, "init", "-q");
@@ -36,8 +36,8 @@ function fixture() {
   git(origin, "add", ".");
   git(origin, "commit", "-qm", "first");
   write(pkg, {
-    "package.json": JSON.stringify({ name: "demo", pistack: { upstream: "unset" } }, null, 2) + "\n",
-    "README.md": "# demo\n\nPin: <!-- pistack:upstream -->unset<!-- /pistack:upstream -->.\n",
+    "package.json": JSON.stringify({ name: "demo", p3stack: { upstream: "unset" } }, null, 2) + "\n",
+    "README.md": "# demo\n\nPin: <!-- p3stack:upstream -->unset<!-- /p3stack:upstream -->.\n",
     "rules/manifest.json": JSON.stringify({
       vendor: "vendor/up/up",
       upstream: { repository: "acme/plugins", checkout: "vendor/up", branch: "main" },
@@ -50,7 +50,7 @@ function fixture() {
     ]),
   });
   git(root, "clone", "-q", origin, join(pkg, "vendor/up"));
-  const env = { ...gitEnv(), PISTACK_PACKAGE_DIR: pkg, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "protocol.file.allow", GIT_CONFIG_VALUE_0: "always" };
+  const env = { ...gitEnv(), P3STACK_PACKAGE_DIR: pkg, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "protocol.file.allow", GIT_CONFIG_VALUE_0: "always" };
   const run = (cli, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd: pkg, encoding: "utf8", env });
   assert.equal(run(generateCli).status, 0);
   const commit = (files, message) => { write(origin, files); git(origin, "add", "."); git(origin, "commit", "-qm", message); return git(origin, "rev-parse", "HEAD"); };
@@ -63,7 +63,7 @@ test("the pinned commit fills {{upstream.commit}} in rules and the README pin ma
   try {
     const sha = head();
     assert.equal(read("skills/demo/SKILL.md"), `# Demo\n\nUse a child. See [guide](https://example.test/${sha}/01.md).\n`);
-    assert.equal(read("README.md"), `# demo\n\nPin: <!-- pistack:upstream -->\`acme/plugins\` [\`${sha.slice(0, 7)}\`](https://github.com/acme/plugins/tree/${sha}/up), up 1.0.0<!-- /pistack:upstream -->.\n`);
+    assert.equal(read("README.md"), `# demo\n\nPin: <!-- p3stack:upstream -->\`acme/plugins\` [\`${sha.slice(0, 7)}\`](https://github.com/acme/plugins/tree/${sha}/up), up 1.0.0<!-- /p3stack:upstream -->.\n`);
   } finally { dispose(); }
 });
 
@@ -78,7 +78,7 @@ test("update moves the checkout to the upstream tip, lists its commits and regen
     assert.match(result.stdout, /reword demo/);
     assert.doesNotMatch(result.stdout, /unrelated/, "only commits to the emitted subtree are listed");
     assert.equal(read("skills/demo/SKILL.md"), `# Demo\n\nUse a child twice. See [guide](https://example.test/${tip}/02.md).\n`);
-    assert.equal(JSON.parse(read("package.json")).pistack.upstream, `acme/plugins@${tip} up 1.1.0`);
+    assert.equal(JSON.parse(read("package.json")).p3stack.upstream, `acme/plugins@${tip} up 1.1.0`);
     assert.match(read("README.md"), new RegExp(`\\[\`${tip.slice(0, 7)}\`\\]\\(https://github.com/acme/plugins/tree/${tip}/up\\), up 1\\.1\\.0`));
     assert.equal(run(generateCli, "--check").status, 0);
     assert.match(run(updateCli).stdout, /already at/);
