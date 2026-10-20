@@ -101,12 +101,15 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
     assert.deepEqual(h.statuses, [], "T3 shows no status, so none is set outside the terminal");
     const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
     const section = event.systemPromptOptions.sections["p3stack"];
-    assert.match(section, /poteto-mode is on.*skills\/poteto-mode\/SKILL\.md/s);
-    assert.match(section, /Role models \(no role defaults file.*\n- bug-fix: grok-4\.7-xhigh-fast/s, "the role table rides along");
+    assert.match(section, /^Read .*skills\/poteto-mode\/SKILL\.md and follow it\.$/);
+    assert.doesNotMatch(section, /Role models|bug-fix|grok|claude/);
+    assert.equal(section.split("\n").length, 1, "only the router belongs in the section");
     const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
     assert.equal(reminders.length, 1, "each user turn gets a reminder beside the request");
     assert.equal(reminders[0].display, false);
     assert.match(reminders[0].content, /^\[poteto-mode is on\] Before anything else, route this request: read .*poteto-mode\/SKILL\.md/);
+    assert.match(reminders[0].content, /call `p3stack_roles` for the role models/);
+    assert.doesNotMatch(reminders[0].content, /role models above/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
     await h.command("p3stack", "off");
     const off = await h.emit("before_agent_start", { systemPromptOptions: { sections: { "p3stack": "stale" } } });

@@ -43,14 +43,6 @@ const CATALOG_CHANNEL = "subagents:catalog";
 const text = (body: string, structuredContent?: unknown) => ({ content: [{ type: "text", text: body }], details: structuredContent ?? {}, ...(structuredContent ? { structuredContent } : {}) });
 const format = (value: string | string[]) => Array.isArray(value) ? value.join(", ") : value;
 
-/** The role defaults as the model should use them: one line per role, and where they came from. */
-function roleTable(ctx: Context) {
-  const resolved = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
-  const lines = Object.entries(resolved.roles).map(([role, { value }]) => `- ${role}: ${format(value)}`);
-  const from = resolved.source === "default hints" ? "no role defaults file, so these are the skills' default hints" : resolved.source;
-  return [`Role models (${from}). Resolve each per **Models and role defaults** in the host capabilities reference; p3stack_roles returns the same table.`, ...resolved.problems.map(problem => `Problem: ${problem}`), ...lines].join("\n");
-}
-
 export default function p3stack(pi: Pi) {
   let modeOn = false;
   const showMode = (ctx: Context) => {
@@ -64,19 +56,14 @@ export default function p3stack(pi: Pi) {
   pi.on("session_start", rebuild);
   pi.on("session_tree", rebuild);
 
-  // A named prompt section, so Pi records a delta rather than a new system prompt. It
-  // carries the resolved role table, because skills say "use the role defaults" and a
-  // model told to look them up does not. On its own the section is read as background:
-  // in stress tests the model skipped it every time under T3 and in print mode. A
-  // reminder beside each request, as in Pi's plan-mode example, made it route every time.
-  pi.on("before_agent_start", (event, ctx) => {
+  pi.on("before_agent_start", event => {
     const sections = event?.systemPromptOptions?.sections as Record<string, string> | undefined;
     if (sections) {
-      if (modeOn) sections[MODE] = `poteto-mode is on for this session. Route every request through the poteto-mode skill at ${modeSkill}: read it if you have not read it in this session, pick the playbook that matches, and follow it. A question about the mode itself is outside it.\n\n${roleTable(ctx)}`;
+      if (modeOn) sections[MODE] = `Read ${modeSkill} and follow it.`;
       else delete sections[MODE];
     }
     if (!modeOn || event?.messageType !== "user") return;
-    return { message: { customType: TURN, display: false, content: `[poteto-mode is on] Before anything else, route this request: read ${modeSkill} if you have not read it in this session, pick the matching playbook, read that playbook, put its steps in the todo list verbatim, and follow them. Delegate on the role models above. Only a question about the mode itself skips this.` } };
+    return { message: { customType: TURN, display: false, content: `[poteto-mode is on] Before anything else, route this request: read ${modeSkill} if you have not read it in this session, pick the matching playbook, read that playbook, put its steps in the todo list verbatim, and follow them. Before delegating, call \`p3stack_roles\` for the role models. Only a question about the mode itself skips this.` } };
   });
 
   pi.registerCommand("p3stack", {
