@@ -85,7 +85,8 @@ Rules apply in this order. The same sources and rules give byte-identical output
    longer applies fails with its name; rebase it. Keep patches rare: prefer a
    token or a section.
 
-`extra/` files are added after the rule kinds and are not rewritten. The
+`extra/` files are added after tokens and sections but before patches and are
+not rewritten by token or section rules. The
 **coupling lint** then scans every emitted file for the tokens in
 `rules/lint.json` and fails with `file:line: token`. The fix is always a new or
 corrected rule, never an edit to the output. `lint.json` also requires dependency
