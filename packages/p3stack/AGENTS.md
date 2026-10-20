@@ -1,7 +1,7 @@
 # p3stack
 
 The Pi edition of Cursor's pstack, **generated** from the vendored upstream.
-`skills/` and `LICENSE` are generated output. Never edit them by hand: change a
+`skills/`, `LICENSE`, and `LICENSE-matt-pocock` are generated output. Never edit them by hand: change a
 rule and regenerate. The package check fails on drift.
 
 Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
@@ -12,6 +12,7 @@ Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
 | Path | Kind | Owner |
 |---|---|---|
 | `vendor/pstack` | git submodule, `cursor/plugins`; the generator reads only `pstack/` | upstream |
+| `vendor/matt-pocock` | git submodule, `mattpocock/skills`; ten selected skills | upstream |
 | `rules/manifest.json` | named sources with their vendor roots, path maps, exclusions, and upstream checkouts | hand-written |
 | `rules/tokens.json` | token rewrites | hand-written |
 | `rules/sections.json` + `overlays/` | section replacements | hand-written |
@@ -20,7 +21,7 @@ Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
 | `extra/` | Pi-native files added to the output as they are | hand-written |
 | `generator/` | the generator, the upstream updater and the lint wrapper | hand-written |
 | `extensions/p3stack/` | mode toggle, `ask_user`, `p3stack_roles`, `/p3stack-setup` | hand-written |
-| `skills/`, `LICENSE` | generated | `generator/generate.mjs` |
+| `skills/`, `LICENSE`, `LICENSE-matt-pocock` | generated | `generator/generate.mjs` |
 
 ## Commands
 
@@ -40,7 +41,10 @@ so install the workspace first.
 `rules/manifest.json` contains a `sources` array. Each source has a unique `name`,
 a `vendor` root, a `map` of input prefixes to output prefixes, an optional
 `exclude` list of regular expressions, and optional `upstream` checkout details.
-The existing source is `cursor-plugins`. Each source uses its own map and exclusions.
+The sources are `cursor-plugins` and `matt-pocock`. Each source uses its own map and exclusions.
+A source's optional `required` list names output paths that it must supply.
+The Pocock source excludes `tdd` until PR-07 resolves its name collision.
+The six-skill exclusion filter in `global/settings.json` is temporary. PR-07 removes it.
 If two sources emit the same path, generation fails with the path and both names
 before it writes output.
 
@@ -78,7 +82,10 @@ Rules apply in this order. The same sources and rules give byte-identical output
 `extra/` files are added after the rule kinds and are not rewritten. The
 **coupling lint** then scans every emitted file for the tokens in
 `rules/lint.json` and fails with `file:line: token`. The fix is always a new or
-corrected rule, never an edit to the output.
+corrected rule, never an edit to the output. `lint.json` also requires dependency
+links through `require` entries with `file` and `contains` fields. With `resources`
+set to true, generation runs the repository's `lint-skill` on the staged tree
+before it replaces committed output. A missing linter refuses replacement.
 
 ## Helper scripts
 
@@ -132,6 +139,7 @@ concurrent writers. Local rules, overlays, patches, and extras remain editable.
 ```sh
 npm run bump -- cursor-plugins        # the tip of upstream main
 npm run bump -- cursor-plugins <ref>  # or a commit or tag
+npm run bump -- matt-pocock <ref>     # update the Pocock source
 ```
 
 The command requires a source name. It fetches only that source's checkout,

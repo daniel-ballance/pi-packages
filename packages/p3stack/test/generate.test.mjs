@@ -454,6 +454,15 @@ test("the package ships the Pocock license and initializes both source checkouts
   assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/matt-pocock/);
 });
 
+test("the collection and global settings use only the unified skill source", () => {
+  const rootManifest = JSON.parse(readFileSync(join(packageDir, "../../package.json"), "utf8"));
+  assert.equal(rootManifest.pi.skills.some(path => path.includes("pi-pocock-skills")), false);
+  const settings = JSON.parse(readFileSync(join(packageDir, "../../global/settings.json"), "utf8"));
+  assert.equal(settings.packages.some(entry => JSON.stringify(entry).includes("pi-pocock-skills")), false);
+  const source = settings.packages.find(entry => typeof entry === "object" && entry.source.endsWith("/p3stack"));
+  assert.deepEqual(source?.skills, ["!skills/tdd/SKILL.md", "!skills/code-review/SKILL.md", "!skills/diagnosing-bugs/SKILL.md", "!skills/codebase-design/SKILL.md", "!skills/implement/SKILL.md", "!skills/wait-what/SKILL.md"]);
+});
+
 const pocockNames = ["grilling", "grill-with-docs", "domain-modeling", "codebase-design", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "wait-what", "implement"];
 
 function pocockFixture() {
