@@ -44,6 +44,34 @@ function fixture(t) {
   return { root, write, skills, skill, run };
 }
 
+test("registry admits authored p3stack skills at their emitted paths", t => {
+  const f = fixture(t);
+  f.write("authored/skills/release/SKILL.md", f.skill("release"));
+  f.write("skills/release/SKILL.md", f.skill("release"));
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], source: "p3stack", path: "skills/release/SKILL.md", name: "release" }]);
+  f.write("registry/routes.json", [{ request: "release", grant: "any", target: "release" }]);
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "2 emitted, 0 dropped, 0 unclassified");
+});
+
+test("registry rejects an authored row whose file is missing", t => {
+  const f = fixture(t);
+  f.write("skills/release/SKILL.md", f.skill("release"));
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], source: "p3stack", path: "skills/release/SKILL.md", name: "release" }]);
+  const result = f.run();
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /Missing authored skill authored\/skills\/release\/SKILL\.md/);
+});
+
+test("registry requires coverage and exact emitted paths for authored skills", t => {
+  const f = fixture(t);
+  f.write("authored/skills/release/SKILL.md", f.skill("release"));
+  assert.match(f.run().stderr, /Unclassified skill p3stack\/skills\/release\/SKILL\.md/);
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], source: "p3stack", path: "skills/release/SKILL.md", name: "renamed" }]);
+  assert.match(f.run().stderr, /Authored skill.*release.*must emit at skills\/release\/SKILL\.md/);
+});
+
 test("generation renders routes and chains from their registry rows", t => {
   const f = fixture(t);
   f.write("vendor/demo/skills/poteto-mode/SKILL.md", f.skill("poteto-mode"));
