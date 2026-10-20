@@ -25,10 +25,10 @@ async function load(source: string, base = root) {
   const previousHome = process.env.HOME;
   process.env.HOME = temp; // Also isolate the conventional ~/.agents/skills path.
   try {
+    runGit(["init", "--quiet", "--template=", temp]);
     const loader = new DefaultResourceLoader({
       cwd: temp, agentDir: temp,
-      // A trusted temp cwd under the operator home would load ancestor .agents/skills.
-      settingsManager: SettingsManager.inMemory({ packages: [source] }, { projectTrusted: false }),
+      settingsManager: SettingsManager.inMemory({ packages: [source] }),
     });
     await loader.reload();
     assert.deepEqual(loader.getExtensions().errors, []);
