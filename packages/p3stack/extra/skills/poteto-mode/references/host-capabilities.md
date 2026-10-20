@@ -1,6 +1,6 @@
 # Host capabilities
 
-pistack skills name a capability, never a tool. This file maps each capability to the tools of the host you run in. Pi in a terminal has `subagent_*` tools from the `subagents` package. Pi launched by T3 Code has `mcp__t3-code__*` tools and no `subagent_*` tools. Use the section for the tools you have. When your host has no tool for a capability, apply the fallback given here and say so in your reply. Never assume a tool exists.
+p3stack skills name a capability, never a tool. This file maps each capability to the tools of the host you run in. Pi in a terminal has `subagent_*` tools from the `subagents` package. Pi launched by T3 Code has `mcp__t3-code__*` tools and no `subagent_*` tools. Use the section for the tools you have. When your host has no tool for a capability, apply the fallback given here and say so in your reply. Never assume a tool exists.
 
 ## Delegate
 
@@ -18,7 +18,7 @@ When the catalog offers no model of the hinted family, do not retry the hint. Us
 
 A role value written on the other host is a hint, not an identity: a T3 value (`<provider instance>/<model>:<thinking>`) in a terminal, or a Pi value (`provider/model:thinking`) under T3. Match its model family and thinking level as above. The role defaults file is shared by both hosts and holds whatever the last setup wrote.
 
-Role defaults: call `pistack_roles` when it exists. Otherwise read `.pi/pistack.json` in a trusted project, else `~/.pi/agent/pistack.json`. The file is `{"budget": "...", "roles": {"<role>": "<model>" or ["<model>", ...]}}`. A missing file or role means the skill's default hint.
+Role defaults: call `p3stack_roles` when it exists. Otherwise read `.pi/p3stack.json` in a trusted project, else `~/.pi/agent/p3stack.json`. The file is `{"budget": "...", "roles": {"<role>": "<model>" or ["<model>", ...]}}`. A missing file or role means the skill's default hint.
 
 ## Isolation
 
@@ -32,7 +32,7 @@ Role defaults: call `pistack_roles` when it exists. Otherwise read `.pi/pistack.
 
 ## Store
 
-Durable run state that is not part of the repository (decision trails, orchestration boards, plan drafts, subagent records) lives under `~/.pi/agent/pistack/--<path>--/`, with `<path>` encoded as for **Session history**. Put the absolute store path in every brief that writes to it; a child does not know it otherwise.
+Durable run state that is not part of the repository (decision trails, orchestration boards, plan drafts, subagent records) lives under `~/.pi/agent/p3stack/--<path>--/`, with `<path>` encoded as for **Session history**. Put the absolute store path in every brief that writes to it; a child does not know it otherwise.
 
 ## Wake and loop
 

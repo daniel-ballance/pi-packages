@@ -12,7 +12,7 @@ const cli = fileURLToPath(new URL("../generator/generate.mjs", import.meta.url))
 
 // A miniature package: an upstream tree under vendor/ plus the hand-written rules.
 function fixture(files) {
-  const root = mkdtempSync(join(tmpdir(), "pistack-generate-"));
+  const root = mkdtempSync(join(tmpdir(), "p3stack-generate-"));
   const defaults = {
     "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\nicon: crown\n---\n\n# Demo\n\nUse the Task tool.\n\n## Subagents\n\nCursor-only text.\n\n## Next\n\nKept.\n",
     "vendor/up/skills/demo/scripts/run.sh": "echo hi\n",
@@ -338,7 +338,7 @@ test("a heading inside a fence is not a child of the leaf that contains it", () 
 
 test("setup offers and the help setup sentence come from upstream through the package rules", () => {
   const packageDir = fileURLToPath(new URL("..", import.meta.url));
-  const out = mkdtempSync(join(tmpdir(), "pistack-rules-"));
+  const out = mkdtempSync(join(tmpdir(), "p3stack-rules-"));
   try {
     generate({ packageDir, outDir: out });
     const setup = readFileSync(join(out, "skills/setup-pstack/SKILL.md"), "utf8");
@@ -351,8 +351,8 @@ test("setup offers and the help setup sentence come from upstream through the pa
     const offer = "Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.";
     assert.equal(help.includes(offer), true);
     assert.equal(readFileSync(join(packageDir, "vendor/pstack/pstack/skills/poteto-help/SKILL.md"), "utf8").includes(offer), true);
-    assert.match(help, /The collection installs pistack with `subagents` and `todo`/);
-    assert.match(help, /pistack spends extra tokens on subagents and review panels/);
+    assert.match(help, /The collection installs p3stack with `subagents` and `todo`/);
+    assert.match(help, /p3stack spends extra tokens on subagents and review panels/);
     assert.match(help, /written for Cursor/);
     assert.equal(help.includes("/plugin "), false);
     assert.equal(help.includes("docs/harness/"), false);

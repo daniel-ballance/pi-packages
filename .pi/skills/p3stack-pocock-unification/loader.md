@@ -12,8 +12,8 @@ These facts describe Pi 1.3.0 and T3 Code nightly 20261016. `scripts/skill-repor
 
 **Name collisions.** Pi keeps the first skill with a given name and records a `collision` diagnostic for the rest. Project and user skill directories rank above packages. All package skills share one rank, project package entries come before user package entries, and inside one package the manifest order decides. Pi has no setting that picks a winner by package.
 
-**Model visibility.** A skill with the boolean `disable-model-invocation: true` is hidden from the model's skill list. `/skill:<name>` still runs it. The flag does not settle a collision. In pistack, every skill except `setup-pstack` sets it. In pi-pocock-skills, `wait-what`, `grill-with-docs`, and `implement` set it.
+**Model visibility.** A skill with the boolean `disable-model-invocation: true` is hidden from the model's skill list. `/skill:<name>` still runs it. The flag does not settle a collision. In p3stack, every skill except `setup-pstack` sets it. In pi-pocock-skills, `wait-what`, `grill-with-docs`, and `implement` set it.
 
-**pistack-mode.** pistack routes requests only while `/pistack-mode on` is set for the session. It starts off in every new session. With it off, the model sees almost none of pistack.
+**p3stack.** p3stack routes requests only while `/p3stack on` is set for the session. It starts off in every new session. With it off, the model sees almost none of p3stack.
 
 **T3 Code.** T3 starts `pi --mode rpc` with the thread's workspace as the working directory and the same `~/.pi/agent`. It adds two `--extension` flags and no skill flags. CLI and T3 sessions in the same directory therefore load the same skills. T3's command cache `~/.t3/caches/pi.json` comes from a Pi process started in the home directory, so it never shows what loads inside a repository. The T3 launch details come from strings in the T3 binary, not from a traced launch.

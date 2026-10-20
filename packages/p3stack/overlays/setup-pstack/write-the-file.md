@@ -1,6 +1,6 @@
 ### 5. Write the file
 
-Write `~/.pi/agent/pistack.json`, or `.pi/pistack.json` when the user wants a project-only choice. Record the budget label and its target thinking level, and one entry per role, using the same labels poteto-mode uses. Overwrite the whole file so re-runs stay idempotent. Models are exact identities per **Models and role defaults**: `provider/model:thinking` in a terminal, `<provider instance>/<model>:<thinking>` from the catalog under T3. Shape:
+Write `~/.pi/agent/p3stack.json`, or `.pi/p3stack.json` when the user wants a project-only choice. Record the budget label and its target thinking level, and one entry per role, using the same labels poteto-mode uses. Overwrite the whole file so re-runs stay idempotent. Models are exact identities per **Models and role defaults**: `provider/model:thinking` in a terminal, `<provider instance>/<model>:<thinking>` from the catalog under T3. Shape:
 
 ```json
 {

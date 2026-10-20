@@ -1,5 +1,5 @@
 // The two Bun process APIs the upstream script tests use, on node:child_process.
-// Hand-written for pistack (extra/).
+// Hand-written for p3stack (extra/).
 import { execFileSync, spawn as nodeSpawn, spawnSync as nodeSpawnSync } from "node:child_process";
 import { basename } from "node:path";
 

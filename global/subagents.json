@@ -55,15 +55,15 @@
     },
     {
       "id": "xai/grok-4.7:high",
-      "description": "pistack code roles (Grok 4.7)."
+      "description": "p3stack code roles (Grok 4.7)."
     },
     {
       "id": "xai/grok-4.7:xhigh",
-      "description": "pistack code roles at the large budget."
+      "description": "p3stack code roles at the large budget."
     },
     {
       "id": "claude-subscription/claude-opus-5-5:xhigh",
-      "description": "pistack judgment and prose roles."
+      "description": "p3stack judgment and prose roles."
     },
     {
       "id": "claude-subscription/claude-sonnet-5-5:high",

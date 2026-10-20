@@ -5,11 +5,11 @@ description: Configure which models pstack uses per role and at what reasoning b
 
 # Setup pstack
 
-Write `~/.pi/agent/pistack.json`, the role defaults file that sets pistack's model per role.
+Write `~/.pi/agent/p3stack.json`, the role defaults file that sets p3stack's model per role.
 
 ## Steps
 
-In a terminal with pistack's extension loaded, `/pistack-setup` does steps 1 to 5 for the common case: one code model, one judgment model, panels of both. Offer it when the user wants nothing finer; follow the steps below otherwise, and always under T3.
+In a terminal with p3stack's extension loaded, `/p3stack-setup` does steps 1 to 5 for the common case: one code model, one judgment model, panels of both. Offer it when the user wants nothing finer; follow the steps below otherwise, and always under T3.
 
 ### 1. Detect available models
 
@@ -17,7 +17,7 @@ List the models you can delegate to from the model catalog (**Delegate** in the 
 
 ### 2. Load current state
 
-The default role-to-model mapping is the file shape shown in step 5 below. If `.pi/pistack.json` (trusted project) or `~/.pi/agent/pistack.json` already exists, read it and treat its `budget` and its role values as the current choices. Otherwise start from those defaults. A role not in step 5, such as `how critics`, is retired. Drop it.
+The default role-to-model mapping is the file shape shown in step 5 below. If `.pi/p3stack.json` (trusted project) or `~/.pi/agent/p3stack.json` already exists, read it and treat its `budget` and its role values as the current choices. Otherwise start from those defaults. A role not in step 5, such as `how critics`, is retired. Drop it.
 
 ### 3. Budget, map, and confirm
 
@@ -38,7 +38,7 @@ Every real model written must be in the detected set, with a thinking level it o
 
 ### 5. Write the file
 
-Write `~/.pi/agent/pistack.json`, or `.pi/pistack.json` when the user wants a project-only choice. Record the budget label and its target thinking level, and one entry per role, using the same labels poteto-mode uses. Overwrite the whole file so re-runs stay idempotent. Models are exact identities per **Models and role defaults**: `provider/model:thinking` in a terminal, `<provider instance>/<model>:<thinking>` from the catalog under T3. Shape:
+Write `~/.pi/agent/p3stack.json`, or `.pi/p3stack.json` when the user wants a project-only choice. Record the budget label and its target thinking level, and one entry per role, using the same labels poteto-mode uses. Overwrite the whole file so re-runs stay idempotent. Models are exact identities per **Models and role defaults**: `provider/model:thinking` in a terminal, `<provider instance>/<model>:<thinking>` from the catalog under T3. Shape:
 
 ```json
 {

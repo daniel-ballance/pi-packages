@@ -1,5 +1,5 @@
 {
-  "name": "pistack",
+  "name": "p3stack",
   "version": "0.1.0",
   "description": "The Pi edition of Cursor's pstack: router mode, playbooks, principles and routed skills, generated from the vendored upstream and translated for Pi in a terminal and under T3 Code.",
   "type": "module",

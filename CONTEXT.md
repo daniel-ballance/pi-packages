@@ -180,8 +180,8 @@ prompt. Under the CLI it is registered as usual.
 _Avoid_: hidden, disabled (both mean unreachable, which deferred is not)
 
 **Role default**:
-The model, with thinking level, that one pistack role uses unless the skill or the
-human says otherwise, kept in `pistack.json`. A hint for choosing a Composition's
+The model, with thinking level, that one p3stack role uses unless the skill or the
+human says otherwise, kept in `p3stack.json`. A hint for choosing a Composition's
 model, not a Composition: tools, resources and directories are still chosen per
 Child, and the Allowlist still bounds the model.
 _Avoid_: profile, preset (see Composition)
@@ -210,7 +210,7 @@ _Avoid_: results, findings (use those for what the Parent has verified)
   inside a workflow Run. A manually spawned Child is a Child.
 - **"profile" / "role"** were considered and rejected. Composing a fixed profile
   caps what the Parent can build. The concept is **Composition**, chosen per Child.
-  pistack's **Role default** is narrower: a model hint per role, never a whole
+  p3stack's **Role default** is narrower: a model hint per role, never a whole
   Composition.
 - **"done"** conflated three different facts. Resolved: **Settled** (turn ended),
   **Accepted** (RPC queued), **Validated** (a Check passed). Say which one.

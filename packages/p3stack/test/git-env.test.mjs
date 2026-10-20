@@ -18,7 +18,7 @@ const config = {
 for (const mode of ["generator", "sync", "async"]) {
   for (const fails of [false, true]) {
     test(`${mode} ${fails ? "falls back when discovery fails" : "discovers repository variables lazily"} and keeps command config`, { skip: process.platform === "win32" }, () => {
-      const bin = mkdtempSync(join(tmpdir(), "pistack-git-env-"));
+      const bin = mkdtempSync(join(tmpdir(), "p3stack-git-env-"));
       const log = join(bin, "calls");
       const output = join(bin, "env.json");
       writeFileSync(join(bin, "git"), `#!/bin/sh

@@ -10,7 +10,7 @@ Answer the user's question about pstack, hand them a prompt they can send, and l
 
 A message that asks for work, such as "use pstack to fix this bug", is not a help question. Read [`poteto-mode`](../poteto-mode/SKILL.md), do the work under it, and mention once that starting each task with `/skill:poteto-mode` keeps it on.
 
-This file maps questions to the skills and guide pages that hold the answers. Those files own the details. Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed package, which the user may not be able to open, so give the user the file's public copy: `https://github.com/daniel-ballance/pi-packages/blob/main/packages/pistack/` followed by its path.
+This file maps questions to the skills and guide pages that hold the answers. Those files own the details. Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed package, which the user may not be able to open, so give the user the file's public copy: `https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/` followed by its path.
 
 ## Find out what they need
 
@@ -24,7 +24,7 @@ Infer the need from the message and the conversation. A named situation, such as
 
 Check the state that changes the answer, and mention it only when it does:
 
-- No role defaults file (`~/.pi/agent/pistack.json` or a trusted `.pi/pistack.json`) means `/skill:setup-pstack` hasn't run for this user, so every role uses its default model.
+- No role defaults file (`~/.pi/agent/p3stack.json` or a trusted `.pi/p3stack.json`) means `/skill:setup-pstack` hasn't run for this user, so every role uses its default model.
 - No `verify-*` skill or other app harness in the project means agents have no scripted way to drive the app. Mention `/skill:create-verification-skill` when the question is about proving a change works.
 - No formal verification skill in the project means no property is checked past what tests reach. Mention `/skill:create-formal-verification-skill` when the question is about a race, an invariant, or another case tests rarely hit. When one exists and the code it covers changed after the commit it records as last in sync, mention `/skill:maintain-formal-verification-skill` if the question touches that code.
 
@@ -35,15 +35,15 @@ When the role defaults file is missing and it matters, ask whether the user want
 
 ## Get set up
 
-1. The collection installs pistack with `subagents` and `todo`. To install pistack alone, run `pi install` with its path or git URL, then `/reload`.
-2. Run [`/skill:setup-pstack`](../setup-pstack/SKILL.md). It asks for a thinking budget, maps a model to each role, and writes `~/.pi/agent/pistack.json`. Skills read it on their next delegation. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
+1. The collection installs p3stack with `subagents` and `todo`. To install p3stack alone, run `pi install` with its path or git URL, then `/reload`.
+2. Run [`/skill:setup-pstack`](../setup-pstack/SKILL.md). It asks for a thinking budget, maps a model to each role, and writes `~/.pi/agent/p3stack.json`. Skills read it on their next delegation. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
 3. Start a real task with `/skill:poteto-mode`, a goal, and a check that can pass or fail.
 
 Installing changes nothing until the user invokes a skill. Only `/skill:setup-pstack` loads from the user's words. The [README](../../README.md) has the details, and upstream's [guide page 1](https://github.com/cursor/plugins/blob/88d47514b82e7c44f00f2b2a72ff6dd12158038c/pstack/docs/guide/01-setup.md) explains the ideas (written for Cursor). Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).
 
-If cost is the worry, say where the tokens go and how to spend fewer. pistack spends extra tokens on subagents and review panels. Rerun `/skill:setup-pstack` and pick a smaller budget or cheaper models. A role set to `auto` or `inherit-parent` runs on the chat's model, which saves tokens when the chat runs on a cheaper model. A shorter panel list runs fewer subagents, one for each entry. Save `/skill:poteto-mode` for work that needs rigor.
+If cost is the worry, say where the tokens go and how to spend fewer. p3stack spends extra tokens on subagents and review panels. Rerun `/skill:setup-pstack` and pick a smaller budget or cheaper models. A role set to `auto` or `inherit-parent` runs on the chat's model, which saves tokens when the chat runs on a cheaper model. A shorter panel list runs fewer subagents, one for each entry. Save `/skill:poteto-mode` for work that needs rigor.
 
-pistack runs in Pi, in a terminal or launched by T3 Code. Skills that delegate (`/skill:poteto-mode`, `/skill:how`, `/skill:why`, `/skill:teach` and the routed skills) need a delegation backend: the `subagents` package in a terminal, T3's own tools under T3. The [host capabilities](../poteto-mode/references/host-capabilities.md) list what each host provides and what a skill does when a capability is missing.
+p3stack runs in Pi, in a terminal or launched by T3 Code. Skills that delegate (`/skill:poteto-mode`, `/skill:how`, `/skill:why`, `/skill:teach` and the routed skills) need a delegation backend: the `subagents` package in a terminal, T3's own tools under T3. The [host capabilities](../poteto-mode/references/host-capabilities.md) list what each host provides and what a skill does when a capability is missing.
 
 ## Start a task with `/skill:poteto-mode`
 

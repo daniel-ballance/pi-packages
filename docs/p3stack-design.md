@@ -1,5 +1,7 @@
 # pistack: design brief
 
+The package this brief describes is now named p3stack.
+
 Date: **2026-10-15**. Status: **draft for review and implementation.** Companion
 to [pstack-on-pi.md](pstack-on-pi.md), which holds the upstream research and
 the capability mapping; this document records the decisions taken in

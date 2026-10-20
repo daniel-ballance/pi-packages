@@ -1,7 +1,7 @@
 # pstack on Pi: research and implementation options
 
 Date: **2026-10-15**. Status: **research complete; decisions recorded in
-[pistack-design.md](pistack-design.md).** Pi facts below were checked against
+[p3stack-design.md](p3stack-design.md).** Pi facts below were checked against
 0.99.2; the design brief re-baselines on the installed 1.2.0 and lists the
 deltas that matter (its §2).
 

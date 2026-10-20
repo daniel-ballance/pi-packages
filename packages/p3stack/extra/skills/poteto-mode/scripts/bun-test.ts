@@ -1,5 +1,5 @@
 // The part of Bun's test API that the upstream script tests use, on node:test.
-// Hand-written for pistack (extra/); the upstream tests import it in place of "bun:test".
+// Hand-written for p3stack (extra/); the upstream tests import it in place of "bun:test".
 import assert from "node:assert/strict";
 import { afterEach, describe, it, test } from "node:test";
 

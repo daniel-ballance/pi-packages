@@ -1,10 +1,10 @@
-# pistack
+# p3stack
 
 The Pi edition of Cursor's pstack, **generated** from the vendored upstream.
 `skills/` and `LICENSE` are generated output. Never edit them by hand: change a
 rule and regenerate. The package check fails on drift.
 
-Design and decisions: [`docs/pistack-design.md`](../../docs/pistack-design.md)
+Design and decisions: [`docs/p3stack-design.md`](../../docs/p3stack-design.md)
 (§4.0 is the generator).
 
 ## Inputs and outputs
@@ -19,7 +19,7 @@ Design and decisions: [`docs/pistack-design.md`](../../docs/pistack-design.md)
 | `rules/lint.json` | coupling lint deny-list | hand-written |
 | `extra/` | Pi-native files added to the output as they are | hand-written |
 | `generator/` | the generator, the upstream updater and the lint wrapper | hand-written |
-| `extensions/pistack/` | mode toggle, `ask_user`, `pistack_roles`, `/pistack-setup` | hand-written |
+| `extensions/p3stack/` | mode toggle, `ask_user`, `p3stack_roles`, `/p3stack-setup` | hand-written |
 | `skills/`, `LICENSE` | generated | `generator/generate.mjs` |
 
 ## Commands
@@ -96,7 +96,7 @@ own script tests; `npm run check` typechecks `watch-pr`.
 - Never write an upstream commit into a rule. A link into upstream uses
   `{{upstream.commit}}` in a token `replace` or an overlay, and the generator
   fills in the pinned commit. The README states the pin between
-  `<!-- pistack:upstream -->` markers, which the generator rewrites.
+  `<!-- p3stack:upstream -->` markers, which the generator rewrites.
 - Default model hints such as `claude-opus-5-5-xhigh` stay as written; the
   capabilities reference explains how to resolve them on Pi.
 - A file-specific rule must come before any global rule that rewrites part of
@@ -139,7 +139,7 @@ moved the checkout, recover its source delta with
 The old pin is in the base branch's package metadata.
 
 Generation records the pin in `package.json`
-(`pistack.upstream`) and the README markers and fills `{{upstream.commit}}`;
+(`p3stack.upstream`) and the README markers and fills `{{upstream.commit}}`;
 `--check` fails while any of them disagree with the checkout.
 
 When it fails, each line names a token rule, section or patch upstream no
@@ -162,6 +162,6 @@ Rerun `node generator/generate.mjs` until it passes, then review
 `git diff -- skills agents` for upstream changing a decision, not just a
 sentence. Regenerate a second time and confirm the diff is unchanged.
 Re-check skill coverage with the repository's
-[`pistack-pocock-unification` skill](../../.pi/skills/pistack-pocock-unification/SKILL.md).
+[`p3stack-pocock-unification` skill](../../.pi/skills/p3stack-pocock-unification/SKILL.md).
 Run `npm run check`, `npm test`, and the repository's `./scripts/check.sh`
 before committing `vendor/pstack` with the regenerated output and rule changes.
