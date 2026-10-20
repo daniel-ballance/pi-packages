@@ -277,12 +277,11 @@ export class SubagentPolicy {
   private extensionListed(file: string) {
     for (const entry of this.config?.extensions ?? []) {
       if (entry.startsWith("builtin:")) continue;
-      if (entry === file) return true;
-      try { if (this.path(entry) === this.path(file)) return true; } catch {}
+      if (entry === file || this.path(entry) === this.path(file)) return true;
     }
     return false;
   }
-  private mappedProviderFile(model: string) {
+  private mappedProviderFile(model: string, listed: string[]) {
     let provider: string;
     try { provider = splitModel(model).provider; } catch { return undefined; }
     const mapped = this.config?.providerExtensions?.[provider];
@@ -291,10 +290,14 @@ export class SubagentPolicy {
       const allowlist = this.config?.extensions ?? [];
       throw new Error(`Provider extension ${mapped} is not in the extensions allowlist: ${allowlist.join(", ") || "(empty)"}`);
     }
-    try {
-      const resolved = this.path(mapped);
-      return statSync(resolved).isFile() ? resolved : undefined;
-    } catch { return undefined; }
+    let resolved: string;
+    try { resolved = this.path(mapped); }
+    catch { throw new Error(`mapped file does not exist: ${mapped}`); }
+    let file = false;
+    try { file = statSync(resolved).isFile(); }
+    catch { throw new Error(`mapped file does not exist: ${mapped}`); }
+    if (!file || !listed.includes(resolved)) throw new Error(`mapped file is not in the catalog's extensions: ${mapped}`);
+    return resolved;
   }
   private refuseOutside(requested: string, roots: string[]): never {
     throw new Error(`cwd ${requested} is outside allowed workingDirectories: ${roots.join(", ") || "(empty)"}. Relative roots resolve against the launch cwd.`);
@@ -328,12 +331,12 @@ export class SubagentPolicy {
   /** depth: the new Child's depth, 1 for a Child of the root Parent. */
   compile(cwd: string, requested: Composition, depth = 1): Omit<SpawnOptions, "name" | "task"> {
     const catalog = this.catalog();
-    const providerExtension = this.mappedProviderFile(requested.model);
     if (!catalog.spawnEnabled) throw new Error("No spawnable configuration. Inspect subagent_catalog; user diagnostics: /subagents diagnostics.");
+    const providerExtension = this.mappedProviderFile(requested.model, catalog.extensions);
     // Always-on entries become part of the saved composition, so resume revalidates them like explicit choices.
     const union = (always: string[], chosen?: string[]) => always.length ? [...new Set([...(chosen ?? []), ...always])] : chosen;
     const selection: Composition = { ...requested, tools: union(catalog.alwaysTools, requested.tools)!, extensions: union(catalog.alwaysExtensions, requested.extensions) };
-    if (providerExtension && catalog.extensions.includes(providerExtension)) selection.extensions = union([providerExtension], selection.extensions);
+    if (providerExtension) selection.extensions = union([providerExtension], selection.extensions);
     if (selection.extensions === undefined) delete selection.extensions;
     const directory = this.checkedDirectory(cwd, catalog.workingDirectories);
     if (!catalog.models.some(m => m.id === selection.model)) throw new Error("Model/thinking selection is not currently allowed and usable; use subagent_catalog.");

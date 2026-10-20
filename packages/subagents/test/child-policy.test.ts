@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parsePolicy, SubagentPolicy } from "../extensions/subagents/src/policy.js";
@@ -125,5 +125,38 @@ test("a model from an extension provider needs its extension selected, since Chi
       assert.equal(error.message.includes("(empty)"), true);
       return true;
     });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a mapped provider file that is missing or absent from the catalog does not spawn", () => {
+  const root = mkdtempSync(join(tmpdir(), "mapped-miss-unit-"));
+  const missing = join(root, "missing.mjs");
+  const directory = join(root, "not-a-file");
+  mkdirSync(directory);
+  const model = (prov: string) => ({ provider: prov, id: "m", api: "test", input: ["text"], cost: {}, contextWindow: 1, maxTokens: 1, thinkingLevels: ["off"] });
+  const environment = (config: object) => {
+    writeFileSync(join(root, "subagents.json"), JSON.stringify({ version: 1, tools: ["read"], models: [{ id: "bridge/m:off" }, { id: "builtin/m:off" }], ...config }));
+    return new SubagentPolicy({ cwd: root, agentDir: root, projectTrusted: true, guardPath: "/guard.ts", tools: () => ["read"],
+      models: () => [model("bridge"), model("builtin")] });
+  };
+  try {
+    const gone = environment({ extensions: [missing], providerExtensions: { bridge: missing } });
+    assert.equal(gone.catalog().spawnEnabled, true);
+    assert.throws(() => gone.compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
+      assert.match(error.message, /mapped file does not exist/);
+      assert.equal(error.message.includes(missing), true);
+      return true;
+    });
+    const filtered = environment({ extensions: [directory], providerExtensions: { bridge: directory } });
+    assert.equal(filtered.catalog().spawnEnabled, true);
+    assert.equal(filtered.catalog().extensions.includes(directory), false);
+    assert.throws(() => filtered.compile(root, { model: "bridge/m:off", tools: [] }), (error: Error) => {
+      assert.match(error.message, /not in the catalog's extensions/);
+      assert.equal(error.message.includes(directory), true);
+      return true;
+    });
+    const disabled = environment({ extensions: [missing], providerExtensions: { bridge: missing }, models: [{ id: "bridge/m:off" }] });
+    assert.equal(disabled.catalog().spawnEnabled, false);
+    assert.throws(() => disabled.compile(root, { model: "bridge/m:off", tools: [] }), /No spawnable configuration/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
