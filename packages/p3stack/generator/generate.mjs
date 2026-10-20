@@ -53,18 +53,25 @@ const isExecutable = path => (statSync(path).mode & 0o111) !== 0;
 
 // Map upstream paths to output paths; the first matching `from` prefix wins.
 // Text files are strings, which rules may rewrite; anything else stays bytes.
-function collect(vendor, manifest, executables, problems) {
-  const classify = sourcePathClassifier(manifest);
-  const files = new Map();
-  for (const path of walk(vendor).map(file => file.split("\\").join("/"))) {
-    const { output } = classify(path);
-    if (output === undefined) continue;
-    if (isLink(join(vendor, path))) { problems.push(`${path}: upstream symlinks are not supported; exclude it or add a rule`); continue; }
-    const bytes = readFileSync(join(vendor, path));
-    files.set(output, decode(bytes) ?? bytes);
-    if (isExecutable(join(vendor, path))) executables.add(output);
+function collect(packageDir, sources, executables, problems) {
+  const files = new Map(), owners = new Map();
+  for (const source of sources) {
+    const vendor = join(packageDir, source.vendor), classify = sourcePathClassifier(source);
+    for (const path of walk(vendor).map(file => file.split("\\").join("/"))) {
+      const { output } = classify(path);
+      if (output === undefined) continue;
+      if (isLink(join(vendor, path))) { problems.push(`${source.name}: ${path}: upstream symlinks are not supported; exclude it or add a rule`); continue; }
+      if (owners.has(output)) {
+        problems.push(`${output}: sources "${owners.get(output)}" and "${source.name}" both emit this path`);
+        continue;
+      }
+      const bytes = readFileSync(join(vendor, path));
+      files.set(output, decode(bytes) ?? bytes);
+      owners.set(output, source.name);
+      if (isExecutable(join(vendor, path))) executables.add(output);
+    }
   }
-  return files;
+  return { files, owners };
 }
 
 const COMMIT = "{{upstream.commit}}";
@@ -211,10 +218,9 @@ function lint(outDir, deny, problems) {
 export function generate({ packageDir, outDir }) {
   const rules = join(packageDir, "rules");
   const manifest = readJson(join(rules, "manifest.json"));
-  const source = manifest.sources[0];
-  const info = upstreamInfo(packageDir, source);
+  const info = manifest.sources.map(source => upstreamInfo(packageDir, source))[0];
   const problems = [], executables = new Set();
-  const files = collect(join(packageDir, source.vendor), source, executables, problems);
+  const { files } = collect(packageDir, manifest.sources, executables, problems);
   const upstream = new Map(files), expand = expander(info?.commit, problems);
   applyTokens(files, readJson(join(rules, "tokens.json"), []), expand, problems);
   applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);

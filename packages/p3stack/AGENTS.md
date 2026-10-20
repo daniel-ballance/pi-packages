@@ -40,7 +40,9 @@ so install the workspace first.
 `rules/manifest.json` contains a `sources` array. Each source has a unique `name`,
 a `vendor` root, a `map` of input prefixes to output prefixes, an optional
 `exclude` list of regular expressions, and optional `upstream` checkout details.
-The existing source is `cursor-plugins`.
+The existing source is `cursor-plugins`. Each source uses its own map and exclusions.
+If two sources emit the same path, generation fails with the path and both names
+before it writes output.
 
 Rules apply in this order. The same sources and rules give byte-identical output.
 

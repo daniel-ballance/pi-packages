@@ -44,6 +44,47 @@ function fixture(files) {
   return { root, out, read, dispose: () => rmSync(root, { recursive: true, force: true }) };
 }
 
+function twoSources(files = {}) {
+  return fixture({
+    "vendor/other/skills/second/SKILL.md": "# Second\n\nUse the Task tool.\n",
+    "rules/manifest.json": JSON.stringify({ sources: [
+      JSON.parse(manifest()).sources[0],
+      { name: "other", vendor: "vendor/other", map: [{ from: "skills/", to: "skills/" }], exclude: ["^skills/omitted/"] },
+    ] }),
+    ...files,
+  });
+}
+
+test("two sources emit their mapped skills and keep their exclusions separate", () => {
+  const { root, out, read, dispose } = twoSources({ "vendor/other/skills/omitted/SKILL.md": "Cursor\n" });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.match(read("skills/demo/SKILL.md"), /Use a child/);
+    assert.equal(read("skills/second/SKILL.md"), "# Second\n\nUse a child.\n");
+    assert.equal(existsSync(join(out, "skills/omitted/SKILL.md")), false);
+  } finally { dispose(); }
+});
+
+test("two sources that emit the same path fail before writing and name both sources", () => {
+  const { root, out, dispose } = twoSources({ "vendor/other/skills/demo/SKILL.md": "# Collision\n" });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), error => {
+      assert.match(error.message, /skills\/demo\/SKILL\.md/);
+      assert.match(error.message, /cursor-plugins/);
+      assert.match(error.message, /other/);
+      return true;
+    });
+    assert.equal(existsSync(out), false);
+  } finally { dispose(); }
+});
+
+test("the coupling lint scans the second source", () => {
+  const { root, out, dispose } = twoSources({ "vendor/other/skills/second/SKILL.md": "# Second\n\nCursor\n" });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /skills\/second\/SKILL\.md:3: Cursor/);
+  } finally { dispose(); }
+});
+
 test("tokens, sections and the file map produce the translated tree", () => {
   const { root, out, read, dispose } = fixture({});
   try {
