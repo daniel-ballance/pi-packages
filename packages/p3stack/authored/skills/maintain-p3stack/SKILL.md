@@ -35,7 +35,7 @@ Change inputs in `registry/`, `rules/`, `overlays/`, `patches/`, `extra/`, or `a
 
 ## Check the loader and smoke
 
-Use an existing disposable `PI_CODING_AGENT_DIR` or create one outside the checkout and outside `~/.pi/agent`. Copy only the required credential files into it without printing their contents. Its `settings.json` must list this checkout's `packages/p3stack` as a local package and select an available operator-approved model. Keep the caller's real agent settings unchanged.
+Read `PI_CODING_AGENT_DIR` from the environment. If it names an existing disposable directory outside the checkout and outside `~/.pi/agent`, reuse it. Otherwise create a fixture directory outside both locations. Copy only the required credential files into a new fixture without printing their contents. Its `settings.json` must list this checkout's `packages/p3stack` as a local package. Reuse the maintenance session's selected model for the smoke. That model is already selected for this run, so no separate model approval is needed. If no usable model or credentials exist, report the smoke as blocked. Keep the caller's real agent settings unchanged.
 
 Run `PI_CODING_AGENT_DIR=<fixture> pi list`. Require the local p3stack entry. Start a fresh `PI_CODING_AGENT_DIR=<fixture> pi --mode json --no-session -p "Reply exactly p3stack smoke ok. Do not call tools."`. Inspect the JSONL for the reply and for loader diagnostics. Require no missing resources, extension failures, or skill collisions. Preserve the stream and recheck git status. These commands load the local package without an installation.
 
