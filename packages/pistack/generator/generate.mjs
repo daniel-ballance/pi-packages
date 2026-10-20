@@ -211,9 +211,10 @@ function lint(outDir, deny, problems) {
 export function generate({ packageDir, outDir }) {
   const rules = join(packageDir, "rules");
   const manifest = readJson(join(rules, "manifest.json"));
+  const info = upstreamInfo(packageDir);
   const problems = [], executables = new Set();
   const files = collect(join(packageDir, manifest.vendor), manifest, executables, problems);
-  const upstream = new Map(files), expand = expander(upstreamInfo(packageDir)?.commit, problems);
+  const upstream = new Map(files), expand = expander(info?.commit, problems);
   applyTokens(files, readJson(join(rules, "tokens.json"), []), expand, problems);
   applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
   addExtras(files, join(packageDir, "extra"), executables);
@@ -253,7 +254,13 @@ function drift(packageDir, outDir) {
 export function upstreamInfo(packageDir) {
   const { vendor, upstream } = readJson(join(packageDir, "rules/manifest.json"));
   if (!upstream) return undefined;
-  const commit = execFileSync("git", ["-C", join(packageDir, upstream.checkout), "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv() }).trim();
+  const checkout = join(packageDir, upstream.checkout);
+  const git = (...args) => execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
+  const subtreePath = relative(checkout, join(packageDir, vendor)) || ".";
+  const hidden = git("ls-files", "-v", "-z", "--", subtreePath).split("\0").filter(entry => /^[a-zS] /.test(entry));
+  const changes = [git("-c", "core.fileMode=true", "status", "--porcelain=v1", "--untracked-files=all", "--ignored", "--ignore-submodules=none", "--", subtreePath), ...hidden].filter(Boolean).join("\n");
+  if (changes) throw new Error(`${upstream.checkout} has local changes; generation requires clean upstream inputs, including ignored files.\n${changes}`);
+  const commit = git("rev-parse", "HEAD");
   const { name, version } = readJson(join(packageDir, vendor, "plugin.json"));
   const subtree = relative(upstream.checkout, vendor).split("\\").join("/");
   return { repository: upstream.repository, commit, subtree, name, version };

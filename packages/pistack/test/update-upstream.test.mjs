@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { gitEnv } from "../generator/git-env.mjs";
+import { generate } from "../generator/generate.mjs";
 
 const generateCli = fileURLToPath(new URL("../generator/generate.mjs", import.meta.url));
 const updateCli = fileURLToPath(new URL("../generator/update-upstream.mjs", import.meta.url));
@@ -155,6 +156,73 @@ test("update refuses a checkout with local changes, and an unknown ref", () => {
     assert.equal(dirty.status, 1);
     assert.match(dirty.stderr, /local changes/);
     assert.equal(head(), sha);
+  } finally { dispose(); }
+});
+
+for (const [state, dirty] of Object.entries({
+  modified: checkout => write(checkout, { "up/skills/demo/SKILL.md": "# Demo\n\nUse the Task tool twice. See [guide](../../docs/guide/01.md).\n" }),
+  staged: checkout => { write(checkout, { "up/skills/demo/SKILL.md": "# Demo\n\nUse the Task tool twice. See [guide](../../docs/guide/01.md).\n" }); git(checkout, "add", "."); },
+  untracked: checkout => write(checkout, { "up/skills/demo/local.md": "Local input.\n" }),
+  ignored: checkout => {
+    write(checkout, { ".git/info/exclude": "up/skills/demo/local.md\n", "up/skills/demo/local.md": "Local input.\n" });
+    assert.equal(git(checkout, "check-ignore", "up/skills/demo/local.md"), "up/skills/demo/local.md");
+  },
+  "mode with core.fileMode=false": checkout => {
+    git(checkout, "config", "core.fileMode", "false");
+    chmodSync(join(checkout, "up/skills/demo/SKILL.md"), 0o755);
+    assert.equal(git(checkout, "status", "--porcelain"), "");
+  },
+  metadata: checkout => write(checkout, { "up/plugin.json": JSON.stringify({ name: "up", version: "9.0.0" }) }),
+  deleted: checkout => rmSync(join(checkout, "up/plugin.json")),
+  "skip-worktree": checkout => {
+    git(checkout, "update-index", "--skip-worktree", "up/skills/demo/SKILL.md");
+    write(checkout, { "up/skills/demo/SKILL.md": "# Hidden input.\n" });
+    assert.equal(git(checkout, "status", "--porcelain"), "");
+  },
+  "assume-unchanged": checkout => {
+    git(checkout, "update-index", "--assume-unchanged", "up/skills/demo/SKILL.md");
+    write(checkout, { "up/skills/demo/SKILL.md": "# Hidden input.\n" });
+    assert.equal(git(checkout, "status", "--porcelain"), "");
+  },
+})) {
+  test(`generation refuses ${state} upstream content without writing outputs or pins`, () => {
+    const { root, pkg, run, read, dispose } = fixture();
+    try {
+      const checkout = join(pkg, "vendor/up");
+      const paths = ["skills/demo/SKILL.md", "package.json", "README.md"];
+      const before = paths.map(read);
+      dirty(checkout);
+      for (const args of [[], ["--check"]]) {
+        const result = run(generateCli, ...args);
+        assert.equal(result.status, 1, result.stderr);
+        assert.match(result.stderr, /vendor\/up has local changes/);
+        assert.deepEqual(paths.map(read), before);
+        assert.equal(existsSync(join(pkg, "skills/demo/local.md")), false);
+      }
+      const outDir = join(root, "candidate");
+      assert.throws(() => generate({ packageDir: pkg, outDir }), /vendor\/up has local changes/);
+      assert.equal(existsSync(outDir), false);
+      write(outDir, { "sentinel.md": "Keep me.\n" });
+      assert.throws(() => generate({ packageDir: pkg, outDir }), /vendor\/up has local changes/);
+      assert.equal(readFileSync(join(outDir, "sentinel.md"), "utf8"), "Keep me.\n");
+      git(checkout, "update-index", "--no-skip-worktree", "up/skills/demo/SKILL.md");
+      git(checkout, "update-index", "--no-assume-unchanged", "up/skills/demo/SKILL.md");
+      git(checkout, "config", "core.fileMode", "true");
+      git(checkout, "reset", "--hard", "HEAD");
+      rmSync(join(checkout, "up/skills/demo/local.md"), { force: true });
+      assert.equal(run(generateCli, "--check").status, 0, "clean input works again without pin or rule edits");
+    } finally { dispose(); }
+  });
+}
+
+test("direct generation ignores local changes outside the consumed upstream subtree", () => {
+  const { pkg, run, read, dispose } = fixture();
+  try {
+    const before = read("skills/demo/SKILL.md");
+    write(join(pkg, "vendor/up"), { "other/README.md": "Local unrelated edit.\n", "other/local.md": "Local unrelated file.\n" });
+    assert.equal(run(generateCli).status, 0);
+    assert.equal(run(generateCli, "--check").status, 0);
+    assert.equal(read("skills/demo/SKILL.md"), before);
   } finally { dispose(); }
 });
 

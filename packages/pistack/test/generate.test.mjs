@@ -288,6 +288,8 @@ test("sync records the upstream commit and version in package.json, and check fa
     assert.equal(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).pistack.upstream, `acme/plugins@${sha} up 1.2.3`);
     assert.equal(run("--check").status, 0);
     writeFileSync(join(root, "vendor/up/plugin.json"), JSON.stringify({ name: "up", version: "1.2.4" }));
+    assert.equal(git("add", ".").status, 0);
+    assert.equal(git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "bump upstream version").status, 0);
     const drift = run("--check");
     assert.equal(drift.status, 1);
     assert.match(drift.stderr, /package\.json pistack\.upstream/);
