@@ -58,10 +58,13 @@ The package also loads a small hand-written extension:
 
 | Piece | Does |
 |---|---|
-| `/p3stack on\|off\|status` | Keeps poteto-mode on across turns: while on, a prompt section tells the model to read `skills/poteto-mode/SKILL.md` and follow its playbooks, and every `subagent_spawn` or T3 `delegate_task` brief starts with the [poteto-agent recipe](agents/poteto-agent.md), which has the Child read the mode skill. A terminal Child given none of `edit`, `write` or `subagent_spawn` only investigates, so it gets a short read-only recipe instead: answer the brief with evidence, no playbook, no delegation. The setting follows the session branch. In the terminal a 🥔 before the working directory on the footer's first row shows it is on. |
+| `/p3stack on\|off\|status` | Keeps poteto-mode on across turns and session branches. The prompt section contains only the router skill path. A hidden reminder tells the model to call `p3stack_roles` before delegation. The TUI status row reads `p3stack on` while enabled and clears on `off`. RPC, JSON, and print modes do not set a status. |
 | `ask_user` | Asks the human a product or preference question, with choices or free text. Works in a terminal and under T3 Code (T3 shows Pi's dialogs as pending requests); without a UI it tells the model to apply its stated default and say so. |
-| `p3stack_roles` | Returns the model for every p3stack role, from `.pi/p3stack.json` in a trusted project, else `~/.pi/agent/p3stack.json`, else the skills' default hints. |
+| `p3stack_roles` | Reads role hints from `.pi/p3stack.json` in a trusted project, else `~/.pi/agent/p3stack.json`, else the skill defaults. Resolves them against the live T3 catalog when its tool is registered, otherwise the subagents catalog over Pi's event bus. Without either catalog, uses Pi's available models. Returns exact `provider/model:thinking` identities or ready T3 targets. Reports unavailable roles and skipped untrusted project files. |
+| `/p3stack doctor` | Writes `~/.pi/agent/p3stack/t3-contract.json` with all registered T3 tool names and exposures, the SHA-256 of `T3_PI_MCP_EXTENSION_PATH`, and whether explicit extension arguments load claude-subscription before that bridge. Missing bridge configuration appears in `problems`. |
 | `/p3stack-setup` | In a terminal: pick a thinking budget, a code model and a judgment model, and write `~/.pi/agent/p3stack.json` for every role. Each model is offered at the highest thinking level it supports within the budget, or not at all. With subagents loaded, only identities its allowlist permits are offered (read over Pi's event bus; an older subagents that cannot answer gets a pointer to the skill). Under T3 it points to `/skill:setup-pstack`, which can read T3's catalog. |
+
+While the mode is on, delegated briefs start with the [poteto-agent recipe](agents/poteto-agent.md). Native children given none of `edit`, `write`, or `subagent_spawn` get a short read-only recipe instead. T3 tasks with `role` set to `research` or `review` get the same short recipe. Other T3 roles keep the full recipe. A prefixed brief is not prefixed again.
 
 Wake loops and the todo list come from the `subagents` and `todo` packages, not from here.
 
@@ -168,16 +171,14 @@ applies.
 | Watch a pull request | `gh` polling, or a watcher Child | `watch_pull_request`, from the top-level thread only; a delegated task polls with `gh` |
 | Model setup | `/p3stack-setup` | `/skill:setup-pstack` |
 | `ask_user` | Terminal dialog | Shown in T3 as a pending request |
-| Todo widget, poteto-mode 🥔 in the footer | Shown | Not shown: T3 ignores widgets and has no footer. Tool results carry the same text; `/p3stack status` reports the mode. |
+| Todo widget and p3stack status row | Shown | Not shown. Tool results carry the todo text, and `/p3stack status` reports the mode. |
 
 ### One role file for both hosts
 
 Both hosts read `~/.pi/agent/p3stack.json`, or `.pi/p3stack.json` in a trusted
-project. While the mode is on, the resolved table is in the model's prompt. It holds whatever the last setup wrote: Pi identities such as
-`xai/grok-4.7:xhigh` from a terminal, or T3 targets from T3. On the other host a
-value is treated as a hint: the model picks the closest offered model of the same
-family and thinking level, and says when it substitutes. If you mostly use one
-host, run setup there.
+project. The role table is not injected into each turn. `p3stack_roles` resolves the file's hints when called. It drops the `-fast` hint and selects an offered thinking level at or below the requested level for the same model. It never substitutes another model family. `auto` and `inherit-parent` require the parent's selection in the live catalog. Unavailable roles are omitted from `roles` and explained in `problems`. If you mostly use one host, run setup there.
+
+`PI_CODING_AGENT_DIR` replaces `~/.pi/agent` for role files, setup, and doctor reports.
 
 ## License
 

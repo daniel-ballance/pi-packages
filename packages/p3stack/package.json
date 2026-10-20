@@ -30,6 +30,9 @@
   "dependencies": {
     "commander": "15.0.0"
   },
+  "peerDependencies": {
+    "typebox": "*"
+  },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "typebox": "^1.4.2",

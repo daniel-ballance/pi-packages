@@ -12,9 +12,8 @@ const model = (provider: string, id: string, levels: Record<string, string | nul
 const opus = model("claude-subscription", "claude-opus-5-5", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" });
 const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: null });
 
-// subagents: absent, loaded but too old to reply on the bus, or replying with this catalog.
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
-function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[] } = {}) {
+function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[], factory = p3stack } = {}) {
   const root = mkdtempSync(join(tmpdir(), "p3stack-ext-")), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
@@ -34,13 +33,13 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
     executeTool: async (name: string, args: unknown) => {
       assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
       assert.deepEqual(args, {});
-      return { content: [{ type: "text", text: JSON.stringify(t3) }], details: {} };
+      return { content: [{ type: "text", text: JSON.stringify(t3) }], structuredContent: t3, details: {} };
     },
     get ui() { if (!hasUI) throw new Error("touched ui without UI"); return ui; },
     modelRegistry: { getAvailable: () => [opus, grok] },
     sessionManager: { getBranch: () => branch },
   };
-  p3stack({
+  factory({
     registerTool: (tool: any) => tools.set(tool.name, tool),
     registerCommand: (name: string, command: any) => commands.set(name, command),
     on: (name: string, handler: Function) => handlers.set(name, [...handlers.get(name) ?? [], handler]),
@@ -49,7 +48,6 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
     events: { emit: (channel: string, data: { reply(value: unknown): void }) => { if (channel === "subagents:catalog" && subagents && subagents !== "old") data.reply(subagents); } },
   } as never);
   const emit = async (name: string, event: any = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); return event; };
-  // What before_agent_start handlers return as messages beside the request.
   const reminders = async (event: any) => { const out = []; for (const handler of handlers.get("before_agent_start") ?? []) { const result = await handler(event, ctx); if (result?.message) out.push(result.message); } return out; };
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
@@ -57,6 +55,29 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   return { root, cwd, agentDir, tools, commands, emit, reminders, call, command, entries, notices, statuses, asked, dispose };
 }
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
+
+test("each extension module registers its own job without loading unrelated features", async () => {
+  const { registerMode } = await import("../extensions/p3stack/src/mode.ts");
+  const { registerBrief } = await import("../extensions/p3stack/src/brief.ts");
+  const { registerAsk } = await import("../extensions/p3stack/src/ask.ts");
+  const { registerSetup } = await import("../extensions/p3stack/src/setup.ts");
+  const { registerRoles } = await import("../extensions/p3stack/src/roles.ts");
+  const mode = harness({ factory: pi => { const on = registerMode(pi, "router.md"); registerBrief(pi, on, "router.md", "agent.md"); } });
+  try {
+    assert.equal(mode.tools.size, 0);
+    await mode.command("p3stack", "on");
+    const event = { toolName: "subagent_spawn", input: { task: "Fix it." } };
+    await mode.emit("tool_call", event);
+    assert.match(event.input.task, /read agent\.md/);
+  } finally { mode.dispose(); }
+  for (const [factory, tool, command] of [[registerAsk, "ask_user", undefined], [registerRoles, "p3stack_roles", undefined], [registerSetup, undefined, "p3stack-setup"]] as const) {
+    const h = harness({ factory });
+    try {
+      assert.deepEqual([...h.tools.keys()], tool ? [tool] : []);
+      assert.deepEqual([...h.commands.keys()], command ? [command] : []);
+    } finally { h.dispose(); }
+  }
+});
 
 test("a budget sets each model's thinking level, clamped to what that model offers", () => {
   assert.equal(thinkingFor("unlimited", opus), "max");
@@ -134,6 +155,18 @@ test("a registered T3 catalog takes precedence and returns ready targets with ad
   } finally { h.dispose(); }
 });
 
+test("T3 bridge MCP envelopes resolve roles and preserve the inherited target without guessing options", async () => {
+  const h = harness({ t3: { content: [], structuredContent: {
+    inheritedProviderInstanceId: "pi-main", inheritedModel: "claude-subscription/claude-opus-5-5",
+    providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude-subscription/claude-opus-5-5" }] }],
+  } }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
+  try {
+    const roles = (await h.call("p3stack_roles", {})).structuredContent.roles;
+    assert.deepEqual(roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5" });
+    assert.deepEqual(roles["bug-fix"], roles["judgment and prose"]);
+  } finally { h.dispose(); }
+});
+
 test("inherit-parent resolves to an exact permitted identity and disabled catalogs never invent a model", async () => {
   const h = harness({ parent: { provider: "claude-subscription", id: "claude-opus-5-5" }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
   try { assert.equal((await h.call("p3stack_roles", {})).structuredContent.roles["bug-fix"], "claude-subscription/claude-opus-5-5:xhigh"); } finally { h.dispose(); }
@@ -161,7 +194,7 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
     const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
     assert.equal(reminders.length, 1, "each user turn gets a reminder beside the request");
     assert.equal(reminders[0].display, false);
-    assert.match(reminders[0].content, /^\[poteto-mode is on\] Before anything else, route this request: read .*poteto-mode\/SKILL\.md/);
+    assert.match(reminders[0].content, /^\[poteto-mode is on\] Before anything else, route this request\. Read .*poteto-mode\/SKILL\.md/);
     assert.match(reminders[0].content, /call `p3stack_roles` for the role models/);
     assert.doesNotMatch(reminders[0].content, /role models above/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
@@ -210,7 +243,7 @@ test("a Child with neither edit, write nor subagent_spawn gets the short read-on
     await h.command("p3stack", "on");
     const reader: any = { toolName: "subagent_spawn", input: { task: "Audit stats.ts.", tools: ["read", "bash", "grep"] } };
     await h.emit("tool_call", reader);
-    assert.match(reader.input.task, /^You are a read-only delegate in a poteto-mode run\. .*do not read the poteto-mode skill.*\n\nAudit stats\.ts\.$/s);
+    assert.match(reader.input.task, /^You are a read-only delegate in a poteto-mode run\. .*Do not read the poteto-mode skill.*\n\nAudit stats\.ts\.$/s);
     assert.doesNotMatch(reader.input.task, /poteto-agent\.md/);
     const again = reader.input.task;
     await h.emit("tool_call", reader);
@@ -301,7 +334,6 @@ test("ask_user asks through the UI, and without one says to apply the stated def
   } finally { headless.dispose(); }
 });
 
-// The suite also runs with a fake T3_MCP_URL; tests of terminal behaviour pin the host.
 function asTerminal() {
   const previous = process.env.T3_MCP_URL;
   delete process.env.T3_MCP_URL;
@@ -310,7 +342,7 @@ function asTerminal() {
 
 test("/p3stack-setup maps a budget and two models onto every role and writes the file", async () => {
   const restore = asTerminal();
-  const h = harness({ answers: ["unlimited — max thinking", "xai/grok-4.7:xhigh", "claude-subscription/claude-opus-5-5:max"] });
+  const h = harness({ answers: ["unlimited, max thinking", "xai/grok-4.7:xhigh", "claude-subscription/claude-opus-5-5:max"] });
   try {
     await h.command("p3stack-setup");
     const written = JSON.parse(readFileSync(join(h.agentDir, "p3stack.json"), "utf8"));
@@ -337,7 +369,6 @@ test("/p3stack-setup defers to the skill under T3 and does nothing without a UI"
 
 test("/p3stack-setup offers only models the subagents policy permits, and never writes one it cannot check", async () => {
   const restore = asTerminal();
-  // Harnesses own PI_CODING_AGENT_DIR, so one at a time.
   const run = async (subagents: Subagents, answers: string[], check: (h: ReturnType<typeof harness>, written: unknown) => void) => {
     const h = harness({ subagents, answers });
     try {
@@ -348,13 +379,13 @@ test("/p3stack-setup offers only models the subagents policy permits, and never 
     } finally { h.dispose(); }
   };
   try {
-    await run({ spawnEnabled: true, models: ["xai/grok-4.7:high", "xai/grok-4.7:xhigh"] }, ["large — xhigh thinking", "xai/grok-4.7:xhigh", "xai/grok-4.7:xhigh"], (h, written) => {
+    await run({ spawnEnabled: true, models: ["xai/grok-4.7:high", "xai/grok-4.7:xhigh"] }, ["large, xhigh thinking", "xai/grok-4.7:xhigh", "xai/grok-4.7:xhigh"], (h, written) => {
       assert.match(h.asked[1]!, /\[xai\/grok-4\.7:xhigh\]$/, "Opus is authenticated but not permitted");
       assert.equal((written as { roles: Record<string, string> }).roles["bug-fix"], "xai/grok-4.7:xhigh");
     });
     await run("old", [], (h, written) => { assert.match(h.notices.at(-1)![0], /\/skill:setup-pstack/); assert.equal(written, undefined); });
     await run({ spawnEnabled: false, models: [] }, [], (h, written) => { assert.match(h.notices.at(-1)![0], /does not permit spawning/); assert.equal(written, undefined); });
-    await run({ spawnEnabled: true, models: ["xai/grok-4.7:xhigh"] }, ["small — medium thinking"], (h, written) => {
+    await run({ spawnEnabled: true, models: ["xai/grok-4.7:xhigh"] }, ["small, medium thinking"], (h, written) => {
       assert.match(h.notices.at(-1)![0], /No permitted model offers thinking at or below medium/);
       assert.equal(written, undefined);
     });
