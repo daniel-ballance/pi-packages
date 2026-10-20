@@ -35,7 +35,11 @@ Link receipts with commands and outcomes for the current-pins root gate, generat
 Name dependency-refresh or host-contract work kept separate. Record anything blocked and why. State that the PR remains unmerged.
 ```
 
-## PR body for a section-hash repair
+## PR body evidence
+
+For every newly classified skill, include the exact source-relative path and its emit or drop verdict in the PR body. For a min-match repair, include the rule id and the literal old and new `find` values. The notes retain the full decision list. These body details let the reviewer identify the repair without opening another file.
+
+### Include a section-hash diff
 
 Include this block in the PR body itself for each changed section. Replace every placeholder. Paste the full upstream section diff, not a receipt link or only the hash change. Keep the receipt link as additional evidence.
 
