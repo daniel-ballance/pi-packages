@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,19 +10,19 @@ import { gitEnv } from "../generator/git-env.mjs";
 
 const cli = fileURLToPath(new URL("../generator/generate.mjs", import.meta.url));
 
-// A miniature package: an upstream tree under vendor/ plus the hand-written rules.
+const manifest = fields => JSON.stringify({ sources: [{
+  name: "cursor-plugins", vendor: "vendor/up",
+  map: [{ from: "skills/", to: "skills/" }, { from: "LICENSE", to: "LICENSE" }],
+  exclude: [], ...fields,
+}] });
 function fixture(files) {
-  const root = mkdtempSync(join(tmpdir(), "p3stack-generate-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-generate-")));
   const defaults = {
     "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\nicon: crown\n---\n\n# Demo\n\nUse the Task tool.\n\n## Subagents\n\nCursor-only text.\n\n## Next\n\nKept.\n",
     "vendor/up/skills/demo/scripts/run.sh": "echo hi\n",
     "vendor/up/README.md": "Not emitted.\n",
     "vendor/up/LICENSE": "MIT\n",
-    "rules/manifest.json": JSON.stringify({
-      vendor: "vendor/up",
-      map: [{ from: "skills/", to: "skills/" }, { from: "LICENSE", to: "LICENSE" }],
-      exclude: [],
-    }),
+    "rules/manifest.json": manifest(),
     "rules/tokens.json": JSON.stringify([
       { id: "task-tool", min: 1, find: "the Task tool", replace: "a child" },
       { id: "skill-name", min: 1, find: "^name: Demo$", flags: "m", replace: "name: demo", files: "^skills/demo/SKILL\\.md$" },
@@ -44,6 +44,93 @@ function fixture(files) {
   return { root, out, read, dispose: () => rmSync(root, { recursive: true, force: true }) };
 }
 
+function twoSources(files = {}) {
+  return fixture({
+    "vendor/other/skills/second/SKILL.md": "# Second\n\nUse the Task tool.\n",
+    "rules/manifest.json": JSON.stringify({ sources: [
+      JSON.parse(manifest()).sources[0],
+      { name: "other", vendor: "vendor/other", map: [{ from: "skills/", to: "skills/" }], exclude: ["^skills/omitted/"] },
+    ] }),
+    ...files,
+  });
+}
+
+test("two sources emit their mapped skills and keep their exclusions separate", () => {
+  const { root, out, read, dispose } = twoSources({ "vendor/other/skills/omitted/SKILL.md": "Cursor\n" });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.match(read("skills/demo/SKILL.md"), /Use a child/);
+    assert.equal(read("skills/second/SKILL.md"), "# Second\n\nUse a child.\n");
+    assert.equal(existsSync(join(out, "skills/omitted/SKILL.md")), false);
+  } finally { dispose(); }
+});
+
+test("two sources that emit the same path fail before writing and name both sources", () => {
+  const { root, out, dispose } = twoSources({ "vendor/other/skills/demo/SKILL.md": "# Collision\n" });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), error => {
+      assert.match(error.message, /skills\/demo\/SKILL\.md/);
+      assert.match(error.message, /cursor-plugins/);
+      assert.match(error.message, /other/);
+      return true;
+    });
+    assert.equal(existsSync(out), false);
+  } finally { dispose(); }
+});
+
+test("the coupling lint scans the second source", () => {
+  const { root, out, dispose } = twoSources({ "vendor/other/skills/second/SKILL.md": "# Second\n\nCursor\n" });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /skills\/second\/SKILL\.md:3: Cursor/);
+  } finally { dispose(); }
+});
+
+test("source-scoped token rules rewrite only that source and global rules still span sources", () => {
+  const { root, out, read, dispose } = twoSources({
+    "rules/tokens.json": JSON.stringify([
+      { id: "other-task", source: "other", min: 1, find: "the Task tool", replace: "a second child", files: "SKILL\\.md$" },
+      { id: "all-task", min: 1, find: "the Task tool", replace: "a first child" },
+      { id: "all-use", min: 2, find: "Use", replace: "Run" },
+    ]),
+    "rules/lint.json": JSON.stringify({ deny: [] }),
+  });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.match(read("skills/demo/SKILL.md"), /Run a first child/);
+    assert.equal(read("skills/second/SKILL.md"), "# Second\n\nRun a second child.\n");
+  } finally { dispose(); }
+});
+
+test("a source-scoped token minimum cannot count matches from another source", () => {
+  const { root, out, dispose } = twoSources({
+    "rules/tokens.json": JSON.stringify([{ id: "only-other", source: "other", min: 1, find: "Cursor-only", replace: "Pi" }]),
+  });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /only-other: 0 matches, expected at least 1/);
+  } finally { dispose(); }
+});
+
+test("source names must be nonempty and unique", () => {
+  for (const name of ["", "cursor-plugins"]) {
+    const sources = JSON.parse(manifest()).sources;
+    sources.push({ name, vendor: "vendor/other", map: [] });
+    const { root, out, dispose } = fixture({ "rules/manifest.json": JSON.stringify({ sources }) });
+    try {
+      assert.throws(() => generate({ packageDir: root, outDir: out }), /source.*name/i);
+      assert.equal(existsSync(out), false);
+    } finally { dispose(); }
+  }
+});
+
+test("a token rule with an unknown source fails even without a minimum", () => {
+  const { root, out, dispose } = twoSources({
+    "rules/tokens.json": JSON.stringify([{ id: "typo", source: "missing", find: "Use", replace: "Run" }]),
+  });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /typo.*unknown source.*missing/i);
+  } finally { dispose(); }
+});
+
 test("tokens, sections and the file map produce the translated tree", () => {
   const { root, out, read, dispose } = fixture({});
   try {
@@ -63,7 +150,7 @@ test("slash commands discover emitted skill paths, including new skills and prin
     "vendor/up/skills/omitted/SKILL.md": "# Omitted\n",
     "vendor/up/agents/helper.md": "Run /future-check.\n",
     "vendor/up/skills/demo/commands.md": "/demo /future-check /principle-future /not-a-skill /omitted /principle-missing\n/skill:future-check docs/future-check https://example.test/future-check ./future-check ../future-check /future-check-more /future-check_word\n",
-    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", map: [{ from: "skills/", to: "skills/" }, { from: "agents/", to: "agents/" }], exclude: ["^skills/omitted/"] }),
+    "rules/manifest.json": manifest({ map: [{ from: "skills/", to: "skills/" }, { from: "agents/", to: "agents/" }], exclude: ["^skills/omitted/"] }),
     "rules/tokens.json": JSON.stringify([{ ...rule, min: 1 }]),
     "rules/sections.json": "[]",
     "rules/lint.json": JSON.stringify({ deny: [] }),
@@ -80,7 +167,7 @@ test("slash command discovery with no emitted skills cannot match a bare slash",
   const rule = JSON.parse(readFileSync(new URL("../rules/tokens.json", import.meta.url), "utf8")).find(({ id }) => id === "slash-skill");
   const { root, out, read, dispose } = fixture({
     "vendor/up/agents/helper.md": "Use /future-check or /anything.\n",
-    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", map: [{ from: "agents/", to: "agents/" }] }),
+    "rules/manifest.json": manifest({ map: [{ from: "agents/", to: "agents/" }] }),
     "rules/tokens.json": JSON.stringify([{ ...rule, min: 0 }]),
     "rules/sections.json": "[]",
     "rules/lint.json": JSON.stringify({ deny: [] }),
@@ -159,7 +246,7 @@ test("the coupling lint names every file, line and token a rule left behind", ()
 
 test("excluded upstream paths are never emitted", () => {
   const { root, out, dispose } = fixture({
-    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", map: [{ from: "skills/", to: "skills/" }], exclude: ["^skills/demo/scripts/"] }),
+    "rules/manifest.json": manifest({ map: [{ from: "skills/", to: "skills/" }], exclude: ["^skills/demo/scripts/"] }),
   });
   try {
     generate({ packageDir: root, outDir: out });
@@ -277,7 +364,7 @@ test("sync records the upstream commit and version in package.json, and check fa
   const { root, dispose } = fixture({
     "vendor/up/plugin.json": JSON.stringify({ name: "up", version: "1.2.3" }),
     "package.json": JSON.stringify({ name: "demo", p3stack: { upstream: "stale" } }, null, 2) + "\n",
-    "rules/manifest.json": JSON.stringify({ vendor: "vendor/up", upstream: { repository: "acme/plugins", checkout: "vendor/up" }, map: [{ from: "skills/", to: "skills/" }], exclude: [] }),
+    "rules/manifest.json": manifest({ upstream: { repository: "acme/plugins", checkout: "vendor/up" }, map: [{ from: "skills/", to: "skills/" }] }),
   });
   const git = (...args) => spawnSync("git", ["-C", join(root, "vendor/up"), ...args], { encoding: "utf8", env: gitEnv() });
   const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });
@@ -338,7 +425,7 @@ test("a heading inside a fence is not a child of the leaf that contains it", () 
 
 test("setup offers and the help setup sentence come from upstream through the package rules", () => {
   const packageDir = fileURLToPath(new URL("..", import.meta.url));
-  const out = mkdtempSync(join(tmpdir(), "p3stack-rules-"));
+  const out = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-rules-")));
   try {
     generate({ packageDir, outDir: out });
     const setup = readFileSync(join(out, "skills/setup-pstack/SKILL.md"), "utf8");

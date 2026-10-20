@@ -1,45 +1,37 @@
 #!/usr/bin/env node
-// Move the vendored upstream to a new commit and regenerate.
-//
-//   node generator/update-upstream.mjs          the tip of the upstream branch
-//   node generator/update-upstream.mjs <ref>    a commit, tag or remote branch
-//
-// Fetches the upstream checkout, moves it to <ref>, lists upstream's commits to
-// the emitted subtree, then regenerates. When a rule no longer fits, generation
-// fails naming it and the checkout stays at <ref>: fix the rule and run
-// node generator/generate.mjs until it passes. Commit the checkout's new
-// gitlink together with the regenerated output.
-
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./git-env.mjs";
-import { sourcePathClassifier } from "./source-paths.mjs";
+import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
 const generator = join(dirname(fileURLToPath(import.meta.url)), "generate.mjs");
 
 function main(args) {
-  if (args.length > 1 || args[0]?.startsWith("-")) {
-    console.error("Usage: node generator/update-upstream.mjs [ref]");
+  if (args.length < 1 || args.length > 2 || args.some(arg => arg.startsWith("-"))) {
+    console.error("Usage: node generator/update-upstream.mjs <source> [ref]");
     return 2;
   }
   const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(generator), ".."));
   const manifest = JSON.parse(readFileSync(join(packageDir, "rules/manifest.json"), "utf8"));
-  const { vendor, upstream } = manifest;
-  if (!upstream) { console.error("rules/manifest.json names no upstream checkout"); return 1; }
+  const sources = sourcesOf(manifest), source = sources.find(({ name }) => name === args[0]);
+  if (!source) { console.error(`Unknown source "${args[0]}". Available sources: ${sources.map(({ name }) => name).join(", ")}`); return 1; }
+  const { vendor, upstream } = source;
+  if (!upstream) { console.error(`${source.name}: rules/manifest.json names no upstream checkout`); return 1; }
   const checkout = join(packageDir, upstream.checkout), subtree = relative(checkout, join(packageDir, vendor)) || ".";
   if (!existsSync(join(checkout, ".git"))) { console.error(`${upstream.checkout} is not checked out; run npm run sync first`); return 1; }
   const git = (...gitArgs) => execFileSync("git", ["-C", checkout, ...gitArgs], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
 
   if (git("status", "--porcelain")) { console.error(`${upstream.checkout} has local changes; the generator reads upstream only, so discard them first`); return 1; }
-  const branch = upstream.branch ?? "main", ref = args[0] ?? `origin/${branch}`;
+  const branch = upstream.branch ?? "main", ref = args[1] ?? `origin/${branch}`;
   git("fetch", "--quiet", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`, "--tags");
   const from = git("rev-parse", "HEAD");
   let to;
   try { to = git("rev-parse", "--verify", "--quiet", `${ref}^{commit}`); }
   catch { console.error(`${ref}: not a commit in ${upstream.repository}`); return 1; }
 
+  console.log(`Source "${source.name}" (${upstream.repository})`);
   if (from === to) console.log(`${upstream.repository} is already at ${to.slice(0, 7)}.`);
   else {
     const forward = spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", from, to], { env: gitEnv() }).status === 0;
@@ -49,8 +41,8 @@ function main(args) {
     console.log(log ? `Upstream commits touching ${subtree}/:\n${log.replace(/^/gm, "  ")}` : `No upstream commits touch ${subtree}/.`);
     const changes = git("diff", "--name-status", "--no-renames", "-z", from, to, "--", subtree).split("\0").slice(0, -1);
     if (changes.length) {
-      const classify = sourcePathClassifier(manifest);
-      console.log("Changed upstream source paths (manifest scope):");
+      const classify = sourcePathClassifier(source);
+      console.log(`Changed upstream source paths for ${source.name} (manifest scope):`);
       for (let index = 0; index < changes.length; index += 2) {
         const [status, path] = changes.slice(index, index + 2);
         const { kind, output } = classify(relative(subtree, path).split("\\").join("/"));

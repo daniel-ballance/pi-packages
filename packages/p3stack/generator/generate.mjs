@@ -1,16 +1,4 @@
 #!/usr/bin/env node
-// Generate p3stack from the vendored upstream pstack.
-//
-//   node generator/generate.mjs          regenerate the generated roots
-//   node generator/generate.mjs --check  regenerate to a temp dir and fail on drift
-//
-// Never edit generated output. Change a rule (rules/, overlays/, patches/) and
-// re-run. Rule kinds apply in order: token rewrites, section replacements,
-// per-file patches. The coupling lint then runs over every emitted file.
-//
-// Token `replace` strings and overlays may name the pinned upstream commit as
-// {{upstream.commit}}, so links to upstream follow the pin instead of going stale.
-
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -18,15 +6,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./git-env.mjs";
-import { sourcePathClassifier } from "./source-paths.mjs";
+import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
 const readJson = (path, fallback) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
 
-// Code-unit order, so output and patch order never depend on the machine's locale.
 const byName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
-// Files and symlinks under dir. Symlinks are listed, never followed, so a stray
-// link in a generated root shows up as drift.
 function walk(dir) {
   if (!existsSync(dir) && !isLink(dir)) return [];
   if (!lstatSync(dir).isDirectory()) return [""];
@@ -51,25 +36,29 @@ function decode(bytes) {
 
 const isExecutable = path => (statSync(path).mode & 0o111) !== 0;
 
-// Map upstream paths to output paths; the first matching `from` prefix wins.
-// Text files are strings, which rules may rewrite; anything else stays bytes.
-function collect(vendor, manifest, executables, problems) {
-  const classify = sourcePathClassifier(manifest);
-  const files = new Map();
-  for (const path of walk(vendor).map(file => file.split("\\").join("/"))) {
-    const { output } = classify(path);
-    if (output === undefined) continue;
-    if (isLink(join(vendor, path))) { problems.push(`${path}: upstream symlinks are not supported; exclude it or add a rule`); continue; }
-    const bytes = readFileSync(join(vendor, path));
-    files.set(output, decode(bytes) ?? bytes);
-    if (isExecutable(join(vendor, path))) executables.add(output);
+function collect(packageDir, sources, executables, problems) {
+  const files = new Map(), owners = new Map();
+  for (const source of sources) {
+    const vendor = join(packageDir, source.vendor), classify = sourcePathClassifier(source);
+    for (const path of walk(vendor).map(file => file.split("\\").join("/"))) {
+      const { output } = classify(path);
+      if (output === undefined) continue;
+      if (isLink(join(vendor, path))) { problems.push(`${source.name}: ${path}: upstream symlinks are not supported; exclude it or add a rule`); continue; }
+      if (owners.has(output)) {
+        problems.push(`${output}: sources "${owners.get(output)}" and "${source.name}" both emit this path`);
+        continue;
+      }
+      const bytes = readFileSync(join(vendor, path));
+      files.set(output, decode(bytes) ?? bytes);
+      owners.set(output, source.name);
+      if (isExecutable(join(vendor, path))) executables.add(output);
+    }
   }
-  return files;
+  return { files, owners };
 }
 
 const COMMIT = "{{upstream.commit}}";
 
-// Fill the pinned commit into hand-written rule text.
 function expander(commit, problems) {
   return (text, where) => {
     if (!text.includes(COMMIT)) return text;
@@ -78,22 +67,24 @@ function expander(commit, problems) {
   };
 }
 
-// Count, then apply, per rule in order: later rules may rewrite earlier output.
-function applyTokens(files, rules, expand, problems) {
+function applyTokens(files, owners, rules, expanders, problems) {
   const skillNames = [...files.keys()]
     .flatMap(path => /^skills\/([^/]+)\/SKILL\.md$/.exec(path)?.slice(1) ?? [])
     .sort().map(name => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") || "(?!)";
   for (const rule of rules) {
-    const replace = expand(rule.replace, `token rule ${rule.id}`);
+    if (rule.source !== undefined && !expanders.has(rule.source)) {
+      problems.push(`token rule ${rule.id}: unknown source "${rule.source}"`);
+      continue;
+    }
     const scope = rule.files ? new RegExp(rule.files) : undefined;
     const pattern = new RegExp(rule.find.replaceAll("{{skills.names}}", () => skillNames), `g${rule.flags ?? ""}`);
     let count = 0;
     for (const [path, text] of files) {
-      if (typeof text !== "string" || (scope && !scope.test(path))) continue;
+      if (typeof text !== "string" || (rule.source !== undefined && owners.get(path) !== rule.source) || (scope && !scope.test(path))) continue;
       const matches = text.match(pattern)?.length ?? 0;
       if (matches === 0) continue;
       count += matches;
-      files.set(path, text.replace(pattern, replace));
+      files.set(path, text.replace(pattern, expanders.get(owners.get(path))(rule.replace, `token rule ${rule.id}`)));
     }
     if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min}. Upstream reworded or removed its text.`);
   }
@@ -117,8 +108,6 @@ function fencedLines(lines) {
 
 const headingLevel = line => line.match(/^ {0,3}(#{1,6})(?:[ \t]|$)/)?.[1].length;
 
-// A section runs from its heading to the next heading of the same or a higher
-// level. Headings inside fenced code neither start nor end one.
 function findSection(lines, heading) {
   const fenced = fencedLines(lines);
   const starts = lines.flatMap((line, index) => line === heading && !fenced[index] ? [index] : []);
@@ -162,14 +151,12 @@ function applySections(files, upstream, sections, overlaysDir, expand, problems)
       problems.push(`section rule: ${file}: section "${heading}" changed upstream (was ${expected}, now ${actual}). Review the overlay, then update its hash.`);
       continue;
     }
-    const replacement = expand(readFileSync(join(overlaysDir, overlay), "utf8"), `overlay ${overlay}`);
+    const replacement = expand(readFileSync(join(overlaysDir, overlay), "utf8"), `overlay ${overlay}`, file);
     lines.splice(section.start, section.end - section.start, ...replacement.trimEnd().split("\n"), "");
     files.set(file, lines.join("\n"));
   }
 }
 
-// Hand-written files under extra/ join the output as they are: they are already
-// written for Pi, so only the coupling lint applies to them.
 function addExtras(files, extraDir, executables) {
   for (const path of walk(extraDir)) {
     const output = path.split("\\").join("/");
@@ -210,12 +197,14 @@ function lint(outDir, deny, problems) {
 
 export function generate({ packageDir, outDir }) {
   const rules = join(packageDir, "rules");
-  const manifest = readJson(join(rules, "manifest.json"));
-  const info = upstreamInfo(packageDir);
+  const sources = sourcesOf(readJson(join(rules, "manifest.json")));
+  const infos = sources.map(source => upstreamInfo(packageDir, source)).filter(Boolean);
   const problems = [], executables = new Set();
-  const files = collect(join(packageDir, manifest.vendor), manifest, executables, problems);
-  const upstream = new Map(files), expand = expander(info?.commit, problems);
-  applyTokens(files, readJson(join(rules, "tokens.json"), []), expand, problems);
+  const { files, owners } = collect(packageDir, sources, executables, problems);
+  const expanders = new Map(sources.map(source => [source.name, expander(infos.find(info => info.source === source.name)?.commit, problems)]));
+  const expand = (text, where, path) => expanders.get(owners.get(path))(text, where);
+  const upstream = new Map(files);
+  applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems);
   applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
   addExtras(files, join(packageDir, "extra"), executables);
   if (problems.length) throw new Error(problems.join("\n"));
@@ -227,11 +216,11 @@ export function generate({ packageDir, outDir }) {
   const lintProblems = [];
   lint(outDir, readJson(join(rules, "lint.json"), { deny: [] }).deny, lintProblems);
   if (lintProblems.length) throw new Error(`Coupling lint: Cursor-only tokens remain; add a rule, never edit the output.\n${lintProblems.join("\n")}`);
+  return infos;
 }
 
-// Top-level files and directories the generator owns, replaced whole on sync.
 const generatedRoots = packageDir =>
-  [...new Set(readJson(join(packageDir, "rules/manifest.json")).map.map(({ to }) => to.split("/")[0]))].sort();
+  [...new Set(readJson(join(packageDir, "rules/manifest.json")).sources.flatMap(source => source.map.map(({ to }) => to.split("/")[0])))].sort();
 
 function drift(packageDir, outDir) {
   const problems = [];
@@ -250,9 +239,8 @@ function drift(packageDir, outDir) {
   return problems;
 }
 
-// The upstream checkout's commit and plugin, when the manifest names a checkout.
-export function upstreamInfo(packageDir) {
-  const { vendor, upstream } = readJson(join(packageDir, "rules/manifest.json"));
+export function upstreamInfo(packageDir, source) {
+  const { vendor, upstream } = source;
   if (!upstream) return undefined;
   const checkout = join(packageDir, upstream.checkout);
   const git = (...args) => execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
@@ -261,21 +249,28 @@ export function upstreamInfo(packageDir) {
   const changes = [git("-c", "core.fileMode=true", "status", "--porcelain=v1", "--untracked-files=all", "--ignored", "--ignore-submodules=none", "--", subtreePath), ...hidden].filter(Boolean).join("\n");
   if (changes) throw new Error(`${upstream.checkout} has local changes; generation requires clean upstream inputs, including ignored files.\n${changes}`);
   const commit = git("rev-parse", "HEAD");
-  const { name, version } = readJson(join(packageDir, vendor, "plugin.json"));
+  const { name, version } = readJson(join(packageDir, vendor, "plugin.json"), {});
   const subtree = relative(upstream.checkout, vendor).split("\\").join("/");
-  return { repository: upstream.repository, commit, subtree, name, version };
+  return { source: source.name, repository: upstream.repository, commit, subtree, name, version };
 }
 
-// The upstream pin the generated tree comes from, as recorded in package.json:
-// "<repository>@<commit> <plugin name> <plugin version>".
-const pinOf = info => info && `${info.repository}@${info.commit} ${info.name} ${info.version}`;
+const pluginVersion = info => info.name && info.version ? ` ${info.name} ${info.version}` : "";
+const pinOf = info => info && `${info.repository}@${info.commit}${pluginVersion(info)}`;
 
-// The README states the pin between these markers; the generator keeps it current.
 const README_PIN = /(<!-- p3stack:upstream -->)[\s\S]*?(<!-- \/p3stack:upstream -->)/g;
 const readmePin = info =>
-  `\`${info.repository}\` [\`${info.commit.slice(0, 7)}\`](https://github.com/${info.repository}/tree/${info.commit}${info.subtree ? `/${info.subtree}` : ""}), ${info.name} ${info.version}`;
-function pinnedReadme(text, info) {
-  return info === undefined ? text : text.replace(README_PIN, (_, open, close) => `${open}${readmePin(info)}${close}`);
+  `\`${info.repository}\` [\`${info.commit.slice(0, 7)}\`](https://github.com/${info.repository}/tree/${info.commit}${info.subtree ? `/${info.subtree}` : ""})${pluginVersion(info) ? `,${pluginVersion(info)}` : ""}`;
+function pinnedReadme(text, infos) {
+  return infos.length === 0 ? text : text.replace(README_PIN, (_, open, close) => `${open}${infos.map(readmePin).join("; ")}${close}`);
+}
+
+function gitlinkDrift(packageDir, source, info) {
+  const checkout = join(packageDir, source.upstream.checkout);
+  const superproject = execFileSync("git", ["-C", checkout, "rev-parse", "--show-superproject-working-tree"], { encoding: "utf8", env: gitEnv() }).trim();
+  if (!superproject) return [];
+  const staged = execFileSync("git", ["-C", superproject, "ls-files", "--stage", "--", relative(superproject, checkout)], { encoding: "utf8", env: gitEnv() }).trim();
+  const pin = /^160000 ([0-9a-f]+) 0\t/.exec(staged)?.[1];
+  return pin === info.commit ? [] : [`${source.name}: checkout pin ${info.commit} differs from gitlink ${pin ?? "missing"}`];
 }
 
 function main(args) {
@@ -286,15 +281,24 @@ function main(args) {
   const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
   const outDir = mkdtempSync(join(tmpdir(), "p3stack-"));
   try {
-    generate({ packageDir, outDir });
-    const info = upstreamInfo(packageDir), pin = pinOf(info), manifestPath = join(packageDir, "package.json");
+    const infos = generate({ packageDir, outDir });
+    const sources = readJson(join(packageDir, "rules/manifest.json")).sources;
+    const pin = pinOf(infos.find(info => info.source === "cursor-plugins")), manifestPath = join(packageDir, "package.json");
     const readmePath = join(packageDir, "README.md"), readme = existsSync(readmePath) ? readFileSync(readmePath, "utf8") : undefined;
     if (args[0] === "--check") {
       const problems = drift(packageDir, outDir);
       const recorded = pin === undefined ? undefined : readJson(manifestPath).p3stack?.upstream;
       if (recorded !== pin) problems.push(`package.json p3stack.upstream is "${recorded}", expected "${pin}"`);
-      if (readme !== undefined && pinnedReadme(readme, info) !== readme) problems.push("README.md: the upstream pin between the p3stack:upstream markers is stale");
-      if (problems.length === 0) return 0;
+      for (const info of infos) problems.push(...gitlinkDrift(packageDir, sources.find(source => source.name === info.source), info));
+      if (readme !== undefined && infos.length) {
+        if ([...readme.matchAll(README_PIN)].length !== 1) problems.push("README.md: expected one pair of p3stack:upstream pin markers");
+        else if (pinnedReadme(readme, infos) !== readme) problems.push(`README.md: the upstream pins for ${infos.map(info => info.source).join(", ")} between the p3stack:upstream markers are stale`);
+      }
+      if (problems.length === 0) {
+        const paths = walk(outDir);
+        console.log(`Generated output is current. ${paths.length} files, ${paths.reduce((bytes, path) => bytes + statSync(join(outDir, path)).size, 0)} bytes.`);
+        return 0;
+      }
       console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs.\n  ${problems.join("\n  ")}`);
       return 1;
     }
@@ -307,7 +311,7 @@ function main(args) {
       manifest.p3stack = { ...manifest.p3stack, upstream: pin };
       writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
     }
-    if (readme !== undefined && pinnedReadme(readme, info) !== readme) writeFileSync(readmePath, pinnedReadme(readme, info));
+    if (readme !== undefined && pinnedReadme(readme, infos) !== readme) writeFileSync(readmePath, pinnedReadme(readme, infos));
     return 0;
   } catch (error) {
     console.error(error.message);

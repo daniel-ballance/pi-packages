@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,10 +21,8 @@ function write(root, files) {
   }
 }
 
-// An upstream repository, and a package whose vendor/up checkout clones it,
-// generated once at the first upstream commit.
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "p3stack-update-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-update-")));
   const origin = join(root, "origin"), pkg = join(root, "pkg");
   mkdirSync(origin);
   git(origin, "init", "-q");
@@ -38,12 +36,12 @@ function fixture() {
   write(pkg, {
     "package.json": JSON.stringify({ name: "demo", p3stack: { upstream: "unset" } }, null, 2) + "\n",
     "README.md": "# demo\n\nPin: <!-- p3stack:upstream -->unset<!-- /p3stack:upstream -->.\n",
-    "rules/manifest.json": JSON.stringify({
-      vendor: "vendor/up/up",
+    "rules/manifest.json": JSON.stringify({ sources: [{
+      name: "cursor-plugins", vendor: "vendor/up/up",
       upstream: { repository: "acme/plugins", checkout: "vendor/up", branch: "main" },
       map: [{ from: "skills/", to: "skills/" }],
       exclude: [],
-    }),
+    }] }),
     "rules/tokens.json": JSON.stringify([
       { id: "task-tool", min: 1, find: "the Task tool", replace: "a child" },
       { id: "guide", min: 1, find: "\\]\\((?:\\.\\./)+docs/guide/([^)]+)\\)", replace: "](https://example.test/{{upstream.commit}}/$1)" },
@@ -51,12 +49,131 @@ function fixture() {
   });
   git(root, "clone", "-q", origin, join(pkg, "vendor/up"));
   const env = { ...gitEnv(), P3STACK_PACKAGE_DIR: pkg, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "protocol.file.allow", GIT_CONFIG_VALUE_0: "always" };
-  const run = (cli, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd: pkg, encoding: "utf8", env });
+  const rawRun = (cli, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd: pkg, encoding: "utf8", env });
+  const run = (cli, ...args) => rawRun(cli, ...(cli === updateCli ? ["cursor-plugins"] : []), ...args);
+  const bump = (...args) => rawRun(updateCli, ...args);
   assert.equal(run(generateCli).status, 0);
   const commit = (files, message) => { write(origin, files); git(origin, "add", "."); git(origin, "commit", "-qm", message); return git(origin, "rev-parse", "HEAD"); };
   const read = path => readFileSync(join(pkg, path), "utf8");
-  return { root, pkg, origin, run, commit, read, head: () => git(join(pkg, "vendor/up"), "rev-parse", "HEAD"), dispose: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, pkg, origin, run, bump, commit, read, head: () => git(join(pkg, "vendor/up"), "rev-parse", "HEAD"), dispose: () => rmSync(root, { recursive: true, force: true }) };
 }
+
+function addSecondSource({ root, pkg, origin }, submodule = false) {
+  const second = join(pkg, "vendor/second");
+  if (submodule) {
+    git(pkg, "init", "-q");
+    git(pkg, "submodule", "add", "-q", origin, "vendor/second");
+    git(pkg, "commit", "-qm", "pin second");
+  } else git(root, "clone", "-q", origin, second);
+  const path = join(pkg, "rules/manifest.json"), manifest = JSON.parse(readFileSync(path, "utf8"));
+  manifest.sources.push({
+    name: "second", vendor: "vendor/second/up",
+    upstream: { repository: "acme/second", checkout: "vendor/second", branch: "main" },
+    map: [{ from: "skills/demo/", to: "skills/second/" }], exclude: [],
+  });
+  writeFileSync(path, JSON.stringify(manifest));
+  return second;
+}
+
+test("every source expands its own commit and records its README pin", () => {
+  const f = fixture();
+  try {
+    const first = f.head();
+    const tip = f.commit({ "up/plugin.json": JSON.stringify({ name: "second", version: "2.0.0" }) }, "second pin");
+    addSecondSource(f);
+    const generated = f.run(generateCli);
+    assert.equal(generated.status, 0, generated.stderr);
+    assert.match(f.read("skills/demo/SKILL.md"), new RegExp(first));
+    assert.match(f.read("skills/second/SKILL.md"), new RegExp(tip));
+    assert.match(f.read("README.md"), new RegExp(`acme/second/tree/${tip}/up`));
+    assert.equal(f.run(generateCli, "--check").status, 0);
+    writeFileSync(join(f.pkg, "README.md"), f.read("README.md").replaceAll(tip, first));
+    const stale = f.run(generateCli, "--check");
+    assert.equal(stale.status, 1);
+    assert.match(stale.stderr, /README\.md.*second/);
+  } finally { f.dispose(); }
+});
+
+test("check compares the second source checkout with its staged gitlink", () => {
+  const f = fixture();
+  try {
+    const second = addSecondSource(f, true), pin = git(second, "rev-parse", "HEAD");
+    assert.equal(f.run(generateCli).status, 0);
+    const checked = f.run(generateCli, "--check");
+    assert.equal(checked.status, 0, checked.stderr);
+    const tip = f.commit({ "up/plugin.json": JSON.stringify({ name: "up", version: "1.0.1" }) }, "new pin");
+    git(second, "fetch", "-q", "origin");
+    git(second, "checkout", "-q", "--detach", tip);
+    assert.equal(f.run(generateCli).status, 0);
+    const drift = f.run(generateCli, "--check");
+    assert.equal(drift.status, 1);
+    assert.match(drift.stderr, /second.*gitlink/);
+    assert.match(drift.stderr, new RegExp(pin));
+    assert.match(drift.stderr, new RegExp(tip));
+    git(f.pkg, "add", "vendor/second");
+    assert.equal(f.run(generateCli, "--check").status, 0);
+  } finally { f.dispose(); }
+});
+
+test("a source without plugin metadata can generate and check its pin", () => {
+  const f = fixture();
+  try {
+    f.commit({ "up/skills/demo/SKILL.md": "# Plain\n\nUse the Task tool. See [guide](../../docs/guide/01.md).\n" }, "plain source");
+    const second = addSecondSource(f);
+    git(second, "rm", "-q", "up/plugin.json");
+    git(second, "commit", "-qm", "no plugin metadata");
+    const result = f.run(generateCli);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(f.read("README.md"), /acme\/second/);
+    assert.doesNotMatch(f.read("README.md"), /undefined/);
+    assert.equal(f.run(generateCli, "--check").status, 0);
+  } finally { f.dispose(); }
+});
+
+test("npm scripts expose generation and named-source bumps", () => {
+  const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(scripts.generate, "node generator/generate.mjs");
+  assert.equal(scripts.bump, "node generator/update-upstream.mjs");
+});
+
+test("bump requires a known source before it fetches or changes a checkout", () => {
+  const { bump, head, dispose } = fixture();
+  try {
+    const before = head();
+    const missing = bump();
+    assert.equal(missing.status, 2);
+    assert.match(missing.stderr, /<source> \[ref\]/);
+    const unknown = bump("missing");
+    assert.equal(unknown.status, 1);
+    assert.match(unknown.stderr, /unknown source.*missing.*cursor-plugins/i);
+    assert.equal(head(), before);
+  } finally { dispose(); }
+});
+
+test("a named-source bump moves only that checkout and uses only its scope", () => {
+  const { root, pkg, origin, bump, commit, head, dispose } = fixture();
+  try {
+    const first = head(), second = join(pkg, "vendor/second");
+    git(root, "clone", "-q", origin, second);
+    const manifestPath = join(pkg, "rules/manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.sources.push({
+      name: "second", vendor: "vendor/second/up",
+      upstream: { repository: "acme/second", checkout: "vendor/second", branch: "main" },
+      map: [{ from: "skills/demo/", to: "skills/second/" }], exclude: [],
+    });
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const tip = commit({ "up/skills/demo/SKILL.md": "# Changed\n\nUse the Task tool. See [guide](../../docs/guide/01.md).\n" }, "second source change");
+    const result = bump("second", tip);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(head(), first);
+    assert.equal(git(second, "rev-parse", "HEAD"), tip);
+    assert.match(result.stdout, /second.*acme\/second/);
+    assert.match(result.stdout, /up\/skills\/demo\/SKILL\.md -> skills\/second\/SKILL\.md/);
+    assert.doesNotMatch(result.stdout, / -> skills\/demo\/SKILL\.md/);
+    assert.match(readFileSync(join(pkg, "skills/second/SKILL.md"), "utf8"), /# Changed/);
+  } finally { dispose(); }
+});
 
 test("the pinned commit fills {{upstream.commit}} in rules and the README pin markers", () => {
   const { read, head, dispose } = fixture();
@@ -90,7 +207,7 @@ test("update reports emitted, excluded and unmapped source changes without inclu
   try {
     const manifestPath = join(pkg, "rules/manifest.json");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    manifest.exclude = ["^skills/omitted/"];
+    manifest.sources[0].exclude = ["^skills/omitted/"];
     writeFileSync(manifestPath, JSON.stringify(manifest));
     commit({
       "up/skills/added/SKILL.md": "# Added\n",
