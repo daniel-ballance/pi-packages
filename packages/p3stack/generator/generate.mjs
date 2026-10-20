@@ -86,7 +86,7 @@ function expander(commit, problems) {
 }
 
 // Count, then apply, per rule in order: later rules may rewrite earlier output.
-function applyTokens(files, rules, expand, problems) {
+function applyTokens(files, owners, rules, expand, problems) {
   const skillNames = [...files.keys()]
     .flatMap(path => /^skills\/([^/]+)\/SKILL\.md$/.exec(path)?.slice(1) ?? [])
     .sort().map(name => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") || "(?!)";
@@ -96,7 +96,7 @@ function applyTokens(files, rules, expand, problems) {
     const pattern = new RegExp(rule.find.replaceAll("{{skills.names}}", () => skillNames), `g${rule.flags ?? ""}`);
     let count = 0;
     for (const [path, text] of files) {
-      if (typeof text !== "string" || (scope && !scope.test(path))) continue;
+      if (typeof text !== "string" || (rule.source !== undefined && owners.get(path) !== rule.source) || (scope && !scope.test(path))) continue;
       const matches = text.match(pattern)?.length ?? 0;
       if (matches === 0) continue;
       count += matches;
@@ -220,9 +220,9 @@ export function generate({ packageDir, outDir }) {
   const manifest = readJson(join(rules, "manifest.json"));
   const info = manifest.sources.map(source => upstreamInfo(packageDir, source))[0];
   const problems = [], executables = new Set();
-  const { files } = collect(packageDir, manifest.sources, executables, problems);
+  const { files, owners } = collect(packageDir, manifest.sources, executables, problems);
   const upstream = new Map(files), expand = expander(info?.commit, problems);
-  applyTokens(files, readJson(join(rules, "tokens.json"), []), expand, problems);
+  applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expand, problems);
   applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
   addExtras(files, join(packageDir, "extra"), executables);
   if (problems.length) throw new Error(problems.join("\n"));

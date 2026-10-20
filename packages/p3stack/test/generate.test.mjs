@@ -85,6 +85,31 @@ test("the coupling lint scans the second source", () => {
   } finally { dispose(); }
 });
 
+test("source-scoped token rules rewrite only that source and global rules still span sources", () => {
+  const { root, out, read, dispose } = twoSources({
+    "rules/tokens.json": JSON.stringify([
+      { id: "other-task", source: "other", min: 1, find: "the Task tool", replace: "a second child", files: "SKILL\\.md$" },
+      { id: "all-task", min: 1, find: "the Task tool", replace: "a first child" },
+      { id: "all-use", min: 2, find: "Use", replace: "Run" },
+    ]),
+    "rules/lint.json": JSON.stringify({ deny: [] }),
+  });
+  try {
+    generate({ packageDir: root, outDir: out });
+    assert.match(read("skills/demo/SKILL.md"), /Run a first child/);
+    assert.equal(read("skills/second/SKILL.md"), "# Second\n\nRun a second child.\n");
+  } finally { dispose(); }
+});
+
+test("a source-scoped token minimum cannot count matches from another source", () => {
+  const { root, out, dispose } = twoSources({
+    "rules/tokens.json": JSON.stringify([{ id: "only-other", source: "other", min: 1, find: "Cursor-only", replace: "Pi" }]),
+  });
+  try {
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /only-other: 0 matches, expected at least 1/);
+  } finally { dispose(); }
+});
+
 test("tokens, sections and the file map produce the translated tree", () => {
   const { root, out, read, dispose } = fixture({});
   try {

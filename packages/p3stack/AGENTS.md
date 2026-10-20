@@ -46,9 +46,11 @@ before it writes output.
 
 Rules apply in this order. The same sources and rules give byte-identical output.
 
-1. **Token rewrites** (`rules/tokens.json`): `{id, min, find, flags?, replace, files?}`.
-   `find` is a JavaScript regular expression, `replace` may use `$1`, `files`
-   limits the rule to output paths matching a regular expression. Rules count
+1. **Token rewrites** (`rules/tokens.json`) use `{id, min, find, flags?, replace, files?, source?}`.
+   `find` is a JavaScript regular expression and `replace` may use `$1`.
+   `files` limits the rule to output paths matching a regular expression.
+   `source` limits it to files from that named source. Without `source`, the rule
+   applies to all sources. `min` counts matches only within the selected scope. Rules count
    then apply in order, so a later rule sees an earlier rule's output. `min` is
    a tripwire: a rule matching fewer times fails generation with its id, which
    means upstream reworded the text. In `find`, `{{skills.names}}` expands to
