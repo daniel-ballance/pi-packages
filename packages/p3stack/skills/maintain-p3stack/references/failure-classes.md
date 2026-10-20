@@ -21,7 +21,7 @@ Use the named diagnostic to find the input owner. Read the upstream diff before 
 | Upstream symlink unsupported or required upstream file missing | Review the removed or linked resource. Correct the map, exclusion, or required path in `rules/manifest.json`. Add a safe owned replacement in `extra/` only after reviewing its purpose. |
 | Dirty inputs, checkout `has local changes`, or a dirty precondition | Stop without discarding anything. Ask the change owner to commit or preserve changes separately. Inspect edits to `registry/`, `rules/`, `overlays/`, `patches/`, `extra/`, and `authored/` before a retry. Resume in a clean worktree. |
 | Generated file missing, differs, not generated, symlink, or mode differs | Correct the owning rule or file in `extra/` or `authored/`, then regenerate. A clean second generation must reproduce the intended diff. |
-| Checkout pin differs from gitlink or `package.json` upstream differs | Confirm the candidate in `rules/manifest.json`, regenerate its metadata, and stage the intended gitlink. Keep sources that share a checkout at one SHA. Do not change the manifest's source identity to hide pin drift. |
+| Checkout pin differs from gitlink or `package.json` upstream differs | After a bump and before staging, gitlink drift is expected, not a blocker. Run `git add packages/p3stack/vendor/pstack` for the shared Cursor checkout or `git add packages/p3stack/vendor/matt-pocock` for Pocock from the root before any pin check. Confirm the candidate in `rules/manifest.json` and regenerate its metadata. Keep sources that share a checkout at one SHA. Do not change the manifest's source identity to hide pin drift. |
 | README pin markers missing or stale | Restore exactly one marker pair in the package README if needed. Confirm `rules/manifest.json`, then regenerate to refresh all source pins. The README is metadata, not a generated skill repair. |
 | Empty resource check, staged lint failure, or missing resource linter | Inspect `rules/manifest.json` and `rules/lint.json`, then fix links in the owning rule, `extra/`, or `authored/`. Run from the installed repository workspace so its linter exists. Do not disable resource validation. |
 | Output replacement fails, with recovery copies retained | Stop and preserve the printed backup path. Inspect filesystem permissions and recover the prior output before retrying. This is not a prose-rule fix. Do not delete the only recovery copy. |
@@ -31,3 +31,31 @@ Use the named diagnostic to find the input owner. Read the upstream diff before 
 | Lockfile or installed dependency mismatch | Dispatch the separate procedure in the repository root's `docs/dependency-refresh-2026-10-18.md`. Preserve this skill's no-install and no-merge bounds. Do not mix lockfile refreshes into a source PR. |
 
 Unknown sources, missing checkouts, bad refs, and fetch failures stop before a rule repair. Read `rules/manifest.json` and the package `AGENTS.md` to correct the request or checkout setup. Usage errors require the supported command syntax, not a new bypass.
+
+## Classify an upstream skill
+
+Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every placeholder with the observed source, source-relative skill path, and reviewed decision. Use the existing registry's phase and role vocabulary for an emit row. Do not copy both rows for one path.
+
+```json
+{
+  "source": "<source>",
+  "path": "<path>/SKILL.md",
+  "action": "emit",
+  "name": "<emitted-name>",
+  "invocation": "model",
+  "phases": ["<phase>"],
+  "roles": ["<role>"],
+  "reason": "<why this skill belongs in p3stack>"
+}
+```
+
+```json
+{
+  "source": "<source>",
+  "path": "<path>/SKILL.md",
+  "action": "drop",
+  "reason": "<why this skill is excluded>"
+}
+```
+
+Run `node packages/p3stack/generator/check-registry.mjs` from the root. Classification is complete only when every new path has one row and the result reports `0 unclassified`.

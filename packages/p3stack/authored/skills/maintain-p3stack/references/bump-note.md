@@ -34,3 +34,20 @@ Link receipts with commands and outcomes for the current-pins root gate, generat
 
 Name dependency-refresh or host-contract work kept separate. Record anything blocked and why. State that the PR remains unmerged.
 ```
+
+## PR body for a section-hash repair
+
+Include this block in the PR body itself for each changed section. Replace every placeholder. Paste the full upstream section diff, not a receipt link or only the hash change. Keep the receipt link as additional evidence.
+
+````markdown
+## Upstream section review
+
+Source is <source>. The section is <file> at <heading>.
+The reviewed hash changes from <old-hash> to <new-hash>.
+
+```diff
+<actual upstream section diff between the old and candidate pins>
+```
+
+The overlay decision is <what changed or why the existing overlay still applies>.
+````
