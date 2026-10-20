@@ -55,6 +55,8 @@ Change inputs in `registry/`, `rules/`, `overlays/`, `patches/`, `extra/`, or `a
       }
       ```
 
+      When removing or re-routing a target, update `packages/p3stack/test/routing-eval/prompts.json`, any fixture or assertion naming it in `packages/p3stack/test/generate.test.mjs`, `packages/p3stack/test/extension.test.ts`, or another test, and the emitted-count assertion in `packages/p3stack/test/check-registry.test.mjs`.
+
       A per-file patch in `packages/p3stack/patches/` against the post-rule referencing skill is the alternative. Never edit `vendor/` or generated `skills/`. Regenerate with `npm --prefix packages/p3stack run generate` and rerun `npm --prefix packages/p3stack run check` until it exits 0.
 
 7. If routes or chains changed, execute `npm --prefix packages/p3stack run eval:routing` as its own tool call. Require every case to pass and save the stream. Run it even if another validation step fails. Do not chain the eval behind checks or tests.
@@ -83,6 +85,8 @@ Keep this separate from source bumps. Run `node packages/p3stack/generator/check
 ## Finish
 
 Not done while `npm run check` reports `references/missing`.
+
+`npm test` in `packages/p3stack` exits 0 before `gh pr create`; after any JSON edit rerun it.
 
 An audit-only run is done when every source has a status, the authored registry result is reported, both loader checks pass, and status is empty. It creates no PR.
 
