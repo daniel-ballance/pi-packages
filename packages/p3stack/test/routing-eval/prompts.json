@@ -1,0 +1,17 @@
+{
+  "model": "openai-codex/gpt-6-luna:low",
+  "prompts": [
+    { "id": "feature", "prompt": "Add a --json flag to the CLI.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/feature.md"] },
+    { "id": "triage", "prompt": "Triage the open issues.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "triage/SKILL.md"] },
+    { "id": "external-review", "prompt": "Review PR 12 from an outside contributor.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "dyl-review/SKILL.md"] },
+    { "id": "release", "prompt": "Cut a release.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "release/SKILL.md"] },
+    { "id": "onboard", "prompt": "Onboard me to this repo.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "p3stack-mode/playbooks/onboard-brownfield.md"] },
+    { "id": "bug", "prompt": "The export is corrupt sometimes.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "diagnosing-bugs/SKILL.md"] },
+    { "id": "design", "prompt": "Let's design the sync module.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "grill-with-docs/SKILL.md"] },
+    { "id": "design-autonomous", "prompt": "Let's design the sync module. Be fully autonomous.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "sharpen/SKILL.md"] },
+    { "id": "investigation", "prompt": "Explain how the CLI works without changing it.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/investigation.md"] },
+    { "id": "refactoring", "prompt": "Refactor the CLI without changing its behavior.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/refactoring.md"] },
+    { "id": "perf", "prompt": "Investigate why the CLI takes 8 seconds to export 10 records. It used to take 1 second.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/perf-issue.md"] },
+    { "id": "my-review", "prompt": "Review my change before I commit it.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "no-comments/SKILL.md"] }
+  ]
+}

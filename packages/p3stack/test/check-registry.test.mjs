@@ -55,6 +55,16 @@ test("registry admits authored p3stack skills at their emitted paths", t => {
   assert.equal(result.stdout.trim(), "2 emitted, 0 dropped, 0 unclassified");
 });
 
+test("registry discovers authored skill templates and requires their registry rows", t => {
+  const f = fixture(t);
+  f.write("authored/skills/router/SKILL.md.tmpl", f.skill("router"));
+  assert.match(f.run().stderr, /Unclassified skill p3stack\/skills\/router\/SKILL\.md/);
+  f.write("skills/router/SKILL.md", f.skill("router"));
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], source: "p3stack", path: "skills/router/SKILL.md", name: "router" }]);
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("registry rejects an authored row whose file is missing", t => {
   const f = fixture(t);
   f.write("skills/release/SKILL.md", f.skill("release"));
@@ -97,6 +107,16 @@ test("generation renders routes and chains from their registry rows", t => {
   assert.match(chains, /first-chain/);
   assert.match(chains, /Implement the sketch\./);
   assert.match(chains, /\[playbooks\/feature.md\]\(\.\.\/poteto-mode\/playbooks\/feature.md\)/);
+});
+
+test("registry admits an explicit router playbook target and rejects a missing one", t => {
+  const f = fixture(t);
+  f.write("registry/routes.json", [{ request: "onboard", grant: "any", target: "p3stack-mode/playbooks/onboard-brownfield.md" }]);
+  f.write("skills/p3stack-mode/playbooks/onboard-brownfield.md", "# Onboard\n");
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  rmSync(join(f.root, "skills/p3stack-mode/playbooks/onboard-brownfield.md"));
+  assert.match(f.run().stderr, /Route onboard has missing target p3stack-mode\/playbooks\/onboard-brownfield\.md/);
 });
 
 test("route and chain registries contain the admitted owner and TDD routes", () => {

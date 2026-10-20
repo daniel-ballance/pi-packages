@@ -13,7 +13,7 @@
 | Plan a program of PRs | any | [playbooks/multi-phase-plan.md](../poteto-mode/playbooks/multi-phase-plan.md) |
 | Build new or changed behavior | any | [playbooks/feature.md](../poteto-mode/playbooks/feature.md) |
 | Fix a reported bug | any | [playbooks/bug-fix.md](../poteto-mode/playbooks/bug-fix.md) |
-| Investigate measured slowness | any | [playbooks/perf-issue.md](../poteto-mode/playbooks/perf-issue.md) |
+| Investigate measured slowness when a timing or throughput number is given | any | [playbooks/perf-issue.md](../poteto-mode/playbooks/perf-issue.md) |
 | Improve one measured metric repeatedly | any | [playbooks/hillclimb.md](../poteto-mode/playbooks/hillclimb.md) |
 | Restructure code without changing behavior | any | [playbooks/refactoring.md](../poteto-mode/playbooks/refactoring.md) |
 | Review my change | any | [no-comments](../no-comments/SKILL.md) |
@@ -33,4 +33,4 @@
 | Prepare steps only a human can perform | any | [wizard](../wizard/SKILL.md) |
 | Handle a task with no matching playbook | any | [figure-it-out](../figure-it-out/SKILL.md) |
 | Cut a release | any | [release](../release/SKILL.md) |
-| Onboard to an existing repository | any | [onboard-brownfield](../onboard-brownfield/SKILL.md) |
+| Onboard to an existing repository | any | [p3stack-mode/playbooks/onboard-brownfield.md](../p3stack-mode/playbooks/onboard-brownfield.md) |

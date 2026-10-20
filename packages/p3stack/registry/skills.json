@@ -1358,8 +1358,12 @@
     "action": "emit",
     "name": "release",
     "invocation": "model",
-    "phases": ["release"],
-    "roles": ["owner"],
+    "phases": [
+      "release"
+    ],
+    "roles": [
+      "owner"
+    ],
     "reason": "Prepare notes and local versions with an explicit publication pause."
   },
   {
@@ -1368,8 +1372,28 @@
     "action": "emit",
     "name": "onboard-brownfield",
     "invocation": "model",
-    "phases": ["understand-codebase"],
-    "roles": ["contributor", "owner"],
+    "phases": [
+      "understand-codebase"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
     "reason": "Map an existing repository through the brownfield onboarding playbook."
+  },
+  {
+    "source": "p3stack",
+    "path": "skills/p3stack-mode/SKILL.md",
+    "action": "emit",
+    "name": "p3stack-mode",
+    "invocation": "user",
+    "phases": [
+      "route"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Compose the registry routes and chains with poteto-mode."
   }
 ]

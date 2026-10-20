@@ -474,6 +474,45 @@ test("setup offers and the help setup sentence come from upstream through the pa
 });
 
 const packageDir = fileURLToPath(new URL("..", import.meta.url));
+test("the router renders the registry tables with existing route targets and no template output", () => {
+  const out = mkdtempSync(join(tmpdir(), "p3stack-router-"));
+  try {
+    generate({ packageDir, outDir: out });
+    const router = readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8");
+    assert.doesNotMatch(router, /\{\{(?:routes|chains)\}\}/);
+    assert.doesNotMatch(router, /\/home\/|\/tmp\//);
+    assert.ok(router.includes("<package>/skills/p3stack-mode/SKILL.md"));
+    assert.ok(router.includes("<package>/skills/poteto-mode/SKILL.md"));
+    assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
+    const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
+    for (const { request, target } of routes) {
+      assert.ok(router.includes(request), request);
+      const path = target.startsWith("p3stack-mode/playbooks/") ? target : target.startsWith("playbooks/") ? `poteto-mode/${target}` : `${target}/SKILL.md`;
+      assert.ok(existsSync(join(out, "skills", path)), target);
+      assert.ok(router.includes(`\`<this file's directory>/../${path}\``), target);
+    }
+    for (const { anchor, skill } of JSON.parse(readFileSync(join(packageDir, "registry/chains.json"), "utf8"))) {
+      assert.ok(router.includes(anchor), anchor);
+      assert.ok(router.includes(`\`<this file's directory>/../${skill}/SKILL.md\``), skill);
+    }
+    const paths = [...router.matchAll(/`<this file's directory>\/([^`]+)`/g)];
+    assert.ok(paths.length > routes.length);
+    for (const [, path] of paths) {
+      assert.ok(existsSync(join(out, "skills/p3stack-mode", path)), path);
+    }
+  } finally { rmSync(out, { recursive: true, force: true }); }
+});
+
+test("the router precedence overlay is locked to upstream Playbooks", () => {
+  const sections = JSON.parse(readFileSync(join(packageDir, "rules/sections.json"), "utf8"));
+  const rule = sections.find(row => row.file === "skills/poteto-mode/SKILL.md" && row.heading === "## Playbooks");
+  assert.ok(rule, "the precedence failure requires a Playbooks overlay");
+  const upstream = readFileSync(join(packageDir, "vendor/pstack/pstack/skills/poteto-mode/SKILL.md"), "utf8");
+  assert.equal(rule.upstream, sectionHash(upstream, "## Playbooks"));
+  const mode = readFileSync(join(packageDir, "skills/poteto-mode/SKILL.md"), "utf8");
+  assert.match(mode, /p3stack-mode.*route and chain tables/);
+});
+
 test("the package ships the Pocock license and initializes both source checkouts", () => {
   const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
   assert.ok(manifest.files.includes("LICENSE-matt-pocock"));
