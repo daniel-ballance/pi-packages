@@ -27,6 +27,7 @@
     "bump": "node generator/update-upstream.mjs",
     "update-upstream": "node generator/update-upstream.mjs",
     "check": "node generator/generate.mjs --check && node generator/lint-hosts.mjs && node generator/check-t3-pin.mjs && node generator/lint-skills.mjs && tsc --noEmit -p skills/poteto-mode/scripts/watch-pr/tsconfig.json && tsc --noEmit -p tsconfig.json",
+    "eval:routing": "node test/routing-eval/run.mjs",
     "test": "npm run test:once && T3_MCP_URL=http://127.0.0.1:1/mcp npm run test:once",
     "test:once": "node --test test/*.test.mjs test/*.test.ts && cd skills/poteto-mode/scripts && node --test check-plan.test.ts watch-pr/*.test.ts orch/*.test.ts"
   },
