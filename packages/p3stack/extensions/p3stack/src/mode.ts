@@ -1,4 +1,5 @@
 import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import { dirname, resolve } from "node:path";
 import { doctor } from "./doctor.ts";
 import { modeFooter } from "./footer.ts";
 import { detectHost } from "./host.ts";
@@ -39,7 +40,8 @@ export interface Pi {
 
 const MODE = "p3stack";
 
-export function registerMode(pi: Pi, modeSkill: string) {
+export function registerMode(pi: Pi, potetoSkill: string) {
+  const modeSkill = resolve(dirname(potetoSkill), "../p3stack-mode/SKILL.md");
   let modeOn = false;
   const showMode = (ctx: Context) => {
     if (ctx.hasUI && ctx.mode === "tui" && detectHost() === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx) : undefined);
@@ -58,10 +60,10 @@ export function registerMode(pi: Pi, modeSkill: string) {
       else delete sections[MODE];
     }
     if (!modeOn || event?.messageType !== "user") return;
-    return { message: { customType: "p3stack-turn", display: false, content: `[poteto-mode is on] Before anything else, route this request. Read ${modeSkill} if you have not read it in this session, pick the matching playbook, read that playbook, put its steps in the todo list verbatim, and follow them. Before delegating, call \`p3stack_roles\` for the role models. Only a question about the mode itself skips this.` } };
+    return { message: { customType: "p3stack-turn", display: false, content: `[p3stack-mode is on] Before anything else, route this request. Read ${modeSkill} if you have not read it in this session, select its matching route, read that target, and follow it. Before delegating, call \`p3stack_roles\` for the role models. Only a question about the mode itself skips this.` } };
   });
   pi.registerCommand("p3stack", {
-    description: "Turn poteto-mode on or off, show status, or write the T3 contract report. /p3stack on | off | status | doctor",
+    description: "Turn p3stack-mode on or off, show status, or write the T3 contract report. /p3stack on | off | status | doctor",
     handler: async (args, ctx) => {
       const want = args.trim();
       if (want === "doctor") {
