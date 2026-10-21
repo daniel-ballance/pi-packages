@@ -16,7 +16,7 @@
   ],
   "hideThinkingBlock": true,
   "packages": [
-    "../../Code/pi-packages/packages/p3stack"
+    "../../Code/pi-packages"
   ],
   "tuiMode": "fullscreen"
 }

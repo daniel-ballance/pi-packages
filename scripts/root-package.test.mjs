@@ -88,3 +88,16 @@ test("a member that is not a workspace, has no pi block, or uses another entry f
     assert.equal(f.read("package.json").pi, undefined);
   } finally { f.cleanup(); }
 });
+
+test("the default install is five packages with claude-subscription first, and leaves mcp-client out", () => {
+  const repository = fileURLToPath(new URL("..", import.meta.url));
+  const json = path => JSON.parse(readFileSync(join(repository, path), "utf8"));
+  assert.deepEqual(json("package.json").piBundle, [
+    "packages/claude-subscription", "packages/p3stack", "packages/computer-use", "packages/self-reload", "packages/web-search",
+  ]);
+  assert.deepEqual(json("global/settings.json").packages, ["../../Code/pi-packages"]);
+  assert.deepEqual(json(".pi/settings.json").packages ?? [], []);
+  for (const file of ["global/settings.json", "global/subagents.json", "global/models.json", "global/mcp.json"]) {
+    assert.doesNotMatch(readFileSync(join(repository, file), "utf8"), /pi-packages\/packages\//, file);
+  }
+});
