@@ -1,7 +1,7 @@
 import { SettingsManager, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { Context } from "./mode.ts";
+import type { Context, Pi } from "./mode.ts";
 import { agentDir } from "./roles.ts";
 
 const formatTokens = (count: number) => {
@@ -12,7 +12,7 @@ const formatTokens = (count: number) => {
   return `${Math.round(count / 1000000)}M`;
 };
 
-export function modeFooter(ctx: Context): NonNullable<Parameters<ExtensionUIContext["setFooter"]>[0]> {
+export function modeFooter(ctx: Context, events: Pi["events"]): NonNullable<Parameters<ExtensionUIContext["setFooter"]>[0]> {
   return (tui, theme, footerData) => ({
     dispose: footerData.onBranchChange(() => tui.requestRender()),
     invalidate() {},
@@ -88,7 +88,9 @@ export function modeFooter(ctx: Context): NonNullable<Parameters<ExtensionUICont
         const text = [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, text]) => text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim()).join(" ");
         lines.push(truncateToWidth(text, width, theme.fg("dim", "...")));
       }
-      return lines;
+      let decorated = lines;
+      events.emit("subagents:footer", { lines, width, reply: (value: string[]) => { decorated = value; } });
+      return decorated;
     },
   });
 }
