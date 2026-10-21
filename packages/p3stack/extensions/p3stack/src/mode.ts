@@ -45,7 +45,7 @@ export function registerMode(pi: Pi, potetoSkill: string) {
   const modeSkill = resolve(dirname(potetoSkill), "../p3stack-mode/SKILL.md");
   let modeOn = false;
   const showMode = (ctx: Context) => {
-    if (ctx.hasUI && ctx.mode === "tui" && detectHost() === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx) : undefined);
+    if (ctx.hasUI && ctx.mode === "tui" && detectHost() === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx, pi.events) : undefined);
   };
   const rebuild = (_event: unknown, ctx: Context) => {
     modeOn = false;

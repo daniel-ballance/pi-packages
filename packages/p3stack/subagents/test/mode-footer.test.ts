@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { mock, test } from "node:test";
 import { createAgentSession, createEventBus, DefaultResourceLoader, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionAPI, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { ProcessTerminal, stripTerminalSequences, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
-import subagents from "../extensions/subagents/index.js";
+import subagents, { FOOTER_CHANNEL } from "../extensions/subagents/index.js";
 import { decorateFooter } from "../extensions/subagents/src/footer.js";
 import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
 
@@ -52,13 +52,13 @@ test("the mode footer keeps the live subagents summary right aligned, with the s
     await emit("session_start");
     for (const label of ["subagents: 1/6 of 3 • $0.123", "subagents: 0/6 of 3 • $0.456", ""]) {
       for (const width of widths) {
+        if (label && width === 200) assert.ok(stripTerminalSequences(stock.render(width)[0]!).endsWith(label), "stock footer shows the live label before comparing the mode footer");
         const actual = footer.render(width);
         assert.deepEqual(actual, decorateFooter(bare.get(width)!, width, label, text => theme.fg("dim", text)), `live mode footer at width ${width}, label ${JSON.stringify(label)}`);
         assert.ok(actual.every(line => visibleWidth(line) <= width));
         if (label && width === 200) {
           assert.ok(stripTerminalSequences(actual[0]!).endsWith(label));
           assert.equal(visibleWidth(actual[0]!), width);
-          assert.ok(stripTerminalSequences(stock.render(width)[0]!).endsWith(label), "stock footer still shows the same label");
         }
         if (label && width === 40) {
           assert.equal(actual.length, 3, "the label gets its own row on narrow terminals");
@@ -71,6 +71,9 @@ test("the mode footer keeps the live subagents summary right aligned, with the s
       await emit("session_start");
     }
     await emit("session_shutdown");
+    let replied = false;
+    events.emit(FOOTER_CHANNEL, { lines: ["cwd", "stats"], width: 200, reply: () => { replied = true; } });
+    assert.equal(replied, false, "no footer replies after shutdown");
     for (const width of widths) assert.deepEqual(footer.render(width), bare.get(width), "shutdown removes the decoration");
     footer.dispose?.();
   } finally {

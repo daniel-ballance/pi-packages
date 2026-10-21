@@ -6,7 +6,7 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { SubagentManager } from "./src/manager.js";
-import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
+import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
@@ -45,6 +45,9 @@ const noticeKeys = (details: unknown): string[] => {
 
 /** Event-bus channel: emit `{ reply(catalog) }`; replies synchronously with `{ spawnEnabled, models: ["provider/model:thinking", ...] }`. */
 export const CATALOG_CHANNEL = "subagents:catalog";
+
+/** Custom footers emit `{ lines, width, reply(lines) }`; decoration replies synchronously using the live summary. */
+export const FOOTER_CHANNEL = "subagents:footer";
 
 export default function subagents(pi: ExtensionAPI) {
   // Explicitly loading this package in a child still does not enable recursion.
@@ -98,6 +101,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   let herdr: HerdrStatus | undefined;
   let stopHerdrEvents: (() => void) | undefined;
   let stopCatalogEvents: (() => void) | undefined;
+  let stopFooterEvents: (() => void) | undefined;
   const runningWorkflows = () => workflows ? (workflows.inspect() as { runs: { status: string; name: string }[] }).runs.filter(r => ["running", "pausing"].includes(r.status)) : [];
   const reportActivity = () => herdr?.subagents({
     children: manager ? summarizeAgents(manager.list()).active : 0, workflows: runningWorkflows().length,
@@ -229,6 +233,12 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     });
     restoreFooter?.();
     if (ctx.mode === "tui") {
+      stopFooterEvents ??= pi.events.on(FOOTER_CHANNEL, request => {
+        const data = request as { lines?: string[]; width?: number; reply?: (lines: string[]) => void } | undefined;
+        if (!context || !Array.isArray(data?.lines) || typeof data.width !== "number" || typeof data.reply !== "function") return;
+        const theme = context.ui.theme;
+        data.reply(decorateFooter(data.lines, data.width, footerLabel, text => theme.fg("dim", text)));
+      });
       restoreFooter = installFooterDecoration(FooterComponent.prototype,
         () => footerLabel, text => ctx.ui.theme.fg("dim", text));
       // Like herdr's own integration, TUI only: RPC/print parents have no pane to show.
@@ -294,6 +304,8 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     stopHerdrEvents = undefined;
     stopCatalogEvents?.();
     stopCatalogEvents = undefined;
+    stopFooterEvents?.();
+    stopFooterEvents = undefined;
     try { await workflows?.shutdown(); await manager?.shutdown(); }
     finally {
       await herdrCleared;
