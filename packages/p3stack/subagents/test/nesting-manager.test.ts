@@ -119,13 +119,13 @@ test("a coordinator's read leaves its Child's input request for the root; the ro
 });
 
 test("a nested report waits for its parent, and reaches the root if that parent stops first", async () => {
-  const wakes: unknown[] = [];
-  const t = await tree(undefined, notice => wakes.push(notice));
+  const wakes: { id: string }[] = [];
+  const t = await tree(undefined, notice => wakes.push(notice as { id: string }));
   try {
-    wakes.length = 0;
-    (t.manager as any).announce(t.manager.get(t.c), "completed", "done", 1001);
+    // C completed its spawn task while B was live.
     assert.equal(t.manager.pendingNotices().some(n => n.id === t.c), false, "B is live: B drains it");
-    assert.equal(wakes.length, 0, "the root is not woken for it");
+    assert.equal(wakes.some(n => n.id === t.c), false, "the root is not woken for it");
+    wakes.length = 0;
     await t.stopOnly(t.b);
     assert.deepEqual(t.manager.pendingNotices().filter(n => n.id === t.c).map(n => n.kind), ["completed"]);
     assert.ok(wakes.length > 0, "the root is woken once B is gone");
