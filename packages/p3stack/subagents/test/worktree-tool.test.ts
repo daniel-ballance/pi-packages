@@ -30,7 +30,7 @@ async function withSpawnTool(workingDirectories: string[], run: (spawn: (args: R
         registerFlag() {}, getFlag() { return false; },
         on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
         registerTool(tool: any) { tools.set(tool.name, tool); }, registerCommand() {}, sendMessage() {},
-        getAllTools: () => [], events: { on: () => () => {} },
+        getAllTools: () => [], getCommands: () => [], events: { on: () => () => {} },
       } as unknown as ExtensionAPI);
       for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     });

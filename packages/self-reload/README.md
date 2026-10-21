@@ -4,10 +4,10 @@ Let a Pi agent reload its own runtime and continue working, without asking you t
 
 ## Install
 
-From this repository:
+The [root package](../../README.md#install-from-github) includes self-reload. To install it alone from this repository:
 
 ```bash
-pi install ./packages/p3stack
+pi install ./packages/self-reload
 ```
 
 Run `/reload` **once in an already-running session** to discover the package. Future sessions load it automatically. Local installation references this directory directly, so subsequent edits are picked up on reload.
@@ -63,7 +63,7 @@ The process-local bridge is deliberate: the old `pi`, command context, and even 
 ## Development
 
 ```bash
-cd packages/p3stack/self-reload
+cd packages/self-reload
 npm ci --ignore-scripts
 npm run check
 npm test

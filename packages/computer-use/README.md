@@ -15,10 +15,10 @@ Companion's app policy still apply.
 
 ## Install
 
-Install the collection from Git:
+Install the root package from Git:
 
 ```sh
-pi install https://github.com/daniel-ballance/pi-packages
+pi install git:github.com/daniel-ballance/pi-packages
 ```
 
 Or install this package from a local checkout after installing dependencies:
@@ -26,11 +26,11 @@ Or install this package from a local checkout after installing dependencies:
 ```sh
 npm ci --ignore-scripts
 node scripts/patch-pi-host-security.mts
-pi install "$PWD/packages/p3stack"
+pi install "$PWD/packages/computer-use"
 ```
 
-Requires **Pi 1.3.0+ and Node.js 22.19.0+**. Install either the collection or
-the individual package, then restart Pi or `/reload`.
+Requires **Pi 1.3.0+ and Node.js 22.19.0+**. Install either the root package or
+this package, then restart Pi or `/reload`.
 
 ## Mac setup and detection
 
@@ -95,8 +95,8 @@ the app state before repeating it.
 ## Verification and limits
 
 ```sh
-npm --prefix packages/p3stack/computer-use run check
-npm --prefix packages/p3stack/computer-use run test
+npm --prefix packages/computer-use run check
+npm --prefix packages/computer-use run test
 ./scripts/check.sh
 ```
 

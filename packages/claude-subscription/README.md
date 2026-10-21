@@ -47,14 +47,16 @@ If standalone Pi works but T3 returns `400 Third-party apps now draw from your
 extra usage`, explicitly load this extension in T3's Pi provider **launch arguments**:
 
 ```text
---extension /absolute/path/to/pi-packages/packages/p3stack/claude-subscription/extensions/claude-subscription/index.ts
+--extension /absolute/path/to/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts
 ```
 
 Put it before other launch arguments and keep any existing arguments. T3 appends
-its own extension afterwards. Pi deduplicates the same extension path when it is
-also installed as a package. Restart the affected Pi provider session so the new
-load order takes effect; retry in a fresh conversation if it retains a previous
-forced prompt.
+its own extension afterwards. Name the same file that the installed package loads.
+Pi then loads it once. `node scripts/root-package.mjs --t3-launch-args`, run from
+that install, prints the argument. The p3stack
+[T3 guide](../p3stack/docs/landing/t3-settings.md) gives the value for each
+machine. Restart the affected Pi provider session so the new load order takes
+effect; retry in a fresh conversation if it retains a previous forced prompt.
 
 T3's current prompt hook returns a full system prompt. When that hook runs first,
 it freezes Pi's stock prompt and this provider correctly respects the resulting
@@ -78,18 +80,19 @@ model newer than Pi's catalog has no known price and counts as `$0`.
 
 ## Install
 
-This package is included in the [root collection](../../README.md#install-in-pi).
-Install the collection or this package individually. From a local checkout:
+The [root package](../../README.md#install-from-github) loads this package first.
+Install the root package or this package by itself. From a local checkout:
 
 ```sh
 npm ci --ignore-scripts
-pi install "$PWD/packages/p3stack"
+pi install "$PWD"
 ```
 
-Or try it without changing settings:
+Use `pi install "$PWD/packages/claude-subscription"` for this package alone. Or
+try it without changing settings:
 
 ```sh
-pi -e ./packages/p3stack/claude-subscription/extensions/claude-subscription/index.ts \
+pi -e ./packages/claude-subscription/extensions/claude-subscription/index.ts \
   --model claude-subscription/claude-sonnet-5-5
 ```
 

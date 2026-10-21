@@ -6,9 +6,13 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { tempRoot } from "./support/temp-root.js";
+import { workspacePackages } from "../../../../scripts/root-package.mjs";
 
 const execute = promisify(execFile);
-const script = fileURLToPath(new URL("../../../../scripts/patch-pi-host-security.mts", import.meta.url));
+const repository = fileURLToPath(new URL("../../../..", import.meta.url));
+const script = join(repository, "scripts/patch-pi-host-security.mts");
+const workspaces = workspacePackages(repository);
+const packageDir = (name: string): string => workspaces.get(name)!.dir;
 const sdkName = "@earendil-works/pi-coding-agent";
 const packageNames = ["claude-subscription", "computer-use", "mcp-client", "self-reload", "subagents", "todo", "web-search"];
 
@@ -49,7 +53,8 @@ async function host(directory: string, alias: string, version: string = "1.3.0")
 }
 
 async function fixture(root: string): Promise<Fixture> {
-  await json(join(root, "package.json"), { name: "pi-packages-repo" });
+  const { workspaces: patterns } = JSON.parse(await readFile(join(repository, "package.json"), "utf8"));
+  await json(join(root, "package.json"), { name: "pi-packages-repo", workspaces: patterns });
   await json(join(root, "node_modules/brace-expansion/package.json"), {
     name: "brace-expansion", version: "5.0.12", main: "index.cjs",
   });
@@ -66,10 +71,12 @@ async function fixture(root: string): Promise<Fixture> {
   });
   await mkdir(join(root, "scripts"));
   await cp(script, join(root, "scripts/patch-pi-host-security.mts"));
+  await cp(join(repository, "scripts/root-package.mjs"), join(root, "scripts/root-package.mjs"));
   const sdkDirectories: string[] = [];
   for (const name of packageNames) {
     const version = "1.3.0";
-    sdkDirectories.push(await host(join(root, "packages", name === "mcp-client" ? "" : "p3stack", name), sdkName, version));
+    await json(join(root, packageDir(name), "package.json"), { name });
+    sdkDirectories.push(await host(join(root, packageDir(name)), sdkName, version));
   }
   return { root, sdkDirectories, braceDirectories: sdkDirectories.map((sdk: string): string => join(sdk, "node_modules/brace-expansion")) };
 }
@@ -422,7 +429,7 @@ test("successful promotion clears only hidden npm caches and leaves no stages", 
     for (const sdk of value.sdkDirectories) {
       caches.push(join(sdk, "node_modules/.package-lock.json"));
     }
-    for (const name of packageNames) caches.push(join(value.root, "packages", name === "mcp-client" ? "" : "p3stack", name, "node_modules/.package-lock.json"));
+    for (const name of packageNames) caches.push(join(value.root, packageDir(name), "node_modules/.package-lock.json"));
     for (const path of caches) await json(path, { fixture: "hidden cache" });
     const sourceBefore = await snapshot(join(value.root, "node_modules/undici"));
     await run(value);

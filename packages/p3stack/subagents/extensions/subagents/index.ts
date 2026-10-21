@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { existsSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import { SubagentManager } from "./src/manager.js";
 import { formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
-import { builtInPolicy, SubagentPolicy } from "./src/policy.js";
+import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
 import { childNews, messageLatch, waitReport, withCurrentReviews, type ChildNews } from "./src/wait.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
@@ -46,9 +46,6 @@ const noticeKeys = (details: unknown): string[] => {
 /** Event-bus channel: emit `{ reply(catalog) }`; replies synchronously with `{ spawnEnabled, models: ["provider/model:thinking", ...] }`. */
 export const CATALOG_CHANNEL = "subagents:catalog";
 
-/** The collection installs claude-subscription beside this package; the built-in policy offers it when present. */
-const claudeSubscription = fileURLToPath(new URL("../../../claude-subscription/extensions/claude-subscription/index.ts", import.meta.url));
-
 export default function subagents(pi: ExtensionAPI) {
   // Explicitly loading this package in a child still does not enable recursion.
   if (process.env.PI_SUBAGENT === "1") return;
@@ -83,11 +80,13 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   let workflows: Workflows | undefined;
   let inspector: InspectorPanel | undefined;
   let loops: LoopController | undefined;
+  const loaded = () => loadedExtensions([...pi.getCommands().filter(command => command.source === "extension"), ...pi.getAllTools()]);
   const getPolicy = (ctx: ExtensionContext) => policy ??= new SubagentPolicy({
     cwd: ctx.cwd, agentDir: getAgentDir(), projectTrusted: ctx.isProjectTrusted(),
     guardPath: fileURLToPath(new URL("./src/child-guard.ts", import.meta.url)),
     models: () => ctx.modelRegistry.getAvailable().map(model => ({ ...model, thinkingLevels: getSupportedThinkingLevels(model) })),
-    builtIn: builtInPolicy(existsSync(claudeSubscription) && (ctx.modelRegistry as { getRegisteredProviderIds?: () => readonly string[] }).getRegisteredProviderIds?.().includes("claude-subscription") ? claudeSubscription : undefined),
+    builtIn: builtInPolicy(loaded()),
+    loadedExtensions: loaded,
     // Undocumented but present in 0.99.2 and 1.2.0; without it the check is skipped.
     extensionProviders: () => (ctx.modelRegistry as { getRegisteredProviderIds?: () => readonly string[] }).getRegisteredProviderIds?.() ?? [],
     toolSources: () => Object.fromEntries(pi.getAllTools().filter(tool => tool.sourceInfo?.path).map(tool => [tool.name, tool.sourceInfo!.path])),

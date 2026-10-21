@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { workspacePackages } from "../../../../scripts/root-package.mjs";
 
 const root = fileURLToPath(new URL("../../../..", import.meta.url));
 
@@ -51,8 +52,8 @@ test("collection npm lock contains only patched brace-expansion entries", async 
 
 test("standalone npm locks contain only patched brace-expansion entries", async (): Promise<void> => {
   let count = 0;
-  for (const name of ["mcp-client", "p3stack", ...["claude-subscription", "computer-use", "self-reload", "subagents", "todo", "web-search"].map(name => `p3stack/${name}`)]) {
-    const directory = join(root, "packages", name);
+  for (const { dir } of workspacePackages(root).values()) {
+    const directory = join(root, dir);
     if (!(await readdir(directory)).includes("package-lock.json")) continue;
     count += await assertNpmLockPatched(join(directory, "package-lock.json"));
   }

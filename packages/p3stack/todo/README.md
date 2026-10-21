@@ -87,7 +87,7 @@ no longer declared next to T3's.
 
 ## Install
 
-The collection installs it. To install it without the rest of the collection:
+The root package installs it through p3stack. To install p3stack without the other root packages:
 
 ```sh
 pi install /path/to/pi-packages/packages/p3stack

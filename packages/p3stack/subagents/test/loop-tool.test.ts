@@ -30,7 +30,7 @@ function harness(policy: Record<string, unknown>, hasUI = true) {
       registerTool(tool: any) { tools.set(tool.name, tool); },
       registerCommand(name: string, command: any) { commands.set(name, command); },
       sendMessage(message: any, options: any) { sent.push({ message, options }); },
-      getAllTools: () => [],
+      getAllTools: () => [], getCommands: () => [],
       events: { on: () => () => {} },
     } as unknown as ExtensionAPI);
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);

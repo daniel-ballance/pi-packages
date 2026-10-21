@@ -25,6 +25,7 @@ unset $(git rev-parse --local-env-vars)
 
 printf '%s\n' '== repository configuration =='
 node scripts/check-json.mjs
+node scripts/root-package.mjs --check
 
 printf '\n%s\n' '== shared modules =='
 node scripts/sync-shared.mjs --check

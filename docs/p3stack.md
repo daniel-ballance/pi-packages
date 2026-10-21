@@ -1,6 +1,6 @@
 # About p3stack
 
-p3stack gives Pi one install identity for its engineering workflows and runtime extensions. Consolidation changes resource discovery, not the six components' internal designs. Keeping each component's tests makes a path move cheaper to verify than a code merge.
+p3stack gives Pi routed engineering workflows and the subagents and todo components they need. The repository root installs it with four standalone packages. Each component keeps its own tests, so a path move is cheaper to verify than a code merge.
 
 ## The registry decides what ships
 
@@ -32,10 +32,14 @@ The T3 pin checker compares the installed contract with [`rules/t3-pin.json`](..
 
 The procedure checks the generated diff, registry, loader, host pin, and routing when route or chain rules changed. Changed-source notes go under [`docs/bumps/`](../packages/p3stack/docs/bumps/README.md). It opens a PR but never merges or updates Pi or T3. Dependency refreshes use the separate repository procedure.
 
-## One package does not mean one MCP client
+## The root installs five packages, and mcp-client is not one
 
-The p3stack manifest loads its mode extension and the six moved runtime extensions. It includes the p3stack and subagents skill trees. The root manifest has no Pi resources, and the nested component directories are not additional global package entries.
+Pi 1.3.0 installs a Git source by cloning the whole repository and reading only the root `package.json`. It cannot install a subdirectory. The root manifest therefore loads claude-subscription, p3stack, computer-use, self-reload, and web-search. Each package's own `pi` block stays the source of its resources. `scripts/root-package.mjs` generates the root block from the `piBundle` list, because a hand-written root list would repeat five manifests and drift from them.
 
-`packages/mcp-client` stays separate. It replaces Pi's MCP implementation to provide protocol features the built-in client cannot expose through public hooks. That replacement also changes management, authentication, and timeout behavior. Enabling it by default would make the packaging change an MCP migration. p3stack therefore keeps native MCP and leaves the replacement an explicit choice.
+p3stack keeps subagents and todo nested, because its workflows need them. The other four packages stand alone. p3stack also installs by itself, and a session without claude-subscription is a valid setup.
 
-The [`landing instructions`](../packages/p3stack/docs/landing/t3-settings.md) defer live T3 argument changes and home relinks until the stable checkouts contain the landed stack.
+subagents asks Pi which claude-subscription file it loaded instead of looking beside itself. A policy entry `loaded:claude-subscription` resolves to the file behind that extension's commands and tools. One `subagents.json` therefore works in a checkout, a Git clone, and a T3 launch, and a child loads the same copy as its parent.
+
+`packages/mcp-client` stays separate. It replaces Pi's MCP implementation to provide protocol features the built-in client cannot expose through public hooks. That replacement also changes management, authentication, and timeout behavior. Enabling it by default would make the packaging change an MCP migration. The root package therefore keeps native MCP and leaves the replacement an explicit choice.
+
+[Configure T3 on each machine](../packages/p3stack/docs/landing/t3-settings.md) gives the T3 launch argument for each install method.

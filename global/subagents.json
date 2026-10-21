@@ -91,7 +91,7 @@
   "peerMessageLimit": 0,
   "parentMessageLimit": 20,
   "extensions": [
-    "/home/danballance/Code/pi-packages/packages/p3stack/claude-subscription/extensions/claude-subscription/index.ts"
+    "loaded:claude-subscription"
   ],
   "skills": [],
   "promptTemplates": [],
@@ -101,10 +101,11 @@
   "contextFiles": true,
   "maxChildren": 6,
   "workingDirectories": [
-    "."
+    ".",
+    "/home/danballance/Code/pi-packages"
   ],
   "providerExtensions": {
-    "claude-subscription": "/home/danballance/Code/pi-packages/packages/p3stack/claude-subscription/extensions/claude-subscription/index.ts"
+    "claude-subscription": "loaded:claude-subscription"
   },
   "maxDepth": 2,
   "loops": {

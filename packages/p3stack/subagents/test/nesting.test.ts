@@ -109,7 +109,7 @@ function guard(env: Record<string, string>) {
   try {
     childGuard({
       registerTool: (tool: any) => tools.set(tool.name, { ...tool, sourceInfo: { path: new URL("../extensions/subagents/src/child-guard.ts", import.meta.url).pathname } }),
-      getAllTools: () => [...tools.values()],
+      getAllTools: () => [...tools.values()], getCommands: () => [],
       on: (name: string, handler: Function) => handlers.set(name, [...handlers.get(name) ?? [], handler]),
       registerCommand() {}, setActiveTools() {}, getActiveTools: () => [...tools.keys()],
     } as unknown as ExtensionAPI);

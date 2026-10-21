@@ -12,19 +12,11 @@
   ],
   "files": [
     "extensions",
-    "claude-subscription/package.json",
-    "claude-subscription/extensions",
-    "computer-use/package.json",
-    "computer-use/extensions",
-    "self-reload/package.json",
-    "self-reload/extensions",
     "subagents/package.json",
     "subagents/extensions",
     "subagents/skills",
     "todo/package.json",
     "todo/extensions",
-    "web-search/package.json",
-    "web-search/extensions",
     "agents",
     "skills",
     "prompts",
@@ -45,12 +37,7 @@
     "test:once": "node --test test/*.test.mjs test/*.test.ts && cd skills/poteto-mode/scripts && node --test check-plan.test.ts watch-pr/*.test.ts orch/*.test.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.302",
-    "@anthropic-ai/sdk": "0.135.0",
-    "@modelcontextprotocol/sdk": "1.32.1",
-    "cheerio": "^1.2.0",
-    "commander": "15.0.0",
-    "zod": "^4.6.7"
+    "commander": "15.0.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -66,13 +53,9 @@
   },
   "pi": {
     "extensions": [
-      "./claude-subscription/extensions/claude-subscription/index.ts",
-      "./computer-use/extensions/computer-use/index.ts",
       "./extensions/p3stack/index.ts",
-      "./self-reload/extensions/self-reload/index.ts",
       "./subagents/extensions/subagents/index.ts",
-      "./todo/extensions/todo/index.ts",
-      "./web-search/extensions/web-search/index.ts"
+      "./todo/extensions/todo/index.ts"
     ],
     "skills": [
       "./skills",

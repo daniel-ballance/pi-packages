@@ -69,8 +69,32 @@ export const DEFAULT_POLICY: PolicyFile = {
   maxDepth: 2,
   loops: { enabled: true, minIntervalMs: 60_000, maxIterations: 50, maxDurationMs: 8 * 60 * 60_000 },
 };
-export function builtInPolicy(claudeSubscription?: string): PolicyFile {
-  if (!claudeSubscription) return DEFAULT_POLICY;
+export type LoadedExtensions = ReadonlyMap<string, readonly string[]>;
+const LOADED = "loaded:";
+function extensionName(file: string): string {
+  const name = basename(file);
+  return /^index\.[cm]?[jt]s$/.test(name) ? basename(dirname(file)) : name.replace(/\.[^.]*$/, "");
+}
+export function loadedExtensions(sources: Iterable<{ readonly sourceInfo: { readonly path: string } }>): LoadedExtensions {
+  const loaded = new Map<string, string[]>();
+  for (const { sourceInfo } of sources) {
+    if (!isAbsolute(sourceInfo.path)) continue;
+    let file: string;
+    try { file = realpathSync(sourceInfo.path); } catch { continue; }
+    const name = extensionName(file), files = loaded.get(name) ?? [];
+    if (!files.includes(file)) loaded.set(name, [...files, file]);
+  }
+  return loaded;
+}
+function resolveLoaded(loaded: LoadedExtensions, name: string): string {
+  const files = loaded.get(name) ?? [];
+  if (files.length === 0) throw new Error(`${name} is not loaded in this session`);
+  if (files.length > 1) throw new Error(`${name} loaded from ${files.length} files: ${files.join(", ")}`);
+  return files[0]!;
+}
+export function builtInPolicy(loaded: LoadedExtensions = new Map()): PolicyFile {
+  if (loaded.get("claude-subscription")?.length !== 1) return DEFAULT_POLICY;
+  const claudeSubscription = `${LOADED}claude-subscription`;
   return {
     ...DEFAULT_POLICY,
     models: [...MENU,
@@ -92,6 +116,13 @@ export function splitModel(value: string) {
 function strings(value: unknown, key: string): string[] {
   if (!Array.isArray(value) || value.some(v => typeof v !== "string" || !v.trim())) throw new Error(`${key} must be an array of non-empty strings`);
   return [...new Set(value)];
+}
+function references(key: string, values: string[], extension: boolean): string[] {
+  for (const value of values.filter(value => value.startsWith(LOADED))) {
+    if (!extension) throw new Error(`${key}: ${value}: ${LOADED} names a loaded extension file; use it only in extensions and providerExtensions`);
+    if (!value.slice(LOADED.length).trim()) throw new Error(`${key}: ${LOADED} needs an extension name`);
+  }
+  return values;
 }
 export function parsePolicy(value: unknown): PolicyConfig {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Policy must be an object");
@@ -115,7 +146,7 @@ export function parsePolicy(value: unknown): PolicyConfig {
   if (typeof peerMessageLimit !== "number" || !Number.isInteger(peerMessageLimit) || peerMessageLimit < 0 || peerMessageLimit > 1000) throw new Error("peerMessageLimit must be an integer from 0 to 1000");
   const parentMessageLimit = v.parentMessageLimit === undefined ? 0 : v.parentMessageLimit;
   if (typeof parentMessageLimit !== "number" || !Number.isInteger(parentMessageLimit) || parentMessageLimit < 0 || parentMessageLimit > 1000) throw new Error("parentMessageLimit must be an integer from 0 to 1000");
-  const extensions = strings(v.extensions ?? [], "extensions");
+  const extensions = references("extensions", strings(v.extensions ?? [], "extensions"), true);
   for (const extension of extensions) if (extension.startsWith("builtin:") && !BUILTINS.includes(extension as Builtin)) throw new Error(`Forbidden or unknown built-in extension: ${extension}`);
   const tools = strings(v.tools ?? [], "tools");
   const alwaysExtensions = strings(v.alwaysExtensions ?? [], "alwaysExtensions");
@@ -131,16 +162,18 @@ export function parsePolicy(value: unknown): PolicyConfig {
     if (!v.providerExtensions || typeof v.providerExtensions !== "object" || Array.isArray(v.providerExtensions)) throw new Error("providerExtensions must map provider IDs to resource files");
     for (const [provider, file] of Object.entries(v.providerExtensions)) if (!provider.trim() || typeof file !== "string" || !file.trim() || file.startsWith("builtin:")) throw new Error("providerExtensions requires explicit extension files");
     providerExtensions = v.providerExtensions as Record<string, string>;
+    references("providerExtensions", Object.values(providerExtensions), true);
   }
   return {
     version: 1, models, tools, alwaysTools,
-    extensions, alwaysExtensions, skills: strings(v.skills ?? [], "skills"),
+    extensions, alwaysExtensions, skills: references("skills", strings(v.skills ?? [], "skills"), false),
     providerExtensions, childSettings: parseChildSettings(v.childSettings), mcp: parseMcpPolicy(v.mcp),
     ...(v.loops === undefined ? {} : { loops: parseLoopPolicy(v.loops) }),
     ...(v.maxDepth === undefined ? {} : { maxDepth }),
-    promptTemplates: strings(v.promptTemplates ?? [], "promptTemplates"), themes: strings(v.themes ?? [], "themes"),
+    promptTemplates: references("promptTemplates", strings(v.promptTemplates ?? [], "promptTemplates"), false),
+    themes: references("themes", strings(v.themes ?? [], "themes"), false),
     systemPrompt: flags.systemPrompt, appendSystemPrompt: flags.appendSystemPrompt, contextFiles: flags.contextFiles,
-    maxChildren, workingDirectories: strings(v.workingDirectories ?? ["."], "workingDirectories"), peerMessageLimit, parentMessageLimit,
+    maxChildren, workingDirectories: references("workingDirectories", strings(v.workingDirectories ?? ["."], "workingDirectories"), false), peerMessageLimit, parentMessageLimit,
   };
 }
 export interface PolicyEnvironment {
@@ -151,6 +184,7 @@ export interface PolicyEnvironment {
   builtIn?: PolicyFile;
   /** Providers an extension registered in this session. Children start with --no-extensions, so they lack them. */
   extensionProviders?: () => readonly string[];
+  loadedExtensions?: () => LoadedExtensions;
 }
 export class SubagentPolicy {
   readonly source: string;
@@ -172,6 +206,7 @@ export class SubagentPolicy {
     catch (error) { this.error = String(error); }
   }
   private path(value: string, base = this.base) {
+    if (value.startsWith(LOADED)) return resolveLoaded(this.environment.loadedExtensions?.() ?? new Map(), value.slice(LOADED.length));
     return realpathSync(resolve(base, value.startsWith("~/") ? resolve(homedir(), value.slice(2)) : value));
   }
   catalog() {

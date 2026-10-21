@@ -7,8 +7,10 @@ Persistent Pi RPC children, composed by the parent from a user-controlled allowl
 ```bash
 # From the repository root:
 npm ci --ignore-scripts
-pi install ./packages/p3stack
+pi install "$PWD"
 ```
+
+The root package loads subagents through p3stack. `pi install ./packages/p3stack` loads p3stack without the other root packages.
 
 Reload the parent manually or with `self_reload`. Requires Pi 1.3.0 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). TUI and RPC parents are supported.
 
@@ -55,7 +57,7 @@ The highest-priority existing configuration wins, as a **whole-file replacement*
 
 No merging or upward directory search. Reload Pi to pick up configuration edits. Resource/model availability is rechecked on catalog requests, spawn and resume. An invalid selected file disables new spawning/resumption instead of falling back to broader defaults. Listing, reading, aborting and closing tracked children remain available. Untrusted project configuration is ignored with a user-facing diagnostic.
 
-The built-in policy applies only when no `subagents.json` exists. It is a menu across the common providers, so that multi-model workflows such as p3stack's roles and cross-family review work with no setup; entries you cannot reach are dropped without a diagnostic. Unlike your own file, where `maxDepth`, `loops` and `parentMessageLimit` stay off until you set them, it turns on nesting (`maxDepth` 2), bounded wake loops and messages to the parent (`parent_send`, 20 per assignment; see "Messages to the parent" below). When the collection's `claude-subscription` package is installed beside this one and its provider is registered, it also offers that provider's Claude models and maps its extension in `providerExtensions`. That map selects the extension for those children. A spawn can omit it from `extensions`. Without that, it is equivalent to the following:
+The built-in policy applies only when no `subagents.json` exists. It is a menu across the common providers, so that multi-model workflows such as p3stack's roles and cross-family review work with no setup; entries you cannot reach are dropped without a diagnostic. Unlike your own file, where `maxDepth`, `loops` and `parentMessageLimit` stay off until you set them, it turns on nesting (`maxDepth` 2), bounded wake loops and messages to the parent (`parent_send`, 20 per assignment; see "Messages to the parent" below). When this parent loaded `claude-subscription` from exactly one file, it also offers that provider's Claude models with `"extensions": ["loaded:claude-subscription"]` and `"providerExtensions": {"claude-subscription": "loaded:claude-subscription"}`. That map selects the extension for those children. A spawn can omit it from `extensions`. Without that, it is equivalent to the following:
 
 ```json
 {
@@ -96,6 +98,7 @@ The built-in policy applies only when no `subagents.json` exists. It is a menu a
 ### Field semantics
 
 - `version: 1` and `models` are required. Model entries contain an exact `provider/model:thinking` ID and optional descriptive guidance. No fuzzy matches, implicit thinking-level changes or fallback models. Model IDs containing slashes or colons work; the final colon separates the thinking level.
+- `loaded:<name>` names the extension file this parent loaded, in `extensions`, `alwaysExtensions` and `providerExtensions` values. The name is the directory of an `index.*` entry, otherwise the file stem, so `loaded:claude-subscription` names `.../claude-subscription/index.ts`. It resolves through Pi's record of which file registered each command and tool, so one policy works for a checkout, a Git install and a T3 launch. An extension that registers no command or tool cannot be named this way. A name that is not loaded, or that loaded from two files, is a catalog diagnostic. Other fields reject `loaded:`.
 - `tools` permits names, not shell commands. Recursive `subagent_*` tools are always filtered and diagnosed, even if declared. Built-in tools are known directly; extension tools must currently be discoverable in the parent's tool registry to be offered. Selected tools are also checked in the actual child before its task starts. A resource containing a tool does not independently grant permission to that tool.
 - `extensions`, `skills`, `promptTemplates`, `themes` permit **explicit local resource files**, using Pi's CLI resource categories. Relative paths resolve against the configuration file's directory; `~/` is supported. For a skill, specify its `SKILL.md`. Directories, wildcards, remote package URLs and implicit resource discovery are intentionally not accepted in this iteration. Installed package resource files can be named explicitly.
 - `alwaysExtensions` and `alwaysTools` name entries that every child receives without a parent selection, on spawn, resume and workflow workers. Each entry must also appear in `extensions` or `tools`, so the allowlists remain the complete permission set. Use `alwaysExtensions` for hooks, providers or renderers that should apply everywhere. An always-loaded extension's tools still require `tools` permission; list them in `alwaysTools` to activate them in every child, or leave them for per-spawn selection. Always-on entries become part of each child's saved composition. If any entry is unavailable (missing file, tool not locally known), spawning is disabled and the reason appears in `/subagents diagnostics`; children are never started without the entry.

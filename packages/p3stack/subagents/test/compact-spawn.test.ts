@@ -42,7 +42,7 @@ async function withSpawn(run: (spawn: (args: Record<string, unknown>) => Promise
         registerFlag() {}, getFlag() { return false; },
         on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
         registerTool(tool: { name: string }) { tools.set(tool.name, tool as never); }, registerCommand() {}, sendMessage() {},
-        getAllTools: () => [], events: { on: () => () => {} },
+        getAllTools: () => [], getCommands: () => [], events: { on: () => () => {} },
       } as unknown as ExtensionAPI);
       for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     });

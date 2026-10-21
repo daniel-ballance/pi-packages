@@ -37,7 +37,7 @@ test("a nested spawn at the live cap is told not to retry, and a root spawn is n
         registerFlag() {}, getFlag() { return false; },
         on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
         registerTool(tool: { name: string }) { tools.set(tool.name, tool as never); }, registerCommand() {}, sendMessage() {},
-        getAllTools: () => [], events: { on: () => () => {} },
+        getAllTools: () => [], getCommands: () => [], events: { on: () => () => {} },
       } as unknown as ExtensionAPI);
       for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     });
