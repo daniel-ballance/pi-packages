@@ -20,7 +20,7 @@ pi install /path/to/pi-packages/packages/p3stack
 
 Do not configure p3stack from two copies, such as the Git source and a local checkout. Pi then loads each extension twice, and a tool registered twice stops Pi from starting. mcp-client is not included.
 
-Run `/p3stack on` to enable the router. In print or JSON mode, pass the command and task in the same invocation so mode state survives until the prompt. `/p3stack off` removes the mode reminder. `/p3stack status` reports its state. In the terminal TUI, the directory line starts with `🅿️ ` while enabled, with no added status row. Toggle notices read `p3stack is on.` or `p3stack is off.`.
+Run `/p3stack on` to enable the router. In print or JSON mode, pass the command and task in the same invocation so mode state survives until the prompt. `/p3stack off` removes the mode reminder. `/p3stack status` reports its state. `/p3stack doctor` writes a T3 contract report to `~/.pi/agent/p3stack/t3-contract.json`: the loaded T3 tools, the T3 bridge extension's hash, and problems such as claude-subscription not loading from exactly one file. In the terminal TUI, the directory line starts with `🅿️ ` while enabled, with no added status row. Toggle notices read `p3stack is on.` or `p3stack is off.`.
 
 `skills/p3stack-mode/SKILL.md` chooses the route, then reads poteto-mode and the selected procedure. Pocock's `tdd` keeps its name. pstack's older `tdd` is emitted as `regression-test`. The registry decides names and exclusions before loading, with no global skill filters.
 

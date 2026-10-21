@@ -96,6 +96,7 @@ From this repository:
 
 ```sh
 npm ci --ignore-scripts
+node scripts/patch-pi-host-security.mts
 cd packages/mcp-client
 pi install "$PWD"
 ```
@@ -346,7 +347,7 @@ npm pack --dry-run
 Read-only native file preflight (no connections or writes; excludes runtime registrations):
 
 ```sh
-./node_modules/.bin/tsx scripts/native-preflight.ts /path/to/agent/mcp.json
+npx tsx scripts/native-preflight.ts /path/to/agent/mcp.json
 # A second project path requires explicit --trust-project.
 node scripts/native-rpc-smoke.mjs /absolute/path/to/pi
 ```

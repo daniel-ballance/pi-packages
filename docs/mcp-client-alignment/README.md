@@ -128,7 +128,8 @@ rendering or live signed-server approval interoperability.
 
 ## Operational state
 
-Changes remain uncommitted; global installation and personal MCP files are unchanged.
+Commit 9c221ef (2026-10-10) records these changes. When this record was written,
+global installation and personal MCP files were unchanged.
 The real T3 fixture test passed: the human selected session-only approval,
 `{action: "accept", persistence: "session"}` arrived, and the visible fixture PNG
 was forwarded through codemode (`/tmp/pi-codemode-7aee4d49623b2cec.png`).
