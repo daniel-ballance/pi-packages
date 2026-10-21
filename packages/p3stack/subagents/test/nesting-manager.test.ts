@@ -17,6 +17,8 @@ async function tree(authorize?: (config: AgentRecord["config"], depth: number) =
   const manager = new SubagentManager(dir, notice, () => {}, parseChildLimit(4), authorize);
   const spawn = async (name: string, parentId?: string) => (await manager.spawn({ name, task: name, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId })).id;
   const a = await spawn("A"), b = await spawn("B", a), c = await spawn("C", b);
+  // Each spawn task settles after a short delay; let them all settle so their reports cannot land mid-test.
+  assert.equal((await manager.wait([a, b, c], "all", 5000)).wake, "settled");
   // Stop only B, as if its process had exited: C stays live under a stopped intermediate.
   const stopOnly = (id: string) => (manager as any).closeOne(manager.get(id), false);
   return { dir, manager, a, b, c, stopOnly, async cleanup() { await manager.shutdown(); await rm(dir, { recursive: true, force: true }); } };
