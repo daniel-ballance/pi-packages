@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { workspacePackages } from "./root-package.mjs";
 
 const sourceRoot = await realpath(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const root = await realpath(resolve(process.argv[2] ?? sourceRoot));
@@ -141,11 +142,13 @@ const selected = scopeName === "pi-packages-repo" ? hosts : hosts.filter(
   (host: { packageName: string; alias: string }): boolean => host.packageName === standaloneNames[scopeName],
 );
 const rootCache = await cachePath(join(root, "node_modules"));
+const workspaces = scopeName === "pi-packages-repo" ? workspacePackages(root) : undefined;
 const plans: Plan[] = [];
 const visited = new Set<string>();
 for (const host of selected) {
-  const directory = scopeName === "pi-packages-repo" ?
-    join(root, "packages", host.packageName === "mcp-client" ? "" : "p3stack", host.packageName) : root;
+  const workspace = workspaces?.get(host.packageName);
+  if (workspaces !== undefined && workspace === undefined) throw new Error(`Missing development Pi host: ${host.packageName}`);
+  const directory = workspace === undefined ? root : join(root, workspace.dir);
   const moduleRoot = createRequire(join(directory, "package.json")).resolve.paths(host.alias)
     ?.find(path => existsSync(join(path, host.alias, "package.json")));
   if (moduleRoot === undefined) throw new Error(`Missing development Pi host: ${host.packageName}`);

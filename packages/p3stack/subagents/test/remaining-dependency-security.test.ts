@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { workspacePackages } from "../../../../scripts/root-package.mjs";
 
 const root = fileURLToPath(new URL("../../../..", import.meta.url));
 
@@ -50,8 +51,8 @@ async function assertLock(path: string): Promise<number> {
 
 test("root and standalone locks exclude vulnerable MCP SDK and undici versions", async (): Promise<void> => {
   let count = await assertLock(join(root, "package-lock.json"));
-  for (const name of ["mcp-client", "p3stack", ...["claude-subscription", "computer-use", "self-reload", "subagents", "todo", "web-search"].map(name => `p3stack/${name}`)]) {
-    const directory = join(root, "packages", name);
+  for (const { dir } of workspacePackages(root).values()) {
+    const directory = join(root, dir);
     if (!(await readdir(directory)).includes("package-lock.json")) continue;
     count += await assertLock(join(directory, "package-lock.json"));
   }
@@ -84,7 +85,7 @@ test("standalone MCP transitive security fixes stay above their reviewed floors"
 
 test("installed legacy development hosts actually resolve patched undici", async (): Promise<void> => {
   for (const name of ["mcp-client", "self-reload", "web-search"]) {
-    const packageRequire = createRequire(join(root, "packages", name === "mcp-client" ? "" : "p3stack", name, "package.json"));
+    const packageRequire = createRequire(join(root, workspacePackages(root).get(name)!.dir, "package.json"));
     const sdkName = "@earendil-works/pi-coding-agent";
     const moduleRoot = packageRequire.resolve.paths(sdkName)?.find(path => existsSync(join(path, sdkName, "package.json")));
     assert.ok(moduleRoot);
