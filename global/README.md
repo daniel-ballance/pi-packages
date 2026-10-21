@@ -55,11 +55,12 @@ The hook belongs at `~/.config/omarchy/hooks/theme-set.d/theme-set-relink-pi-con
 
 The Mac installs the root package from GitHub and keeps its own `~/.pi/agent/settings.json`. It does not run `link.sh`, because linking would replace that file with the Omarchy settings.
 
-1. Run `pi install git:github.com/daniel-ballance/pi-packages`. Pi clones the repository into `~/.pi/agent/git/github.com/daniel-ballance/pi-packages` and adds the source to `settings.json`.
-2. Remove any other package entries that load this repository, such as a local checkout path.
-3. Leave `~/.pi/agent/subagents.json` absent. The built-in policy offers Claude children when the parent loaded claude-subscription from one file.
-4. Set the T3 launch argument from [Configure T3 on each machine](../packages/p3stack/docs/landing/t3-settings.md).
-5. Authenticate providers through Pi and verify `pi list` and `/mcp` in a fresh session.
+1. Check that `~/.pi/agent/settings.json` is a plain file, not a link into a checkout. Remove old copies of this repository's extensions from `~/.pi/agent/extensions/`, because Pi loads that directory too and two copies of one tool stop Pi from starting.
+2. Run `pi install git:github.com/daniel-ballance/pi-packages`. Pi clones the repository into `~/.pi/agent/git/github.com/daniel-ballance/pi-packages` and adds the source to `settings.json`.
+3. Remove any other package entries that load this repository, such as a local checkout path.
+4. Leave `~/.pi/agent/subagents.json` absent. The built-in policy offers Claude children when the parent loaded claude-subscription from one file.
+5. Set the T3 launch argument from [Configure T3 on each machine](../packages/p3stack/docs/landing/t3-settings.md).
+6. Authenticate providers through Pi and verify `pi list` and `/mcp` in a fresh session.
 
 Run `pi update` to update the clone.
 

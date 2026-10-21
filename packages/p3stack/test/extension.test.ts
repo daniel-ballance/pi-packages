@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
@@ -483,19 +483,21 @@ test("doctor counts the claude-subscription files Pi loaded and reports anything
     writeFileSync(path, "export default function() {}\n");
     return path;
   };
-  const checkout = file("checkout"), clone = file("clone");
+  const checkout = file("checkout"), clone = file("clone"), linked = join(h.root, "linked.ts");
+  symlinkSync(checkout, linked);
   const loaded = (path: string, name = "claude-subscription") => ({ name, source: "extension", sourceInfo: { path } });
   try {
     for (const [registered, files, flagged] of [
       [[loaded(checkout), loaded(checkout, "claude-login"), loaded(join(h.root, "web-search/index.ts"), "search")], [checkout], false],
       [[loaded(checkout), loaded(clone)], [checkout, clone], true],
+      [[loaded(checkout), loaded(linked)], [checkout], false],
       [[{ ...loaded(checkout), source: "prompt" }], [], true],
     ] as [LoadedCommand[], string[], boolean][]) {
       commands.splice(0, commands.length, ...registered);
       await h.command("p3stack", "doctor");
       const report = JSON.parse(readFileSync(join(h.agentDir, "p3stack", "t3-contract.json"), "utf8"));
       assert.deepEqual(report.claudeSubscriptionFiles, files);
-      assert.equal(report.problems.includes(`claude-subscription loaded from ${files.length} files`), flagged, report.problems.join("\n"));
+      assert.equal(report.problems.some((problem: string) => problem.startsWith(`claude-subscription loaded from ${files.length} files`)), flagged, report.problems.join("\n"));
     }
   } finally { h.dispose(); }
 });
