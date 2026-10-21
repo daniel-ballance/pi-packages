@@ -14,9 +14,9 @@ CS_LIVE_MODEL=claude-subscription/claude-opus-5-5 npm run test:live
 
 ## What it needs
 
-- `pi` on PATH (Pi 1.2.0 or newer: the suite uses `provider_stream_event`). Set `PI_BIN` to
-  use a particular binary. When run through `npm run`, this package's `node_modules/.bin` is
-  first on PATH and holds the older Pi it is typechecked against; the suite skips that
+- `pi` on PATH (Pi 1.3.0 or newer, as this package requires). Set `PI_BIN` to
+  use a particular binary. When run through `npm run`, the workspace's `node_modules/.bin` is
+  first on PATH and holds the Pi this package is typechecked against; the suite skips that
   directory, so `pi` means the one installed on your machine.
 - Claude Code signed in with a Claude subscription (`claude auth login`), or
   `CLAUDE_CODE_OAUTH_TOKEN` set. With neither, or without `pi`, the suite reports itself as

@@ -10,6 +10,7 @@ The [root package](../../README.md#install-from-github) includes web-search. To 
 
 ```bash
 npm ci --ignore-scripts
+node scripts/patch-pi-host-security.mts
 cd packages/web-search
 pi install "$PWD"
 ```

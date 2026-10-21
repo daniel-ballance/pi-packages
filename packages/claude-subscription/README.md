@@ -85,6 +85,7 @@ Install the root package or this package by itself. From a local checkout:
 
 ```sh
 npm ci --ignore-scripts
+node scripts/patch-pi-host-security.mts
 pi install "$PWD"
 ```
 
@@ -222,9 +223,11 @@ an explanation instead of running.
 
 ### Subagents
 
-A child Pi process needs this extension loaded to use these models. With the
-`subagents` package of this collection, name it under `providerExtensions` for
-`claude-subscription` in the subagent policy. A child started with its own
+A child Pi process needs this extension loaded to use these models. With
+p3stack's subagents component, name it as `loaded:claude-subscription` in the
+subagent policy's `extensions` allowlist and under `providerExtensions` for
+`claude-subscription`. The built-in policy does this when no `subagents.json`
+exists and this extension loaded from one file. A child started with its own
 `--system-prompt` keeps that prompt, as described under billing above.
 
 ## Terms

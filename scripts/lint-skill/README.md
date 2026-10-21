@@ -180,9 +180,7 @@ skill result contains findings, external dependencies with verification status,
 and applied exceptions. Paths are absolute; output ordering is deterministic.
 
 Run `npm test` in this directory for the fixture and CLI tests; the root
-`./scripts/check.sh` runs them before any package check. Packages call the CLI
-from their own `check` script with explicit skill directories and their
-`skills/` directory as the resource root (see
-`packages/pi-pocock-skills/scripts/check-skills.mjs` and
-`packages/p3stack/generator/lint-skills.mjs`). Warnings remain visible; strict
-mode is opt-in.
+`./scripts/check.sh` runs them before any package check. p3stack calls the CLI
+from its own `check` script with explicit skill directories and its `skills/`
+directory as the resource root (see `packages/p3stack/generator/lint-skills.mjs`).
+Warnings remain visible; strict mode is opt-in.
