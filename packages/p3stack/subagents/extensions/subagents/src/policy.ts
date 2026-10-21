@@ -69,16 +69,12 @@ export const DEFAULT_POLICY: PolicyFile = {
   maxDepth: 2,
   loops: { enabled: true, minIntervalMs: 60_000, maxIterations: 50, maxDurationMs: 8 * 60 * 60_000 },
 };
-/** Distinct real files per extension name loaded in this parent. Two files under one name
- *  means two copies loaded, which is reported, never silently picked. */
 export type LoadedExtensions = ReadonlyMap<string, readonly string[]>;
 const LOADED = "loaded:";
-/** The name Pi shows for an extension file: the directory of an index.* entry, otherwise the file stem. */
 function extensionName(file: string): string {
   const name = basename(file);
   return /^index\.[cm]?[jt]s$/.test(name) ? basename(dirname(file)) : name.replace(/\.[^.]*$/, "");
 }
-/** Built from Pi's own records of who registered each command and tool. */
 export function loadedExtensions(sources: Iterable<{ readonly sourceInfo: { readonly path: string } }>): LoadedExtensions {
   const loaded = new Map<string, string[]>();
   for (const { sourceInfo } of sources) {
@@ -96,8 +92,6 @@ function resolveLoaded(loaded: LoadedExtensions, name: string): string {
   if (files.length > 1) throw new Error(`${name} loaded from ${files.length} files: ${files.join(", ")}`);
   return files[0]!;
 }
-/** Adds Claude children, in the same `loaded:` form a user would write, when this parent loaded
- *  claude-subscription from exactly one file. */
 export function builtInPolicy(loaded: LoadedExtensions = new Map()): PolicyFile {
   if (loaded.get("claude-subscription")?.length !== 1) return DEFAULT_POLICY;
   const claudeSubscription = `${LOADED}claude-subscription`;
@@ -190,7 +184,6 @@ export interface PolicyEnvironment {
   builtIn?: PolicyFile;
   /** Providers an extension registered in this session. Children start with --no-extensions, so they lack them. */
   extensionProviders?: () => readonly string[];
-  /** What this parent loaded. Resolves `loaded:` references. */
   loadedExtensions?: () => LoadedExtensions;
 }
 export class SubagentPolicy {

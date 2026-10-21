@@ -12,9 +12,6 @@ const RESOURCES = /** @type {const} */ (["extensions", "skills", "prompts", "the
 const readJson = path => JSON.parse(readFileSync(path, "utf8"));
 
 /**
- * Root `workspaces` expanded, keyed by package name. A pattern is a literal directory or a
- * directory with one trailing "/*". `dir` is repository-relative POSIX. Directories without a
- * package.json are not packages.
  * @param {string} root
  * @returns {ReadonlyMap<string, Workspace>}
  */
@@ -41,10 +38,6 @@ export function workspacePackages(root) {
 }
 
 /**
- * The root `pi` block: each `piBundle` member's own `pi` entries rebased onto the member
- * directory, in piBundle order and then member order. Pi installs a Git source with one
- * production install at the root, so a member that is not a workspace would load without
- * its dependencies.
  * @param {string} root
  * @returns {Resources}
  */

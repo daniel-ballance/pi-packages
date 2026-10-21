@@ -80,7 +80,6 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   let workflows: Workflows | undefined;
   let inspector: InspectorPanel | undefined;
   let loops: LoopController | undefined;
-  // Ask Pi which copy it loaded. Under T3 or a Git install, a copy beside this package may not be it.
   const loaded = () => loadedExtensions([...pi.getCommands().filter(command => command.source === "extension"), ...pi.getAllTools()]);
   const getPolicy = (ctx: ExtensionContext) => policy ??= new SubagentPolicy({
     cwd: ctx.cwd, agentDir: getAgentDir(), projectTrusted: ctx.isProjectTrusted(),

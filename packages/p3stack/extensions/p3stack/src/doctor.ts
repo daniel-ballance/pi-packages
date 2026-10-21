@@ -16,7 +16,6 @@ export function doctor(pi: {
   });
   const bridge = path ? extensions.indexOf(resolve(path)) : -1;
   const provider = extensions.findIndex(path => CLAUDE_SUBSCRIPTION.test(path));
-  // Two files here means T3's launch argument names a different copy than the package loads.
   const claudeSubscriptionFiles = [...new Set(pi.getCommands()
     .filter(command => command.source === "extension" && CLAUDE_SUBSCRIPTION.test(command.sourceInfo.path))
     .map(command => command.sourceInfo.path))];
