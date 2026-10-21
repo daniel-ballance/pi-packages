@@ -1,8 +1,9 @@
 # p3stack
 
-One Pi package at `packages/p3stack/` owns the router, generated workflows, and six
-runtime components. The components keep their own tests under that directory.
-`packages/mcp-client/` stays a separate optional replacement for native MCP.
+The repository root is one Pi package. It loads five packages: claude-subscription,
+p3stack, computer-use, self-reload, and web-search. p3stack owns the router, the
+generated workflows, and its nested subagents and todo components. Each package keeps
+its own tests. `packages/mcp-client/` stays a separate optional replacement for native MCP.
 
 ## Language
 
@@ -12,6 +13,10 @@ runtime components. The components keep their own tests under that directory.
 A directory of Pi resources (extensions, skills, prompts, themes) declared through
 a `pi` manifest and loaded as one unit.
 _Avoid_: plugin, bundle, module
+
+**Root package**:
+The repository root as one Package. `scripts/root-package.mjs` generates its `pi`
+manifest from the Packages that `package.json#piBundle` lists, so one install loads all of them.
 
 **Parent**:
 The Pi session that composes, supervises and reads the results of Children.

@@ -1,64 +1,80 @@
-# Update T3 after landing
+# Configure T3 on each machine
 
-The PR does not edit live T3 settings, restart a provider, or relink the live home. Run these steps only after the stack lands. The new extension path must exist in each stable checkout first.
+T3 starts Pi with `providerInstances.pi.config.launchArgs`. That value loads claude-subscription before T3 appends its bridge extension, so claude-subscription sets the system prompt first. The path must be the same file that the Pi package loads. Pi then loads the file once, in the launch-argument position. A different copy of the file loads twice, and its duplicate tools stop Pi from starting.
 
-## Review the exact changes
+Each machine loads the root package from a different place, so each has its own value.
 
-Linux file is `/home/danballance/.t3/userdata/settings.json`. The existing provider binary path is unchanged.
+| Machine | Package source in `~/.pi/agent/settings.json` | `launchArgs` |
+| --- | --- | --- |
+| Omarchy | `../../Code/pi-packages`, through the linked `global/settings.json` | `--extension /home/danballance/Code/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts` |
+| Mac | `git:github.com/daniel-ballance/pi-packages` | `--extension /Users/danballance/.pi/agent/git/github.com/daniel-ballance/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts` |
 
-Before:
+Print the value from the install that the machine loads, rather than typing it.
 
-```json
-"launchArgs": "--extension /home/danballance/Code/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts"
+```sh
+node ~/Code/pi-packages/scripts/root-package.mjs --t3-launch-args
+node ~/.pi/agent/git/github.com/daniel-ballance/pi-packages/scripts/root-package.mjs --t3-launch-args
 ```
 
-After:
+Run the first command on Omarchy and the second on the Mac.
+
+## Update Omarchy after landing
+
+The settings file is `/home/danballance/.t3/userdata/settings.json`. The provider binary path does not change.
+
+Before:
 
 ```json
 "launchArgs": "--extension /home/danballance/Code/pi-packages/packages/p3stack/claude-subscription/extensions/claude-subscription/index.ts"
 ```
 
-Mac file is `/Users/danballance/.t3/userdata/settings.json`. Its provider binary remains `/opt/homebrew/bin/pi`. The read-only SSH snapshot had no extension argument, so the after line adds one rather than rewrites an existing path.
-
-Before:
+After:
 
 ```json
-"launchArgs": ""
+"launchArgs": "--extension /home/danballance/Code/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts"
 ```
 
-After:
+1. Update the stable checkout at `~/Code/pi-packages` to the landed change. The old path no longer exists after this step, so finish the next steps before you open a T3 thread.
+2. Complete the frozen dependency install and the root check.
+3. Run `bash global/link.sh --check` from the stable checkout. Every line must begin with `ok`.
+4. Copy the T3 settings file to a dated backup beside it.
+5. Replace the `launchArgs` value with the output of `--t3-launch-args`.
+6. Verify the new thread, as described in [Verify each machine](#verify-each-machine).
+
+## Move the Mac to the GitHub install
+
+The settings file is `/Users/danballance/.t3/userdata/settings.json`. The provider binary stays `/opt/homebrew/bin/pi`.
+
+Before:
 
 ```json
 "launchArgs": "--extension /Users/danballance/Code/pi-packages/packages/p3stack/claude-subscription/extensions/claude-subscription/index.ts"
 ```
 
-Both lines are `providerInstances.pi.config.launchArgs`. Do not change another provider or point T3 at a swarm worktree.
+After:
 
-## Apply on each machine
-
-1. Update the stable checkout at `~/Code/pi-packages` to the landed stack.
-2. Complete its frozen dependency install and root check.
-3. Retrieve the reviewed scripts from the PR's secret receipt gist into `/tmp/pr-12-proof/landing/` on the corresponding machine.
-4. Run `bash /tmp/pr-12-proof/landing/apply-linux.sh` on Linux or `bash /tmp/pr-12-proof/landing/apply-mac.sh` on the Mac.
-5. Save the dated backup path printed by the script.
-6. Restart the T3 Pi provider manually and open a fresh T3 thread.
-7. Run the operator's T3 smoke and record the result before scheduling maintenance. The [2026-10-20 record](2026-10-20-t3-smoke.md) is the first one.
-
-The scripts require the observed before value and an existing new extension file. They save `settings.json.pr-12.<UTC date>.bak` next to the settings file before replacing it atomically. They do not restart T3. A changed before value stops the script for review.
-
-## Undo immediately if the smoke fails
-
-Run the matching script with the exact dated backup path.
-
-```sh
-bash /tmp/pr-12-proof/landing/undo-linux.sh /home/danballance/.t3/userdata/settings.json.pr-12.<UTC-date>.bak
-bash /tmp/pr-12-proof/landing/undo-mac.sh /Users/danballance/.t3/userdata/settings.json.pr-12.<UTC-date>.bak
+```json
+"launchArgs": "--extension /Users/danballance/.pi/agent/git/github.com/daniel-ballance/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts"
 ```
 
-Run only the command for that machine. Undo restores the entire dated settings snapshot, so inspect any newer settings changes before rollback. The script refuses a different live extension argument or a backup outside the settings directory. Restart the provider manually after rollback.
+Change the package source and the launch argument together. Between the two changes, a new thread loads two copies of claude-subscription.
 
-## Keep home links on the stable checkout
+1. Follow [Set up the Mac](../../../../global/README.md#set-up-the-mac). It installs the GitHub source and removes the local checkout entry from `~/.pi/agent/settings.json`.
+2. Copy the T3 settings file to a dated backup beside it.
+3. Replace the `launchArgs` value with the output of `--t3-launch-args`.
+4. Verify the new thread, as described in [Verify each machine](#verify-each-machine).
 
-Existing correct links need no relink. Run `bash global/link.sh --check` from the stable checkout after landing. Every line must begin with `ok`. If repair is needed, run the linker there, never from a swarm worktree. Keep any backup it creates until the operator verifies a fresh Pi session.
+`pi update` resets the clone in place, so the path stays valid. `pi remove` deletes the clone. After a removal, T3 cannot start Pi until you install the source again or change `launchArgs`.
 
-The screenshot, terminal video, `/reload`, and fresh T3 thread are operator steps. Text captures in the PR receipts do not replace that review.
+## Verify each machine
+
+T3 reads `launchArgs` when it starts a thread's Pi process. A running Pi process keeps its old arguments.
+
+1. Open a fresh T3 thread.
+2. Run `/p3stack doctor`. It writes `~/.pi/agent/p3stack/t3-contract.json`.
+3. Check that the report has `claudeSubscriptionBeforeBridge: true`, one entry in `claudeSubscriptionFiles`, and no `problems`. The entry must equal the path in `launchArgs`.
+4. Run the operator's T3 smoke and record it as a new dated file in this directory. The [2026-10-20 record](2026-10-20-t3-smoke.md) shows the format.
+
+## Undo if the smoke fails
+
+Copy the dated backup over the T3 settings file. On the Mac, also restore the previous package entry in `~/.pi/agent/settings.json`. Check that the restored `launchArgs` path exists, then open a fresh thread.

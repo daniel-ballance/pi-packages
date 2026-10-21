@@ -1,18 +1,24 @@
 # p3stack
 
-The Pi package for routed engineering workflows and their runtime tools. It combines generated skills from Cursor's pstack and Matt Pocock with Pi-owned procedures, a mode extension, and six nested runtime components.
+The Pi package for routed engineering workflows and their runtime tools. It combines generated skills from Cursor's pstack and Matt Pocock with Pi-owned procedures, a mode extension, and the nested subagents and todo components.
 
 See the [repository README](../../README.md) for the frozen install, supported runtime, checks, and component list. [About p3stack](../../docs/p3stack.md) explains the registry, router, host map, and maintenance loop. Maintainers must follow [AGENTS.md](AGENTS.md).
 
 ## Install and enable
 
-Complete the workspace dependency install before loading this local package.
+The repository root installs p3stack with claude-subscription, computer-use, self-reload, and web-search. Use the root unless you want p3stack alone.
+
+```sh
+pi install git:github.com/daniel-ballance/pi-packages
+```
+
+p3stack also installs by itself. It then loads its mode extension, subagents, todo, and the p3stack and subagents skills. Complete the workspace dependency install before loading a local checkout.
 
 ```sh
 pi install /path/to/pi-packages/packages/p3stack
 ```
 
-The root repository is not an install identity. Do not add the nested component directories as additional packages. p3stack already loads their extensions and subagents' skills. mcp-client is not included.
+Do not configure p3stack from two copies, such as the Git source and a local checkout. Pi then loads each extension twice, and a tool registered twice stops Pi from starting. mcp-client is not included.
 
 Run `/p3stack on` to enable the router. In print or JSON mode, pass the command and task in the same invocation so mode state survives until the prompt. `/p3stack off` removes the mode reminder. `/p3stack status` reports its state. In the terminal TUI, the directory line starts with `🅿️ ` while enabled, with no added status row. Toggle notices read `p3stack is on.` or `p3stack is off.`.
 
@@ -28,9 +34,9 @@ Run `/p3stack on` to enable the router. In print or JSON mode, pass the command 
 
 The skills name capabilities and read [`host-capabilities.md`](skills/poteto-mode/references/host-capabilities.md) for the operation on their host. Terminal sessions use the nested subagents component. T3 supplies delegation and scheduling, and subagents stays inactive there.
 
-A personal `subagents.json` replaces built-in policy as a whole. Its extension allowlist and `providerExtensions` mapping must name the moved Claude provider path when children use that provider. See the [configuration reference](subagents/skills/subagents/reference/configuration.md). Policy does not provide an OS sandbox.
+A personal `subagents.json` replaces built-in policy as a whole. When children use the Claude provider, name it as `loaded:claude-subscription` in the extension allowlist and the `providerExtensions` mapping. That reference resolves to the file this parent loaded, on any machine. See the [configuration reference](subagents/skills/subagents/reference/configuration.md). Policy does not provide an OS sandbox.
 
-T3 uses the same single-package settings, but its explicit provider launch argument also needs the moved extension path. Follow the [landing instructions](docs/landing/t3-settings.md) after the stack lands. Do not point a live provider at an unlanded worktree.
+T3 loads claude-subscription through a launch argument as well as the package. Follow [Configure T3 on each machine](docs/landing/t3-settings.md) so both name the same file. Do not point a live provider at an unlanded worktree.
 
 ## Run helper scripts
 

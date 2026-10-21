@@ -6,11 +6,11 @@ Zero-configuration DuckDuckGo web search for Pi. Adds one native `web_search` to
 
 Requires Node.js 22+ and Pi 1.3.0+.
 
-From the repository root:
+The [root package](../../README.md#install-from-github) includes web-search. To install it alone, run from the repository root:
 
 ```bash
 npm ci --ignore-scripts
-cd packages/p3stack/web-search
+cd packages/web-search
 pi install "$PWD"
 ```
 
@@ -72,8 +72,8 @@ From the repository root, after installing this package's dependencies:
 PI_CODING_AGENT_DIR="$(mktemp -d)" PI_TELEMETRY=0 pi \
   --offline --no-extensions --no-skills --no-prompt-templates \
   --no-context-files --no-session --no-approve \
-  -e ./packages/p3stack/web-search/extensions/web-search/index.ts \
-  -e ./packages/p3stack/web-search/test/fixtures/tui-demo.mjs \
+  -e ./packages/web-search/extensions/web-search/index.ts \
+  -e ./packages/web-search/test/fixtures/tui-demo.mjs \
   --tools web_search --model search-demo/stub --tui-mode fullscreen
 ```
 

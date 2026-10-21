@@ -7,8 +7,10 @@ Persistent Pi RPC children, composed by the parent from a user-controlled allowl
 ```bash
 # From the repository root:
 npm ci --ignore-scripts
-pi install ./packages/p3stack
+pi install "$PWD"
 ```
+
+The root package loads subagents through p3stack. `pi install ./packages/p3stack` loads p3stack without the other root packages.
 
 Reload the parent manually or with `self_reload`. Requires Pi 1.3.0 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). TUI and RPC parents are supported.
 
