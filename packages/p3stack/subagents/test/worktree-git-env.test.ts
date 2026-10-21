@@ -88,7 +88,7 @@ test("createWorktree and the worktree tool ignore GIT_DIR and write the requeste
           on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
           registerTool(tool: { name: string; execute: (...args: unknown[]) => Promise<unknown> }) { tools.set(tool.name, tool); },
           registerCommand() {}, sendMessage() {},
-          getAllTools: () => [], events: { on: () => () => {} },
+          getAllTools: () => [], getCommands: () => [], events: { on: () => () => {} },
         } as unknown as ExtensionAPI);
         for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
       });

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdirSync, realpathSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { builtInPolicy, DEFAULT_POLICY, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
+import { builtInPolicy, DEFAULT_POLICY, loadedExtensions, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
 import { tempRoot } from "./support/temp-root.js";
 
 test("built-in policy is a multi-provider menu with delegation, nesting and loops on, for use with no setup", () => {
@@ -17,11 +17,16 @@ test("built-in policy is a multi-provider menu with delegation, nesting and loop
   assert.match(JSON.stringify(DEFAULT_POLICY), /"maxChildren":6/);
   assert.deepEqual(policy.workingDirectories, ["."]);
   for (const resources of [policy.extensions, policy.skills, policy.promptTemplates, policy.themes]) assert.deepEqual(resources, []);
-  const withClaude = parsePolicy(builtInPolicy("/x/claude-subscription/index.ts"));
-  assert.deepEqual(withClaude.extensions, ["/x/claude-subscription/index.ts"]);
-  assert.deepEqual(withClaude.providerExtensions, { "claude-subscription": "/x/claude-subscription/index.ts" });
+});
+
+test("built-in policy offers Claude children exactly when the parent loaded claude-subscription once", () => {
+  const withClaude = parsePolicy(builtInPolicy(new Map([["claude-subscription", ["/x/claude-subscription/index.ts"]]])));
+  assert.deepEqual(withClaude.extensions, ["loaded:claude-subscription"]);
+  assert.deepEqual(withClaude.providerExtensions, { "claude-subscription": "loaded:claude-subscription" });
   assert.ok(withClaude.models.some(model => model.id === "claude-subscription/claude-opus-5-5:xhigh"));
-  assert.equal(builtInPolicy(undefined), DEFAULT_POLICY);
+  assert.equal(builtInPolicy(new Map()), DEFAULT_POLICY);
+  assert.equal(builtInPolicy(new Map([["web-search", ["/x/web-search/index.ts"]]])), DEFAULT_POLICY);
+  assert.equal(builtInPolicy(new Map([["claude-subscription", ["/x/claude-subscription/index.ts", "/y/claude-subscription/index.ts"]]])), DEFAULT_POLICY);
 });
 
 test("with no policy file, unreachable built-in models are dropped without diagnostics", () => {
@@ -184,6 +189,59 @@ test("compile enforces exact composition, prompt modes, scoped directories and e
     rmSync(extension);
     assert.throws(() => policy.compile(f.cwd, selection), /not allowed/);
   } finally { f.cleanup(); }
+});
+
+function extensionFile(root: string, install: string) {
+  const file = join(root, install, "claude-subscription/extensions/claude-subscription/index.ts");
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, "export default function() {};");
+  return file;
+}
+
+test("loaded: names the one file the parent loaded, in extensions and providerExtensions alike", () => {
+  const f = fixture();
+  try {
+    const file = extensionFile(f.root, "clone");
+    const luna = f.environment.models()[0];
+    f.environment.models = () => [luna, { ...luna, provider: "claude-subscription", id: "claude-opus-5-5", thinkingLevels: ["high"] }];
+    f.environment.loadedExtensions = () => loadedExtensions([{ sourceInfo: { path: "builtin:read" } }, { sourceInfo: { path: file } }]);
+    f.put(f.global, {
+      version: 1, models: [{ id: "claude-subscription/claude-opus-5-5:high" }],
+      extensions: ["loaded:claude-subscription"], providerExtensions: { "claude-subscription": "loaded:claude-subscription" },
+    });
+    const policy = new SubagentPolicy(f.environment);
+    assert.deepEqual(policy.catalog().extensions, [file]);
+    assert.deepEqual(policy.diagnostics, []);
+    const compiled = policy.compile(f.cwd, { model: "claude-subscription/claude-opus-5-5:high", tools: [] });
+    assert.deepEqual(compiled.selection!.extensions, [file]);
+    assert.ok(compiled.cliArgs!.includes(file));
+  } finally { f.cleanup(); }
+});
+
+test("a loaded: reference that is not loaded, or loaded from two files, is a diagnostic, never a guess", () => {
+  const f = fixture();
+  try {
+    const checkout = extensionFile(f.root, "checkout"), clone = extensionFile(f.root, "clone");
+    f.put(f.global, { version: 1, models: TEST_MODELS, extensions: ["loaded:claude-subscription"] });
+    const absent = new SubagentPolicy(f.environment);
+    assert.deepEqual(absent.catalog().extensions, []);
+    assert.ok(absent.diagnostics.some(d => d.includes("loaded:claude-subscription") && /not loaded/.test(d)), absent.diagnostics.join("\n"));
+    f.environment.loadedExtensions = () => loadedExtensions([checkout, clone, checkout].map(path => ({ sourceInfo: { path } })));
+    const twice = new SubagentPolicy(f.environment);
+    assert.deepEqual(twice.catalog().extensions, []);
+    assert.ok(twice.diagnostics.some(d => d.includes("2 files") && d.includes(checkout) && d.includes(clone)), twice.diagnostics.join("\n"));
+  } finally { f.cleanup(); }
+});
+
+test("parse accepts loaded: only where an extension file belongs, and only with a name", () => {
+  const extension = { extensions: ["loaded:claude-subscription"], alwaysExtensions: ["loaded:claude-subscription"], providerExtensions: { "claude-subscription": "loaded:claude-subscription" } };
+  assert.deepEqual(parsePolicy({ ...DEFAULT_POLICY, ...extension }).providerExtensions, extension.providerExtensions);
+  for (const key of ["skills", "promptTemplates", "themes", "workingDirectories"]) {
+    assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, [key]: ["loaded:claude-subscription"] }), /loaded:/, key);
+  }
+  assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, extensions: ["loaded:"] }), /loaded:/);
+  assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, extensions: ["loaded: "] }), /loaded:/);
+  assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, extensions: ["loaded:"], providerExtensions: { "claude-subscription": "loaded:" } }), /loaded:/);
 });
 
 test("config snapshot changes only after reload, availability is rechecked every time", () => {

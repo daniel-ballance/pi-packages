@@ -23,7 +23,7 @@ test("other extensions read the usable models over the event bus, synchronously"
       subagents({
         registerFlag() {}, getFlag() { return false; },
         on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
-        registerTool() {}, registerCommand() {}, getAllTools: () => [],
+        registerTool() {}, registerCommand() {}, getAllTools: () => [], getCommands: () => [],
         events: { on: (channel: string, handler: Function) => { bus.set(channel, handler); return () => bus.delete(channel); } },
       } as unknown as ExtensionAPI);
       for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
