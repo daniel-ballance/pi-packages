@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { parseChildLimit } from "../extensions/subagents/src/child-limit.js";
-import { SubagentManager, type AgentRecord } from "../extensions/subagents/src/manager.js";
+import { SubagentManager, type AgentRecord, type Notice } from "../extensions/subagents/src/manager.js";
 import { treeOrder } from "../extensions/subagents/src/inspector-data.js";
 import { fitDelegatedReply } from "../extensions/subagents/src/nesting.js";
 import { formatSubagentSummary } from "../extensions/subagents/src/footer.js";
@@ -12,12 +12,11 @@ import { tempRoot } from "./support/temp-root.js";
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
 
 // A coordinator A, its Child B, and B's Child C: the tree the root Manager keeps.
-async function tree(authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], notice: (notice: unknown) => void = () => {}) {
+async function settledTree(authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], notice: (notice: Notice) => void = () => {}) {
   const dir = tempRoot("subagent-nesting-");
   const manager = new SubagentManager(dir, notice, () => {}, parseChildLimit(4), authorize);
   const spawn = async (name: string, parentId?: string) => (await manager.spawn({ name, task: name, cwd: dir, executable: process.execPath, executableArgs: [fixture], parentId })).id;
   const a = await spawn("A"), b = await spawn("B", a), c = await spawn("C", b);
-  // Each spawn task settles after a short delay; let them all settle so their reports cannot land mid-test.
   assert.equal((await manager.wait([a, b, c], "all", 5000)).wake, "settled");
   // Stop only B, as if its process had exited: C stays live under a stopped intermediate.
   const stopOnly = (id: string) => (manager as any).closeOne(manager.get(id), false);
@@ -25,7 +24,7 @@ async function tree(authorize?: (config: AgentRecord["config"], depth: number) =
 }
 
 test("closing a coordinator closes descendants below a stopped intermediate", async () => {
-  const t = await tree();
+  const t = await settledTree();
   try {
     await t.stopOnly(t.b);
     assert.notEqual(t.manager.get(t.c).status, "stopped");
@@ -35,7 +34,7 @@ test("closing a coordinator closes descendants below a stopped intermediate", as
 });
 
 test("a coordinator and its subtree delegate nothing while it is being closed or cancelled", async () => {
-  const t = await tree();
+  const t = await settledTree();
   try {
     const open = (id: string) => (t.manager as any).assertDelegationOpen(t.manager.get(id));
     open(t.c);
@@ -49,7 +48,7 @@ test("a coordinator and its subtree delegate nothing while it is being closed or
 });
 
 test("a human hold covers the whole subtree, saved descendants included", async () => {
-  const t = await tree();
+  const t = await settledTree();
   try {
     await t.stopOnly(t.b);
     await t.manager.intervene(t.a, "halt");
@@ -64,7 +63,7 @@ test("a human hold covers the whole subtree, saved descendants included", async 
 });
 
 test("a human kill of a coordinator kills live descendants and holds saved ones", async () => {
-  const t = await tree();
+  const t = await settledTree();
   try {
     await t.stopOnly(t.b);
     await t.manager.intervene(t.a, "kill");
@@ -76,7 +75,7 @@ test("a human kill of a coordinator kills live descendants and holds saved ones"
 
 test("resume revalidates a nested Child at its own depth", async () => {
   const depths: number[] = [];
-  const t = await tree((config, depth) => { depths.push(depth); return config; });
+  const t = await settledTree((config, depth) => { depths.push(depth); return config; });
   try {
     await t.manager.close(t.a);
     depths.length = 0;
@@ -86,7 +85,7 @@ test("resume revalidates a nested Child at its own depth", async () => {
 });
 
 test("a nested Child's input request reaches the root; its ordinary reports do not", async () => {
-  const t = await tree();
+  const t = await settledTree();
   try {
     const announce = (kind: string, cursor: number) => (t.manager as any).announce(t.manager.get(t.c), kind, "text", cursor);
     announce("completed", 1001);
@@ -105,7 +104,7 @@ test("inspector groups order each nested Child after its nearest listed ancestor
 });
 
 test("a coordinator's read leaves its Child's input request for the root; the root's read settles it", async () => {
-  const t = await tree();
+  const t = await settledTree();
   try {
     const receipt = t.manager.read(t.c, undefined, false);
     const cursor = receipt.updates.at(-1)!.cursor;
@@ -119,10 +118,9 @@ test("a coordinator's read leaves its Child's input request for the root; the ro
 });
 
 test("a nested report waits for its parent, and reaches the root if that parent stops first", async () => {
-  const wakes: { id: string }[] = [];
-  const t = await tree(undefined, notice => wakes.push(notice as { id: string }));
+  const wakes: Notice[] = [];
+  const t = await settledTree(undefined, notice => wakes.push(notice));
   try {
-    // C completed its spawn task while B was live.
     assert.equal(t.manager.pendingNotices().some(n => n.id === t.c), false, "B is live: B drains it");
     assert.equal(wakes.some(n => n.id === t.c), false, "the root is not woken for it");
     wakes.length = 0;
@@ -133,7 +131,7 @@ test("a nested report waits for its parent, and reaches the root if that parent 
 });
 
 test("a delegated call still running when its caller exits is cancelled", async () => {
-  const t = await tree();
+  const t = await settledTree();
   try {
     const call = new AbortController();
     (t.manager as any).callerCalls.set(t.b, new Set([call]));
@@ -143,7 +141,7 @@ test("a delegated call still running when its caller exits is cancelled", async 
 });
 
 test("a subtree abort or close reports descendants it could not confirm", async () => {
-  const t = await tree();
+  const t = await settledTree();
   const manager = t.manager as any;
   try {
     const abortOne = manager.abortOne.bind(manager);
@@ -167,7 +165,7 @@ test("a delegated reply always fits one pipe frame", () => {
 });
 
 test("a subtree abort awaits a descendant's abort already in flight and reports its failure", async () => {
-  const t = await tree();
+  const t = await settledTree();
   const manager = t.manager as any;
   try {
     let fail!: (error: Error) => void;
