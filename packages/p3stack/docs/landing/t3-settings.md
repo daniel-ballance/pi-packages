@@ -42,7 +42,7 @@ Both lines are `providerInstances.pi.config.launchArgs`. Do not change another p
 4. Run `bash /tmp/pr-12-proof/landing/apply-linux.sh` on Linux or `bash /tmp/pr-12-proof/landing/apply-mac.sh` on the Mac.
 5. Save the dated backup path printed by the script.
 6. Restart the T3 Pi provider manually and open a fresh T3 thread.
-7. Run the operator's T3 smoke and record the result before scheduling maintenance.
+7. Run the operator's T3 smoke and record the result before scheduling maintenance. The [2026-10-20 record](2026-10-20-t3-smoke.md) is the first one.
 
 The scripts require the observed before value and an existing new extension file. They save `settings.json.pr-12.<UTC date>.bak` next to the settings file before replacing it atomically. They do not restart T3. A changed before value stops the script for review.
 
