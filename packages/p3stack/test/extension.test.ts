@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
 import { createAgentSession, DefaultResourceLoader, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
@@ -16,7 +16,8 @@ const opus = model("claude-subscription", "claude-opus-5-5", { off: null, minima
 const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: null });
 
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
-function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[], factory = p3stack } = {}) {
+type LoadedCommand = { name: string; source: string; sourceInfo: { path: string } };
+function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[], commands: loadedCommands = [] as LoadedCommand[], factory = p3stack } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-ext-"))), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
@@ -54,6 +55,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
     registerCommand: (name: string, command: any) => commands.set(name, command),
     on: (name: string, handler: Function) => handlers.set(name, [...handlers.get(name) ?? [], handler]),
     appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
+    getCommands: () => loadedCommands,
     getAllTools: () => [...tools.values(), ...extraTools, ...subagents ? [{ name: "subagent_catalog" }] : [], ...t3 ? [{ name: "mcp__t3-code__orchestrator_capabilities" }] : []],
     events: { emit: (channel: string, data: { reply(value: unknown): void }) => { if (channel === "subagents:catalog" && subagents && subagents !== "old") data.reply(subagents); } },
   } as never);
@@ -470,6 +472,32 @@ test("doctor records every T3 tool exposure, the bridge hash, and explicit provi
     if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
     terminal.dispose();
   }
+});
+
+test("doctor counts the claude-subscription files Pi loaded and reports anything but one", async () => {
+  const commands: LoadedCommand[] = [];
+  const h = harness({ commands });
+  const file = (install: string) => {
+    const path = join(h.root, install, "packages/claude-subscription/extensions/claude-subscription/index.ts");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "export default function() {}\n");
+    return path;
+  };
+  const checkout = file("checkout"), clone = file("clone");
+  const loaded = (path: string, name = "claude-subscription") => ({ name, source: "extension", sourceInfo: { path } });
+  try {
+    for (const [registered, files, flagged] of [
+      [[loaded(checkout), loaded(checkout, "claude-login"), loaded(join(h.root, "web-search/index.ts"), "search")], [checkout], false],
+      [[loaded(checkout), loaded(clone)], [checkout, clone], true],
+      [[{ ...loaded(checkout), source: "prompt" }], [], true],
+    ] as [LoadedCommand[], string[], boolean][]) {
+      commands.splice(0, commands.length, ...registered);
+      await h.command("p3stack", "doctor");
+      const report = JSON.parse(readFileSync(join(h.agentDir, "p3stack", "t3-contract.json"), "utf8"));
+      assert.deepEqual(report.claudeSubscriptionFiles, files);
+      assert.equal(report.problems.includes(`claude-subscription loaded from ${files.length} files`), flagged, report.problems.join("\n"));
+    }
+  } finally { h.dispose(); }
 });
 
 test("ask_user asks through the UI, and without one says to apply the stated default", async () => {

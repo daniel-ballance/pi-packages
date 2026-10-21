@@ -35,6 +35,7 @@ export interface Pi {
   on(event: string, handler: (event: any, ctx: Context) => unknown): void;
   appendEntry(customType: string, data: unknown): void;
   getAllTools(): { name: string; exposure?: string }[];
+  getCommands(): { source: string; sourceInfo: { path: string } }[];
   events: { emit(channel: string, data: unknown): void };
 }
 
