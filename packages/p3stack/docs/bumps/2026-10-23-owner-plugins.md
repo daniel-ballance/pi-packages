@@ -7,7 +7,7 @@
 - Old: `88d47514b82e7c44f00f2b2a72ff6dd12158038c`.
 - New: `8b3326d99fd4b993cb33a24dad8af03175c642c5`.
 - [Upstream comparison](https://github.com/cursor/plugins/compare/88d47514b82e7c44f00f2b2a72ff6dd12158038c...8b3326d99fd4b993cb33a24dad8af03175c642c5).
-- Maintenance PR: pending parent creation, the same PR as cursor-plugins. Depends on [unmerged prerequisite #75](https://github.com/daniel-ballance/pi-packages/pull/75), with base `chore/p3stack-portability-602346f4`.
+- Maintenance PR: [#76](https://github.com/daniel-ballance/pi-packages/pull/76), the same PR as cursor-plugins. Depends on [unmerged prerequisite #75](https://github.com/daniel-ballance/pi-packages/pull/75), with base `chore/p3stack-portability-602346f4`.
 
 ## Upstream scope
 
@@ -34,4 +34,4 @@ The shared candidate uses the same acceptance runs as cursor-plugins. Each comma
 
 ## Follow-up
 
-No separate owner PR, dependency refresh, or host-contract repair is needed. The parent owns the shared PR and inserts its returned URL into both notes. The maintenance PR and prerequisite remain unmerged.
+No separate owner PR, dependency refresh, or host-contract repair is needed. The shared maintenance PR is [#76](https://github.com/daniel-ballance/pi-packages/pull/76), confirmed through the host integration. The maintenance PR and prerequisite remain unmerged.

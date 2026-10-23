@@ -7,7 +7,7 @@
 - Old: `88d47514b82e7c44f00f2b2a72ff6dd12158038c`, pstack 0.15.29.
 - New: `8b3326d99fd4b993cb33a24dad8af03175c642c5`, pstack 0.15.30.
 - [Upstream comparison](https://github.com/cursor/plugins/compare/88d47514b82e7c44f00f2b2a72ff6dd12158038c...8b3326d99fd4b993cb33a24dad8af03175c642c5).
-- Maintenance PR: pending parent creation. Depends on [unmerged prerequisite #75](https://github.com/daniel-ballance/pi-packages/pull/75), with base `chore/p3stack-portability-602346f4`.
+- Maintenance PR: [#76](https://github.com/daniel-ballance/pi-packages/pull/76). Depends on [unmerged prerequisite #75](https://github.com/daniel-ballance/pi-packages/pull/75), with base `chore/p3stack-portability-602346f4`.
 
 ## Upstream scope
 
@@ -46,4 +46,4 @@ Receipts include the exact command, complete stream, and exit code in `.command`
 
 ## Follow-up
 
-No dependency refresh or host-contract repair is included. Lockfiles, installed tools, and live agent settings stay unchanged. Upstream output-ownership and relative-tool-path defects remain in the unchanged runtime scripts. The skill requires disposable output and absolute paths instead of claiming code-level fixes. The parent owns push, PR creation, host linkage, and insertion of the returned PR URL. The maintenance PR and prerequisite remain unmerged.
+No dependency refresh or host-contract repair is included. Lockfiles, installed tools, and live agent settings stay unchanged. Upstream output-ownership and relative-tool-path defects remain in the unchanged runtime scripts. The skill requires disposable output and absolute paths instead of claiming code-level fixes. The shared maintenance PR is [#76](https://github.com/daniel-ballance/pi-packages/pull/76), confirmed through the host integration. The maintenance PR and prerequisite remain unmerged.
