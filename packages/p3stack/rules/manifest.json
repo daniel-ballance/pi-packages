@@ -20,7 +20,8 @@
         }
       ],
       "exclude": [
-        "^skills/poteto-mode/scripts/(bootstrap\\.ts|bun\\.lock|package\\.json)$"
+        "^skills/poteto-mode/scripts/(bootstrap\\.ts|bun\\.lock|package\\.json)$",
+        "^skills/statechart/scripts/test/"
       ],
       "upstream": {
         "repository": "cursor/plugins",

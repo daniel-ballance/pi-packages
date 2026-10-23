@@ -745,6 +745,21 @@
   },
   {
     "source": "cursor-plugins",
+    "path": "skills/statechart/SKILL.md",
+    "action": "emit",
+    "name": "statechart",
+    "invocation": "user",
+    "phases": [
+      "verify"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Draw user-visible behavior and model counterexamples with portable Node scripts, with TLC and PNG rendering as explicit external prerequisites."
+  },
+  {
+    "source": "cursor-plugins",
     "path": "skills/swarm/SKILL.md",
     "action": "emit",
     "name": "swarm",

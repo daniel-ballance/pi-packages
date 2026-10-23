@@ -12,9 +12,9 @@ const cli = fileURLToPath(new URL("../generator/check-registry.mjs", import.meta
 const cache = process.env.P3STACK_FIXTURE_ROOT ?? tmpdir();
 const rows = () => JSON.parse(readFileSync(new URL("../registry/skills.json", import.meta.url), "utf8"));
 
-test("registry admits 21 Pocock, 55 pstack, and five owner skills with reasons for every drop", () => {
+test("registry admits 21 Pocock, 56 pstack, and five owner skills with reasons for every drop", () => {
   const skills = rows();
-  for (const [source, count] of [["matt-pocock", 21], ["cursor-plugins", 55], ["owner-plugins", 5]]) {
+  for (const [source, count] of [["matt-pocock", 21], ["cursor-plugins", 56], ["owner-plugins", 5]]) {
     assert.equal(skills.filter(row => row.source === source && row.action === "emit").length, count, source);
   }
   assert.equal(skills.filter(row => row.action === "drop").length, 24);
@@ -174,6 +174,25 @@ test("pstack regression-test and Pocock tdd keep their distinct procedures", () 
     assert.match(read(path), /regression-test/);
     assert.doesNotMatch(read(path), /(?:\/tdd|\/skill:tdd)\b/);
   }
+});
+
+test("statechart stays user-invoked and its help link resolves", () => {
+  const row = rows().find(row => row.source === "cursor-plugins" && row.path === "skills/statechart/SKILL.md");
+  assert.equal(row.action, "emit");
+  assert.equal(row.name, "statechart");
+  assert.equal(row.invocation, "user");
+  const skill = readFileSync(new URL("../skills/statechart/SKILL.md", import.meta.url), "utf8");
+  assert.match(skill, /^disable-model-invocation: true$/m);
+  assert.match(skill, /\/skill:statechart/);
+  assert.match(skill, /Keep the entire output tree disposable, including `tlc\/`/);
+  assert.match(skill, /Publication can delete unknown nested files/);
+  assert.match(skill, /Set `TLA2TOOLS` to an absolute jar path/);
+  assert.match(skill, /Set `JAVA` to an absolute executable path or a bare command resolved through PATH/);
+  assert.match(skill, /Mapping modules execute as code, so use only trusted maps/);
+  assert.match(skill, /Before `--png`, confirm the operator permits `npx`/);
+  assert.match(skill, /Without that approval, provide the Mermaid source and report PNG rendering as blocked/);
+  const help = readFileSync(new URL("../skills/poteto-help/SKILL.md", import.meta.url), "utf8");
+  assert.match(help, /\[`\/skill:statechart`\]\(\.\.\/statechart\/SKILL\.md\)/);
 });
 
 test("registry check reports emitted, dropped, and zero unclassified skills", t => {
