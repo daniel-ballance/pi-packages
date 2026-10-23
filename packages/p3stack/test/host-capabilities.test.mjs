@@ -16,10 +16,14 @@ test("delegate line 8 distinguishes a lost-call retry from a new round", () => {
   assert.match(section("Delegate"), /coordination\.owns/);
 });
 
-test("T3 delegate line states the pinned nightly", () => {
-  const pin = JSON.parse(readFileSync(new URL("../rules/t3-pin.json", import.meta.url), "utf8"));
-  const t3 = section("Delegate").split("\n").find(line => line.startsWith("- **T3.**"));
-  assert.ok(t3?.includes(`Pinned T3 version is \`${pin.version}\`.`));
+test("host verification separates static checks, diagnostics, and behavioral evidence", () => {
+  const verification = section("Verify host compatibility");
+  assert.match(verification, /without reading an installed host/);
+  assert.match(verification, /--installed/);
+  assert.match(verification, /--doctor <dump>/);
+  assert.match(verification, /release and hash are not acceptance criteria/);
+  assert.match(verification, /Missing required capabilities or incompatible behavior blocks maintenance/);
+  assert.doesNotMatch(section("Delegate"), /Pinned T3 version/);
 });
 
 test("opening a PR cites the Pull requests section and records its chain", () => {

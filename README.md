@@ -68,7 +68,7 @@ node scripts/patch-pi-host-security.mts
 
 The pnpm alternative is `pnpm install --frozen-lockfile --ignore-scripts`, followed by the same security step and root check. CI selects Node.js 22.23.3 or 26.12.0, npm 12.2.0 or pnpm 12.14.0, and the locked Pi 1.3.0 SDK. [`scripts/ci-install.sh locked`](scripts/ci-install.sh) implements that installation contract.
 
-`npm run check` and `pnpm run check` wrap the root gate. The gate validates configuration JSON, generated shared copies, global link tests, the registry, the pinned T3 contract, and every top-level and nested component's `check` and `test` scripts. It also runs the skill linter tests and mcp-client's format check. It does not need a globally installed Pi, live credentials, or paid provider calls.
+`npm run check` and `pnpm run check` wrap the root gate. The gate validates configuration JSON, generated shared copies, global link tests, the registry, the static T3 contract, and every top-level and nested component's `check` and `test` scripts. It also runs the skill linter tests and mcp-client's format check. It does not need a globally installed Pi, live credentials, or paid provider calls.
 
 Run a component's suite directly from its new path.
 

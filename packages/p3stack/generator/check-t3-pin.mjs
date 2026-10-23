@@ -9,78 +9,81 @@ const json = path => {
   try { return JSON.parse(readFileSync(path, "utf8")); }
   catch (error) { throw new Error(`${path} could not be read, ${error.message}`); }
 };
+const documentedTools = hostMap => new Set([...hostMap.matchAll(/`(mcp__t3-code__[a-z][a-z0-9_]*)`/g)].map(match => match[1]));
+const requiredTools = pin => pin.directTools.map(name => "mcp__t3-code__" + name);
+
+function checkContract(pin, hostMap) {
+  if (typeof pin?.version !== "string" || !pin.version || !/^[a-f0-9]{64}$/.test(pin.bridgeSha256 ?? "") ||
+      !Array.isArray(pin.statePaths) || !pin.statePaths.length || pin.statePaths.some(layout => typeof layout?.path !== "string" || !layout.path || typeof layout.versionField !== "string" || !layout.versionField) ||
+      !Array.isArray(pin.directTools) || !pin.directTools.length || pin.directTools.some(name => typeof name !== "string" || !/^[a-z][a-z0-9_]*$/.test(name)) || new Set(pin.directTools).size !== pin.directTools.length) {
+    throw new Error("Invalid rules/t3-pin.json. Expected provenance version and bridgeSha256, statePaths, and unique directTools.");
+  }
+  if (!pin.beforeAgentStartReturn || Object.keys(pin.beforeAgentStartReturn).length !== 1 || pin.beforeAgentStartReturn.systemPrompt !== "string") {
+    throw new Error("Unsupported beforeAgentStartReturn. Expected { systemPrompt: \"string\" }.");
+  }
+  const documented = documentedTools(hostMap);
+  const missing = requiredTools(pin).filter(name => !documented.has(name));
+  if (missing.length) throw new Error(missing.map(name => `host map is missing required direct tool ${name}`).join("\n"));
+}
 
 function doctorProblems(dump, pin, hostMap) {
-  if (!Array.isArray(dump?.tools) || dump.tools.some(tool => typeof tool?.name !== "string" || typeof tool.exposure !== "string") || !dump.extension || !Array.isArray(dump.problems)) {
+  if (!Array.isArray(dump?.tools) || dump.tools.some(tool => typeof tool?.name !== "string" || !["direct", "deferred"].includes(tool.exposure)) ||
+      typeof dump.extension?.path !== "string" || !/^[a-f0-9]{64}$/.test(dump.extension.sha256 ?? "") || !Array.isArray(dump.problems) || dump.problems.some(problem => typeof problem !== "string")) {
     throw new Error("Invalid doctor dump. Expected tools, extension, and problems from /p3stack doctor.");
   }
-  const prefix = "mcp__t3-code__";
-  const expected = new Set(pin.directTools.map(name => prefix + name));
   const direct = new Set(dump.tools.filter(tool => tool.exposure === "direct").map(tool => tool.name));
   const available = new Set(dump.tools.map(tool => tool.name));
-  const documented = new Set([...hostMap.matchAll(/`(mcp__t3-code__[a-z][a-z0-9_]*)`/g)].map(match => match[1]));
   const problems = dump.problems.map(problem => `doctor reported ${problem}`);
-  for (const name of expected) {
-    if (!documented.has(name)) problems.push(`host map is missing pinned direct tool ${name}`);
-    if (!direct.has(name)) problems.push(`doctor directTools missing ${name}`);
-  }
-  for (const name of direct) if (!expected.has(name)) problems.push(`doctor directTools added ${name}`);
-  for (const name of documented) if (!available.has(name)) problems.push(`doctor tools missing host map tool ${name}`);
-  if (dump.extension.sha256 !== pin.bridgeSha256) problems.push(`doctor bridge SHA-256 is ${dump.extension.sha256}, expected ${pin.bridgeSha256}`);
+  for (const name of requiredTools(pin)) if (!direct.has(name)) problems.push(`doctor directTools missing ${name}`);
+  for (const name of documentedTools(hostMap)) if (!available.has(name)) problems.push(`doctor tools missing host map tool ${name}`);
   return problems;
 }
 
+function installedDiagnostics(pin, options) {
+  const t3 = join(homedir(), ".t3");
+  const layouts = pin.statePaths.map(layout => ({ ...layout, path: join(t3, layout.path) }));
+  const layout = options.has("--state")
+    ? { path: options.get("--state") }
+    : layouts.find(layout => existsSync(layout.path));
+  if (!layout) throw new Error(`No installed T3 state file exists at ${layouts.map(layout => layout.path).join(" or ")}.`);
+  const state = json(layout.path);
+  const activeVersion = layout.versionField ? state?.[layout.versionField] : state?.activeVersion ?? state?.serverVersion;
+  if (typeof activeVersion !== "string" || !activeVersion) throw new Error(`Missing activeVersion or serverVersion in ${layout.path}`);
+  const bridge = options.get("--bridge") ?? join(t3, "caches/pi-t3-mcp-extension.ts");
+  const sha256 = createHash("sha256").update(readFileSync(bridge)).digest("hex");
+  console.log(`Installed T3 diagnostics only; compatibility is not verified.\nactiveVersion: ${activeVersion}\nstate read from ${layout.path}\nbridge SHA-256: ${sha256}\nbridge read from ${bridge}`);
+}
+
 function main(args) {
+  const usage = "Usage: node generator/check-t3-pin.mjs [--installed [--state <file>] [--bridge <file>] | --doctor <file>]";
   const options = new Map();
-  for (let index = 0; index < args.length; index += 2) {
-    const flag = args[index], value = args[index + 1];
-    if (!["--state", "--bridge", "--doctor"].includes(flag) || options.has(flag) || !value || value.startsWith("--")) {
-      console.error("Usage: node generator/check-t3-pin.mjs [--state <file>] [--bridge <file>] | --doctor <file>");
+  for (let index = 0; index < args.length; index++) {
+    const flag = args[index];
+    const value = flag === "--installed" ? true : args[++index];
+    if (!["--installed", "--state", "--bridge", "--doctor"].includes(flag) || options.has(flag) || !value || (typeof value === "string" && value.startsWith("--"))) {
+      console.error(usage);
       return 2;
     }
     options.set(flag, value);
   }
-  if (options.has("--doctor") && options.size > 1) {
-    console.error("Usage: node generator/check-t3-pin.mjs --doctor <file>");
+  if ((options.has("--doctor") && options.size > 1) || ((options.has("--state") || options.has("--bridge")) && !options.has("--installed"))) {
+    console.error(usage);
     return 2;
   }
   try {
     const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
     const pin = json(join(packageDir, "rules/t3-pin.json"));
+    const hostMap = readFileSync(join(packageDir, "extra/skills/poteto-mode/references/host-capabilities.md"), "utf8");
+    checkContract(pin, hostMap);
     if (options.has("--doctor")) {
-      const dump = json(options.get("--doctor"));
-      const hostMap = readFileSync(join(packageDir, "extra/skills/poteto-mode/references/host-capabilities.md"), "utf8");
-      const problems = doctorProblems(dump, pin, hostMap);
+      const problems = doctorProblems(json(options.get("--doctor")), pin, hostMap);
       if (problems.length) throw new Error(problems.join("\n"));
-      console.log("T3 doctor dump matches the host map and rules/t3-pin.json");
-      return 0;
+      console.log("T3 doctor capabilities match rules/t3-pin.json and the host map; behavioral verification is still required.");
+    } else if (options.has("--installed")) {
+      installedDiagnostics(pin, options);
+    } else {
+      console.log("T3 static contract matches rules/t3-pin.json and the host map.");
     }
-    const t3 = join(homedir(), ".t3");
-    const layouts = pin.statePaths.map(layout => ({ ...layout, path: join(t3, layout.path) }));
-    if (!options.size && !existsSync(t3)) {
-      console.log(`Skipping T3 pin check because ~/.t3 is absent. State paths checked at ${layouts.map(layout => layout.path).join(" or ")}.`);
-      return 0;
-    }
-    const layout = options.has("--state")
-      ? { path: options.get("--state") }
-      : layouts.find(layout => existsSync(layout.path));
-    if (!layout) {
-      console.log(`Skipping T3 pin check because no state file exists at ${layouts.map(layout => layout.path).join(" or ")}.`);
-      return 0;
-    }
-    const state = json(layout.path);
-    const activeVersion = layout.versionField ? state?.[layout.versionField] : state?.activeVersion ?? state?.serverVersion;
-    const bridge = options.get("--bridge") ?? join(t3, "caches/pi-t3-mcp-extension.ts");
-    const problems = [];
-    if (activeVersion !== pin.version) problems.push(`activeVersion is ${activeVersion}, expected ${pin.version}`);
-    try {
-      const sha256 = createHash("sha256").update(readFileSync(bridge)).digest("hex");
-      if (sha256 !== pin.bridgeSha256) problems.push(`bridge SHA-256 is ${sha256}, expected ${pin.bridgeSha256}`);
-    } catch {
-      problems.push(`bridge hash unverifiable at ${bridge}`);
-    }
-    if (problems.length) throw new Error([problems[0], `state read from ${layout.path}`, ...problems.slice(1)].join("\n"));
-    console.log(`T3 ${pin.version} matches rules/t3-pin.json\nstate read from ${layout.path}`);
     return 0;
   } catch (error) {
     console.error(error.message);
