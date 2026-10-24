@@ -48,6 +48,8 @@ Present the synthesizer's full Accepted / Rejected / Backlog output and wait for
 
 File each Backlog item to your team's devex or backlog tracker without waiting. Only the Accepted list waits for approval.
 
+Keep installed package files unchanged. Before approval, show the authored destination. For generated skills, repair the owning repository inputs and regenerate. For a standalone skill, copy its folder to an approved project `.pi/skills/<skill>/` or personal skill directory and edit the copy. Never open a PR or push.
+
 Follow each approved row's Routing exactly:
 
 - Trivial existing-skill edit (a one-line bullet, a tightened sentence, a stale fact corrected): the parent does it directly.

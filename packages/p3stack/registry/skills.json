@@ -229,6 +229,16 @@
   },
   {
     "source": "cursor-plugins",
+    "path": "skills/ketchup-video/SKILL.md",
+    "action": "emit",
+    "name": "ketchup-video",
+    "invocation": "user",
+    "phases": ["meta-and-style"],
+    "roles": ["contributor", "owner"],
+    "reason": "Offer a user-invoked silent-video recap using available rendering tools, with a text fallback when rendering fails."
+  },
+  {
+    "source": "cursor-plugins",
     "path": "skills/maintain-formal-verification-skill/SKILL.md",
     "action": "emit",
     "name": "maintain-formal-verification-skill",
