@@ -58,6 +58,7 @@ export function expect(actual: unknown) {
     toContain: (item: unknown) => assert.ok(contains(actual, item), `expected ${JSON.stringify(actual)} to contain ${JSON.stringify(item)}`),
     toBeInstanceOf: (expected: abstract new (...args: never[]) => unknown) => assert.ok(actual instanceof expected, `expected an instance of ${expected.name}`),
     toBeNull: () => assert.strictEqual(actual, null),
+    toBeUndefined: () => assert.strictEqual(actual, undefined),
     toEndWith: (suffix: string) => assert.ok(typeof actual === "string" && actual.endsWith(suffix), `expected ${JSON.stringify(actual)} to end with ${JSON.stringify(suffix)}`),
     toHaveLength: (length: number) => assert.strictEqual((actual as { length: number }).length, length),
     toMatchObject: (expected: object) => assert.ok(matches(actual, expected), `expected ${JSON.stringify(actual)} to match ${JSON.stringify(expected)}`),
