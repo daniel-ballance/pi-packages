@@ -24,13 +24,13 @@ A terminal Pi session uses the subagents extension for children. T3 supplies its
 
 [`host-capabilities.md`](../packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md) is the authored map. Tool names and T3-specific procedure belong there rather than in scattered skills. Role models come from `p3stack_roles` and the `p3stack.json` defaults, not a duplicated static table in the mode prompt.
 
-The T3 pin checker compares the installed contract with [`rules/t3-pin.json`](../packages/p3stack/rules/t3-pin.json). Host lint rejects backend tool names outside the map. A changed nightly contract needs a reviewed map and pin update, not a silent fallback.
+The default T3 checker validates [`rules/t3-pin.json`](../packages/p3stack/rules/t3-pin.json) and the host map without reading installed state. Its release and bridge hash retain historical provenance, not acceptance criteria. `--installed` reports optional diagnostics; `--doctor <dump>` checks required tools and exposures against a live inventory. The host map also requires review of live schemas and behavior, which doctor cannot prove. Missing capabilities or incompatible behavior blocks maintenance. Host lint rejects backend tool names outside the map.
 
 ## Maintenance keeps source changes reviewable
 
 [`maintain-p3stack`](../packages/p3stack/authored/skills/maintain-p3stack/SKILL.md) starts with a clean tree and green checks on current pins. An audit reports source status without opening a PR. An explicit bump updates a source, reads its upstream scope, repairs rules by failure class, and regenerates the output.
 
-The procedure checks the generated diff, registry, loader, host pin, and routing when route or chain rules changed. Changed-source notes go under [`docs/bumps/`](../packages/p3stack/docs/bumps/README.md). It opens a PR but never merges or updates Pi or T3. Dependency refreshes use the separate repository procedure.
+The procedure checks the generated diff, registry, loader, static host contract, live T3 capabilities and behavior when under T3, and routing when route or chain rules changed. Changed-source notes go under [`docs/bumps/`](../packages/p3stack/docs/bumps/README.md). It opens a PR but never merges or updates Pi or T3. Dependency refreshes use the separate repository procedure.
 
 ## The root installs five packages, and mcp-client is not one
 
