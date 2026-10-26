@@ -19,7 +19,7 @@ const requestConsent = (id, code) => {
     requestedSchema: code === 'form' ? { type: 'object', properties: { password: { type: 'string' } } } : { type: 'object', properties: {} },
     _meta: {
       codex_approval_kind: 'mcp_tool_call', connector_id: 'computer-use', connector_name: 'Computer Use',
-      persist: ['session', 'always'], riskLevel: 'low', tool_name: code === 'click' ? 'click' : 'get_app_state',
+      persist: ['session', 'always'], riskLevel: 'low', tool_name: code.startsWith('operation:') ? code.slice('operation:'.length) : code === 'click' ? 'click' : 'get_app_state',
       tool_params: { app: code === 'other-app' ? 'com.apple.TextEdit' : 'com.apple.calculator' }, tool_params_display: [],
     },
   } });
@@ -48,7 +48,16 @@ for await (const line of createInterface({ input: process.stdin })) {
     if (message.params.name === 'turn_ended') { result(message.id, { content: [] }); continue; }
     calls++;
     const code = message.params.arguments.code;
-    if (['consent', 'click', 'other-app', 'form'].includes(code)) requestConsent(message.id, code);
+    if (code === 'environment') result(message.id, {
+      content: [{ type: 'text', text: 'environment' }, image],
+      structuredContent: {
+        surface: process.env.CUA_REPL_ENABLED_SURFACES,
+        companion: process.env.SKY_CUA_SERVICE_PATH,
+        codexHome: process.env.CODEX_HOME,
+        modules: process.env.NODE_REPL_NODE_MODULE_DIRS,
+      },
+    });
+    else if (['consent', 'click', 'other-app', 'form'].includes(code) || code.startsWith('operation:')) requestConsent(message.id, code);
     else if (code === 'hang') {
       // Exercise process-group cleanup after the launcher exits first, and
       // escalation for a child which ignores SIGTERM.
