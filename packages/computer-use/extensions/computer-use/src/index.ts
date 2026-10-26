@@ -17,19 +17,23 @@ export function registerComputerUse(
   pi.registerCommand('computer-use', {
     description: 'Show Computer Use availability, or reset its JavaScript session with /computer-use reset',
     handler: async (args, ctx) => {
+      const notify = (message: string, type: 'info' | 'warning' = 'info'): void => {
+        if (ctx.hasUI) ctx.ui.notify(message, type);
+        else pi.sendMessage({ customType: 'computer-use-status', content: message, display: true });
+      };
       if (args.trim() === 'reset') {
         await session.close();
-        ctx.ui.notify('Computer Use session reset. The next call starts a fresh runtime.', 'info');
+        notify('Computer Use session reset. The next call starts a fresh runtime.');
         return;
       }
       if (args.trim()) {
-        ctx.ui.notify('Usage: /computer-use [reset]', 'warning');
+        notify('Usage: /computer-use [reset]', 'warning');
         return;
       }
       const current = detect();
-      ctx.ui.notify(current.available
-        ? `Computer Use ${session.connected ? 'connected' : 'ready'}\nCompanion: ${current.companionApp}\nRuntime: ${current.chatgptApp}${installation.available ? '' : '\nRun /reload to expose the tools.'}`
-        : current.reason, 'info');
+      notify(current.available
+        ? `Computer Use ${session.connected ? 'connected' : current.mode === 'ssh' ? 'configured (remote availability checked on first call)' : 'ready'}\n${current.mode === 'ssh' ? `SSH: ${current.destination}` : `Local companion: ${current.companionApp}`}\nRuntime: ${current.chatgptApp}${installation.available ? '' : '\nRun /reload to expose the tools.'}`
+        : current.reason);
     },
   });
 
@@ -39,7 +43,7 @@ export function registerComputerUse(
   pi.registerTool({
     name: 'computer_use',
     label: 'Computer Use',
-    description: 'Use macOS apps through the installed OpenAI Computer Use Companion. Executes JavaScript in a persistent signed runtime with the initialized cua API. Start with await cua.getState() for inventory or var app = await cua.getApp("Calculator") for an app; these calls return the API documentation and UI state. Follow the returned API documentation. Use nodeRepl.write(value) for additional text and await nodeRepl.emitImage(image) for additional images; the cua APIs already emit their state. Variables persist across calls. After compaction call await cua.rewriteDocumentation(). Run calls sequentially and refresh app state after actions. These are ordinary Pi tools with automatic session-only app consent and no Pi approval prompts.',
+    description: 'Use macOS apps locally or over configured SSH through the installed OpenAI Computer Use Companion. Executes JavaScript in a persistent signed runtime with the initialized cua API. Start with await cua.getState() for inventory or var app = await cua.getApp("Calculator") for an app; these calls return the API documentation and UI state. Follow the returned API documentation. Use nodeRepl.write(value) for additional text and await nodeRepl.emitImage(image) for additional images; the cua APIs already emit their state. Variables persist across calls. After compaction call await cua.rewriteDocumentation(). Run calls sequentially and refresh app state after actions. These are ordinary Pi tools with automatic session-only app consent and no Pi approval prompts.',
     parameters: Type.Object({
       code: Type.String({ minLength: 1, description: 'JavaScript using the initialized cua API.' }),
       title: Type.Optional(Type.String({ minLength: 1, maxLength: 80, description: 'Short description of this action.' })),

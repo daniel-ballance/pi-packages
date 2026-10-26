@@ -34,12 +34,46 @@ async function fixture() {
     close: () => rm(root, { recursive: true, force: true }) };
 }
 
-test('non-macOS returns before inspecting paths or environment', () => {
+test('non-macOS stays inactive without an SSH destination', () => {
   for (const platform of ['linux', 'win32', 'freebsd']) {
-    const env = new Proxy({}, { get() { throw new Error('Environment must not be read'); } });
+    const env = new Proxy({}, { get(_target: object, key: string | symbol): undefined {
+      if (key !== 'PI_COMPUTER_USE_SSH') throw new Error('Local app environment must not be read');
+      return undefined;
+    } });
     const result = detectInstallation({ platform, env });
     assert.equal(result.available, false);
     if (!result.available) assert.match(result.reason, /requires macOS/);
+  }
+});
+
+test('SSH configuration activates on Linux and macOS without inspecting local apps', () => {
+  for (const platform of ['linux', 'darwin']) {
+    const result = detectInstallation({ platform, home: '/missing', env: { PI_COMPUTER_USE_SSH: 'dan@100.120.109.108' } });
+    assert.ok(result.available && result.mode === 'ssh');
+    assert.equal(result.launch.command, 'ssh');
+    assert.deepEqual(result.launch.args.slice(0, -1), [
+      '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
+      '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
+      '-o', 'StrictHostKeyChecking=yes', 'dan@100.120.109.108',
+    ]);
+    assert.match(result.launch.args.at(-1)!, /CUA_REPL_ENABLED_SURFACES='computer'/);
+    assert.match(result.launch.args.at(-1)!, /ChatGPT\.app/);
+    assert.deepEqual(result.launch.env, {});
+  }
+});
+
+test('invalid SSH destinations and remote app overrides fail closed without local fallback', () => {
+  for (const destination of ['', '-oProxyCommand=evil', 'host command', 'user@host;evil', 'ssh://host', 'host\ncommand', 'user@@host', '::1', 'a'.repeat(256)]) {
+    const result = detectInstallation({ platform: 'darwin', env: { PI_COMPUTER_USE_SSH: destination } });
+    assert.equal(result.available, false, destination);
+    if (!result.available) assert.match(result.reason, /PI_COMPUTER_USE_SSH/);
+  }
+  for (const key of ['PI_COMPUTER_USE_CHATGPT_APP', 'PI_COMPUTER_USE_COMPANION_APP']) {
+    for (const path of ['relative.app', '~/ChatGPT.app', '', '/app\u0000.app', '/app\n.app']) {
+      const result = detectInstallation({ env: { PI_COMPUTER_USE_SSH: 'mac', [key]: path } });
+      assert.equal(result.available, false, path);
+      if (!result.available) assert.ok(result.reason.includes(key));
+    }
   }
 });
 
@@ -60,8 +94,7 @@ test('detects the installed apps and launches only the bundled signed runtime', 
   try {
     await f.installRuntime(); await f.installCompanion();
     const result = detectInstallation(f.options);
-    assert.equal(result.available, true);
-    if (!result.available) return;
+    assert.ok(result.available && result.mode === 'local');
     assert.equal(result.chatgptApp, f.chatgpt);
     assert.equal(result.companionApp, f.companion);
     const resources = join(f.chatgpt, 'Contents/Resources');
@@ -85,8 +118,8 @@ test('supports the Companion alongside ChatGPT and explicit locations without fa
     const companion = join(f.applications, 'Computer Use Companion.app');
     await f.installCompanion(companion);
     const result = detectInstallation(f.options);
-    assert.equal(result.available, true);
-    if (result.available) assert.equal(result.companionApp, companion);
+    assert.ok(result.available && result.mode === 'local');
+    assert.equal(result.companionApp, companion);
     const env = { PI_COMPUTER_USE_CHATGPT_APP: f.chatgpt, PI_COMPUTER_USE_COMPANION_APP: companion };
     assert.equal(detectInstallation({ ...f.options, env }).available, true);
     assert.equal(detectInstallation({ ...f.options, env: { ...env, PI_COMPUTER_USE_CHATGPT_APP: '/missing/ChatGPT.app' } }).available, false);

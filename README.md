@@ -44,7 +44,7 @@ The owner's nonsecret preferences live in [`global/`](global/README.md). Those f
 - [`web-search`](packages/web-search/README.md) searches DuckDuckGo without an API key.
 - [`self-reload`](packages/self-reload/README.md) reloads Pi with automatic continuation.
 - [`claude-subscription`](packages/claude-subscription/README.md) provides Claude models through the Claude Agent SDK and Claude Code login. Read its billing note before use.
-- [`computer-use`](packages/computer-use/README.md) uses the installed macOS Computer Use Companion. It stays inactive when the required applications are absent.
+- [`computer-use`](packages/computer-use/README.md) uses the installed macOS Computer Use Companion locally, or over SSH with `PI_COMPUTER_USE_SSH`. No MCP entry or bridge is required. Local mode stays inactive when the required applications are absent.
 
 Native Pi reads `mcp.json`. The root package does not load mcp-client or replace `/mcp`. The optional replacement has a different protocol stack, configuration limits, and timeout units. Read its migration notes before enabling it.
 

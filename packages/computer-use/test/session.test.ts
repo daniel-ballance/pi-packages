@@ -14,7 +14,7 @@ const server = fileURLToPath(new URL('./fixtures/server.mjs', import.meta.url));
 async function fixture(timeout = 5000, startupTimeout = 2000, extra: string[] = []) {
   const directory = await mkdtemp(join(tmpdir(), 'pi-computer-session-'));
   const log = join(directory, 'requests');
-  const detect = (): Installation => ({ available: true, chatgptApp: '/fixture/ChatGPT.app', companionApp: '/fixture/Companion.app', launch: {
+  const detect = (): Installation => ({ available: true, mode: 'local', chatgptApp: '/fixture/ChatGPT.app', companionApp: '/fixture/Companion.app', launch: {
     command: process.execPath, args: [server, log, ...extra], env: {}, cwd: directory,
   } });
   const session = new ComputerSession(detect, timeout, startupTimeout);
