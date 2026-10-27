@@ -204,7 +204,7 @@ Process `status` is separate from `assignment` (identity, task, running/complete
 - `reportedCost`: summed latest cumulative Pi-reported session costs, in USD; `missingCost`: sessions without valid cost data. Missing usage is not a claim that the work was free. Snapshots refresh at startup/resume, after assistant/tool-result messages and persisted usage/summary entries (including idle cache warming), at turn/compaction completion, and on settle/close, and are not guaranteed provider billing amounts. Resume replaces a child's snapshot rather than adding the same session twice.
 - Each child has `unread` (report/error/input/cancellation updates), `unreadAssistant` (assistant output only), and `unreadUpdates` (all updates, including lifecycle/sent echoes). These count retained updates after the default read cursor, not tokens, new runs, or pending notifications. Explicit replay reads and notification delivery do not advance that cursor. An unread result remains readable even after its notification is dismissed by close.
 
-Cap, policy, CLI and directory preflight rejections no longer create child records or diagnostic paths. A real process launch failure remains inspectable. Legacy never-started cap-rejection records are hidden by default; `subagent_list({ "includeRejected": true })` includes them with `rejected: true`, but they remain excluded from totals, footer counts and implicit wait-all selection. Explicit reads by ID still work. Only attached child processes count toward the live cap.
+Cap, policy, CLI and directory preflight rejections no longer create child records or diagnostic paths. A real process launch failure remains inspectable. Legacy never-started cap-rejection records are hidden by default; `subagent_list({ "includeRejected": true })` includes them with `rejected: true`, but they remain excluded from totals, footer counts, and a wait that omits ids. Explicit reads by ID still work. Only attached child processes count toward the live cap.
 
 ### Waiting for news
 
@@ -212,7 +212,7 @@ An agent with nothing else to do this turn ends its turn, and finished children'
 
 - `hold`: a selected child is under a human hold. Discuss it with the user before releasing anything.
 - `input`: a selected child waits on an extension dialog, even when a sibling has settled in mode `any`.
-- `settled`: all selected children (mode `all`, the default) or any of them (mode `any`) are no longer starting, working, waiting for input or stopping.
+- `settled`: any selected child has settled (mode `any`, the default; a child that has already settled counts, so pass only the ids still working) or every selected child has settled (mode `all`). Settled means no longer starting, working, waiting for input or stopping.
 - `child_message`: a selected child sent the waiting agent a message with `parent_send` and is probably still working. The message is in that child's `reports`. A wait with `collect:false` acknowledges nothing, so the next wait ends the same way until the message is read.
 - `message`: a message for the waiting agent is queued. It arrives after the result, or when the agent ends its turn. One queued batch ends one wait, so a follow-up that stays queued until the turn ends does not end every later wait in that turn.
 - `timeout`: `timeoutSeconds` passed. Without `timeoutSeconds` there is no deadline, and `0` checks once.

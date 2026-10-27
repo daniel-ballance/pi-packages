@@ -10,7 +10,7 @@ import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
-import { childNews, messageLatch, waitReport, withCurrentReviews, type ChildNews } from "./src/wait.js";
+import { childNews, DEFAULT_WAIT_MODE, messageLatch, waitReport, withCurrentReviews, type ChildNews } from "./src/wait.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { cardsFromDetails, listingLine } from "./src/card.js";
 import { summarizeAgents } from "./src/usage.js";
@@ -489,7 +489,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     async execute(_call, args, signal, _update, ctx) {
       const manager = get(ctx), callerId = delegation.getStore()?.callerId;
       const operatorMessageQueued = callerId ? undefined : () => rootLatch(ctx.hasPendingMessages());
-      const end = await manager.wait(args.ids ?? [], args.mode ?? "all",
+      const end = await manager.wait(args.ids ?? [], args.mode ?? DEFAULT_WAIT_MODE,
         args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued, callerId);
       signal?.throwIfAborted();
       const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId, undefined, args.final ?? false);
