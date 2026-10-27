@@ -19,15 +19,19 @@
     },
     {
       "id": "openai-codex/gpt-6-luna:max",
-      "description": "Last Luna step, when xhigh is short. Next model is openai-codex/gpt-6.1-sol:low."
+      "description": "Last Luna step, when xhigh is short. Next model is openai-codex/gpt-6.1-terra:medium."
     },
     {
-      "id": "openai-codex/gpt-6.1-sol:low",
-      "description": "First Sol step, after Luna max. Broader work than Luna. Next is openai-codex/gpt-6.1-sol:medium."
+      "id": "openai-codex/gpt-6.1-terra:medium",
+      "description": "First Terra step, after Luna max. Broader work than Luna; about 3 AA points above Luna max at 1.4x the cost. Next is openai-codex/gpt-6.1-terra:high. New on 2026-10-26 with AA evidence only, so confirm with use."
+    },
+    {
+      "id": "openai-codex/gpt-6.1-terra:high",
+      "description": "Next Terra step after medium. Takes the place of gpt-6.1-sol:low: a higher AA score at about the same cost. Next is openai-codex/gpt-6.1-sol:medium."
     },
     {
       "id": "openai-codex/gpt-6.1-sol:medium",
-      "description": "Next Sol step after low. Substantial changes and hard debugging; this is the large gain on Sol. Next is openai-codex/gpt-6.1-sol:high."
+      "description": "First Sol step, after Terra high. Substantial changes and hard debugging. Terra xhigh is skipped (this scores higher for about 10% more) and so is Terra max (Sol high scores higher for less). Next is openai-codex/gpt-6.1-sol:high."
     },
     {
       "id": "openai-codex/gpt-6.1-sol:high",
@@ -64,6 +68,10 @@
     {
       "id": "claude-subscription/claude-opus-5-5:xhigh",
       "description": "p3stack judgment and prose roles."
+    },
+    {
+      "id": "claude-subscription/claude-haiku-5-5:xhigh",
+      "description": "Cheapest Claude step. Bounded reading, triage, checks and light review, at about a seventh of Sonnet 5.5 high's AA cost per task. Next Claude step is claude-subscription/claude-sonnet-5-5:high."
     },
     {
       "id": "claude-subscription/claude-sonnet-5-5:high",
