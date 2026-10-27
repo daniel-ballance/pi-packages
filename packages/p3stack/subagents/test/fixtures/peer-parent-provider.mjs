@@ -20,13 +20,13 @@ export default function (pi) {
       const spawn = name => ["subagent_spawn", { name, task: "Ready", cwd: process.cwd(), model: "peer-test/stub:off", tools: ["peer_send"], extensions: [fileURLToPath(new URL("./peer-provider.mjs", import.meta.url))] }];
       const steps = [
         ["subagent_catalog", {}], spawn("smoke-A"), spawn("smoke-B"), spawn("smoke-C"),
-        ["subagent_wait", { ids: [A, B, C], timeoutSeconds: 10 }],
+        ["subagent_wait", { ids: [A, B, C], mode: "all", timeoutSeconds: 10 }],
         ["subagent_connect", { a: B, b: C, limit: 2 }],
         ["subagent_send", { id: A, message: `SEND ${JSON.stringify({ recipient: B, message: "forbidden" })}` }],
-        ["subagent_wait", { ids: [A], timeoutSeconds: 10, collect: false }],
+        ["subagent_wait", { ids: [A], mode: "all", timeoutSeconds: 10, collect: false }],
         ["subagent_read", { id: A }],
         ["subagent_send", { id: B, message: `SEND ${JSON.stringify({ recipient: C, message: "ping" })}` }],
-        ["subagent_wait", { ids: [B, C], timeoutSeconds: 10, collect: false }],
+        ["subagent_wait", { ids: [B, C], mode: "all", timeoutSeconds: 10, collect: false }],
         ["subagent_peers", { id: B }],
         ["subagent_read", { id: B }],
         ["subagent_disconnect", { a: B, b: C }],

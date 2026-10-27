@@ -56,7 +56,7 @@ export const TOOL_SPECS = {
   },
   subagent_wait: {
       description: "Block until your children have news, then return each selected child's status and its new reports. " +
-        "Returns when the selected children settle (mode all, the default, or any), a child needs input, a human hold appears, a child sent you a message with parent_send (child_message; it is in that child's reports and the child may still be working), or a message for you is queued (it reaches you after this result, or when you end your turn); wake names which, and agents lists each child. " +
+        "Returns when one selected child has settled (mode any, the default; a child that has already settled counts, so pass only the ids still working), every selected child has settled (mode all), a child needs input, a human hold appears, a child sent you a message with parent_send (child_message; it is in that child's reports and the child may still be working), or a message for you is queued (it reaches you after this result, or when you end your turn); wake names which, and agents lists each child. " +
         "Cancelling the wait stops waiting, NOT the children. No time limit unless timeoutSeconds is set. " +
         "With nothing else to do this turn, end your turn instead: finished children's reports wake you. " +
         "Defaults to all your tracked children. Returned reports are acknowledged. unread counts reports not included (collect:false, or they did not fit): subagent_read that child. " +

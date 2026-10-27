@@ -5,6 +5,7 @@ import { MANAGE_TIMEOUT_MS } from "./peer-transport.js";
 
 export type WaitArgs = Static<typeof TOOL_SPECS.subagent_wait.parameters>;
 
+export const DEFAULT_WAIT_MODE = "any" as const;
 export const WAKE_REASONS = ["hold", "input", "settled", "child_message", "message", "timeout"] as const;
 export type WakeReason = typeof WAKE_REASONS[number];
 export const isWakeReason = (value: unknown): value is WakeReason =>

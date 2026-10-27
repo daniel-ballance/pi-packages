@@ -5,7 +5,7 @@ import { truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-wor
 import { cardLines, cardsFromDetails, inline, paint, plain, STATES } from "./card.js";
 import { limitLabel } from "./child-limit.js";
 import { reportedCost } from "./usage.js";
-import { isWakeReason, type WakeReason } from "./wait.js";
+import { DEFAULT_WAIT_MODE, isWakeReason, type WakeReason } from "./wait.js";
 
 type Data = Record<string, unknown>;
 type Action = "catalog" | "loop" | "spawn" | "list" | "send" | "read" | "wait" | "abort" | "close" | "release-hold" | "resume" | "respond" | "connect" | "disconnect" | "renew" | "peers" | "workflow" | "workflow-start" | "workflow-inspect" | "workflow-control";
@@ -265,12 +265,11 @@ function formatCall(action: Action, data: Data, theme: Theme, complete: boolean,
       const labels = ids.map(id => named("child", id, names)).filter(Boolean);
       const mode = inline(data.mode);
       const timeout = count(data.timeoutSeconds);
-      const tail = (mode && mode !== "all" ? output(mode) : "") +
+      const tail = (mode && mode !== DEFAULT_WAIT_MODE ? output(mode) : "") +
         (timeout !== undefined ? output(`${timeout}s`) : complete ? output("until news") : "");
       if (labels.length === 1) return command(theme, "wait", labels[0]) + tail;
       let text = command(theme, "wait");
-      if (labels[0]) text += accent(labels[0]);
-      for (const label of labels.slice(1)) text += output(label);
+      for (const label of labels) text += accent(label);
       if (!labels.length && !mode && timeout === undefined && !complete) text += pending;
       return text + tail;
     }
