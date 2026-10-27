@@ -7,7 +7,7 @@
 - Old pin: `99b609a72323b70204eab407c622f436e858e112`.
 - New pin: `ab69380dd50ee47d426b35cb8369cffdddafc218`.
 - [Upstream comparison](https://github.com/cursor/plugins/compare/99b609a72323b70204eab407c622f436e858e112...ab69380dd50ee47d426b35cb8369cffdddafc218).
-- Maintenance PR: pending creation; its returned URL will replace this line.
+- [Maintenance PR #80](https://github.com/daniel-ballance/pi-packages/pull/80) covers both sources.
 
 ## Upstream scope
 
@@ -38,6 +38,7 @@ All required final checks pass with exit code 0.
 - [Final loader and live host checks](/tmp/p3stack-maint-6e5c1df5/cursor/host-exact.log): local package in `pi list`, capability-based T3 doctor, installed Pi model catalog, supported thinking level, and the exact fresh-process reply `p3stack smoke ok`. No loader errors, missing resources, or skill collisions.
 - Session and smoke use `openai-codex/gpt-6.1-sol:xhigh`. Installed Pi 1.4.0 loads the local package. Development checks use the locked repository SDK, not release equality.
 - The [first](/tmp/p3stack-maint-6e5c1df5/cursor/host/smoke.jsonl) and [second](/tmp/p3stack-maint-6e5c1df5/cursor/host-retry/smoke.jsonl) smoke replies included a trailing period. Their exact-reply assertions failed. An explicit no-punctuation prompt passed without changing the acceptance check. All streams remain in the receipts.
+- The committed pre-push hook passed its root gate. The comment review found no actionable comments or suppressions.
 - Routing eval is skipped because no route or chain changed.
 
 ## Follow-up
