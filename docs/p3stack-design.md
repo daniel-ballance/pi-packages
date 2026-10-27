@@ -69,7 +69,7 @@ identical; only the tool that satisfies it changes.
   fail-closed. New capabilities must not silently broaden existing
   configurations (`packages/subagents/ROADMAP.md`, "Principles to retain").
   Any new autonomous behaviour (loops, nesting) is off by default.
-- Vocabulary from `CONTEXT.md`: Parent, Child, Manager, Composition,
+- Vocabulary from `GLOSSARY.md`: Parent, Child, Manager, Composition,
   Allowlist. "Profile", "preset", "role" are rejected names for a
   Composition. A playbook **role default** is a skill-level lookup resolved
   into a full Composition at spawn time; the Allowlist stays the ceiling.
@@ -393,7 +393,7 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
 
 ### 4.5 Documentation and vocabulary
 
-- Add §1.1 to `CONTEXT.md` as a section ("Host parity") and the role-default
+- Add §1.1 to `GLOSSARY.md` as a section ("Host parity") and the role-default
   term. Add a one-line pointer in `AGENTS.md`.
 - ADRs: (1) host parity; (2) recursion shape (b) with the rejected
   alternative; (3) loops as bounded policy, not behaviour config.
@@ -561,7 +561,7 @@ You are implementing the design above in this repository. Constraints:
   Never hand-edit a generated file; if the output is wrong, fix a rule and
   regenerate. The drift check must be part of `./scripts/check.sh` from the
   first commit, as it is for `pi-pocock-skills`.
-- Read first: this file; [pstack-on-pi.md](pstack-on-pi.md); `CONTEXT.md`;
+- Read first: this file; [pstack-on-pi.md](pstack-on-pi.md); `GLOSSARY.md`;
   `README.md` ("Package layout", "Repository check"); for 4.3,
   `packages/subagents/README.md`, `ROADMAP.md`, `WORKFLOWS.md`,
   `PEER-MESSAGING.md`, `src/policy.ts`, `src/child-guard.ts`,

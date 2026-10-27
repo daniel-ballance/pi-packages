@@ -642,9 +642,12 @@ pocockCase("7 invalid optional regexes are errors", ({ root, run }) => {
   assert.match(run().stderr, /Invalid regular expression/);
 });
 
-pocockCase("8 glossary resource collisions fail instead of overwriting", ({ run, input }) => {
-  cpSync(input("engineering/domain-modeling/GLOSSARY-FORMAT.md"), input("engineering/domain-modeling/CONTEXT-FORMAT.md"));
-  assert.match(run().stderr, /skills\/domain-modeling\/CONTEXT-FORMAT\.md.*both emit/);
+pocockCase("8 resource collisions fail instead of overwriting", ({ root, run }) => {
+  const file = join(root, "rules/manifest.json"), manifest = JSON.parse(readFileSync(file, "utf8"));
+  const source = manifest.sources.find(({ name }) => name === "matt-pocock");
+  source.map.unshift({ from: "skills/engineering/domain-modeling/ADR-FORMAT.md", to: "skills/domain-modeling/GLOSSARY-FORMAT.md" });
+  writeFileSync(file, JSON.stringify(manifest));
+  assert.match(run().stderr, /skills\/domain-modeling\/GLOSSARY-FORMAT\.md.*both emit/);
 });
 
 pocockCase("9 failed validation preserves committed output", ({ root, run, input, read }) => {
@@ -670,9 +673,9 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.match(read("code-review/SKILL.md"), /Search the repo for every file/);
   assert.match(read("diagnosing-bugs/SKILL.md"), /prove the mutation landed/);
   assert.match(read("grilling/SKILL.md"), /"yes" accepts your recommended answer/);
-  assert.match(read("domain-modeling/SKILL.md"), /\[CONTEXT-FORMAT.md\]\(\.\/CONTEXT-FORMAT.md\)/);
-  assert.match(read("domain-modeling/CONTEXT-FORMAT.md"), /\[Ordering\]\(\.\/src\/ordering\/CONTEXT.md\)/);
-  assert.equal(existsSync(join(root, "skills/domain-modeling/GLOSSARY-FORMAT.md")), false);
+  assert.match(read("domain-modeling/SKILL.md"), /\[GLOSSARY-FORMAT.md\]\(\.\/GLOSSARY-FORMAT.md\)/);
+  assert.match(read("domain-modeling/GLOSSARY-FORMAT.md"), /\[Ordering\]\(\.\/src\/ordering\/GLOSSARY.md\)/);
+  assert.equal(existsSync(join(root, "skills/domain-modeling/CONTEXT-FORMAT.md")), false);
   assert.equal(existsSync(join(root, "skills/references/CHILD-DELEGATION.md")), false);
   assert.equal(existsSync(join(root, "skills/research/agents")), false);
   assert.match(read("regression-test/SKILL.md"), /TDD Bug Fix/);

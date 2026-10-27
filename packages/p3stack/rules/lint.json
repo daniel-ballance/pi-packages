@@ -28,8 +28,9 @@
     "pstack-models",
     "Skill tool",
     "in the foreground",
-    "GLOSSARY.",
-    "GLOSSARY-",
+    "CONTEXT.md",
+    "CONTEXT-MAP",
+    "CONTEXT-FORMAT",
     "Task("
   ],
   "require": [
