@@ -188,6 +188,10 @@ test("call rows identify the package, then the thing, action and parameters", ()
   assert.equal(line("read", { id: "subagent-1", since: 12 }), "subagents • footer-smoke-test • read (since 12)");
   assert.equal(line("wait", { ids: ["subagent-1"], timeoutSeconds: 10 }), "subagents • footer-smoke-test • wait 10s");
   assert.equal(line("wait", { ids: ["subagent-1", "subagent-2"], timeoutSeconds: 10 }), "subagents • wait footer-smoke-test worker-b 10s");
+  assert.equal(line("wait", { ids: ["subagent-1", "subagent-2"], mode: "all" }), "subagents • wait footer-smoke-test worker-b all until news");
+  assert.equal(line("wait", { ids: ["subagent-1", "subagent-2"], mode: "all", timeoutSeconds: 10 }), "subagents • wait footer-smoke-test worker-b all 10s");
+  assert.equal(line("wait", { ids: ["subagent-1"], mode: "any" }), "subagents • footer-smoke-test • wait until news");
+  assert.equal(line("wait", { ids: ["subagent-1", "subagent-2"], mode: "any" }), "subagents • wait footer-smoke-test worker-b until news");
   assert.equal(line("wait", {}), "subagents • wait until news");
   assert.equal(line("wait", { timeoutSeconds: 30 }), "subagents • wait 30s");
   assert.equal(line("connect", { a: "subagent-1", b: "subagent-2", limit: 5 }), "subagents • footer-smoke-test • connect worker-b (limit 5)");
@@ -198,6 +202,35 @@ test("call rows identify the package, then the thing, action and parameters", ()
   assert.equal(line("workflow-inspect", { id: "workflow-1", step: "build" }), "subagents • autonomous repair • inspect build");
   assert.equal(line("workflow-control", { id: "workflow-1", action: "resume", retry: ["build", "test"] }), "subagents • autonomous repair • resume build test");
   assert.equal(line("read", { id: "missing" }), "subagents • missing • read");
+});
+
+test("a multi-child wait header paints every visible child name in accent", () => {
+  const names = ["arena-runner-1-opus", "arena-runner-2-sol", "arena-runner-3"];
+  const styledTheme = {
+    fg: (color: string, text: string) => {
+      const code = color === "accent" ? "35" : color === "toolOutput" ? "32" : undefined;
+      return code ? `\x1b[${code}m${text}\x1b[39m` : text;
+    },
+    bold: (text: string) => text,
+  } as Theme;
+  const spans = (line: string) => [...line.matchAll(/\x1b\[(\d+)m([^\x1b]*)/g)].map(match => ({ color: match[1], text: match[2] }));
+  const header = (ids: string[], width: number, args: Record<string, unknown> = {}) =>
+    subagentRenderers("wait", (_kind, id) => id).renderCall({ ids, ...args }, styledTheme, { ...context(), argsComplete: true }).render(width)[0];
+  const accentText = (line: string) => spans(line).filter(span => span.color === "35").map(span => span.text);
+  const wide = header(names, 160);
+  assert.equal(stripVTControlCharacters(wide), `subagents • wait ${names.join(" ")} until news`);
+  assert.deepEqual(accentText(wide), names);
+  const pair = names.slice(0, 2);
+  assert.deepEqual(accentText(header(pair, 59)), pair);
+  const narrow = header(pair, 50);
+  assert.equal(visibleWidth(narrow), 50);
+  assert.deepEqual(accentText(narrow), ["arena-runner-1-opus", "arena-runn"]);
+  for (const line of [wide, header(pair, 59), narrow]) {
+    for (const span of spans(line)) if (span.text.includes("arena")) assert.equal(span.color, "35", JSON.stringify(line));
+  }
+  const explicitAll = header(pair, 160, { mode: "all" });
+  assert.deepEqual(accentText(explicitAll), pair);
+  assert.equal(spans(explicitAll).some(span => span.color === "32" && span.text === "all"), true, JSON.stringify(explicitAll));
 });
 
 test("call-header separators use the same glyph, color and font weight", () => {

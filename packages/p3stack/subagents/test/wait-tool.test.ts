@@ -20,6 +20,7 @@ async function withWaitTool(run: (tools: {
   wait: Tool;
   read: Tool;
   worker: string;
+  spawn: (task: string) => Promise<string>;
   delegatedWait: (args: Record<string, unknown>) => Promise<unknown>;
   queue: (pending: boolean) => void;
 }) => Promise<void>, extraRecords: Record<string, unknown>[] = []) {
@@ -70,6 +71,7 @@ async function withWaitTool(run: (tools: {
       wait: args => tools.get("subagent_wait").execute("c", args, undefined, undefined, ctx),
       read: args => tools.get("subagent_read").execute("c", args, undefined, undefined, ctx),
       worker: worker.id,
+      spawn: async task => (await manager!.spawn({ name: task, task, cwd: root, selection: { model: "test/fake:medium", tools: [] } })).id,
       delegatedWait: args => manage!("coordinator", { op: "wait", args }, new AbortController().signal),
       queue: value => { pending = value; },
     });
@@ -94,6 +96,49 @@ test("a queued message ends the root's wait once per batch, and never a coordina
     assert.equal(wake((await wait({ ids: [worker], timeoutSeconds: 0 })).details), "timeout");
     queue(true);
     assert.equal(wake((await wait({ ids: [worker] })).details), "message", "a new batch after the queue drained");
+  });
+});
+
+test("a default wait returns when a selected child has already settled, so the next wait passes only the ids still working", async () => {
+  await withWaitTool(async ({ wait, worker }) => {
+    assert.equal(wake((await wait({ ids: ["chatty", worker], timeoutSeconds: 0 })).details), "settled");
+    assert.equal(wake((await wait({ ids: ["chatty", worker], timeoutSeconds: 0 })).details), "settled", "the settled id still counts");
+    assert.equal(wake((await wait({ ids: [worker], timeoutSeconds: 0 })).details), "timeout", "pass only the id still working");
+  }, [chatty]);
+});
+
+test("a coordinator's omitted-mode wait returns when one child has already settled", async () => {
+  await withWaitTool(async ({ delegatedWait, worker }) => {
+    assert.equal(wake(await delegatedWait({ ids: ["settled-child", worker], timeoutSeconds: 0 })), "settled");
+    assert.equal(wake(await delegatedWait({ ids: [worker], timeoutSeconds: 0 })), "timeout", "pass only the id still working");
+  }, [{ id: "settled-child", parentId: "coordinator", status: "idle" }]);
+});
+
+for (const mode of [undefined, "any"] as const) {
+  test(`${mode === undefined ? "a default" : "an explicit any"} wait returns when one live child settles and the sibling is still working`, async () => {
+    await withWaitTool(async ({ wait, spawn }) => {
+      const busy = await spawn("until-abort");
+      const first = await spawn("split-settle");
+      const result = await wait({ ids: [first, busy], mode, timeoutSeconds: 2 });
+      assert.equal(wake(result.details), "settled", JSON.stringify(result.details));
+      assert.equal(wake((await wait({ ids: [first, busy], mode, timeoutSeconds: 0 })).details), "settled", "the settled id still counts");
+      assert.equal(wake((await wait({ ids: [busy], mode, timeoutSeconds: 0 })).details), "timeout", "pass only the id still working");
+    });
+  });
+}
+
+test("explicit all keeps waiting while a selected child is still working", async () => {
+  await withWaitTool(async ({ wait, worker }) => {
+    assert.equal(wake((await wait({ ids: ["chatty", worker], mode: "all", timeoutSeconds: 0 })).details), "timeout");
+  }, [chatty]);
+});
+
+test("a queued message ends a wait while every selected child is still working", async () => {
+  await withWaitTool(async ({ wait, queue, spawn, worker }) => {
+    const other = await spawn("until-abort");
+    const waiting = wait({ ids: [worker, other], timeoutSeconds: 1 });
+    queue(true);
+    assert.equal(wake((await waiting).details), "message");
   });
 });
 
