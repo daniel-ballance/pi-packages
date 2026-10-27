@@ -34,10 +34,6 @@
       "vendor": "vendor/matt-pocock",
       "map": [
         {
-          "from": "skills/engineering/domain-modeling/GLOSSARY-FORMAT.md",
-          "to": "skills/domain-modeling/CONTEXT-FORMAT.md"
-        },
-        {
           "from": "skills/engineering/",
           "to": "skills/"
         },

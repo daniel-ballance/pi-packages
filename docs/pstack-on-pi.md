@@ -151,7 +151,7 @@ MCP, and cloud environments. A sed-style transform cannot rewrite those into
    script, with a drift check like pi-pocock-skills. Keeps attribution and makes
    upstream bumps a `git apply` exercise. More setup.
 3. **Rewrite from scratch** using pstack as the design reference, with the
-   mechanics in §1.2 and this repo's vocabulary (`CONTEXT.md`: Parent, Child,
+   mechanics in §1.2 and this repo's vocabulary (`GLOSSARY.md`: Parent, Child,
    Composition, Allowlist). Cleanest fit, loses the upstream link.
 
 Recommendation: start with (1) for a small core, decide between (2) and (3)
@@ -161,7 +161,7 @@ tightly generated overlay.
 
 ### 3.2 Proposed package shape
 
-A new package, working name `packages/playbooks` (final name per `CONTEXT.md`
+A new package, working name `packages/playbooks` (final name per `GLOSSARY.md`
 naming review), in three layers so that layer 1 is useful on its own.
 
 **Layer 1, skills only (no extension code).**
@@ -231,7 +231,7 @@ All of these are ordinary extension APIs confirmed in `types.d.ts`
 
 ## 4. Tensions and open questions
 
-1. **Roles versus Composition.** `CONTEXT.md` rejects "profile, role, preset,
+1. **Roles versus Composition.** `GLOSSARY.md` rejects "profile, role, preset,
    template" for a Child's Composition because a fixed profile caps what the
    Parent can build. pstack is role-centric. Resolution that respects both: the
    role table is a *default lookup used by skills*, resolved into a full
@@ -299,5 +299,5 @@ earns its context cost on Pi before any extension code is written.
   (`DEFAULT_POLICY`, `splitModel`), `packages/subagents/WORKFLOWS.md`,
   `packages/durable-subagents/README.md` (host API),
   `packages/pi-pocock-skills/AGENTS.md` (vendor/translate pattern),
-  `CONTEXT.md` (vocabulary), `.pi/APPEND_SYSTEM.md` (worktree convention),
+  `GLOSSARY.md` (vocabulary), `.pi/APPEND_SYSTEM.md` (worktree convention),
   `docs/t3-subagents-revamp.md` (T3 bridge behaviour).
