@@ -620,6 +620,13 @@ pocockCase("5 tracker prerequisites survive and review collection retains its dr
   assert.equal(first.status, 0, first.stderr);
   assert.match(read("code-review/SKILL.md"), /The issue tracker should have been provided/);
   assert.match(read("triage/SKILL.md"), /docs\/agents\/issue-tracker.md/);
+  const setup = read("setup-matt-pocock-skills/SKILL.md");
+  assert.match(setup, /Inspect any legacy domain glossary or map/);
+  assert.match(setup, /offer to `git mv` it to its `GLOSSARY` name and update those pointers/);
+  assert.match(setup, /A GitHub or GitLab tracker needs a reachable repo/);
+  assert.doesNotMatch(setup, /CONTEXT(?:-MAP)?\.md/);
+  assert.match(read("setup-matt-pocock-skills/issue-tracker-github.md"), /File issues only into the user\x27s own repo/);
+  assert.match(read("setup-matt-pocock-skills/issue-tracker-gitlab.md"), /glab mr list -O json/);
   assert.match(read("implement/SKILL.md"), /fetch it from the issue tracker and state its title/);
   rewrite("engineering/code-review/SKILL.md", "in the foreground", "upstream changed this wording");
   assert.match(run().stderr, /subagent-review-collect: 0 matches/);
