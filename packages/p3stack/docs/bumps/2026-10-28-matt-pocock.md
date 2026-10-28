@@ -7,7 +7,7 @@
 - Old: `5beb35b040e3de97e54fa9e386d7e42d15c295c2`.
 - Candidate: `59db609eb1e18aaf59b63284d0e52255aff0c63c`, checked against upstream main.
 - [Upstream comparison](https://github.com/mattpocock/skills/compare/5beb35b040e3de97e54fa9e386d7e42d15c295c2...59db609eb1e18aaf59b63284d0e52255aff0c63c).
-- Maintenance PR: awaiting the forge-returned URL.
+- [Maintenance PR #84](https://github.com/daniel-ballance/pi-packages/pull/84), confirmed through the T3 host integration.
 - Audited base: `696abf9ac018423823edbc32354fa0cf5df680fb`. No portability prerequisite was needed.
 
 ## Upstream scope
@@ -46,6 +46,7 @@ Complete receipts, command lines, and exit codes are in `/tmp/p3stack-maint-c51d
 - [Candidate root gate](/tmp/p3stack-maint-c51dbfca/pocock-root.log): exit 0, `Root check passed.`
 - [Loader](/tmp/p3stack-maint-c51dbfca/pocock-loader.log), [live doctor](/tmp/p3stack-maint-c51dbfca/pocock-doctor-check.log), [live behavior evidence](/tmp/p3stack-maint-c51dbfca/live-host-evidence.md), and [smoke verification](/tmp/p3stack-maint-c51dbfca/pocock-smoke-verified.log): passed. Disposable settings load this local package with `openai-codex/gpt-6.1-sol:xhigh`; the fresh reply is `p3stack smoke ok`.
 - [Independent scope and comment review](/tmp/p3stack-maint-c51dbfca/pocock-review.json): no actionable findings or comment deletions.
+- [Hooked push](/tmp/p3stack-maint-c51dbfca/pocock-push.log): exit 0, `pre-push: root check passed.`
 - Routing eval skipped because neither routes nor chains changed.
 
 ## Follow-up
