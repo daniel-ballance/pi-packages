@@ -5,7 +5,7 @@ description: Investigate a question against high-trust primary sources and captu
 
 Read [child delegation guidance](../poteto-mode/references/host-capabilities.md) before using child delegation.
 
-For substantial research, when child and retrieval tools are available, spawn a bounded child so you can keep working while it reads. For a trivial lookup, or when those tools are unavailable, research directly.
+For substantial research, when child and retrieval tools are available, spawn a bounded child so you can keep working while it reads. For a trivial lookup, or when those tools are unavailable, research directly. Start it with a fresh context window.
 
 Its job:
 
