@@ -3,79 +3,79 @@
   "models": [
     {
       "id": "openai-codex/gpt-6-luna:low",
-      "description": "First step. Lookup, triage, and small grounded questions. Next is openai-codex/gpt-6-luna:medium."
+      "description": "First step for lookups, triage and small grounded questions. Escalate to openai-codex/gpt-6-luna:medium when needed."
     },
     {
       "id": "openai-codex/gpt-6-luna:medium",
-      "description": "Next Luna step after low. Summaries, bounded checks, and routine reading. Next is openai-codex/gpt-6-luna:high."
+      "description": "Routine reading, summaries and bounded checks. Next main step is openai-codex/gpt-6.1-terra:low; V5 favors moving to Terra before increasing Luna effort."
     },
     {
-      "id": "openai-codex/gpt-6-luna:high",
-      "description": "Next Luna step after medium. Investigation and small changes. Next is openai-codex/gpt-6-luna:xhigh."
-    },
-    {
-      "id": "openai-codex/gpt-6-luna:xhigh",
-      "description": "Next Luna step after high. Harder investigation, still on Luna. Next is openai-codex/gpt-6-luna:max."
-    },
-    {
-      "id": "openai-codex/gpt-6-luna:max",
-      "description": "Last Luna step, when xhigh is short. Next model is openai-codex/gpt-6.1-terra:medium."
+      "id": "openai-codex/gpt-6.1-terra:low",
+      "description": "First Terra step after Luna medium. Replaces Luna high, xhigh and max on the V5 task-cost frontier. Next is openai-codex/gpt-6.1-terra:medium. AA-only deployment hypothesis; confirm with accepted Pi outcomes."
     },
     {
       "id": "openai-codex/gpt-6.1-terra:medium",
-      "description": "First Terra step, after Luna max. Broader work than Luna; about 3 AA points above Luna max at 1.4x the cost. Next is openai-codex/gpt-6.1-terra:high. New on 2026-10-26 with AA evidence only, so confirm with use."
+      "description": "Broader investigation and scoped changes after Terra low. Sol low is also on the V5 frontier, but Terra medium offers a higher score for a small premium. Next is openai-codex/gpt-6.1-terra:high."
     },
     {
       "id": "openai-codex/gpt-6.1-terra:high",
-      "description": "Next Terra step after medium. Takes the place of gpt-6.1-sol:low: a higher AA score at about the same cost. Next is openai-codex/gpt-6.1-sol:medium."
+      "description": "Last Terra step in this menu. Next is openai-codex/gpt-6.1-sol:medium; it dominates Terra xhigh on V5 score and task cost."
     },
     {
       "id": "openai-codex/gpt-6.1-sol:medium",
-      "description": "First Sol step, after Terra high. Substantial changes and hard debugging. Terra xhigh is skipped (this scores higher for about 10% more) and so is Terra max (Sol high scores higher for less). Next is openai-codex/gpt-6.1-sol:high."
+      "description": "First Sol step for substantial changes and hard debugging after Terra high. Next is openai-codex/gpt-6.1-sol:high. Task guidance remains provisional until tested in Pi."
     },
     {
       "id": "openai-codex/gpt-6.1-sol:high",
-      "description": "Next Sol step after medium. Work that medium did not finish. Next is openai-codex/gpt-6.1-sol:xhigh."
+      "description": "More thinking for work Sol medium did not finish. Next is openai-codex/gpt-6.1-sol:xhigh."
     },
     {
       "id": "openai-codex/gpt-6.1-sol:xhigh",
-      "description": "Next Sol step after high. A small further gain. Next is openai-codex/gpt-6.1-sol:max."
+      "description": "Harder code and judgment after Sol high. Dominates Terra max on V5 score and task cost. Next is openai-codex/gpt-6.1-sol:max."
     },
     {
       "id": "openai-codex/gpt-6.1-sol:max",
-      "description": "Last Sol step. Next model is claude-subscription/claude-opus-5-5:high."
-    },
-    {
-      "id": "claude-subscription/claude-opus-5-5:high",
-      "description": "Last step of the main walk, after Sol max. Stop at high. The AA row is Default Fallback, so confirm with a trial before relying on the score."
-    },
-    {
-      "id": "xai/grok-4.6:low",
-      "description": "Backup when the ChatGPT or Claude subscription is limited. Next backup step is xai/grok-4.6:high."
-    },
-    {
-      "id": "xai/grok-4.6:high",
-      "description": "Backup step up from grok-4.6:low, still only while the primary subscription is limited. Return to Luna when that pool is available."
-    },
-    {
-      "id": "xai/grok-4.7:high",
-      "description": "p3stack code roles (Grok 4.7)."
-    },
-    {
-      "id": "xai/grok-4.7:xhigh",
-      "description": "p3stack code roles at the large budget."
+      "description": "Last Sol step. If still blocked, return evidence to the parent or explicitly choose claude-subscription/claude-opus-5-5:xhigh for a costly cross-family escalation."
     },
     {
       "id": "claude-subscription/claude-opus-5-5:xhigh",
-      "description": "p3stack judgment and prose roles."
+      "description": "Optional final step beyond Sol max, and p3stack judgment/prose roles. Higher V5 score at a substantial task-cost premium. Stop at xhigh in this menu. AA Default Fallback; subscription equivalence remains unverified."
+    },
+    {
+      "id": "xai/grok-4.7:low",
+      "description": "First Grok backup when conserving or lacking ChatGPT and Claude capacity. Older Grok 4.6 efforts have no complete V5 measurement. Next backup step is xai/grok-4.7:high."
+    },
+    {
+      "id": "xai/grok-4.7:high",
+      "description": "Next Grok backup step and p3stack code roles. Return to the primary pool when available; V5 does not support escalating to Grok xhigh for general value."
+    },
+    {
+      "id": "xai/grok-4.7:xhigh",
+      "description": "Retained for p3stack code roles at the large budget. V5 high dominates this effort; keep only for workflow compatibility or task-specific evidence, not as the default backup escalation."
+    },
+    {
+      "id": "claude-subscription/claude-haiku-5-5:low",
+      "description": "Cheapest Claude-pool option for bounded reading and triage while conserving ChatGPT capacity. Next compact Claude step is claude-subscription/claude-haiku-5-5:high."
+    },
+    {
+      "id": "claude-subscription/claude-haiku-5-5:high",
+      "description": "Next compact Claude step after Haiku low. On the global V5 frontier. Next Claude step is claude-subscription/claude-haiku-5-5:xhigh."
     },
     {
       "id": "claude-subscription/claude-haiku-5-5:xhigh",
-      "description": "Cheapest Claude step. Bounded reading, triage, checks and light review, at about a seventh of Sonnet 5.5 high's AA cost per task. Next Claude step is claude-subscription/claude-sonnet-5-5:high."
+      "description": "More thorough bounded checks and light review within the Claude pool. Retained as a pool alternative despite global dominance. Next Claude step is claude-subscription/claude-sonnet-5-5:high."
     },
     {
       "id": "claude-subscription/claude-sonnet-5-5:high",
-      "description": "Cheaper Claude judge or reviewer."
+      "description": "Claude reviewer after Haiku xhigh, especially while conserving ChatGPT capacity. Next Claude step is claude-subscription/claude-opus-5-5:medium. Globally dominated on V5; retained for pool and review diversity."
+    },
+    {
+      "id": "claude-subscription/claude-opus-5-5:medium",
+      "description": "First Opus step within the Claude pool after Sonnet high. Next is claude-subscription/claude-opus-5-5:high. AA Default Fallback; confirm with Pi outcomes."
+    },
+    {
+      "id": "claude-subscription/claude-opus-5-5:high",
+      "description": "Next Claude-pool step after Opus medium. A cheaper Opus review option than xhigh, but no longer an upgrade beyond Sol max on V5. Next Claude step is claude-subscription/claude-opus-5-5:xhigh. AA Default Fallback; confirm with Pi outcomes."
     }
   ],
   "tools": [
