@@ -7,7 +7,7 @@
 - Old: `59db609eb1e18aaf59b63284d0e52255aff0c63c`.
 - Candidate: `a496f5513d4a4cf889bc48e189e579f4b0bdf6aa`.
 - [Upstream comparison](https://github.com/mattpocock/skills/compare/59db609eb1e18aaf59b63284d0e52255aff0c63c...a496f5513d4a4cf889bc48e189e579f4b0bdf6aa).
-- Maintenance PR: pending creation after validation.
+- Maintenance PR: [#86](https://github.com/daniel-ballance/pi-packages/pull/86).
 
 ## Upstream scope
 
