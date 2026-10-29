@@ -4,8 +4,15 @@
     {
       "name": "cursor-plugins",
       "vendor": "vendor/pstack/pstack",
-      "skillRoots": ["skills/", "automations/"],
+      "skillRoots": [
+        "skills/",
+        "automations/"
+      ],
       "map": [
+        {
+          "from": "skills/statechart/scripts/passes/loop-check.ts",
+          "to": "skills/statechart/scripts/passes/cycle-check.ts"
+        },
         {
           "from": "skills/",
           "to": "skills/"
@@ -58,13 +65,31 @@
     {
       "name": "owner-plugins",
       "vendor": "vendor/pstack",
-      "skillRoots": ["dyl-stack/skills/", "thermos/skills/"],
+      "skillRoots": [
+        "dyl-stack/skills/",
+        "thermos/skills/"
+      ],
       "map": [
-        { "from": "dyl-stack/skills/dyl-mode/SKILL.md", "to": "skills/dyl-mode/SKILL.md" },
-        { "from": "dyl-stack/skills/dyl-mode/references/requirements.md", "to": "skills/dyl-mode/references/requirements.md" },
-        { "from": "dyl-stack/skills/dyl-review/", "to": "skills/dyl-review/" },
-        { "from": "thermos/skills/", "to": "skills/" },
-        { "from": "thermos/agents/", "to": "agents/" }
+        {
+          "from": "dyl-stack/skills/dyl-mode/SKILL.md",
+          "to": "skills/dyl-mode/SKILL.md"
+        },
+        {
+          "from": "dyl-stack/skills/dyl-mode/references/requirements.md",
+          "to": "skills/dyl-mode/references/requirements.md"
+        },
+        {
+          "from": "dyl-stack/skills/dyl-review/",
+          "to": "skills/dyl-review/"
+        },
+        {
+          "from": "thermos/skills/",
+          "to": "skills/"
+        },
+        {
+          "from": "thermos/agents/",
+          "to": "agents/"
+        }
       ],
       "upstream": {
         "repository": "cursor/plugins",

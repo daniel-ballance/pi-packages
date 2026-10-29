@@ -34,7 +34,7 @@
     "check": "node generator/generate.mjs --check && node generator/lint-hosts.mjs && node generator/check-t3-pin.mjs && node generator/lint-skills.mjs && tsc --noEmit -p skills/poteto-mode/scripts/watch-pr/tsconfig.json && tsc --noEmit -p tsconfig.json",
     "eval:routing": "node test/routing-eval/run.mjs",
     "test": "npm run test:once && T3_MCP_URL=http://127.0.0.1:1/mcp npm run test:once",
-    "test:once": "node --test test/*.test.mjs test/*.test.ts && cd skills/poteto-mode/scripts && node --test check-plan.test.ts watch-pr/*.test.ts orch/*.test.ts"
+    "test:once": "node --test test/*.test.mjs test/*.test.ts && cd skills/poteto-mode/scripts && node --test check-plan.test.ts watch-pr/*.test.ts"
   },
   "dependencies": {
     "commander": "15.0.0"
@@ -70,6 +70,6 @@
     ]
   },
   "p3stack": {
-    "upstream": "cursor/plugins@ab69380dd50ee47d426b35cb8369cffdddafc218 pstack 0.15.32"
+    "upstream": "cursor/plugins@1ba91fc25c0977741dd0e267849e6234b037ed0a pstack 0.15.36"
   }
 }

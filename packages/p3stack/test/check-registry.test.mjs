@@ -187,12 +187,13 @@ test("statechart stays user-invoked and its help link resolves", () => {
   assert.match(skill, /Keep the entire output tree disposable, including `tlc\/`/);
   assert.match(skill, /Publication can delete unknown nested files/);
   assert.match(skill, /Set `TLA2TOOLS` to an absolute jar path/);
-  assert.match(skill, /Set `JAVA` to an absolute executable path/);
-  assert.match(skill, /Mapping modules execute as code, so use only trusted maps/);
-  assert.match(skill, /Before `--png`, confirm the operator permits `npm`/);
+  assert.match(skill, /`JAVA` to an absolute executable path/);
+  assert.match(skill, /View modules execute as code, so use only trusted views/);
+  const render = readFileSync(new URL("../skills/statechart/references/render.md", import.meta.url), "utf8");
+  assert.match(render, /Before fetching or executing the pinned Pele package, get explicit permission/);
   assert.match(skill, /Get explicit permission before any provisioning/);
   assert.match(skill, /require an existing TLC jar and Java binary/);
-  assert.match(skill, /Without that approval, provide the Mermaid source and report PNG rendering as blocked/);
+  assert.match(render, /provide Mermaid text and report rendering as blocked/);
   const help = readFileSync(new URL("../skills/poteto-help/SKILL.md", import.meta.url), "utf8");
   assert.match(help, /\[`\/skill:statechart`\]\(\.\.\/statechart\/SKILL\.md\)/);
 });

@@ -1,0 +1,23 @@
+#!/bin/sh
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+entry=$(dirname "$self")/statechart.ts
+version() {
+  command -v "$1" >/dev/null || { echo 0; return; }
+  "$1" --version 2>/dev/null | sed -n '1s/[^0-9]*\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\1 \2 \3/p' | {
+    read -r major minor patch
+    echo $((${major:-0} * 1000000 + ${minor:-0} * 1000 + ${patch:-0}))
+  }
+}
+node=$(version node)
+if [ "$node" -ge 23006000 ] || { [ "$node" -ge 22018000 ] && [ "$node" -lt 23000000 ]; }; then
+  exec node --disable-warning=ExperimentalWarning "$entry" "$@"
+fi
+echo "statechart needs Node 22.19 or later with TypeScript support." >&2
+exit 127
