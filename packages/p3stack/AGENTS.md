@@ -102,15 +102,22 @@ The Pocock source keeps its former staged validation. `npm run check` lints ever
 ## Helper scripts
 
 Upstream's scripts under `skills/poteto-mode/scripts/` target Bun. Token rules
-turn them into Node scripts that Node 22.19's built-in type stripping runs:
-shebangs, `import.meta.dir`/`main`, the dependency bootstrap (dropped; `commander`
-is a package dependency), and `bun:test` imports, which point at the hand-written
-shims `extra/skills/poteto-mode/scripts/bun-test.ts` (Bun's `expect` on
-`node:test`) and `bun-compat.ts` (`Bun.spawn`/`spawnSync`). Code Node cannot strip
-(a TypeScript parameter property) gets a rule that rewrites it to erasable
-syntax. `worktree-audit.sh` is the one patch: it reads Pi sessions instead of
-Cursor transcripts and runs on Linux as well as macOS. `npm test` runs upstream's
-own script tests; `npm run check` typechecks `watch-pr`.
+turn the surviving watch-pr launcher into a Node script: its shebang and dependency
+bootstrap are translated, with `commander` supplied by the package. `import.meta.dir`
+and `bun:test` imports use Node equivalents and the hand-written test shims in
+`extra/skills/poteto-mode/scripts/`. Orchestrate no longer ships a CLI or store.
+`worktree-audit.sh` is the one patch: it reads Pi sessions instead of Cursor
+transcripts and runs on Linux as well as macOS. `npm test` runs upstream's
+script tests; `npm run check` typechecks `watch-pr`.
+
+Statechart ships a TypeScript compiler and a Node launcher. The manifest maps its
+`loop-check.ts` pass to `cycle-check.ts`, with a matching import rewrite, to keep
+the coupling deny list intact. Slash-command translation applies only to Markdown,
+never executable paths. The statechart test adapter copies upstream suites into a
+disposable fixture, resolves the declared `fast-check` dependency, and runs the
+compiler, recorded corpus, CLI, and differential tests. Real TLC and renderer
+cases require existing tools; tests never provision them. A separate test drives
+the emitted launcher against the recorded corpus.
 
 ## Writing rules
 

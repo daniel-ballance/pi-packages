@@ -7,7 +7,7 @@
 - Old: `ab69380dd50ee47d426b35cb8369cffdddafc218`.
 - Candidate: `1ba91fc25c0977741dd0e267849e6234b037ed0a`.
 - [Upstream comparison](https://github.com/cursor/plugins/compare/ab69380dd50ee47d426b35cb8369cffdddafc218...1ba91fc25c0977741dd0e267849e6234b037ed0a).
-- Maintenance PR: pending creation after validation.
+- Maintenance PR: [#87](https://github.com/daniel-ballance/pi-packages/pull/87).
 
 ## Upstream scope
 
