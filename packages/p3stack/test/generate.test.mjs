@@ -149,6 +149,7 @@ test("slash commands discover emitted skill paths, including new skills and prin
     "vendor/up/skills/principle-future/SKILL.md": "# Principle\n",
     "vendor/up/skills/omitted/SKILL.md": "# Omitted\n",
     "vendor/up/agents/helper.md": "Run /future-check.\n",
+    "vendor/up/skills/demo/launcher": 'entry=$(dirname "$self")/future-check.ts\n',
     "vendor/up/skills/demo/commands.md": "/demo /future-check /principle-future /not-a-skill /omitted /principle-missing\n/skill:future-check docs/future-check https://example.test/future-check ./future-check ../future-check /future-check-more /future-check_word\n",
     "rules/manifest.json": manifest({ map: [{ from: "skills/", to: "skills/" }, { from: "agents/", to: "agents/" }], exclude: ["^skills/omitted/"] }),
     "rules/tokens.json": JSON.stringify([{ ...rule, min: 1 }]),
@@ -159,6 +160,7 @@ test("slash commands discover emitted skill paths, including new skills and prin
     generate({ packageDir: root, outDir: out });
     assert.equal(read("skills/future-check/SKILL.md"), "# Future\n\nRun /skill:future-check and /skill:principle-future.\n");
     assert.equal(read("agents/helper.md"), "Run /skill:future-check.\n");
+    assert.equal(read("skills/demo/launcher"), 'entry=$(dirname "$self")/future-check.ts\n');
     assert.equal(read("skills/demo/commands.md"), "/skill:demo /skill:future-check /skill:principle-future /not-a-skill /omitted /principle-missing\n/skill:future-check docs/future-check https://example.test/future-check ./future-check ../future-check /future-check-more /future-check_word\n");
   } finally { dispose(); }
 });
