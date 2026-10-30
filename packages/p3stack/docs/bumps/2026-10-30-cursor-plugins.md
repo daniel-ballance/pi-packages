@@ -34,6 +34,7 @@ Complete streams and exit codes are outside the checkout at `/tmp/p3stack-maint-
 - The root gate passed with the exact final marker. See `cursor/root.log`.
 - The installed Pi 1.4.0 smoke used `openai-codex/gpt-6.1-sol` with explicit `xhigh` thinking and disposable settings. The first reply added a period and failed the exact-reply assertion. Its stream is retained in `cursor/first-smoke.jsonl`. The retry passed with exactly `p3stack smoke ok`, exit zero, and no loader diagnostics. See `cursor/smoke.jsonl` and `cursor/smoke-verified.log`.
 - Routing eval is skipped because routes and chains did not change.
+- The normal suites skip optional TLC checks because `TLA2TOOLS` is unset and renderer checks because their packages are absent. The root suite also skips opt-in Herdr end-to-end tests and the pnpm-only production case under npm. These are skips, not verified passes. No tools were installed to enable them.
 
 ## Follow-up
 
