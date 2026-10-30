@@ -23,7 +23,11 @@ function fixture(t) {
     writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
   };
   const bridge = "export const fixtureBridge = true;\n";
-  const pin = { version: "fixture-version", bridgeSha256: hash(bridge), statePaths, directTools: tools, beforeAgentStartReturn: { systemPrompt: "string" } };
+  const pin = {
+    version: "fixture-version", bridgeSha256: hash(bridge), statePaths, directTools: tools, beforeAgentStartReturn: { systemPrompt: "string" },
+    reviewed: { release: "fixture-release", commit: "a".repeat(40) },
+    watch: [{ path: "packages/contracts/src/orchestratorMcp.ts", contract: "fixture contract", dependents: ["packages/p3stack/rules/t3-pin.json"] }],
+  };
   const hostMap = tools.map(name => `\`mcp__t3-code__${name}\``).join("\n") + "\n`mcp__t3-code__html_preview`\n`mcp__t3-code__preview_*`\n";
   write("rules/t3-pin.json", pin);
   write("home/.t3/runtime/service-state.json", { activeVersion: "fixture-version" });
@@ -69,6 +73,8 @@ for (const [name, mutate, diagnostic] of [
   ["duplicate direct tools", f => f.write("rules/t3-pin.json", { ...f.pin, directTools: ["task_status", "task_status"] }), /Invalid rules/],
   ["invalid state layout", f => f.write("rules/t3-pin.json", { ...f.pin, statePaths: [{}] }), /Invalid rules/],
   ["incompatible prompt return", f => f.write("rules/t3-pin.json", { ...f.pin, beforeAgentStartReturn: { systemPrompt: "object" } }), /Unsupported beforeAgentStartReturn/],
+  ["missing reviewed commit", f => f.write("rules/t3-pin.json", { ...f.pin, reviewed: { release: "x" } }), /reviewed/],
+  ["duplicate watch path", f => f.write("rules/t3-pin.json", { ...f.pin, watch: [f.pin.watch[0], f.pin.watch[0]] }), /watch/],
 ]) {
   test(`static contract rejects ${name}`, t => {
     const f = fixture(t);
@@ -184,4 +190,104 @@ test("repository contract retains required direct tools and the prompt return sh
   assert.deepEqual(pin.statePaths, statePaths);
   assert.deepEqual(pin.directTools, tools);
   assert.deepEqual(pin.beforeAgentStartReturn, { systemPrompt: "string" });
+  assert.deepEqual(pin.reviewed, { release: "v0.1.3-nightly.20261026.3717", commit: "1316d48b0c68151afd8b47eb0c11a114cf0b4daa" });
+  assert.deepEqual(pin.watch.map(entry => entry.path), [
+    "packages/contracts/src/orchestratorMcp.ts",
+    "packages/provider-pi/src/server/mcpExtensionSource.ts",
+    "packages/provider-pi/src/server/mcpInjection.ts",
+    "packages/provider-pi/src/server/adapter.ts",
+    "apps/server/src/orchestration-v2/Orchestrator.ts",
+    "apps/server/src/orchestration-v2/ProviderContinuationService.ts",
+    "packages/provider-core/src/server/orchestrationInstructions.ts",
+    "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+    "apps/server/src/mcp/toolkits/pullRequests/tools.ts",
+  ]);
+});
+
+test("static contract rejects a dependents path that is not in the repository", t => {
+  const f = fixture(t);
+  f.write("rules/t3-pin.json", { ...f.pin, watch: [{ path: "a.ts", contract: "fixture contract", dependents: ["no/such/dependent.ts"] }] });
+  const result = f.run([], "empty-home");
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /dependents path does not exist: no\/such\/dependent\.ts/);
+});
+
+function sourceRepo(t) {
+  const root = mkdtempSync(join(tmpdir(), "p3stack-t3-src-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = args => {
+    const result = spawnSync("git", ["-c", "user.email=pin@example.com", "-c", "user.name=pin", "-c", "commit.gpgsign=false", ...args], { cwd: root, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git(["init", "-b", "main"]);
+  writeFileSync(join(root, "watched.txt"), "v1\n");
+  writeFileSync(join(root, "other.txt"), "same\n");
+  git(["add", "watched.txt", "other.txt"]);
+  git(["commit", "-m", "base"]);
+  return { root, git, commit: git(["rev-parse", "HEAD"]) };
+}
+
+function sourcePin(f, commit, watch) {
+  f.write("rules/t3-pin.json", { ...f.pin, reviewed: { release: "fixture-release", commit }, watch });
+}
+
+test("--source reports no watched change when the checkout matches the reviewed commit", t => {
+  const f = fixture(t);
+  const repo = sourceRepo(t);
+  const watch = [
+    { path: "watched.txt", contract: "options stay {id, values}", dependents: ["not-in-this-repo.md"] },
+    { path: "other.txt", contract: "wake text stays anchored", dependents: ["also-missing.md"] },
+  ];
+  sourcePin(f, repo.commit, watch);
+  const result = f.run(["--source", repo.root]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "No watched T3 file changed since fixture-release.");
+});
+
+test("--source names each watched file that changed, with its contract and dependents", t => {
+  const f = fixture(t);
+  const repo = sourceRepo(t);
+  writeFileSync(join(repo.root, "watched.txt"), "v2\n");
+  repo.git(["add", "watched.txt"]);
+  repo.git(["commit", "-m", "change"]);
+  const watch = [
+    { path: "watched.txt", contract: "options stay {id, values}", dependents: ["roles.ts", "mode.ts"] },
+    { path: "other.txt", contract: "wake text stays anchored", dependents: ["mode.ts"] },
+  ];
+  sourcePin(f, repo.commit, watch);
+  const result = f.run(["--source", repo.root, "--ref", "HEAD"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^watched\.txt\noptions stay \{id, values\}\nroles\.ts\nmode\.ts\n/);
+  assert.doesNotMatch(result.stdout, /other\.txt/);
+  assert.match(result.stdout, /1 of 2 watched T3 files changed since fixture-release; review each contract above\.\n$/);
+});
+
+test("--source reports a watched path missing at the ref", t => {
+  const f = fixture(t);
+  const repo = sourceRepo(t);
+  sourcePin(f, repo.commit, [{ path: "missing.txt", contract: "must exist", dependents: ["roles.ts"] }]);
+  const result = f.run(["--source", repo.root, "--ref", "HEAD"]);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /watched path missing at HEAD: missing\.txt/);
+  assert.doesNotMatch(result.stdout, /watched T3 file changed/);
+});
+
+test("--source exits with git's message for a bad commit", t => {
+  const f = fixture(t);
+  const repo = sourceRepo(t);
+  sourcePin(f, repo.commit, [{ path: "watched.txt", contract: "options stay {id, values}", dependents: ["roles.ts"] }]);
+  const result = f.run(["--source", repo.root, "--ref", "not-a-commit"]);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /fatal:.*not-a-commit/);
+  assert.doesNotMatch(result.stderr, /watched path missing/);
+});
+
+test("--source rejects mixes with other modes and a ref without a source", t => {
+  const f = fixture(t);
+  for (const args of [["--source", f.root, "--installed"], ["--source", f.root, "--doctor", "a"], ["--ref", "HEAD"], ["--source"], ["--source", "--ref", "HEAD"], ["--source", f.root, "--state", "a"], ["--source", f.root, "--bridge", "a"], ["--doctor", "a", "--source", f.root]]) {
+    const result = f.run(args);
+    assert.equal(result.status, 2, `${args.join(" ")}\n${result.stderr}`);
+    assert.match(result.stderr, /Usage/);
+  }
 });

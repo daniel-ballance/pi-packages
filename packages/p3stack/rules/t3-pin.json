@@ -18,5 +18,93 @@
   ],
   "beforeAgentStartReturn": {
     "systemPrompt": "string"
-  }
+  },
+  "reviewed": {
+    "release": "v0.1.3-nightly.20261026.3717",
+    "commit": "1316d48b0c68151afd8b47eb0c11a114cf0b4daa"
+  },
+  "watch": [
+    {
+      "path": "packages/contracts/src/orchestratorMcp.ts",
+      "contract": "capabilities model options are `{id, values}`; delegate_task input fields (target, role, mode, isolation) and the `next` literal",
+      "dependents": [
+        "packages/p3stack/extensions/p3stack/src/roles.ts",
+        "packages/p3stack/extensions/p3stack/src/brief.ts",
+        "packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md",
+        "packages/p3stack/test/extension.test.ts",
+        "packages/p3stack/test/fixtures/t3-orchestrator-capabilities.json"
+      ]
+    },
+    {
+      "path": "packages/provider-pi/src/server/mcpExtensionSource.ts",
+      "contract": "bridge registers `mcp__t3-code__*`, direct tools, deferred exposure, the `t3_code_orchestration` prompt section, the tool_call permission gate",
+      "dependents": [
+        "packages/p3stack/extensions/p3stack/src/doctor.ts",
+        "packages/p3stack/extensions/p3stack/src/roles.ts",
+        "packages/p3stack/todo/extensions/todo/index.ts",
+        "packages/p3stack/rules/t3-pin.json",
+        "packages/p3stack/test/extension.test.ts"
+      ]
+    },
+    {
+      "path": "packages/provider-pi/src/server/mcpInjection.ts",
+      "contract": "launch sets `T3_MCP_URL` and `T3_PI_MCP_EXTENSION_PATH` per session and passes the bridge with `--extension`",
+      "dependents": [
+        "shared/host.ts",
+        "packages/p3stack/extensions/p3stack/src/doctor.ts",
+        "packages/p3stack/docs/landing/t3-settings.md",
+        "shared/host.test.ts"
+      ]
+    },
+    {
+      "path": "packages/provider-pi/src/server/adapter.ts",
+      "contract": "dialogs become T3 requests, notify becomes an in-turn notice, setStatus/setWidget/footer are dropped, agent_start outside a turn becomes a continuation or stops the session",
+      "dependents": [
+        "packages/p3stack/extensions/p3stack/src/ask.ts",
+        "packages/p3stack/extensions/p3stack/src/mode.ts",
+        "packages/p3stack/todo/extensions/todo/index.ts",
+        "packages/self-reload/extensions/self-reload/index.ts",
+        "packages/p3stack/test/extension.test.ts",
+        "packages/p3stack/todo/test/extension.test.ts"
+      ]
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+      "contract": "completion wake text starts `Delegated task node:delegated-task:`",
+      "dependents": [
+        "packages/p3stack/extensions/p3stack/src/mode.ts",
+        "packages/p3stack/test/extension.test.ts"
+      ]
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/ProviderContinuationService.ts",
+      "contract": "fallback wake texts `Delegated task(s) ... reached ...` and `Background task completed.`",
+      "dependents": [
+        "packages/p3stack/extensions/p3stack/src/mode.ts",
+        "packages/p3stack/test/extension.test.ts"
+      ]
+    },
+    {
+      "path": "packages/provider-core/src/server/orchestrationInstructions.ts",
+      "contract": "the orchestration guidance T3 adds to Pi's prompt agrees with the host map",
+      "dependents": [
+        "packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md"
+      ]
+    },
+    {
+      "path": "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+      "contract": "delegate, status, cancel and schedule tool descriptions (follow `next`, no polling)",
+      "dependents": [
+        "packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md",
+        "packages/p3stack/test/host-capabilities.test.mjs"
+      ]
+    },
+    {
+      "path": "apps/server/src/mcp/toolkits/pullRequests/tools.ts",
+      "contract": "PR watch tools are hidden from subagent threads",
+      "dependents": [
+        "packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md"
+      ]
+    }
+  ]
 }
