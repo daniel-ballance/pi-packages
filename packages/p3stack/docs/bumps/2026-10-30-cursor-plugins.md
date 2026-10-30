@@ -7,7 +7,7 @@
 - Old: `1ba91fc25c0977741dd0e267849e6234b037ed0a`.
 - New: `4dd1d05818d19792e7cd6e818f1667f95f7e1dbe`.
 - [Upstream comparison](https://github.com/cursor/plugins/compare/1ba91fc25c0977741dd0e267849e6234b037ed0a...4dd1d05818d19792e7cd6e818f1667f95f7e1dbe).
-- [Shared maintenance PR](https://github.com/daniel-ballance/pi-packages/pulls?q=is%3Apr+head%3Achore%2Fp3stack-cursor-tip-8a2c6883).
+- [Shared maintenance PR #89](https://github.com/daniel-ballance/pi-packages/pull/89).
 
 ## Upstream scope
 
