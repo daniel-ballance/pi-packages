@@ -17,7 +17,8 @@ test("registry admits 21 Pocock, 57 pstack, and five owner skills with reasons f
   for (const [source, count] of [["matt-pocock", 21], ["cursor-plugins", 57], ["owner-plugins", 5]]) {
     assert.equal(skills.filter(row => row.source === source && row.action === "emit").length, count, source);
   }
-  assert.equal(skills.filter(row => row.action === "drop").length, 24);
+  assert.equal(skills.filter(row => row.action === "drop").length, 25);
+  assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
   for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").invocation, "user");
   assert.equal(skills.find(row => row.name === "code-review").invocation, "model");

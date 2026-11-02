@@ -1180,6 +1180,12 @@
   },
   {
     "source": "matt-pocock",
+    "path": "skills/in-progress/software-factory/SKILL.md",
+    "action": "drop",
+    "reason": "In-progress remote factory design is outside the supported engineering and productivity maps; retain the existing bounded workflows instead."
+  },
+  {
+    "source": "matt-pocock",
     "path": "skills/in-progress/writing-beats/SKILL.md",
     "action": "drop",
     "reason": "In-progress article writing is outside the engineering scope."

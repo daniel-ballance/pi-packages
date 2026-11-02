@@ -54,4 +54,4 @@ Request an explicit upstream bump to continue through scope review, generator re
 
 MIT. See [LICENSE](LICENSE) and [LICENSE-matt-pocock](LICENSE-matt-pocock). Upstream pins follow.
 
-<!-- p3stack:upstream -->`cursor/plugins` [`4dd1d05`](https://github.com/cursor/plugins/tree/4dd1d05818d19792e7cd6e818f1667f95f7e1dbe/pstack), pstack 0.15.36; `mattpocock/skills` [`a496f55`](https://github.com/mattpocock/skills/tree/a496f5513d4a4cf889bc48e189e579f4b0bdf6aa); `cursor/plugins` [`4dd1d05`](https://github.com/cursor/plugins/tree/4dd1d05818d19792e7cd6e818f1667f95f7e1dbe)<!-- /p3stack:upstream -->.
+<!-- p3stack:upstream -->`cursor/plugins` [`4dd1d05`](https://github.com/cursor/plugins/tree/4dd1d05818d19792e7cd6e818f1667f95f7e1dbe/pstack), pstack 0.15.36; `mattpocock/skills` [`4ae2317`](https://github.com/mattpocock/skills/tree/4ae2317ddb22b046e26455e4f9c9b3aaaf62212d); `cursor/plugins` [`4dd1d05`](https://github.com/cursor/plugins/tree/4dd1d05818d19792e7cd6e818f1667f95f7e1dbe)<!-- /p3stack:upstream -->.
