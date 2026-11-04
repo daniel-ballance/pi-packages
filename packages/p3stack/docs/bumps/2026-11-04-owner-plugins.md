@@ -7,7 +7,7 @@
 - Old pin: `ae5650febf4320793844c12c4adaa937f417f8da`.
 - New pin: `180939f9e59cc9512e9330649175763e81fad16f`.
 - [Upstream comparison](https://github.com/cursor/plugins/compare/ae5650febf4320793844c12c4adaa937f417f8da...180939f9e59cc9512e9330649175763e81fad16f).
-- Maintenance PR: URL recorded after creation.
+- [Maintenance PR](https://github.com/daniel-ballance/pi-packages/pull/93).
 
 ## Upstream scope
 
@@ -29,7 +29,7 @@ All commands run from the repository root with frozen npm dependencies. Each rec
 - [Generation check](file:///tmp/p3stack-maint-8a7a4cbf/cursor-pin-check.stdout), [registry coverage](file:///tmp/p3stack-maint-8a7a4cbf/cursor-registry.stdout), [package check](file:///tmp/p3stack-maint-8a7a4cbf/cursor-package-check.stdout), and [tests](file:///tmp/p3stack-maint-8a7a4cbf/cursor-package-tests.stdout) exited 0. Coverage remains 87 emitted, 25 dropped, 0 unclassified. The four authored rows also pass the [canonical registry](file:///tmp/p3stack-maint-8a7a4cbf/audit-authored-registry-v2.stdout).
 - [Static T3 contract](file:///tmp/p3stack-maint-8a7a4cbf/cursor-static.stdout), [host lint](file:///tmp/p3stack-maint-8a7a4cbf/cursor-host-lint.stdout), and the [live doctor](file:///tmp/p3stack-maint-8a7a4cbf/cursor-doctor.stdout) exited 0. [Live host review](file:///tmp/p3stack-maint-8a7a4cbf/live-host-review.md) records catalog and prompt behavior checks.
 - [Local loader](file:///tmp/p3stack-maint-8a7a4cbf/cursor-loader.stdout) lists this worktree's p3stack package. The [fresh-process smoke](file:///tmp/p3stack-maint-8a7a4cbf/cursor-smoke-v2.stdout) and [assertions](file:///tmp/p3stack-maint-8a7a4cbf/cursor-smoke-verify-v2.stdout) passed with `openai-codex/gpt-6.1-sol:xhigh` on installed Pi 1.5.0. No model substitution, resource errors, extension failures, or skill collisions.
-- [Candidate root gate](file:///tmp/p3stack-maint-8a7a4cbf/cursor-root.stdout) exited 0 with `Root check passed.`. The committed pre-push hook must pass again on every push.
+- [Candidate root gate](file:///tmp/p3stack-maint-8a7a4cbf/cursor-root.stdout) exited 0 with `Root check passed.`. The [committed pre-push hook](file:///tmp/p3stack-maint-8a7a4cbf/cursor-push.stderr) passed on the source commit. It runs again for the PR-link note update. The hook deletes its successful temporary log. The full direct root-check stream is retained above.
 - Routing eval skipped because routes and chains did not change.
 
 The first candidate smoke returned a final period and failed its exact-reply assertion. The failed streams remain in `cursor-smoke.*` and `cursor-smoke-verify.*`. A fresh process with an unambiguous punctuation instruction passed. The first ad hoc authored audit assumed all inputs were plain Markdown. Its failure remains in `audit-authored-registry.*`; the canonical registry audit above handles the router template.
