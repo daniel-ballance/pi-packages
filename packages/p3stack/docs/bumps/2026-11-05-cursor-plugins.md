@@ -7,7 +7,7 @@
 - Old SHA: `ae5650febf4320793844c12c4adaa937f417f8da`.
 - Candidate SHA: `bb68f2365eceafa0cb2d253112f675acf5f144cc`.
 - [Upstream comparison](https://github.com/cursor/plugins/compare/ae5650febf4320793844c12c4adaa937f417f8da...bb68f2365eceafa0cb2d253112f675acf5f144cc).
-- Maintenance PR: pending creation after validation.
+- [Maintenance PR #94](https://github.com/daniel-ballance/pi-packages/pull/94), shared by both sources.
 
 ## Upstream scope
 
@@ -32,7 +32,7 @@ Receipts are outside the checkout at `/tmp/p3stack-maint-167670da`. The audit ba
 - The repeated generation has an identical diff. See `cursor/regenerate-repeat.log` and both `cursor/generated-*.diff` snapshots.
 - Installed Pi 1.5.0 lists the local package, passes the live T3 doctor, and returns exactly `p3stack smoke ok`. The model is `openai-codex/gpt-6.1-sol:xhigh`. See `cursor/loader-smoke.log`, the individual loader, doctor, and smoke streams, and `host-behavior.md`.
 - Candidate root gate passed with `Root check passed.` in `cursor/root.log`.
-- Routing eval is skipped because routes and chains did not change.
+- Routing eval is skipped because routes and chains did not change. Optional real-TLC test cases are skipped when `TLA2TOOLS` is not configured. No tools were installed to run them.
 - Scope review and comment review found no required repairs. See `cursor/decisions.md`, `cursor/upstream-scope.log`, and `comment-review.md`. Expected skill-resource orphan warnings are not errors.
 
 ## Follow-up
