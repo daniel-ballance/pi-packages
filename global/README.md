@@ -9,7 +9,7 @@ Pi and Omarchy can write those files while running. Read the main checkout's `gi
 | File | Purpose |
 | --- | --- |
 | `settings.json` | Global preferences and the root package declaration |
-| `models.json` | Model metadata overrides and the Halogen LAN provider |
+| `models.json` | Model metadata overrides |
 | `mcp.json` | Native Pi MCP server configuration |
 | `subagents.json` | Global child allowlist and the Claude provider mapping |
 
