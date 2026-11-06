@@ -100,39 +100,6 @@
           }
         }
       }
-    },
-    "halogen": {
-      "baseUrl": "http://192.168.4.58:8080/v1",
-      "api": "openai-completions",
-      "apiKey": "halogen",
-      "models": [
-        {
-          "id": "qwen3.8-flash-next-w4b",
-          "name": "Qwen 3.8 Flash Next (Halogen)",
-          "reasoning": true,
-          "input": [
-            "text",
-            "image"
-          ],
-          "contextWindow": 262144,
-          "maxTokens": 65536,
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
-          "thinkingLevelMap": {
-            "off": "none",
-            "minimal": "minimal",
-            "low": "low",
-            "medium": "medium",
-            "high": "high",
-            "xhigh": "xhigh",
-            "max": null
-          }
-        }
-      ]
     }
   }
 }
