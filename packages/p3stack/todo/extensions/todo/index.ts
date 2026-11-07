@@ -47,7 +47,7 @@ export default function todo(pi: ExtensionAPI) {
   let workSinceTodo = false;
 
   const showWidget = (ctx: ExtensionContext) => {
-    if (!ctx.hasUI) return;
+    if (!ctx.hasUI || ctx.mode !== "tui") return;
     const shown = list;
     // A component, not lines: Pi cuts a widget's lines at ten, and this one decides what to leave out.
     ctx.ui.setWidget(ENTRY, shown.items.some(isOpen) ? (_tui, theme) => ({ render: width => widgetLines(shown, width, theme), invalidate() {} }) : undefined);

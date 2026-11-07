@@ -122,24 +122,43 @@ export function readCatalog(pi: CatalogApi): Catalog | undefined {
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
-function t3Selections(data: unknown): Selection[] {
+const THINKING_OPTION = /thinking|reasoning|effort/i;
+const unrecognized = (problems: string[], provider: string, model: string) => {
+  problems.push(`T3 catalog option shape not recognized for ${provider}/${model}`);
+};
+
+function t3Selections(data: unknown, problems: string[]): Selection[] {
   const catalog = record(data);
   return array(catalog.providers).flatMap(raw => {
     const provider = record(raw);
     if (provider.canRunChildTask !== true || typeof provider.providerInstanceId !== "string") return [];
-    return array(provider.models).flatMap(raw => {
+    const providerId = provider.providerInstanceId;
+    if (!Array.isArray(provider.models)) {
+      unrecognized(problems, providerId, "unknown");
+      return [];
+    }
+    return provider.models.flatMap(raw => {
       const model = record(raw);
-      if (typeof model.id !== "string") return [];
-      const target: Target = { providerInstanceId: provider.providerInstanceId as string, model: model.id };
+      if (typeof model.id !== "string") {
+        unrecognized(problems, providerId, "unknown");
+        return [];
+      }
+      const modelId = model.id;
+      const target: Target = { providerInstanceId: providerId, model: modelId };
       const inherited = target.providerInstanceId === catalog.inheritedProviderInstanceId && target.model === catalog.inheritedModel ? target : undefined;
-      const thinking = array(model.options).map(record).find(option => option.type === "select" && /thinking|reasoning|effort/i.test(String(option.id)));
-      if (!thinking) return [{ model: model.id, value: target, inherited }];
-      return array(thinking.options).flatMap(raw => {
-        const choice = record(raw);
-        return typeof choice.id === "string" && LEVELS.includes(choice.id)
-          ? [{ model: model.id as string, level: choice.id, inherited, value: { ...target, options: [{ id: String(thinking.id), value: choice.id }] } }]
-          : [];
-      });
+      if (model.options === undefined) return [{ model: modelId, value: target, inherited }];
+      if (!Array.isArray(model.options)) {
+        unrecognized(problems, providerId, modelId);
+        return [];
+      }
+      const thinking = model.options.map(record).find(option => typeof option.id === "string" && THINKING_OPTION.test(option.id));
+      if (!thinking) return [{ model: modelId, value: target, inherited }];
+      const levels = Array.isArray(thinking.values) ? thinking.values.filter((value): value is string => typeof value === "string" && LEVELS.includes(value)) : [];
+      if (!levels.length) {
+        unrecognized(problems, providerId, modelId);
+        return [];
+      }
+      return levels.map(level => ({ model: modelId, level, inherited, value: { ...target, options: [{ id: String(thinking.id), value: level }] } }));
     });
   });
 }
@@ -147,15 +166,12 @@ function t3Selections(data: unknown): Selection[] {
 async function selections(pi: CatalogApi, ctx: RoleContext, problems: string[]): Promise<Selection[]> {
   if (pi.getAllTools().some(tool => tool.name === "mcp__t3-code__orchestrator_capabilities")) {
     const outcome = await ctx.executeTool("mcp__t3-code__orchestrator_capabilities", {});
-    if (outcome.isError) problems.push("T3 catalog call failed, using the subagents catalog");
-    else {
-      const result = outcome.result;
-      const payload = record(result.structuredContent);
-      if (result.isError || payload.isError) throw new Error("T3 catalog call failed");
-      const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
-      const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
-      return t3Selections(data);
-    }
+    const result = outcome.result;
+    const payload = record(result?.structuredContent);
+    const content = array(payload.content ?? result?.content).map(record).filter(part => part.type === "text" && typeof part.text === "string").map(part => part.text).join("\n");
+    if (outcome.isError || result?.isError || payload.isError) throw new Error(content || "T3 catalog call failed");
+    const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
+    return t3Selections(data, problems);
   }
   const catalog = readCatalog(pi);
   if (!catalog && pi.getAllTools().some(tool => tool.name === "subagent_catalog")) throw new Error("subagents catalog did not reply");

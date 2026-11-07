@@ -155,8 +155,8 @@ test("roles resolve against the live allowlist, clamp thinking down, and report 
 test("a registered T3 catalog takes precedence and returns ready targets with advertised thinking options", async () => {
   const h = harness({ subagents: { spawnEnabled: true, models: [] }, t3: { providers: [
     { providerInstanceId: "pi-main", canRunChildTask: true, models: [
-      { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "low" }, { id: "high" }] }] },
-      { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
+      { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", values: ["low", "high"] }] },
+      { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", values: ["xhigh"] }] },
     ] },
     { providerInstanceId: "unavailable", canRunChildTask: false, models: [{ id: "claude-opus-5-5" }] },
   ] } });
@@ -181,8 +181,8 @@ test("T3 bridge MCP envelopes resolve roles and preserve the inherited target wi
 
 test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or text", async () => {
   const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [
-    { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
-    { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "high" }] }] },
+    { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", values: ["xhigh"] }] },
+    { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", values: ["high"] }] },
   ] }] };
   for (const structuredContent of [{ content: [], structuredContent: capabilities }, undefined]) {
     const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: [] } });
@@ -204,25 +204,54 @@ test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or te
   }
 });
 
-test("a failed Pi tool-call outcome reports the T3 failure and resolves the subagents allowlist", async () => {
-  const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude-subscription/claude-opus-5-5" }] }] };
-  const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: ["claude-subscription/claude-opus-5-5:low", "xai/grok-4.7:low"] } });
+test("a failed T3 catalog call reports catalog unavailable and returns no terminal identities", async () => {
+  const h = harness({ t3: { providers: [] }, subagents: { spawnEnabled: true, models: ["claude-subscription/claude-opus-5-5:low", "xai/grok-4.7:low"] } });
   h.ctx.executeTool = async (name, args) => {
     assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
     assert.deepEqual(args, {});
     return {
       toolCall: { type: "toolCall", id: "call/1", name, arguments: args },
-      result: { content: [{ type: "text", text: "T3 unavailable" }], structuredContent: capabilities, details: {} },
+      result: { content: [{ type: "text", text: "T3 unavailable" }], structuredContent: { providers: [{ providerInstanceId: "pi", canRunChildTask: true, models: [{ id: "xai/grok-4.7" }] }] }, details: {} },
       isError: true,
     };
   };
   try {
     const result = await h.call("p3stack_roles", {});
-    assert.equal(result.structuredContent.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:low");
-    assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:low");
-    assert.equal(Object.keys(result.structuredContent.roles).length, 17);
-    assert.equal(result.structuredContent.problems.length, 1);
-    assert.match(text(result), /T3 catalog call failed/);
+    assert.deepEqual(result.structuredContent.roles, {});
+    assert.match(result.structuredContent.problems.join("\n"), /catalog unavailable,.*T3 unavailable/);
+    assert.doesNotMatch(text(result), /using the subagents catalog|claude-subscription\/claude-opus-5-5:low|xai\/grok-4\.7:(low|xhigh)/);
+  } finally { h.dispose(); }
+});
+
+test("a live T3 catalog resolves code and judgment roles to advertised option ids", async () => {
+  const capabilities = JSON.parse(readFileSync(new URL("./fixtures/t3-orchestrator-capabilities.json", import.meta.url), "utf8"));
+  const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: [] } });
+  try {
+    const result = (await h.call("p3stack_roles", {})).structuredContent;
+    assert.deepEqual(result.problems, []);
+    const advertised = (target: { providerInstanceId: string; model: string }) => capabilities.providers
+      .find((provider: { providerInstanceId: string }) => provider.providerInstanceId === target.providerInstanceId).models
+      .find((model: { id: string }) => model.id === target.model).options
+      .find((option: { id: string }) => /thinking|reasoning|effort/i.test(option.id));
+    for (const role of ["feature, refactoring", "judgment and prose"]) {
+      const target = result.roles[role];
+      const option = advertised(target);
+      assert.deepEqual(target.options.map((chosen: { id: string }) => chosen.id), [option.id], role);
+      assert.ok(option.values.includes(target.options[0].value), role);
+    }
+  } finally { h.dispose(); }
+});
+
+test("an unreadable T3 thinking option is reported instead of dropping its levels", async () => {
+  const h = harness({ t3: { providers: [
+    { providerInstanceId: "pi", canRunChildTask: true, models: [{ id: "xai/grok-4.7", options: [{ id: "thinking", values: ["ultra"] }] }] },
+    { providerInstanceId: "claudeAgent", canRunChildTask: true, models: { id: "claude-opus-5-5" } },
+  ] } });
+  try {
+    const result = (await h.call("p3stack_roles", {})).structuredContent;
+    assert.match(result.problems.join("\n"), /T3 catalog option shape not recognized for pi\/xai\/grok-4\.7/);
+    assert.match(result.problems.join("\n"), /T3 catalog option shape not recognized for claudeAgent\/unknown/);
+    assert.equal(result.roles["feature, refactoring"], undefined);
   } finally { h.dispose(); }
 });
 
@@ -259,6 +288,26 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
     assert.match(reminders[0].content, /call `p3stack_roles` for the role models/);
     assert.doesNotMatch(reminders[0].content, /role models above/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
+    const wakes = [
+      "Delegated task node:delegated-task:abc (review) [completed]:\nDone.\n\nDelegated task node:delegated-task:def reached a terminal state.\nUse task_status with taskId node:delegated-task:def to read the result.",
+      "Delegated task node:delegated-task:abc reached a terminal state. Use task_status with taskId node:delegated-task:abc to read the result.",
+      "Delegated tasks node:delegated-task:abc, node:delegated-task:def reached terminal states. Use task_status with each taskId to read the results.",
+      "Background task completed.",
+    ];
+    const restoreHost = asT3();
+    try {
+      for (const prompt of wakes) {
+        const event = { messageType: "user", prompt, systemPromptOptions: { sections: {} as Record<string, string | undefined> } };
+        assert.deepEqual(await h.reminders(event), [], prompt);
+        assert.match(event.systemPromptOptions.sections.p3stack ?? "", /Read /);
+      }
+      assert.equal((await h.reminders({ messageType: "user", prompt: "Fix the parser.", systemPromptOptions: { sections: {} } })).length, 1);
+      assert.equal((await h.reminders({ messageType: "user", prompt: "Please check Delegated task node:delegated-task:abc before you edit.", systemPromptOptions: { sections: {} } })).length, 1);
+    } finally { restoreHost(); }
+    const restoreTerminal = asTerminal();
+    try {
+      assert.equal((await h.reminders({ messageType: "user", prompt: wakes[3], systemPromptOptions: { sections: {} } })).length, 1, "a terminal prompt is never a T3 wake");
+    } finally { restoreTerminal(); }
     await h.command("p3stack", "off");
     assert.deepEqual(h.notices.at(-1), ["p3stack is off.", "info"]);
     const off = await h.emit("before_agent_start", { systemPromptOptions: { sections: { "p3stack": "stale" } } });
@@ -520,6 +569,12 @@ function asTerminal() {
   const previous = process.env.T3_MCP_URL;
   delete process.env.T3_MCP_URL;
   return () => { if (previous !== undefined) process.env.T3_MCP_URL = previous; };
+}
+
+function asT3() {
+  const previous = process.env.T3_MCP_URL;
+  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+  return () => { if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; };
 }
 
 test("/p3stack-setup maps a budget and two models onto every role and writes the file", async () => {

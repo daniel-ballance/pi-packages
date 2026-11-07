@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -24,6 +25,60 @@ function checkContract(pin, hostMap) {
   const documented = documentedTools(hostMap);
   const missing = requiredTools(pin).filter(name => !documented.has(name));
   if (missing.length) throw new Error(missing.map(name => `host map is missing required direct tool ${name}`).join("\n"));
+  const reviewed = pin.reviewed;
+  if (!reviewed || typeof reviewed.release !== "string" || !reviewed.release || typeof reviewed.commit !== "string" || !/^[a-f0-9]{40}$/.test(reviewed.commit)) {
+    throw new Error("Invalid rules/t3-pin.json reviewed. Expected a release string and a 40-hex commit.");
+  }
+  if (!Array.isArray(pin.watch) || !pin.watch.length) throw new Error("Invalid rules/t3-pin.json watch. Expected a non-empty list.");
+  const paths = new Set();
+  for (const entry of pin.watch) {
+    if (!entry || typeof entry.path !== "string" || !entry.path || paths.has(entry.path) || typeof entry.contract !== "string" || !entry.contract ||
+        !Array.isArray(entry.dependents) || !entry.dependents.length || entry.dependents.some(dep => typeof dep !== "string" || !dep)) {
+      throw new Error("Invalid rules/t3-pin.json watch. Expected unique paths, a non-empty contract, and a non-empty dependents list.");
+    }
+    paths.add(entry.path);
+  }
+}
+
+function git(checkout, args) {
+  const result = spawnSync("git", ["-C", checkout, ...args], { encoding: "utf8" });
+  if (result.error) return { ok: false, message: result.error.message };
+  if (result.status !== 0) return { ok: false, message: (result.stderr || result.stdout || "git failed").trimEnd() };
+  return { ok: true, stdout: result.stdout ?? "" };
+}
+
+function sourceReport(pin, checkout, ref) {
+  for (const object of [ref, pin.reviewed.commit]) {
+    const present = git(checkout, ["cat-file", "-e", object]);
+    if (!present.ok) {
+      console.error(present.message);
+      return 1;
+    }
+  }
+  const missing = pin.watch.filter(entry => !git(checkout, ["cat-file", "-e", `${ref}:${entry.path}`]).ok).map(entry => entry.path);
+  if (missing.length) {
+    for (const path of missing) console.error(`watched path missing at ${ref}: ${path}`);
+    return 1;
+  }
+  const diff = git(checkout, ["diff", "--name-only", pin.reviewed.commit, ref, "--", ...pin.watch.map(entry => entry.path)]);
+  if (!diff.ok) {
+    console.error(diff.message);
+    return 1;
+  }
+  const changedNames = new Set(diff.stdout.split("\n").filter(Boolean));
+  const changed = pin.watch.filter(entry => changedNames.has(entry.path));
+  if (changed.length) console.log(changed.map(entry => [entry.path, entry.contract, ...entry.dependents].join("\n")).join("\n\n"));
+  const release = pin.reviewed.release;
+  console.log(changed.length
+    ? `${changed.length} of ${pin.watch.length} watched T3 files changed since ${release}; review each contract above.`
+    : `No watched T3 file changed since ${release}.`);
+  return 0;
+}
+
+function assertDependents(pin) {
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+  const missing = [...new Set(pin.watch.flatMap(entry => entry.dependents))].filter(path => !existsSync(join(repoRoot, path)));
+  if (missing.length) throw new Error(missing.map(path => `dependents path does not exist: ${path}`).join("\n"));
 }
 
 function doctorProblems(dump, pin, hostMap) {
@@ -55,18 +110,19 @@ function installedDiagnostics(pin, options) {
 }
 
 function main(args) {
-  const usage = "Usage: node generator/check-t3-pin.mjs [--installed [--state <file>] [--bridge <file>] | --doctor <file>]";
+  const usage = "Usage: node generator/check-t3-pin.mjs [--installed [--state <file>] [--bridge <file>] | --doctor <file> | --source <checkout> [--ref <ref>]]";
   const options = new Map();
   for (let index = 0; index < args.length; index++) {
     const flag = args[index];
     const value = flag === "--installed" ? true : args[++index];
-    if (!["--installed", "--state", "--bridge", "--doctor"].includes(flag) || options.has(flag) || !value || (typeof value === "string" && value.startsWith("--"))) {
+    if (!["--installed", "--state", "--bridge", "--doctor", "--source", "--ref"].includes(flag) || options.has(flag) || !value || (typeof value === "string" && value.startsWith("--"))) {
       console.error(usage);
       return 2;
     }
     options.set(flag, value);
   }
-  if ((options.has("--doctor") && options.size > 1) || ((options.has("--state") || options.has("--bridge")) && !options.has("--installed"))) {
+  if ((options.has("--doctor") && options.size > 1) || ((options.has("--state") || options.has("--bridge")) && !options.has("--installed")) ||
+      (options.has("--ref") && !options.has("--source")) || (options.has("--source") && (options.has("--installed") || options.has("--doctor") || options.has("--state") || options.has("--bridge")))) {
     console.error(usage);
     return 2;
   }
@@ -81,7 +137,10 @@ function main(args) {
       console.log("T3 doctor capabilities match rules/t3-pin.json and the host map; behavioral verification is still required.");
     } else if (options.has("--installed")) {
       installedDiagnostics(pin, options);
+    } else if (options.has("--source")) {
+      return sourceReport(pin, options.get("--source"), options.get("--ref") ?? "HEAD");
     } else {
+      assertDependents(pin);
       console.log("T3 static contract matches rules/t3-pin.json and the host map.");
     }
     return 0;

@@ -26,6 +26,8 @@ A terminal Pi session uses the subagents extension for children. T3 supplies its
 
 The default T3 checker validates [`rules/t3-pin.json`](../packages/p3stack/rules/t3-pin.json) and the host map without reading installed state. Its release and bridge hash retain historical provenance, not acceptance criteria. `--installed` reports optional diagnostics; `--doctor <dump>` checks required tools and exposures against a live inventory. The host map also requires review of live schemas and behavior, which doctor cannot prove. Missing capabilities or incompatible behavior blocks maintenance. Host lint rejects backend tool names outside the map.
 
+[`t3-host.md`](../packages/p3stack/docs/t3-host.md) explains how T3 hosts Pi. The `watch` list in [`rules/t3-pin.json`](../packages/p3stack/rules/t3-pin.json) names each T3 contract p3stack depends on. `check-t3-pin.mjs --source <t3 checkout> --ref <tag>` lists the watched T3 files a release changed, and `maintain-p3stack` reviews each one before it moves the reviewed release.
+
 ## Maintenance keeps source changes reviewable
 
 [`maintain-p3stack`](../packages/p3stack/authored/skills/maintain-p3stack/SKILL.md) starts with a clean tree and green checks on current pins. An audit reports source status without opening a PR. An explicit bump updates a source, reads its upstream scope, repairs rules by failure class, and regenerates the output.

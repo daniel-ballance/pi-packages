@@ -40,6 +40,10 @@ export interface Pi {
 }
 
 const MODE = "p3stack";
+// T3 delivers completion wakes as the user prompt, and every task id starts node:delegated-task:.
+// Orchestrator.ts delegatedCompletionWakeDetail; ProviderContinuationService.ts delegatedCompletionText
+// and CONTINUATION_MESSAGE_TEXT.
+const T3_COMPLETION_WAKE = /^(?:Delegated tasks? node:delegated-task:|Background task completed\.$)/;
 
 export function registerMode(pi: Pi, potetoSkill: string) {
   const modeSkill = resolve(dirname(potetoSkill), "../p3stack-mode/SKILL.md");
@@ -60,7 +64,7 @@ export function registerMode(pi: Pi, potetoSkill: string) {
       if (modeOn) sections[MODE] = `Read ${modeSkill} and follow it.`;
       else delete sections[MODE];
     }
-    if (!modeOn || event?.messageType !== "user") return;
+    if (!modeOn || event?.messageType !== "user" || (detectHost() === "t3" && typeof event.prompt === "string" && T3_COMPLETION_WAKE.test(event.prompt))) return;
     return { message: { customType: "p3stack-turn", display: false, content: `[p3stack-mode is on] Before anything else, route this request. Read ${modeSkill} if you have not read it in this session, select its matching route, read that target, and follow it. Before delegating, call \`p3stack_roles\` for the role models. Only a question about the mode itself skips this.` } };
   });
   pi.registerCommand("p3stack", {

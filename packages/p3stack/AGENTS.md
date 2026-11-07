@@ -147,7 +147,7 @@ the emitted launcher against the recorded corpus.
 
 Use [`maintain-p3stack`](authored/skills/maintain-p3stack/SKILL.md) for current-pin audits and upstream refreshes. Its audit stops with one status per vendored source and creates no PR. An explicit bump request continues to source updates, generator repairs, and unmerged PRs. Keep shared-checkout sources in one PR and independent sources separate.
 
-Write changed-source notes in [`docs/bumps/`](docs/bumps/README.md). Keep dependency refreshes and T3 host-contract repairs separate. Use disposable Pi settings for loader checks and smoke tests. The skill does not change the live agent configuration or install tools.
+Write changed-source notes in [`docs/bumps/`](docs/bumps/README.md). Keep dependency refreshes and T3 host-contract repairs separate. [`docs/t3-host.md`](docs/t3-host.md) explains how T3 hosts Pi. `watch` in `rules/t3-pin.json` lists the T3 contracts p3stack relies on, and `maintain-p3stack` reviews each T3 release against them. Use disposable Pi settings for loader checks and smoke tests. The skill does not change the live agent configuration or install tools.
 
 ## Updating upstream
 

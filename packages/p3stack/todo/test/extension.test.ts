@@ -5,7 +5,7 @@ import todo from "../extensions/todo/index.js";
 type Handler = (event: unknown, ctx: unknown) => unknown;
 type Tool = { name: string; exposure?: string; execute: (...args: unknown[]) => Promise<any>; renderResult?: (...args: unknown[]) => unknown };
 
-function harness({ hasUI = true, branch = [] as unknown[] } = {}) {
+function harness({ hasUI = true, mode = "tui", branch = [] as unknown[] } = {}) {
   const tools: Tool[] = [], entries: { customType: string; data: unknown }[] = [], renderers: string[] = [];
   const handlers = new Map<string, Handler[]>();
   const ui = { widgets: [] as unknown[], notices: [] as unknown[] };
@@ -20,6 +20,7 @@ function harness({ hasUI = true, branch = [] as unknown[] } = {}) {
   const uiApi = { setWidget: (key: string, lines: unknown) => ui.widgets.push([key, lines]), notify: (message: string, type: string) => ui.notices.push([message, type]) };
   const ctx = {
     hasUI,
+    mode,
     get ui() { if (!hasUI) throw new Error("touched ui without UI"); return uiApi; },
     sessionManager: { getBranch: () => branch },
   };
@@ -78,6 +79,13 @@ test("the list is rebuilt from the active branch on start and on tree navigation
   branch.splice(1);
   await h.emit("session_tree");
   assert.match(text(await h.call({ op: "get" })), /\[x\] 1\. Old/);
+});
+
+test("rpc mode does not set a widget", async () => {
+  const h = harness({ mode: "rpc" });
+  await h.call({ op: "set", items: ["Frame"] });
+  await h.emit("session_start");
+  assert.deepEqual(h.ui.widgets, []);
 });
 
 test("the widget shows open work, clears when nothing is open, and no UI is touched without one", async () => {
