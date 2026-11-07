@@ -145,7 +145,7 @@ the emitted launcher against the recorded corpus.
 
 ## Maintain p3stack
 
-Use [`maintain-p3stack`](authored/skills/maintain-p3stack/SKILL.md) for current-pin audits and upstream refreshes. Its audit stops with one status per vendored source and creates no PR. An explicit bump request continues to source updates, generator repairs, and unmerged PRs. Keep shared-checkout sources in one PR and independent sources separate.
+Use [`maintain-p3stack`](authored/skills/maintain-p3stack/SKILL.md) for current-pin audits and upstream refreshes. Its audit stops with one status per vendored source and creates no PR. An explicit bump request continues to source updates, generator repairs, and landed PRs: each green PR is admin-merged, `main` is verified at the merge commit, and a red check is reverted through a second PR. Keep shared-checkout sources in one PR and independent sources separate.
 
 Write changed-source notes in [`docs/bumps/`](docs/bumps/README.md). Keep dependency refreshes and T3 host-contract repairs separate. Use disposable Pi settings for loader checks and smoke tests. The skill does not change the live agent configuration or install tools.
 

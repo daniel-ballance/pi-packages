@@ -48,7 +48,7 @@ Generated upstream output lives in `skills/`. Change its rules or authored input
 
 Run `/skill:maintain-p3stack` to audit current pins and the authored registry. A clean audit reports each source, changes no files, and opens no PR. It does not claim that remote upstream is unchanged.
 
-Request an explicit upstream bump to continue through scope review, generator repairs, checks, and an unmerged source-update PR. Sources sharing a checkout stay in one PR. Independent sources get separate PRs. See the [procedure](authored/skills/maintain-p3stack/SKILL.md), [nightly prompt](authored/skills/maintain-p3stack/references/nightly.md), and [bump notes](docs/bumps/README.md).
+Request an explicit upstream bump to continue through scope review, generator repairs, and checks to a landed source-update PR: merged, verified on `main`, and reverted if that check fails. Sources sharing a checkout stay in one PR. Independent sources get separate PRs. See the [procedure](authored/skills/maintain-p3stack/SKILL.md), [nightly prompt](authored/skills/maintain-p3stack/references/nightly.md), and [bump notes](docs/bumps/README.md).
 
 ## License
 

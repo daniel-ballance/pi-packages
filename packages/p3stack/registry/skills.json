@@ -1439,6 +1439,6 @@
     "roles": [
       "owner"
     ],
-    "reason": "Audit source pins and prepare verified upstream update PRs without merging."
+    "reason": "Audit source pins and land verified upstream update PRs, reverting a merge that breaks main."
   }
 ]
