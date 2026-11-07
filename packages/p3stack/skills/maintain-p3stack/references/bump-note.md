@@ -32,7 +32,7 @@ Link receipts with commands and outcomes for the current-pins root gate, generat
 
 ## Follow-up
 
-Name dependency-refresh or host-contract work kept separate. Record anything blocked and why. State that the PR remains unmerged.
+Name dependency-refresh or host-contract work kept separate. Record anything blocked and why. The post-merge result belongs in the landing report, not the note.
 ```
 
 ## PR body evidence

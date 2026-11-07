@@ -5,6 +5,8 @@
     { "id": "triage", "prompt": "Triage the open issues.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "triage/SKILL.md"] },
     { "id": "external-review", "prompt": "Review PR 12 from an outside contributor.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "dyl-review/SKILL.md"] },
     { "id": "release", "prompt": "Cut a release.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "release/SKILL.md"] },
+    { "id": "maintain-bump", "prompt": "Bump the p3stack upstream sources to their tips.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "maintain-p3stack/SKILL.md"] },
+    { "id": "maintain-revert", "prompt": "Revert p3stack maintenance PR 96, it broke main.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "maintain-p3stack/SKILL.md"] },
     { "id": "onboard", "prompt": "Onboard me to this repo.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "p3stack-mode/playbooks/onboard-brownfield.md"] },
     { "id": "bug", "prompt": "The export is corrupt sometimes.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "diagnosing-bugs/SKILL.md"] },
     { "id": "design", "prompt": "Let's design the sync module.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "grill-with-docs/SKILL.md"] },

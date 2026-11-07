@@ -31,5 +31,5 @@
   { "request": "Handle a task with no matching playbook", "grant": "any", "target": "figure-it-out" },
   { "request": "Cut a release", "grant": "any", "target": "release" },
   { "request": "Onboard to an existing repository", "grant": "any", "target": "p3stack-mode/playbooks/onboard-brownfield.md" },
-  { "request": "Audit p3stack pins or refresh its upstream sources", "grant": "any", "target": "maintain-p3stack" }
+  { "request": "Audit p3stack pins, refresh its upstream sources, or revert a p3stack maintenance PR", "grant": "any", "target": "maintain-p3stack" }
 ]
