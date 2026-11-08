@@ -16,12 +16,36 @@
     "when": "No failing reproduction exists yet. Then continue Bug fix from the plan step."
   },
   {
+    "id": "feature-brief-contract",
+    "playbook": "playbooks/feature.md",
+    "anchor": "4. Delegate code-writing to a subagent",
+    "position": "before",
+    "skill": "p3stack-mode/references/brief-contract.md",
+    "when": "Always when delegating code. Write the brief at hand-off; never store it in a tracker ticket."
+  },
+  {
+    "id": "feature-ledger",
+    "playbook": "playbooks/feature.md",
+    "anchor": "4. Delegate code-writing to a subagent",
+    "position": "before",
+    "skill": "p3stack-mode/references/execution-ledger.md",
+    "when": "More than one delegated unit, or work that may outlive this context."
+  },
+  {
     "id": "feature-comment-review",
     "playbook": "playbooks/feature.md",
     "anchor": "7. If the design is contested, `interrogate` before shipping.",
     "position": "before",
     "skill": "no-comments",
     "when": "Review completed code before code-review."
+  },
+  {
+    "id": "feature-review-stance",
+    "playbook": "playbooks/feature.md",
+    "anchor": "7. If the design is contested, `interrogate` before shipping.",
+    "position": "before",
+    "skill": "p3stack-mode/references/review-stance.md",
+    "when": "Give it to every reviewer, judge, or adversary, with the artifact and its contract."
   },
   {
     "id": "feature-standards-review",
@@ -38,6 +62,14 @@
     "position": "before",
     "skill": "no-comments",
     "when": "Review completed code before code-review."
+  },
+  {
+    "id": "bug-review-stance",
+    "playbook": "playbooks/bug-fix.md",
+    "anchor": "6. Run **Opening a PR**.",
+    "position": "before",
+    "skill": "p3stack-mode/references/review-stance.md",
+    "when": "Give it to every reviewer, with the artifact and its contract."
   },
   {
     "id": "bug-standards-review",
@@ -86,5 +118,29 @@
     "position": "after",
     "skill": "interactive-prototype",
     "when": "A human judges it. Default grant: hand it over with ask_user and wait for the verdict. Full autonomy: report your recommendation and continue. Then capture it per its Capture rule: lift the validated module, keep the prototype branch, and link it from the issue or PR."
+  },
+  {
+    "id": "autonomous-ledger",
+    "playbook": "playbooks/autonomous-run.md",
+    "anchor": "State the exit condition as a checkable predicate before the first iteration",
+    "position": "after",
+    "skill": "p3stack-mode/references/execution-ledger.md",
+    "when": "Always. Open the run's ledger before the first iteration."
+  },
+  {
+    "id": "pause-ledger",
+    "playbook": "playbooks/pause-safely.md",
+    "anchor": "Stop at a safe boundary.",
+    "position": "after",
+    "skill": "p3stack-mode/references/execution-ledger.md",
+    "when": "A ledger exists for this run. Append the pause point and every open ruling before stopping."
+  },
+  {
+    "id": "pickup-ledger",
+    "playbook": "playbooks/session-pickup.md",
+    "anchor": "Locate the prior trail.",
+    "position": "before",
+    "skill": "p3stack-mode/references/execution-ledger.md",
+    "when": "Look for the run's ledger in the store first. When it exists, it and git log outrank the transcript."
   }
 ]

@@ -505,13 +505,14 @@ test("the router renders the registry tables with existing route targets and no 
     const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
     for (const { request, target } of routes) {
       assert.ok(router.includes(request), request);
-      const path = target.startsWith("p3stack-mode/playbooks/") ? target : target.startsWith("playbooks/") ? `poteto-mode/${target}` : `${target}/SKILL.md`;
+      const path = target.startsWith("p3stack-mode/") ? target : target.startsWith("playbooks/") ? `poteto-mode/${target}` : `${target}/SKILL.md`;
       assert.ok(existsSync(join(out, "skills", path)), target);
       assert.ok(router.includes(`\`<this file's directory>/../${path}\``), target);
     }
     for (const { anchor, skill } of JSON.parse(readFileSync(join(packageDir, "registry/chains.json"), "utf8"))) {
       assert.ok(router.includes(anchor), anchor);
-      assert.ok(router.includes(`\`<this file's directory>/../${skill}/SKILL.md\``), skill);
+      const read = skill.startsWith("p3stack-mode/") ? skill : skill.startsWith("playbooks/") ? `poteto-mode/${skill}` : `${skill}/SKILL.md`;
+      assert.ok(router.includes(`\`<this file's directory>/../${read}\``), skill);
     }
     const paths = [...router.matchAll(/`<this file's directory>\/([^`]+)`/g)];
     assert.ok(paths.length > routes.length);
