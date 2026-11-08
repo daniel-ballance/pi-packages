@@ -32,6 +32,14 @@
     "when": "More than one delegated unit, or work that may outlive this context."
   },
   {
+    "id": "feature-floor",
+    "playbook": "playbooks/feature.md",
+    "anchor": "7. If the design is contested, `interrogate` before shipping.",
+    "position": "before",
+    "skill": "p3stack-mode/references/floor.md",
+    "when": "Always. Run floor-check before no-comments; explain or remove every finding."
+  },
+  {
     "id": "feature-comment-review",
     "playbook": "playbooks/feature.md",
     "anchor": "7. If the design is contested, `interrogate` before shipping.",
@@ -54,6 +62,14 @@
     "position": "before",
     "skill": "code-review",
     "when": "After no-comments. Keep standards and spec findings separate."
+  },
+  {
+    "id": "bug-floor",
+    "playbook": "playbooks/bug-fix.md",
+    "anchor": "6. Run **Opening a PR**.",
+    "position": "before",
+    "skill": "p3stack-mode/references/floor.md",
+    "when": "Always. Run floor-check before no-comments; explain or remove every finding."
   },
   {
     "id": "bug-comment-review",
@@ -126,6 +142,14 @@
     "position": "after",
     "skill": "p3stack-mode/references/execution-ledger.md",
     "when": "Always. Open the run's ledger before the first iteration."
+  },
+  {
+    "id": "autonomous-floor",
+    "playbook": "playbooks/autonomous-run.md",
+    "anchor": "State the exit condition as a checkable predicate before the first iteration",
+    "position": "after",
+    "skill": "p3stack-mode/references/floor.md",
+    "when": "Always. A clean floor-check is part of the exit predicate."
   },
   {
     "id": "pause-ledger",
