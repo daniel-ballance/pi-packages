@@ -14,6 +14,8 @@ The committed `skills/` tree is generated output. A correction belongs in a rule
 
 `/p3stack on` makes the mode extension point the model at [`p3stack-mode`](../packages/p3stack/skills/p3stack-mode/SKILL.md). That skill reads poteto-mode and applies p3stack's route and chain tables. The route chooses the first workflow for a request. A chain adds required steps inside a workflow.
 
+The grant is explicit session state. `/p3stack on autonomous` or `/p3stack grant autonomous` selects full autonomy, and the extension states `Grant: default` or `Grant: full-autonomy` in the system prompt and in every delegated brief. The router's **House policies** section settles conflicts between routed skills (authority, questions, validation, migration, testing, review independence, context, style), and it wins over any of them.
+
 [`registry/routes.json`](../packages/p3stack/registry/routes.json) and [`registry/chains.json`](../packages/p3stack/registry/chains.json) are the source tables. The generator renders their references and the router. The routing eval checks the model's first reads on fixture prompts instead of assuming that prompt precedence works.
 
 Disabling the mode removes the router reminder. It does not unload the extensions or remove explicitly invoked skills.

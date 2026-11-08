@@ -11,6 +11,7 @@
     { "id": "bug", "prompt": "The export is corrupt sometimes.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "diagnosing-bugs/SKILL.md"] },
     { "id": "design", "prompt": "Let's design the sync module.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "grill-with-docs/SKILL.md"] },
     { "id": "design-autonomous", "prompt": "Let's design the sync module. Be fully autonomous.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "sharpen/SKILL.md"] },
+    { "id": "design-grant", "prompt": "Let's design the sync module.", "grant": "autonomous", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "sharpen/SKILL.md"] },
     { "id": "investigation", "prompt": "Explain how the CLI works without changing it.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/investigation.md"] },
     { "id": "refactoring", "prompt": "Refactor the CLI without changing its behavior.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/refactoring.md"] },
     { "id": "perf", "prompt": "Investigate why the CLI takes 8 seconds to export 10 records. It used to take 1 second.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/perf-issue.md"] },

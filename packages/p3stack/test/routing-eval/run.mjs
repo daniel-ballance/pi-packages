@@ -32,7 +32,7 @@ function probe(row) {
   return new Promise((done, fail) => {
     const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
     for (const key of ["PI_SUBAGENT", "PI_SUBAGENT_POLICY", "PI_SUBAGENT_ALLOWED_TOOLS", "PI_SUBAGENT_PEER_FD", "T3_MCP_URL"]) delete env[key];
-    const child = spawn("pi", ["--mode", "json", "--no-session", "--model", model, "--tools", "read", "--no-mcp", "--no-context-files", "--offline", "--approve", `/p3stack ${values["mode-off"] ? "off" : "on"}`, row.prompt], { cwd: fixture, env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn("pi", ["--mode", "json", "--no-session", "--model", model, "--tools", "read", "--no-mcp", "--no-context-files", "--offline", "--approve", `/p3stack ${values["mode-off"] ? "off" : row.grant ? `on ${row.grant}` : "on"}`, row.prompt], { cwd: fixture, env, stdio: ["pipe", "pipe", "pipe"] });
     let pending = "", stdout = "", stderr = "", reason, timer, killTimer;
     const reads = [], successful = new Set(), completed = new Set();
     const stop = why => {

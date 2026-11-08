@@ -12,7 +12,20 @@ Finish the poteto-mode read before any other tool call. Follow it, except this r
 
 ## Grants
 
-Determine the grant before choosing a route. "Be fully autonomous" selects full-autonomy rows, not default rows. Under full autonomy, design starts with sharpen, then architect. Replace grill-with-docs and grilling with that sequence. Infer covered choices from repository evidence and report them. Under the default grant, use the interview skills and ask the human about product choices. Explicit operator gates and irreversible actions still pause.
+Use the grant the extension states in the system prompt ("Grant: default" or "Grant: full-autonomy"). An explicit request for full autonomy in the user's message raises it for that task. Without the extension's line, infer it from the request. Full autonomy selects full-autonomy rows, not default rows. Under full autonomy, design starts with sharpen, then architect. Replace grill-with-docs and grilling with that sequence. Infer covered choices from repository evidence and report them. Under the default grant, use the interview skills and ask the human about product choices. Explicit operator gates and irreversible actions still pause.
+
+## House policies
+
+These settle conflicts between the routed skills, and they win over any of them.
+
+1. **Authority.** Internal team actions (team chat, ticket updates, starting evals) proceed. Messages to customers or anyone outside the team, deploys, force-pushes to shared branches, and data deletion pause. Under full autonomy, a call only the operator can make gets a default, a report, and a plain statement of what they could choose instead.
+2. **Questions.** Before asking the human, sort the question. A fact: look it up or delegate the lookup. Observable by running something: the Prototype playbook, judged by you. Easier to show than to describe: the Prototype playbook, with a prototype the human tries. A preference no experiment settles: ask. Grilling sorts every question the same way, opens with one open question about why the change is wanted, with no suggested answers, and stops when the frontier is empty or your written hypothesis reaches about 95% confidence.
+3. **Validation.** Validate at trust boundaries and before dangerous side effects. Inside them, trust the types.
+4. **Migration.** With external consumers, persisted data, or staged deploys, sequence expand–contract. When every caller is internal and in this repository, migrate and delete in one wave.
+5. **Testing.** Red before green at the seams architect agreed. regression-test covers cheap bug paths. When the only available test would couple to the implementation, write none and say so in the report. Prototypes and spikes take no tests.
+6. **Review independence.** Give a reviewer or judge the artifact and its contract, never the author's conclusion. Every finding names its evidence. A spec's silence is not permission for ordinary inputs to break the program. Dispute a wrong finding with evidence and record the dispute, rather than churning code to satisfy it.
+7. **Context.** Give new work to a fresh child with the original goal, the brief, and the prior report. Resume a child only to reuse live state: uncommitted changes or a running process.
+8. **Style.** unslop governs replies and PR bodies. Where one of its punctuation rules makes a sentence worse, follow technical-writing and fix the sentence another way.
 
 ## Routes
 

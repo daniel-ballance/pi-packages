@@ -1,7 +1,7 @@
 import { SettingsManager, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { Context, Pi } from "./mode.ts";
+import type { Context, Grant, Pi } from "./mode.ts";
 import { agentDir } from "./roles.ts";
 
 const formatTokens = (count: number) => {
@@ -12,7 +12,7 @@ const formatTokens = (count: number) => {
   return `${Math.round(count / 1000000)}M`;
 };
 
-export function modeFooter(ctx: Context, events: Pi["events"]): NonNullable<Parameters<ExtensionUIContext["setFooter"]>[0]> {
+export function modeFooter(ctx: Context, events: Pi["events"], grant: () => Grant = () => "default"): NonNullable<Parameters<ExtensionUIContext["setFooter"]>[0]> {
   return (tui, theme, footerData) => ({
     dispose: footerData.onBranchChange(() => tui.requestRender()),
     invalidate() {},
@@ -82,7 +82,8 @@ export function modeFooter(ctx: Context, events: Pi["events"]): NonNullable<Para
         right = truncateToWidth(right, width - leftWidth - 2, "");
         remainder = " ".repeat(Math.max(0, width - leftWidth - visibleWidth(right))) + right;
       }
-      const lines = [truncateToWidth(`🅿️ ${theme.fg("dim", pwd)}`, width, theme.fg("dim", "...")), theme.fg("dim", left) + theme.fg("dim", remainder)];
+      const marker = grant() === "autonomous" ? `${theme.fg("warning", "auto")} ` : "";
+      const lines = [truncateToWidth(`🅿️ ${marker}${theme.fg("dim", pwd)}`, width, theme.fg("dim", "...")), theme.fg("dim", left) + theme.fg("dim", remainder)];
       const statuses = footerData.getExtensionStatuses();
       if (statuses.size) {
         const text = [...statuses.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, text]) => text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim()).join(" ");
