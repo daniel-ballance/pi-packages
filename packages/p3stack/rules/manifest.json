@@ -96,6 +96,33 @@
         "checkout": "vendor/pstack",
         "branch": "main"
       }
+    },
+    {
+      "name": "agent-skills",
+      "vendor": "vendor/agent-skills",
+      "map": [
+        {
+          "from": "references/security-checklist.md",
+          "to": "skills/security-hardening/references/security-checklist.md"
+        },
+        {
+          "from": "references/observability-checklist.md",
+          "to": "skills/instrumentation/references/observability-checklist.md"
+        },
+        {
+          "from": "skills/",
+          "to": "skills/"
+        },
+        {
+          "from": "LICENSE",
+          "to": "LICENSE-agent-skills"
+        }
+      ],
+      "upstream": {
+        "repository": "addyosmani/agent-skills",
+        "checkout": "vendor/agent-skills",
+        "branch": "main"
+      }
     }
   ]
 }

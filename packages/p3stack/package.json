@@ -24,10 +24,11 @@
     "AGENTS.md",
     "README.md",
     "LICENSE",
-    "LICENSE-matt-pocock"
+    "LICENSE-matt-pocock",
+    "LICENSE-agent-skills"
   ],
   "scripts": {
-    "sync": "git -C ../.. submodule update --init packages/p3stack/vendor/pstack packages/p3stack/vendor/matt-pocock && node generator/generate.mjs",
+    "sync": "git -C ../.. submodule update --init packages/p3stack/vendor/pstack packages/p3stack/vendor/matt-pocock packages/p3stack/vendor/agent-skills && node generator/generate.mjs",
     "generate": "node generator/generate.mjs",
     "bump": "node generator/update-upstream.mjs",
     "update-upstream": "node generator/update-upstream.mjs",

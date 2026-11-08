@@ -23,6 +23,9 @@
 | Open a PR | any | [playbooks/opening-a-pr.md](../poteto-mode/playbooks/opening-a-pr.md) |
 | Drive an existing PR to readiness | any | [playbooks/babysit.md](../poteto-mode/playbooks/babysit.md) |
 | Land a verified stack when authorized | any | [playbooks/shipping.md](../poteto-mode/playbooks/shipping.md) |
+| Set or audit the project's quality bar | any | [constraints](../constraints/SKILL.md) |
+| Harden or threat-model a change | any | [security-hardening](../security-hardening/SKILL.md) |
+| Add telemetry, metrics, or alerts | any | [instrumentation](../instrumentation/SKILL.md) |
 | Survey codebase health | any | [improve-codebase-architecture](../improve-codebase-architecture/SKILL.md) |
 | Implement a tracker ticket graph | any | [implement-spec](../implement-spec/SKILL.md) |
 | Run a standing program of PRs | any | [playbooks/orchestrate.md](../poteto-mode/playbooks/orchestrate.md) |

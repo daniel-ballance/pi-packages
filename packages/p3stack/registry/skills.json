@@ -1398,6 +1398,195 @@
     "reason": "Admit the owner review procedure and its Dylan lens."
   },
   {
+    "source": "agent-skills",
+    "path": "skills/api-and-interface-design/SKILL.md",
+    "action": "drop",
+    "reason": "codebase-design and architect cover interface design; deferred as reference."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/browser-testing-with-devtools/SKILL.md",
+    "action": "drop",
+    "reason": "Drive the app in the host capabilities covers runtime UI checks."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/ci-cd-and-automation/SKILL.md",
+    "action": "drop",
+    "reason": "Mostly general reference material; revisit when CI work is routed."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/code-review-and-quality/SKILL.md",
+    "action": "drop",
+    "reason": "code-review, no-comments and interrogate cover review; the severity labels live in review-stance."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/code-simplification/SKILL.md",
+    "action": "drop",
+    "reason": "The Refactoring playbook and laziness principles cover simplification."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/constraint-driven-development/SKILL.md",
+    "action": "emit",
+    "name": "constraints",
+    "invocation": "user",
+    "phases": [
+      "plan",
+      "verify"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Writes the project's quality bar with numbers into CONSTRAINTS.md; floor-check enforces its floor."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/context-engineering/SKILL.md",
+    "action": "drop",
+    "reason": "writing-for-agents and guard-the-context-window cover context design."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/debugging-and-error-recovery/SKILL.md",
+    "action": "drop",
+    "reason": "diagnosing-bugs and the Bug fix playbook cover debugging in more depth."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/deprecation-and-migration/SKILL.md",
+    "action": "drop",
+    "reason": "The migration house policy carries its advisory and expand-contract framing."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/documentation-and-adrs/SKILL.md",
+    "action": "drop",
+    "reason": "domain-modeling owns ADRs and technical-writing owns docs."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/doubt-driven-development/SKILL.md",
+    "action": "drop",
+    "reason": "Its artifact-and-contract rule lives in the review-stance reference; interrogate and arena cover the review."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/frontend-ui-engineering/SKILL.md",
+    "action": "drop",
+    "reason": "Web-specific reference material; deferred."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/git-workflow-and-versioning/SKILL.md",
+    "action": "drop",
+    "reason": "Opening a PR and Matt pr cover commits and PR shape."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/idea-refine/SKILL.md",
+    "action": "drop",
+    "reason": "grilling, sharpen and wayfinder cover idea shaping."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/incremental-implementation/SKILL.md",
+    "action": "drop",
+    "reason": "sequence-verifiable-units and the Feature playbook cover incremental delivery."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/interview-me/SKILL.md",
+    "action": "drop",
+    "reason": "Its confidence stop condition lives in the questions house policy; grilling owns the interview."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/observability-and-instrumentation/SKILL.md",
+    "action": "emit",
+    "name": "instrumentation",
+    "invocation": "user",
+    "phases": [
+      "implement"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Structured logs, RED metrics, tracing and symptom alerts; no other source covers telemetry."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/performance-optimization/SKILL.md",
+    "action": "drop",
+    "reason": "The Perf issue and Hillclimb playbooks with explain-the-number cover performance."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/planning-and-task-breakdown/SKILL.md",
+    "action": "drop",
+    "reason": "to-tickets and the multi-phase plan playbook cover decomposition."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/security-and-hardening/SKILL.md",
+    "action": "emit",
+    "name": "security-hardening",
+    "invocation": "user",
+    "phases": [
+      "align-and-design",
+      "implement"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Design- and build-time hardening; thermos stays the review-time audit."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/shipping-and-launch/SKILL.md",
+    "action": "drop",
+    "reason": "Deferred until deploys run through agents; pstack Shipping lands PRs and the name would collide."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/source-driven-development/SKILL.md",
+    "action": "emit",
+    "name": "source-grounding",
+    "invocation": "model",
+    "phases": [
+      "implement",
+      "research"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "Grounds framework-specific code in the installed version's official docs; nothing else covers code written from memory."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/spec-driven-development/SKILL.md",
+    "action": "drop",
+    "reason": "to-spec covers specification."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/test-driven-development/SKILL.md",
+    "action": "drop",
+    "reason": "Matt tdd and pstack regression-test already cover test-first work."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/using-agent-skills/SKILL.md",
+    "action": "drop",
+    "reason": "One router is sufficient. p3stack-mode composes poteto-mode."
+  },
+  {
     "source": "p3stack",
     "path": "skills/release/SKILL.md",
     "action": "emit",

@@ -12,12 +12,12 @@ const cli = fileURLToPath(new URL("../generator/check-registry.mjs", import.meta
 const cache = process.env.P3STACK_FIXTURE_ROOT ?? tmpdir();
 const rows = () => JSON.parse(readFileSync(new URL("../registry/skills.json", import.meta.url), "utf8"));
 
-test("registry admits 22 Pocock, 57 pstack, and five owner skills with reasons for every drop", () => {
+test("registry admits 22 Pocock, 57 pstack, five owner, and four agent-skills skills with reasons for every drop", () => {
   const skills = rows();
-  for (const [source, count] of [["matt-pocock", 22], ["cursor-plugins", 57], ["owner-plugins", 5]]) {
+  for (const [source, count] of [["matt-pocock", 22], ["cursor-plugins", 57], ["owner-plugins", 5], ["agent-skills", 4]]) {
     assert.equal(skills.filter(row => row.source === source && row.action === "emit").length, count, source);
   }
-  assert.equal(skills.filter(row => row.action === "drop").length, 24);
+  assert.equal(skills.filter(row => row.action === "drop").length, 45);
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
   for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").invocation, "user");

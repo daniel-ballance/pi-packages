@@ -52,6 +52,6 @@ Request an explicit upstream bump to continue through scope review, generator re
 
 ## License
 
-MIT. See [LICENSE](LICENSE) and [LICENSE-matt-pocock](LICENSE-matt-pocock). Upstream pins follow.
+MIT. See [LICENSE](LICENSE), [LICENSE-matt-pocock](LICENSE-matt-pocock), and [LICENSE-agent-skills](LICENSE-agent-skills). Upstream pins follow.
 
-<!-- p3stack:upstream -->`cursor/plugins` [`6b03002`](https://github.com/cursor/plugins/tree/6b0300214a09fd6029cfb7077043125758cd1fd2/pstack), pstack 0.15.36; `mattpocock/skills` [`4ae2317`](https://github.com/mattpocock/skills/tree/4ae2317ddb22b046e26455e4f9c9b3aaaf62212d); `cursor/plugins` [`6b03002`](https://github.com/cursor/plugins/tree/6b0300214a09fd6029cfb7077043125758cd1fd2)<!-- /p3stack:upstream -->.
+<!-- p3stack:upstream -->`cursor/plugins` [`6b03002`](https://github.com/cursor/plugins/tree/6b0300214a09fd6029cfb7077043125758cd1fd2/pstack), pstack 0.15.36; `mattpocock/skills` [`4ae2317`](https://github.com/mattpocock/skills/tree/4ae2317ddb22b046e26455e4f9c9b3aaaf62212d); `cursor/plugins` [`6b03002`](https://github.com/cursor/plugins/tree/6b0300214a09fd6029cfb7077043125758cd1fd2); `addyosmani/agent-skills` [`301b02b`](https://github.com/addyosmani/agent-skills/tree/301b02b12bff98e4688e6984af6556802322bbde), agent-skills 0.6.15<!-- /p3stack:upstream -->.
