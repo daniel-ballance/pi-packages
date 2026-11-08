@@ -2,10 +2,10 @@
   {
     "id": "feature-seam-tests",
     "playbook": "playbooks/feature.md",
-    "anchor": "2. `architect` for parallel design exploration.",
+    "anchor": "2. `architect` for parallel design exploration",
     "position": "after",
     "skill": "tdd",
-    "when": "Use the seams named by architect. Confirm them with the human under the default grant."
+    "when": "Use the seams architect named, or name them yourself when step 2 skipped architect. Confirm them with the human under the default grant."
   },
   {
     "id": "bug-red-loop",

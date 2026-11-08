@@ -2,7 +2,7 @@
 
 | Id | Playbook | Anchor | Position | Skill | When |
 | --- | --- | --- | --- | --- | --- |
-| feature-seam-tests | [playbooks/feature.md](../poteto-mode/playbooks/feature.md) | 2. `architect` for parallel design exploration. | after | [tdd](../tdd/SKILL.md) | Use the seams named by architect. Confirm them with the human under the default grant. |
+| feature-seam-tests | [playbooks/feature.md](../poteto-mode/playbooks/feature.md) | 2. `architect` for parallel design exploration | after | [tdd](../tdd/SKILL.md) | Use the seams architect named, or name them yourself when step 2 skipped architect. Confirm them with the human under the default grant. |
 | bug-red-loop | [playbooks/bug-fix.md](../poteto-mode/playbooks/bug-fix.md) | Reproduce it yourself on the matching surface via the control skill (Non-negotiables), even when a debug or instrumentation protocol says to ask the user to reproduce. | before | [diagnosing-bugs](../diagnosing-bugs/SKILL.md) | No failing reproduction exists yet. Then continue Bug fix from the plan step. |
 | feature-source-grounding | [playbooks/feature.md](../poteto-mode/playbooks/feature.md) | 4. Delegate code-writing to a subagent | before | [source-grounding](../source-grounding/SKILL.md) | The code uses a framework or library API whose correct use depends on the installed version. Put the cited doc pages in the brief. |
 | feature-brief-contract | [playbooks/feature.md](../poteto-mode/playbooks/feature.md) | 4. Delegate code-writing to a subagent | before | [p3stack-mode/references/brief-contract.md](../p3stack-mode/references/brief-contract.md) | Always when delegating code. Write the brief at hand-off; never store it in a tracker ticket. |
