@@ -11,6 +11,7 @@
 | Publish a tracker spec | default | [to-spec](../to-spec/SKILL.md) |
 | Split a spec into tracker tickets | default | [to-tickets](../to-tickets/SKILL.md) |
 | Plan a program of PRs | any | [playbooks/multi-phase-plan.md](../poteto-mode/playbooks/multi-phase-plan.md) |
+| Prototype a design to compare, try, or show someone | any | [playbooks/prototype.md](../poteto-mode/playbooks/prototype.md) |
 | Build new or changed behavior | any | [playbooks/feature.md](../poteto-mode/playbooks/feature.md) |
 | Fix a reported bug | any | [playbooks/bug-fix.md](../poteto-mode/playbooks/bug-fix.md) |
 | Investigate measured slowness when a timing or throughput number is given | any | [playbooks/perf-issue.md](../poteto-mode/playbooks/perf-issue.md) |

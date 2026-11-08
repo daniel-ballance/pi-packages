@@ -19,7 +19,7 @@ Use the grant the extension states in the system prompt ("Grant: default" or "Gr
 These settle conflicts between the routed skills, and they win over any of them.
 
 1. **Authority.** Internal team actions (team chat, ticket updates, starting evals) proceed. Messages to customers or anyone outside the team, deploys, force-pushes to shared branches, and data deletion pause. Under full autonomy, a call only the operator can make gets a default, a report, and a plain statement of what they could choose instead.
-2. **Questions.** Before asking the human, sort the question. A fact: look it up or delegate the lookup. Observable by running something: the Prototype playbook, judged by you. Easier to show than to describe: the Prototype playbook, with a prototype the human tries. A preference no experiment settles: ask. Grilling sorts every question the same way, opens with one open question about why the change is wanted, with no suggested answers, and stops when the frontier is empty or your written hypothesis reaches about 95% confidence.
+2. **Questions.** Before asking the human, sort the question. A fact: look it up or delegate the lookup. Observable by running something: the Prototype playbook, judged by you. Easier to show than to describe: the Prototype playbook, with an interactive-prototype the human tries. A preference no experiment settles: ask. Grilling sorts every question the same way, opens with one open question about why the change is wanted, with no suggested answers, and stops when the frontier is empty or your written hypothesis reaches about 95% confidence.
 3. **Validation.** Validate at trust boundaries and before dangerous side effects. Inside them, trust the types.
 4. **Migration.** With external consumers, persisted data, or staged deploys, sequence expand–contract. When every caller is internal and in this repository, migrate and delete in one wave.
 5. **Testing.** Red before green at the seams architect agreed. regression-test covers cheap bug paths. When the only available test would couple to the implementation, write none and say so in the report. Prototypes and spikes take no tests.
@@ -42,6 +42,7 @@ Match the request and grant below. After poteto-mode, read the target and follow
 | Publish a tracker spec | default | `<this file's directory>/../to-spec/SKILL.md` |
 | Split a spec into tracker tickets | default | `<this file's directory>/../to-tickets/SKILL.md` |
 | Plan a program of PRs | any | `<this file's directory>/../poteto-mode/playbooks/multi-phase-plan.md` |
+| Prototype a design to compare, try, or show someone | any | `<this file's directory>/../poteto-mode/playbooks/prototype.md` |
 | Build new or changed behavior | any | `<this file's directory>/../poteto-mode/playbooks/feature.md` |
 | Fix a reported bug | any | `<this file's directory>/../poteto-mode/playbooks/bug-fix.md` |
 | Investigate measured slowness when a timing or throughput number is given | any | `<this file's directory>/../poteto-mode/playbooks/perf-issue.md` |
@@ -81,6 +82,9 @@ Apply each matching chain at its anchor in table order. For a reported bug witho
 | `<this file's directory>/../poteto-mode/playbooks/bug-fix.md` | 6. Run **Opening a PR**. | before | `<this file's directory>/../code-review/SKILL.md` | After no-comments. Keep standards and spec findings separate. |
 | `<this file's directory>/../poteto-mode/playbooks/opening-a-pr.md` | **Forge.** | before | `<this file's directory>/../poteto-mode/SKILL.md` | Read Pull requests in the host capabilities when opening a PR and before handback. Follow its host integration after creation. |
 | `<this file's directory>/../poteto-mode/playbooks/authoring-a-skill.md` | 1. Use the skill-authoring procedure (**Author a skill** in the host capabilities). | before | `<this file's directory>/../writing-for-agents/SKILL.md` | Author or modify agent-facing instructions. |
+| `<this file's directory>/../poteto-mode/playbooks/prototype.md` | Scope the decision the prototype exists to make | after | `<this file's directory>/../interactive-prototype/SKILL.md` | A human must judge the result by trying it, or a stakeholder must drive it. Build per its logic or UI branch in step 3: one shareable HTML file around a pure module, or variants on the real route on a prototype/<name> branch in its own worktree. |
+| `<this file's directory>/../poteto-mode/playbooks/prototype.md` | Verify on the matching surface. | before | `<this file's directory>/../poteto-mode/SKILL.md` | A human will judge the prototype. Drive every variant or walkthrough yourself per Drive the app in the host capabilities before anyone sees it. |
+| `<this file's directory>/../poteto-mode/playbooks/prototype.md` | Present alternatives, tradeoffs, and a recommendation. | after | `<this file's directory>/../interactive-prototype/SKILL.md` | A human judges it. Default grant: hand it over with ask_user and wait for the verdict. Full autonomy: report your recommendation and continue. Then capture it per its Capture rule: lift the validated module, keep the prototype branch, and link it from the issue or PR. |
 
 ## Seams and context
 
