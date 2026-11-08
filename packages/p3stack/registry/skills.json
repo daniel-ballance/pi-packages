@@ -233,8 +233,13 @@
     "action": "emit",
     "name": "ketchup-video",
     "invocation": "user",
-    "phases": ["meta-and-style"],
-    "roles": ["contributor", "owner"],
+    "phases": [
+      "meta-and-style"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
     "reason": "Offer a user-invoked silent-video recap using available rendering tools, with a text fallback when rendering fails."
   },
   {
@@ -1017,8 +1022,17 @@
   {
     "source": "matt-pocock",
     "path": "skills/engineering/prototype/SKILL.md",
-    "action": "drop",
-    "reason": "Use the Prototype playbook instead of a second prototype procedure."
+    "action": "emit",
+    "name": "interactive-prototype",
+    "invocation": "model",
+    "phases": [
+      "align-and-design"
+    ],
+    "roles": [
+      "contributor",
+      "owner"
+    ],
+    "reason": "A prototype a human tries and judges, chained into the Prototype playbook, which stays the agent-judged path."
   },
   {
     "source": "matt-pocock",

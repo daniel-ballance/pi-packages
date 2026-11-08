@@ -29,6 +29,7 @@ mkdirSync(fixture, { recursive: true });
 writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: [resolve(here, "../..")], defaultProjectTrust: "always", enableInstallTelemetry: false }));
 
 function probe(row) {
+  const limit = Math.max(maxReads, row.expected.length);
   return new Promise((done, fail) => {
     const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
     for (const key of ["PI_SUBAGENT", "PI_SUBAGENT_POLICY", "PI_SUBAGENT_ALLOWED_TOOLS", "PI_SUBAGENT_PEER_FD", "T3_MCP_URL"]) delete env[key];
@@ -59,7 +60,7 @@ function probe(row) {
         if (event.type === "tool_execution_end" && event.toolName === "read") {
           completed.add(event.toolCallId);
           if (!event.isError) successful.add(event.toolCallId);
-          if (reads.length >= maxReads && reads.slice(0, maxReads).every(read => completed.has(read.id))) stop("read limit");
+          if (reads.length >= limit && reads.slice(0, limit).every(read => completed.has(read.id))) stop("read limit");
         }
       }
     });
@@ -72,11 +73,11 @@ function probe(row) {
       writeFileSync(join(output, `${row.id}.jsonl`), stdout);
       writeFileSync(join(output, `${row.id}.stderr`), stderr);
       const skillsRoot = resolve(here, "../../skills") + "/";
-      const observed = reads.slice(0, maxReads).filter(read => /(?:^|\/)(?:SKILL\.md|playbooks\/[^/]+\.md)$/.test(read.path)).map(read => {
+      const observed = reads.slice(0, limit).filter(read => /(?:^|\/)(?:SKILL\.md|playbooks\/[^/]+\.md)$/.test(read.path)).map(read => {
         const absolute = resolve(fixture, read.path);
         return absolute.startsWith(skillsRoot) ? absolute.slice(skillsRoot.length) : absolute;
       });
-      const passed = reason === "read limit" && reads.slice(0, maxReads).every(read => successful.has(read.id)) && JSON.stringify(observed) === JSON.stringify(row.expected);
+      const passed = reason === "read limit" && reads.slice(0, limit).every(read => successful.has(read.id)) && JSON.stringify(observed) === JSON.stringify(row.expected);
       done({ id: row.id, prompt: row.prompt, expected: row.expected, observed, passed, reason, code, signal });
     });
     child.stdin.end();

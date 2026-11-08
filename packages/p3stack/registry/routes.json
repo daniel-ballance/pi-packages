@@ -8,6 +8,7 @@
   { "request": "Publish a tracker spec", "grant": "default", "target": "to-spec" },
   { "request": "Split a spec into tracker tickets", "grant": "default", "target": "to-tickets" },
   { "request": "Plan a program of PRs", "grant": "any", "target": "playbooks/multi-phase-plan.md" },
+  { "request": "Prototype a design to compare, try, or show someone", "grant": "any", "target": "playbooks/prototype.md" },
   { "request": "Build new or changed behavior", "grant": "any", "target": "playbooks/feature.md" },
   { "request": "Fix a reported bug", "grant": "any", "target": "playbooks/bug-fix.md" },
   { "request": "Investigate measured slowness when a timing or throughput number is given", "grant": "any", "target": "playbooks/perf-issue.md" },

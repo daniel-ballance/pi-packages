@@ -62,5 +62,29 @@
     "position": "before",
     "skill": "writing-for-agents",
     "when": "Author or modify agent-facing instructions."
+  },
+  {
+    "id": "prototype-human-judge",
+    "playbook": "playbooks/prototype.md",
+    "anchor": "Scope the decision the prototype exists to make",
+    "position": "after",
+    "skill": "interactive-prototype",
+    "when": "A human must judge the result by trying it, or a stakeholder must drive it. Build per its logic or UI branch in step 3: one shareable HTML file around a pure module, or variants on the real route on a prototype/<name> branch in its own worktree."
+  },
+  {
+    "id": "prototype-human-verify",
+    "playbook": "playbooks/prototype.md",
+    "anchor": "Verify on the matching surface.",
+    "position": "before",
+    "skill": "poteto-mode",
+    "when": "A human will judge the prototype. Drive every variant or walkthrough yourself per Drive the app in the host capabilities before anyone sees it."
+  },
+  {
+    "id": "prototype-human-capture",
+    "playbook": "playbooks/prototype.md",
+    "anchor": "Present alternatives, tradeoffs, and a recommendation.",
+    "position": "after",
+    "skill": "interactive-prototype",
+    "when": "A human judges it. Default grant: hand it over with ask_user and wait for the verdict. Full autonomy: report your recommendation and continue. Then capture it per its Capture rule: lift the validated module, keep the prototype branch, and link it from the issue or PR."
   }
 ]
