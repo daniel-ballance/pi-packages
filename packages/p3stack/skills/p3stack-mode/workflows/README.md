@@ -7,7 +7,7 @@ Templates for the subagents workflow engine. Each one backs a p3stack procedure 
 | `interrogate.json` | `interrogate` | Three adversaries on separate models, a collector, then a command check that reruns every `repro.sh`. Only findings whose repro observes the failure are reported as proven. |
 | `arena.json` | `arena`, `architect` Phase B | Two runners, a synthesis that picks a base and grafts at most two ideas, then an agent check against the contract on another model family. |
 | `hillclimb.json` | Hillclimb playbook | A baseline copy, then an improvement loop: one hypothesis per iteration, kept only when the evaluator's score improves. |
-| `skill-eval.json` | Eval playbook | Two blinded candidates on the same organic prompt, one with each skill variant, then one grader scoring both in one pass. |
+| `skill-eval.json` | Eval playbook | Two blinded candidates on the same organic prompt, one with each skill variant, each submitting its `git diff`, then one grader scoring both in one pass. The grader scores what the diffs show; behavior only a transcript shows (a test run red before the fix) stays `null` for the parent to grade from the candidates' transcripts. |
 
 ## Use
 

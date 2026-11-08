@@ -26,7 +26,7 @@ p3stack vendors pstack and Matt Pocock's skills as before, plus `addyosmani/agen
 
 ## Evals measure routing before and after a change
 
-`npm run check` runs a static routing check over the descriptions of model-invoked skills: realistic prompts must rank their skill, negatives must lose to their owner, and descriptions must not collide. `npm run eval:routing` runs the live routing eval, which spends tokens; fixtures can set a grant and their own read limit. A change rejected on eval evidence goes in [`docs/evals/rejected.md`](evals/rejected.md).
+`npm run check` runs a static routing check over the descriptions of model-invoked skills: realistic prompts must rank their skill, negatives must lose to their owner, and descriptions must not collide. `npm run eval:routing` runs the live routing eval, which spends tokens; fixtures can set a grant and their own read limit. `npm run eval:behavior` runs four tasks in fixture repositories with the mode on and off and grades what the agent did, not what it said: whether a review ran floor-check, whether a bug got a red reproduction before the fix, whether a click-through request produced one self-contained HTML file, and whether version-sensitive config came from fetched, versioned docs. A change rejected on eval evidence goes in [`docs/evals/rejected.md`](evals/rejected.md).
 
 ## The host map owns runtime differences
 
