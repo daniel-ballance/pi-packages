@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Hillclimb: {{name}}",
+  "cwd": "{{cwd}}",
+  "limits": { "concurrency": 1, "maxAttempts": "{{maxAttempts:number}}", "timeoutSeconds": "{{timeoutSeconds:number}}" },
+  "steps": [
+    { "id": "baseline", "kind": "task",
+      "worker": { "model": "{{workerModel}}", "tools": ["read", "write"], "contextFiles": false },
+      "instructions": "Copy these files from {{cwd}} into your candidate directory, unchanged and at the same relative paths: {{files}}. Copy no symlinks, dependencies, or build caches." },
+    { "id": "climb", "kind": "loop", "mode": "improve", "seed": "baseline", "direction": "{{direction}}",
+      "minImprovement": "{{minImprovement:number}}", "maxIterations": "{{iterations:number}}",
+      "worker": { "model": "{{workerModel}}", "tools": ["read", "write", "edit", "bash"], "contextFiles": false },
+      "instructions": "Improve {{metric}} in the candidate files while keeping behavior correct. Make one change per iteration, testing one hypothesis, and state the hypothesis and what you expect the number to do in your final reply. Use earlier results to choose the next hypothesis. Change only candidate files, never the evaluator.",
+      "validator": { "kind": "command", "command": "{{evaluator}}" } }
+  ]
+}

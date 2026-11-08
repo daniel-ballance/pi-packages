@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Skill eval: {{name}}",
+  "cwd": "{{cwd}}",
+  "limits": { "concurrency": 2, "maxAttempts": 6, "timeoutSeconds": "{{timeoutSeconds:number}}" },
+  "steps": [
+    { "id": "candidateA", "kind": "task",
+      "worker": { "model": "{{candidateModel}}", "tools": ["read", "bash", "write", "edit"], "skills": ["{{skillA}}"], "contextFiles": false },
+      "instructions": "{{prompt}} Work in {{workdirA}}. When you finish, copy your changed files and a short notes.md on your design into your candidate directory." },
+    { "id": "candidateB", "kind": "task",
+      "worker": { "model": "{{candidateModel}}", "tools": ["read", "bash", "write", "edit"], "skills": ["{{skillB}}"], "contextFiles": false },
+      "instructions": "{{prompt}} Work in {{workdirB}}. When you finish, copy your changed files and a short notes.md on your design into your candidate directory." },
+    { "id": "grade", "kind": "task", "dependsOn": ["candidateA", "candidateB"],
+      "worker": { "model": "{{graderModel}}", "tools": ["read", "write"], "contextFiles": false },
+      "instructions": "The inputs are two anonymous outputs for the same request. Grade both in one pass, on one scale, against this rubric: {{rubric}}. Judge the files, not the notes' claims. Write grades.json to your candidate directory: for each input, its path, a score per criterion, and one line of evidence per score." }
+  ]
+}

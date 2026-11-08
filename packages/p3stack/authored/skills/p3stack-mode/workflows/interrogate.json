@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "Interrogate: {{name}}",
+  "cwd": "{{cwd}}",
+  "limits": { "concurrency": 3, "maxAttempts": 12, "timeoutSeconds": "{{timeoutSeconds:number}}" },
+  "steps": [
+    { "id": "adversaryA", "kind": "task",
+      "worker": { "model": "{{adversaryModelA}}", "tools": ["read", "bash", "write"], "contextFiles": false },
+      "instructions": "Break this change. Scope: {{scope}}. Intent it must meet: {{intent}}. Read the source in {{cwd}} but change nothing there. For each failure you can show, create findings/<n>/repro.sh in your candidate directory: a bash script, run from {{cwd}}, that exits 0 only when it observes the wrong behavior and nonzero otherwise, plus findings/<n>/finding.md with a title, the command, the output it printed, and the output the intent requires. Leave out anything you did not run: style, naming, structure, and risks that need a future change. No findings is a valid result." },
+    { "id": "adversaryB", "kind": "task",
+      "worker": { "model": "{{adversaryModelB}}", "tools": ["read", "bash", "write"], "contextFiles": false },
+      "instructions": "Break this change. Scope: {{scope}}. Intent it must meet: {{intent}}. Read the source in {{cwd}} but change nothing there. For each failure you can show, create findings/<n>/repro.sh in your candidate directory: a bash script, run from {{cwd}}, that exits 0 only when it observes the wrong behavior and nonzero otherwise, plus findings/<n>/finding.md with a title, the command, the output it printed, and the output the intent requires. Leave out anything you did not run: style, naming, structure, and risks that need a future change. No findings is a valid result." },
+    { "id": "adversaryC", "kind": "task",
+      "worker": { "model": "{{adversaryModelC}}", "tools": ["read", "bash", "write"], "contextFiles": false },
+      "instructions": "Break this change. Scope: {{scope}}. Intent it must meet: {{intent}}. Read the source in {{cwd}} but change nothing there. For each failure you can show, create findings/<n>/repro.sh in your candidate directory: a bash script, run from {{cwd}}, that exits 0 only when it observes the wrong behavior and nonzero otherwise, plus findings/<n>/finding.md with a title, the command, the output it printed, and the output the intent requires. Leave out anything you did not run: style, naming, structure, and risks that need a future change. No findings is a valid result." },
+    { "id": "collect", "kind": "task", "dependsOn": ["adversaryA", "adversaryB", "adversaryC"],
+      "worker": { "model": "{{collectorModel}}", "tools": ["read", "write"], "contextFiles": false },
+      "instructions": "Copy every finding from the three input artifacts into findings/<adversary>-<n>/ in your candidate directory, keeping repro.sh and finding.md unchanged. Merge findings that share a root cause into one directory and list the merged sources in its finding.md. Do not judge or rerun them; the next check reruns every repro." },
+    { "id": "rerun", "kind": "check", "input": "collect",
+      "validator": { "kind": "command", "command": "cd \"{{cwd}}\" || exit 2; proven=''; dropped=''; for d in \"$WORKFLOW_CANDIDATE\"/findings/*/; do [ -f \"$d/repro.sh\" ] || continue; n=$(basename \"$d\"); if timeout 300 bash \"$d/repro.sh\" >/dev/null 2>&1; then proven=\"$proven $n\"; else dropped=\"$dropped $n\"; fi; done; printf '{\"verdict\":\"pass\",\"findings\":\"proven:%s; not reproduced:%s\"}\\n' \"$proven\" \"$dropped\"" } }
+  ]
+}

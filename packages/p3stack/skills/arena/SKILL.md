@@ -19,6 +19,8 @@ Every candidate gets the same prompt, so the prompt is the contract.
 
 ## Phase B: Fan out
 
+In a terminal with workflow tools, a design-sketch arena can run from the arena workflow template instead. See **Run a workflow** in the [host capabilities](../poteto-mode/references/host-capabilities.md).
+
 Delegate all N subagents at once per **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md), each with the task, the path to the shared grounding, its own output path, and instructions to produce the artifact and a short rationale naming the alternatives it considered and what it rejected.
 
 If a candidate produces no output, proceed with N-1 and note the dropout.
