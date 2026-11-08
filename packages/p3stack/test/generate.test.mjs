@@ -537,6 +537,8 @@ test("the package ships the Pocock license and initializes both source checkouts
   assert.ok(manifest.files.includes("LICENSE-matt-pocock"));
   assert.ok(manifest.files.includes("LICENSE-agent-skills"));
   assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/agent-skills/);
+  assert.ok(manifest.files.includes("LICENSE-superpowers"));
+  assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/superpowers/);
   assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/matt-pocock/);
 });
 
@@ -564,7 +566,7 @@ function pocockFixture() {
   const root = join(temp, "repo/packages/p3stack");
   mkdirSync(join(temp, "repo/scripts"), { recursive: true });
   symlinkSync(join(packageDir, "../../scripts/lint-skill"), join(temp, "repo/scripts/lint-skill"));
-  for (const name of ["rules", "registry", "extra", "authored", "overlays", "patches", "vendor/pstack", "vendor/agent-skills"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
+  for (const name of ["rules", "registry", "extra", "authored", "overlays", "patches", "vendor/pstack", "vendor/agent-skills", "vendor/superpowers"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
   const oldVendor = join(packageDir, "../pi-pocock-skills/vendor/matt-pocock");
   cpSync(existsSync(oldVendor) ? oldVendor : join(packageDir, "vendor/matt-pocock"), join(root, "vendor/matt-pocock"), { recursive: true });
   const manifestPath = join(root, "rules/manifest.json");

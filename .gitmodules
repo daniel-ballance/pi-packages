@@ -7,3 +7,6 @@
 [submodule "packages/p3stack/vendor/agent-skills"]
 	path = packages/p3stack/vendor/agent-skills
 	url = https://github.com/addyosmani/agent-skills.git
+[submodule "packages/p3stack/vendor/superpowers"]
+	path = packages/p3stack/vendor/superpowers
+	url = https://github.com/obra/superpowers.git

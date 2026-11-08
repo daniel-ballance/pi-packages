@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./git-env.mjs";
-import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
+import { borrowedNote, sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
 const generator = join(dirname(fileURLToPath(import.meta.url)), "generate.mjs");
 
@@ -43,12 +43,15 @@ function main(args) {
     if (changes.length) {
       const skills = manifest.registry ? JSON.parse(readFileSync(join(packageDir, "registry/skills.json"), "utf8")) : undefined;
       const classify = sourcePathClassifier(source, skills);
+      const borrowedPath = join(packageDir, "rules/borrowed.json");
+      const borrowed = existsSync(borrowedPath) ? JSON.parse(readFileSync(borrowedPath, "utf8")) : [];
       console.log(`Changed upstream source paths for ${source.name} (manifest scope):`);
       for (let index = 0; index < changes.length; index += 2) {
         const [status, path] = changes.slice(index, index + 2);
-        const { kind, output } = classify(relative(subtree, path).split("\\").join("/"));
+        const local = relative(subtree, path).split("\\").join("/");
+        const { kind, output } = classify(local);
         const scope = output === undefined ? ` (${kind}${["not emitted", "unclassified"].includes(kind) ? "; review scope" : ""})` : ` -> ${output}`;
-        console.log(`  ${status} ${path}${scope}`);
+        console.log(`  ${status} ${path}${scope}${borrowedNote(borrowed, source.name, local)}`);
       }
     }
     console.log(`Review the full upstream commits too: packaging and generated harness trees may live outside ${subtree}/.`);

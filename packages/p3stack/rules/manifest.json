@@ -123,6 +123,21 @@
         "checkout": "vendor/agent-skills",
         "branch": "main"
       }
+    },
+    {
+      "name": "superpowers",
+      "vendor": "vendor/superpowers",
+      "map": [
+        {
+          "from": "LICENSE",
+          "to": "LICENSE-superpowers"
+        }
+      ],
+      "upstream": {
+        "repository": "obra/superpowers",
+        "checkout": "vendor/superpowers",
+        "branch": "main"
+      }
     }
   ]
 }
