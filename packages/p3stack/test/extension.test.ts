@@ -243,19 +243,19 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
   const h = harness();
   try {
     await h.command("p3stack", "on");
-    assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true } });
+    assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "default" } });
     assert.deepEqual(h.statuses, [], "no status row is added");
     assert.deepEqual(h.footers, [], "no footer is set outside the terminal");
-    assert.deepEqual(h.notices.at(-1), ["p3stack is on.", "info"]);
+    assert.deepEqual(h.notices.at(-1), ["p3stack is on (default grant).", "info"]);
     const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
     const section = event.systemPromptOptions.sections["p3stack"];
-    assert.match(section, /^Read .*skills\/p3stack-mode\/SKILL\.md and follow it\.$/);
+    assert.match(section, /^Read .*skills\/p3stack-mode\/SKILL\.md and follow it\. Grant: default\.$/);
     assert.doesNotMatch(section, /Role models|bug-fix|grok|claude/);
     assert.equal(section.split("\n").length, 1, "only the router belongs in the section");
     const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
     assert.equal(reminders.length, 1, "each user turn gets a reminder beside the request");
     assert.equal(reminders[0].display, false);
-    assert.match(reminders[0].content, /^\[p3stack-mode is on\] Before anything else, route this request\. Read .*p3stack-mode\/SKILL\.md/);
+    assert.match(reminders[0].content, /^\[p3stack-mode is on, grant: default\] Before anything else, route this request\. Read .*p3stack-mode\/SKILL\.md/);
     assert.match(reminders[0].content, /call `p3stack_roles` for the role models/);
     assert.doesNotMatch(reminders[0].content, /role models above/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
@@ -271,6 +271,62 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
     const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
     assert.ok(event.systemPromptOptions.sections["p3stack"], "rebuilt from the branch");
   } finally { resumed.dispose(); }
+});
+
+test("the grant is explicit mode state: set with on or grant, persisted, injected, and rejected when malformed", async () => {
+  const h = harness();
+  try {
+    await h.command("p3stack", "on autonomous");
+    assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "autonomous" } });
+    assert.deepEqual(h.notices.at(-1), ["p3stack is on (full-autonomy grant).", "info"]);
+    let event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
+    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: full-autonomy\.$/);
+    const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
+    assert.match(reminders[0].content, /^\[p3stack-mode is on, grant: full-autonomy\]/);
+    await h.command("p3stack", "grant default");
+    assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "default" } });
+    event = await h.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
+    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: default\.$/);
+    await h.command("p3stack", "grant autonomous");
+    await h.command("p3stack", "off");
+    await h.command("p3stack", "on");
+    assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "autonomous" } }, "bare on keeps the last grant");
+    const count = h.entries.length;
+    for (const bad of ["on everything", "grant", "grant yes", "off now", "on autonomous extra"]) {
+      await h.command("p3stack", bad);
+      assert.match(h.notices.at(-1)![0], /^Usage: \/p3stack on \[default\|autonomous\]/, bad);
+    }
+    assert.equal(h.entries.length, count, "malformed commands change nothing");
+    await h.command("p3stack", "status");
+    assert.deepEqual(h.notices.at(-1), ["p3stack is on (full-autonomy grant).", "info"]);
+  } finally { h.dispose(); }
+  for (const [data, expected] of [[{ on: true, grant: "autonomous" }, "full-autonomy"], [{ on: true }, "default"], [{ on: true, grant: "bogus" }, "default"]] as const) {
+    const resumed = harness({ hasUI: false, branch: [{ type: "custom", customType: "p3stack", data }] });
+    try {
+      await resumed.emit("session_start");
+      const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
+      assert.match(event.systemPromptOptions.sections["p3stack"], new RegExp(`Grant: ${expected}\\.$`), JSON.stringify(data));
+    } finally { resumed.dispose(); }
+  }
+});
+
+test("delegated briefs carry the grant, the brief contract for writers, and the review stance for readers", async () => {
+  const h = harness();
+  try {
+    await h.command("p3stack", "on autonomous");
+    const writer: any = { toolName: "subagent_spawn", input: { task: "Build it.", tools: ["read", "edit"] } };
+    await h.emit("tool_call", writer);
+    assert.match(writer.input.task, /done predicate/);
+    assert.match(writer.input.task, /Do not spawn your own reviewer/);
+    assert.match(writer.input.task, /Grant: full-autonomy\.\n\nBuild it\.$/);
+    for (const event of [{ toolName: "subagent_spawn", input: { task: "Review it.", tools: ["read"] } }, { toolName: "mcp__t3-code__delegate_task", input: { role: "review", task: "Review it." } }] as any[]) {
+      await h.emit("tool_call", event);
+      assert.match(event.input.task, /author's conclusions are not evidence/);
+      assert.match(event.input.task, /measured, inferred, or guess/);
+      assert.match(event.input.task, /Grant: full-autonomy\.\n\nReview it\.$/);
+      assert.doesNotMatch(event.input.task, /done predicate/);
+    }
+  } finally { h.dispose(); }
 });
 
 test("the TUI sets a footer while on and restores the stock footer while off or switching branches", async () => {

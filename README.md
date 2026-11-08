@@ -31,7 +31,7 @@ Pi references local paths without installing their dependencies. Complete the fr
 
 Each package also installs alone. Do not configure two copies of the repository, such as the Git source and a checkout. Pi then loads each extension twice, and a tool registered twice stops Pi from starting.
 
-Run `pi list` to inspect configured packages. Run `/p3stack on` to enable the router. `/p3stack off` disables it. `/p3stack-setup` selects role defaults in `p3stack.json`.
+Run `pi list` to inspect configured packages. Run `/p3stack on` to enable the router, or `/p3stack on autonomous` to grant full autonomy. `/p3stack off` disables it. `/p3stack-setup` selects role defaults in `p3stack.json`.
 
 The owner's nonsecret preferences live in [`global/`](global/README.md). Those files are linked from the stable checkout into the live home, not from development worktrees. [Configure T3 on each machine](packages/p3stack/docs/landing/t3-settings.md) covers the T3 launch argument for both install methods.
 
