@@ -190,6 +190,54 @@ model, not a Composition: tools, resources and directories are still chosen per
 Child, and the Allowlist still bounds the model.
 _Avoid_: profile, preset (see Composition)
 
+### Routing
+
+**Route**:
+A row in `registry/routes.json` that sends one kind of request, under one Grant, to
+the first skill or playbook the router reads.
+_Avoid_: mapping, dispatch
+
+**Chain**:
+A row in `registry/chains.json` that inserts a required read at an exact anchor in
+a playbook, so another source's skill or a p3stack reference joins that playbook
+without editing it.
+_Avoid_: hook, step (the playbook's own numbered items are steps)
+
+**Grant**:
+The authority a p3stack session runs under: `default` (product calls go to the
+human) or `full-autonomy` (the agent decides covered calls and reports them).
+Explicit session state set with `/p3stack on [default|autonomous]` or
+`/p3stack grant`, stated in the system prompt and every delegated brief.
+Irreversible actions and operator gates pause under both.
+_Avoid_: mode (the mode is on or off), autonomy level
+
+**House policy**:
+One of the router's numbered rules that settles a conflict between routed skills
+(authority, questions, validation, migration, testing, review independence,
+context, style). It wins over any routed skill.
+
+**Floor**:
+The part of the quality bar that holds with no setup and under every Grant: no new
+suppressions, skipped or deleted tests, stubs, swallowed errors, or weakened
+thresholds. `floor-check.mjs` checks it; `floor-ok: <reason>` explains a line.
+_Avoid_: quality gate (that is a project's whole `CONSTRAINTS.md` bar)
+
+**Ledger**:
+The append-only recovery file of one run in the store: dispatches, completions,
+rulings, parked findings. Read first after compaction; deleted when the run lands
+and its rulings are promoted to ADRs.
+_Avoid_: decision trail (that is the audit record `show-me-your-work` keeps)
+
+**Interactive prototype**:
+A prototype a human tries and judges: a single shareable HTML file around a
+liftable pure module, or UI variants on the real route on a `prototype/<name>`
+branch. The Prototype playbook's other branch is judged by the agent observing it.
+
+**Watch-only source**:
+A vendored upstream that ships only its license. Every skill row is a drop, and
+`rules/borrowed.json` names the p3stack files that restate its ideas, so a bump
+flags changes to those ideas for review.
+
 ### Boundaries
 
 **Not a sandbox**:

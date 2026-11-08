@@ -20,6 +20,14 @@ The grant is explicit session state. `/p3stack on autonomous` or `/p3stack grant
 
 Disabling the mode removes the router reminder. It does not unload the extensions or remove explicitly invoked skills.
 
+## Four sources, two ways in
+
+p3stack vendors pstack and Matt Pocock's skills as before, plus `addyosmani/agent-skills` narrowly (four skills) and `obra/superpowers` watch only (license plus [`rules/borrowed.json`](../packages/p3stack/rules/borrowed.json)). [ADR 0005](adr/0005-vendor-narrowly-or-watch-only.md) records why. The router's House policies settle conflicts between them ([ADR 0004](adr/0004-house-policies-win-over-vendored-defaults.md)).
+
+## Evals measure routing before and after a change
+
+`npm run check` runs a static routing check over the descriptions of model-invoked skills: realistic prompts must rank their skill, negatives must lose to their owner, and descriptions must not collide. `npm run eval:routing` runs the live routing eval, which spends tokens; fixtures can set a grant and their own read limit. A change rejected on eval evidence goes in [`docs/evals/rejected.md`](evals/rejected.md).
+
 ## The host map owns runtime differences
 
 A terminal Pi session uses the subagents extension for children. T3 supplies its own delegation and scheduling. The shared host helper detects T3 from its launch environment, and the host map gives each capability its concrete operation.
