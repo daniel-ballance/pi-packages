@@ -7,7 +7,7 @@ Date: 2026-11-08. Branch: `research/web-search-reliability`.
 
 - **Root cause.** DuckDuckGo's no-JavaScript endpoints (`html.duckduckgo.com/html/`, `lite.duckduckgo.com/lite/`) run a bot blocker keyed on the **client IP address**. Once it trips, every request from that IP gets HTTP 202 and an image CAPTCHA page (`anomaly.js?…&cc=botnet`), whichever endpoint, query, or pacing is used. The query shape (`site:`) and our honest User-Agent are not the trigger on their own: both succeeded on a fresh attempt. Volume from the IP is. Today the fourth of four requests spaced 60 s apart was challenged. The package cannot fix this by changing headers without impersonating a browser, which this document rejects.
 - **What makes it worse today.** The tool keeps no memory of a block, so every agent, subagent, and Pi process on the machine keeps sending requests into it. The DuckDuckGo-side window may be sliding, so requests during a block can extend it, as hot testing suggested. Repeated queries are not cached.
-- **Recommendation.** Keep DuckDuckGo as the keyless default, but make it polite and honest: a **cooldown shared across processes** that sends no request while it lasts and reports its end time, plus **minimum spacing** and a **search-result cache**. Add a keyless **`web_fetch`** tool (URL → readable text with an outline, section extraction, and size bounds). For docs lookups this matters more than search, since the agent usually knows or can guess the official URL. Then add **optional keyed providers** behind the same `web_search` tool (Brave Search API first, self-hosted SearXNG second). They are configured in the user's agent directory, with keys read from environment variables only.
+- **Recommendation.** Keep DuckDuckGo as the keyless default, but make it polite and honest: a **cooldown shared across processes** that sends no request while it lasts and reports its end time, plus **minimum spacing** and a **search-result cache**. Add a keyless **`web_fetch`** tool (URL → readable text with an outline, section extraction, and size bounds). For docs lookups this matters more than search, since the agent usually knows or can guess the official URL. Then add **optional providers** behind the same `web_search` tool: Firecrawl first (tested live, see [2.1](#21-firecrawl-live-test)), self-hosted SearXNG second, Brave as an alternative. They are configured in the user's agent directory, with keys read from environment variables only.
 - **Sequence.** Five small PRs (see [PR plan](#pr-plan)). After the first two, the host map can drop its "never retry" workaround in favor of the tool's own `[cooldown]` report. After the third, the curl-and-grep step becomes `web_fetch`.
 
 ## 1. Current package
@@ -57,6 +57,27 @@ DuckDuckGo's [Terms of Service](https://duckduckgo.com/terms) (last updated 2025
 
 Reading: a low-volume client that identifies itself honestly and stops when challenged is defensible. Spoofing a browser, rotating IPs, or solving or bypassing the CAPTCHA would get around a control DuckDuckGo applied on purpose, so this package should not do any of them. DuckDuckGo's official Instant Answer API (`api.duckduckgo.com`) is keyless and sanctioned, but it returns zero-click answers, not web results, so it cannot replace the scraper. This is from prior knowledge: its documentation page was not re-read today, because its old URL now redirects into a search.
 
+### 2.1 Firecrawl live test
+
+The owner has a free-tier Firecrawl key, so Firecrawl's search and scrape APIs were tested on the same IP while DuckDuckGo was still blocking it. Probe script in `/tmp`, key read from a private file and never printed, about 8 s between requests (the free plan allows 10 requests per minute).
+
+| Test | Result |
+|---|---|
+| 6 keyed searches (`POST /v2/search`, `limit: 5`): five `site:` doc queries (typescriptlang.org, vitest.dev, nodejs.org, developer.mozilla.org, docs.searxng.org) and one plain query | 6 of 6 HTTP 200 in 0.72–1.10 s, 2 credits each. Every `site:` result was on the named domain. The expected page came first for vitest (`/config/coverage`), SearXNG (`/dev/search_api.html`) and Node (`/api/globals.html`), and second for MDN (`Request/redirect`). Snippets (`description`) are Markdown fragments of the page itself |
+| 3 keyed scrapes (`POST /v2/scrape`, `formats: ["markdown"]`, `onlyMainContent: true`) of vitest `config/coverage`, Node `api/globals.html`, MDN `Request/redirect` | 3 of 3 HTTP 200 in 0.39–1.10 s, 1 credit each. Markdown came to 20 KB, 59 KB and 6 KB, against 127 KB, 148 KB and 151 KB of raw HTML. Headings and code blocks were kept; a little boilerplate remained ("Skip to content", a sponsor link on MDN). The Node page has 103 headings, so section extraction is still needed on Firecrawl output |
+| 1 search and 1 scrape **without a key** | Both HTTP 200 in about 0.3 s, with the same results (the scrape came from Firecrawl's cache) |
+
+Total spend: 15 of the key's 1,000 monthly credits, plus 3 credits of the keyless allowance for this IP.
+
+From Firecrawl's documentation (read 2026-11-08):
+
+- **Free plan**: [1,000 credits a month, "No cost, no card"](https://www.firecrawl.dev/pricing), equal to 500 searches or 1,000 scraped pages. Search costs 2 credits per 10 results, and a basic scrape 1 credit per page. [Rate limits](https://docs.firecrawl.dev/rate-limits): 10 requests per minute each for `/search` and `/scrape`, and 2 concurrent browsers. A rate-limited request gets a 429.
+- **Keyless access**: "the REST API" offers Search and Scrape without an API key, "free and capped per IP address per day by two limits" (requests and credits), with a 429 past either limit. The numbers are not published.
+- **Search operators**: [`site:`, `-site:`, `filetype:`, quoted phrases](https://docs.firecrawl.dev/api-reference/endpoint/search) are documented.
+- **Data handling**: Firecrawl sees every query and URL. Scrapes are served from its cache by default (`maxAge` defaults to 2 days). Zero data retention for search is an enterprise option that "must be enabled for your team".
+
+Reading: Firecrawl is a sanctioned API that worked every time here, fast, on an IP DuckDuckGo was blocking. It is the only provider tested that covers both `web_search` and `web_fetch`, and it renders JavaScript pages, which local extraction cannot. The costs: one more third party sees the queries and URLs, keyless use has an unpublished daily cap per IP, and the free plan's 10 requests per minute is easy to reach with parallel subagents, so the shared pacing in 3.1 applies to it too.
+
 ## 3. Options
 
 ### 3.1 Cooldown, pacing and honest reporting (keyless, recommended)
@@ -88,7 +109,8 @@ Trade-offs: no cost, no keys, no privacy change. It does not raise how often sea
 | Provider | Key | Cost (vendor page, read 2026-11-08) | Docs-lookup quality | Privacy and terms | Notes |
 |---|---|---|---|---|---|
 | DuckDuckGo html (current) | none | free | good; `site:` works | unofficial endpoint; IP blocks | default |
-| **Brave Search API** | yes | [$5 per 1,000 requests, $5 free credit monthly](https://brave.com/search/api/) (about 1,000 free searches) | own independent index; `site:` inside `q` is [documented](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started) | sanctioned API; the query goes to Brave | `GET api.search.brave.com/res/v1/web/search`, header `X-Subscription-Token`, `web.results[].{title,url,description}`; simplest mapping |
+| **Firecrawl** | optional: keyless with an unpublished daily cap per IP, or a free key | [free plan 1,000 credits/month, no card](https://www.firecrawl.dev/pricing): 500 searches at 2 credits per 10 results; 10 requests/min | tested 6 of 6 `site:` queries, right page first or second ([2.1](#21-firecrawl-live-test)); Markdown snippets | sanctioned API; sees queries and URLs and caches pages; zero data retention is enterprise-only | `POST api.firecrawl.dev/v2/search`, `Authorization: Bearer`, `data.web[].{url,title,description}`. The same key serves `/v2/scrape` for `web_fetch` |
+| Brave Search API | yes | [$5 per 1,000 requests, $5 free credit monthly](https://brave.com/search/api/) (about 1,000 free searches) | own independent index; `site:` inside `q` is [documented](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started) | sanctioned API; the query goes to Brave | `GET api.search.brave.com/res/v1/web/search`, header `X-Subscription-Token`, `web.results[].{title,url,description}`; simplest mapping |
 | **SearXNG (self-hosted)** | none (owner runs it) | free | depends on the engines enabled | queries stay on the owner's instance until it fans them out to engines; the terms question moves to that instance | [JSON output](https://docs.searxng.org/dev/search_api.html) must be enabled in `settings.yml` (`format=json`, otherwise 403); "many public instances have these formats disabled", so do not default to public instances. If its DuckDuckGo engine shares our IP, it shares the block |
 | Tavily | yes | [1,000 credits/month free, no card](https://www.tavily.com/pricing); then $0.008/credit | AI-oriented; can return page extracts | sanctioned | `site:` maps to `include_domains` |
 | Exa | yes | [$10 credit monthly free](https://exa.ai/pricing); search from $4 per 1,000 | strong on technical docs (vendor claim) | sanctioned | neural search; `site:` maps to `includeDomains` |
@@ -96,21 +118,21 @@ Trade-offs: no cost, no keys, no privacy change. It does not raise how often sea
 | Marginalia | shared `public` key | free, non-commercial | poor for framework docs (small-web index) | the `public` key "often hits a rate limit" ([API docs](https://about.marginalia-search.com/article/api/)) | not recommended |
 | `claude_web_search` (claude-subscription, `webTools: true`) | Claude plan | plan usage | good | Anthropic | already exists as a separate tool. Keep it separate and mention it in the host map; do not wrap it |
 
-Recommended: implement the provider seam with DuckDuckGo, **Brave** (cheapest sanctioned key with an independent index and `site:` support) and **SearXNG** (keyless for owners who self-host). Tavily and Exa fit the same seam later if wanted.
+Recommended: implement the provider seam with DuckDuckGo, **Firecrawl** (tested live, a free key with no card, and one provider for both search and fetch) and **SearXNG** (keyless for owners who self-host). Brave (an independent index at $5 per 1,000 after $5 of free monthly credit), Tavily and Exa fit the same seam later if wanted.
 
 **Configuration.** `<agentDir>/web-search.json`, read only from the user's agent directory, as `claude-subscription.json` is. A project file could otherwise send queries to an attacker's SearXNG.
 
 ```json
 {
-  "providers": ["brave", "duckduckgo"],
-  "brave": { "apiKeyEnv": "BRAVE_SEARCH_API_KEY" },
+  "providers": ["firecrawl", "duckduckgo"],
+  "firecrawl": { "apiKeyEnv": "FIRECRAWL_API_KEY", "fetch": true },
   "searxng": { "url": "http://127.0.0.1:8888" },
   "cooldownMinutes": 60,
   "cacheHours": 24
 }
 ```
 
-Keys come only from the environment variable named in the file. The parser rejects any key-shaped field (`apiKey`, `token`) with a clear problem message. This matters here because the owner's `~/.pi/agent/*.json` files are symlinks into this repository's `global/` directory, so a key written into a config file could be committed. A provider listed without its variable set is skipped with the reason shown. Keyed providers are never enabled just because a variable exists: spending credits needs an explicit `providers` entry.
+Keys come only from the environment variable named in the file. The parser rejects any key-shaped field (`apiKey`, `token`) with a clear problem message. This matters here because the owner's `~/.pi/agent/*.json` files are symlinks into this repository's `global/` directory, so a key written into a config file could be committed. A provider listed without its variable set is skipped with the reason shown. Keyed providers are never enabled just because a variable exists: spending credits needs an explicit `providers` entry. Firecrawl listed with no `apiKeyEnv` runs keyless. It is still opt-in, because it sends queries to a second third party.
 
 ### 3.4 `web_fetch` (keyless, recommended)
 
@@ -125,7 +147,8 @@ web_fetch({ url, section?, outline?, offset?, maxChars? })
 - **Default** returns the main content (`main`, `article`, `[role=main]`, else `body` without `nav`, `header`, `footer`, `aside`, `script` and `style`) as Markdown-like text: headings, lists, code blocks kept verbatim, and links as `text (url)`. Long output stops at `maxChars` (default 20,000; maximum 40,000, under Pi's 50 KiB tool limit) and gives the `offset` that continues it.
 - **Bounds and safety.** http(s) only. At most 5 redirects, each checked again. A 5 MiB download cap and a 20 s timeout, with cancellation. text/html, text/plain, text/markdown and JSON are accepted; anything else (PDF, binaries) gives `[unsupported_type]`. Credentials in URLs are rejected. Output starts with "untrusted web content". Loopback, link-local and private addresses are refused by default (a prompt-injected page could otherwise make the agent probe the LAN), with a config switch to allow them.
 - **Cache.** In-process LRU (about 20 pages, 10 minutes), so an outline and then a section costs one download.
-- **Dependencies.** Cheerio, which the package already ships. No headless browser: JavaScript-only docs sites are out of scope, and the tool says so when a page has almost no text.
+- **Dependencies.** Cheerio, which the package already ships. No headless browser: local extraction cannot read JavaScript-only docs sites, and the tool says so when a page has almost no text.
+- **Optional Firecrawl backend.** With `firecrawl.fetch: true` in the config (PR 4), a page that local extraction finds nearly empty, or a `render: true` argument, goes to `/v2/scrape` (`onlyMainContent`, Markdown) for 1 credit. Both backends produce Markdown, so the outline, `section` and `offset` code is shared. Firecrawl returns the whole page (59 KB for Node's globals page), so it still needs those. Local fetching stays the default: it costs nothing, and no third party sees the URL.
 - **Host parity.** T3 offers no fetch primitive, so `web_fetch` duplicates nothing and is registered `direct` on both hosts (`duplicatesT3: false` if it goes through `registerHostAware`). Its result is complete as plain text and it calls no `ctx.ui`, so ADR 0001 is satisfied without T3-specific behavior. `claude_web_fetch` stays a separate opt-in in claude-subscription.
 
 Trade-offs: keyless, no third party between agent and site (unlike reader services such as `r.jina.ai`, which would see every URL), deterministic, and fast. Extraction quality is heuristic. Reader-mode libraries (`@mozilla/readability` with a DOM) do better on article pages but add dependencies, and docs pages have clean `main` and heading markup anyway.
@@ -175,14 +198,15 @@ Acceptance tests (synthetic HTML fixtures, not copies of real docs):
 - An outline followed by a section within the cache window makes one `fetch` call.
 - Tool registration: present on both hosts, `direct` exposure.
 
-### PR 4: provider seam, configuration, Brave and SearXNG
+### PR 4: provider seam, configuration, Firecrawl and SearXNG
 
-Scope: a `SearchProvider` interface (`search(query, limit, signal, deps)`), DuckDuckGo moved behind it, `brave.ts` and `searxng.ts`, config loading from `<agentDir>/web-search.json` (pattern of `claude-subscription/src/config.ts`: per-key validation, problems reported, never thrown), the ordered chain with skipped-provider reasons, and per-provider cooldowns.
+Scope: a `SearchProvider` interface (`search(query, limit, signal, deps)`), DuckDuckGo moved behind it, `firecrawl.ts` (search, plus the optional `web_fetch` backend) and `searxng.ts`, config loading from `<agentDir>/web-search.json` (pattern of `claude-subscription/src/config.ts`: per-key validation, problems reported, never thrown), the ordered chain with skipped-provider reasons, and per-provider cooldowns.
 Acceptance tests:
 - With no config file, DuckDuckGo is the only provider and current behavior is unchanged (the existing suite passes untouched).
-- The Brave request has the correct URL, `count`, and `X-Subscription-Token` taken from the named environment variable. Its JSON maps to `{title,url,snippet}`. A 401 is reported as a key problem, and 402/429 as quota or rate limits leading to a provider cooldown.
+- The Firecrawl search request has the correct URL, the JSON body (`query`, `limit`, `sources: [{type: "web"}]`), and `Authorization: Bearer` from the named environment variable, or no header when keyless. `data.web[]` maps to `{title,url,snippet}`, with Markdown stripped from the snippet. A 401 is reported as a key problem. A 402 is reported as credits exhausted, and a 429 as a rate or daily limit; both start a provider cooldown, using `Retry-After` when present.
+- The Firecrawl `web_fetch` backend runs only with `fetch: true`. It sends `formats: ["markdown"]` and `onlyMainContent: true`, and its Markdown goes through the same outline and section code as local extraction (shared fixtures).
 - SearXNG requests `format=json` from the configured URL. A 403 is reported as "JSON format disabled on this instance".
-- Chain: with Brave quota exhausted, the call falls over to DuckDuckGo in one call, and the result names both and the reason. A provider in cooldown is skipped with no `fetch`. A listed provider whose environment variable is unset is skipped with that reason.
+- Chain: with Firecrawl credits exhausted, the call falls over to DuckDuckGo in one call, and the result names both and the reason. A provider in cooldown is skipped with no `fetch`. A listed provider whose environment variable is unset is skipped with that reason.
 - A config containing `apiKey` or `token` values is rejected with a problem message. A project-level file is not read.
 
 ### PR 5: guidance updates (p3stack)
@@ -205,6 +229,7 @@ Acceptance: `./scripts/check.sh` passes (generator, lint-skill, pin checks), and
 
 1. **Cooldown length.** The proposal is 60 minutes, doubling to a 4-hour cap (SearXNG uses 60 minutes; today's block lasted over 30). A shorter first cooldown (for example 30 minutes) gives more availability, but each early probe risks extending the block.
 2. **Keyed provider activation.** The proposal requires an explicit `providers` list. The alternative is to activate automatically when `BRAVE_SEARCH_API_KEY` is set: more convenient, but it spends credits silently.
-3. **Which keyed provider to build first.** Brave is proposed. Tavily or Exa if result extracts matter more than an independent index.
-4. **`web_fetch` and private networks.** The proposal refuses them by default. Allow them by default if the owner fetches local docs servers often.
-5. **PR order.** PRs 1–3 are keyless and independent of each other's code beyond the state module. PR 3 alone gives most of the docs-lookup benefit, so it could land first.
+3. **Which extra provider to build first.** Firecrawl is proposed: tested, you already hold a free key, and it can also fetch. Brave if an independent index matters more. Tavily or Exa if result extracts matter more.
+4. **Keyless Firecrawl.** Should it be in the default chain behind DuckDuckGo, so search still works during a DuckDuckGo block with no setup? The proposal is to leave it opt-in: queries would otherwise go to a second third party, and its daily cap per IP is unpublished.
+5. **`web_fetch` and private networks.** The proposal refuses them by default. Allow them by default if the owner fetches local docs servers often.
+6. **PR order.** PRs 1–3 are keyless and independent of each other's code beyond the state module. PR 3 alone gives most of the docs-lookup benefit, so it could land first.
