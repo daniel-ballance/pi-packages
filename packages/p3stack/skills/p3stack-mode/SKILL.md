@@ -99,6 +99,8 @@ Apply each matching chain at its anchor in table order. For a reported bug witho
 | `<this file's directory>/../poteto-mode/playbooks/autonomous-run.md` | State the exit condition as a checkable predicate before the first iteration | after | `<this file's directory>/../p3stack-mode/references/floor.md` | Always. A clean floor-check is part of the exit predicate. |
 | `<this file's directory>/../poteto-mode/playbooks/pause-safely.md` | Stop at a safe boundary. | after | `<this file's directory>/../p3stack-mode/references/execution-ledger.md` | A ledger exists for this run. Append the pause point and every open ruling before stopping. |
 | `<this file's directory>/../poteto-mode/playbooks/session-pickup.md` | Locate the prior trail. | before | `<this file's directory>/../p3stack-mode/references/execution-ledger.md` | Look for the run's ledger in the store first. When it exists, it and git log outrank the transcript. |
+| `<this file's directory>/../poteto-mode/playbooks/hillclimb.md` | 4. Ground each hypothesis in the architecture model from step 1 | before | `<this file's directory>/../poteto-mode/SKILL.md` | In a terminal with workflow tools and a scripted evaluator, run the loop from the hillclimb workflow template (Run a workflow in the host capabilities); the runtime keeps or discards each candidate by score. |
+| `<this file's directory>/../poteto-mode/playbooks/eval.md` | 4. **Spawn N parallel candidates** | before | `<this file's directory>/../poteto-mode/SKILL.md` | In a terminal with workflow tools, run steps 4 and 5 from the skill-eval workflow template (Run a workflow in the host capabilities). |
 
 ## Seams and context
 

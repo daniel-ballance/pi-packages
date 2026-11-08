@@ -94,3 +94,8 @@ A child's session is elsewhere. In a terminal, `subagent_list` gives each child'
 ## Author a skill
 
 Write it in Pi's skill format: a directory named for the skill with a `SKILL.md` whose frontmatter `name` matches the directory and whose `description` says what it does and when to load it; links relative to the skill directory. Follow the `writing-for-agents` skill. Run `lint-skill` on the directory when the pi-packages repository is available (`node scripts/lint-skill/lint-skill.mjs <directory>` from its root). Then test it: write three prompts that should load the skill and three that should not, run each in a fresh session, and revise the description until the right ones load. A path-shaped trigger (file types, directories) goes in the description; Pi has no path-based activation.
+
+## Run a workflow
+
+- **Terminal.** When `subagent_catalog` lists the workflow tools, a procedure with a template under `p3stack-mode/workflows/` can run as a workflow: fill the template with `p3stack-mode/scripts/workflow-template.mjs` (see the README beside the templates), start it with `subagent_workflow_start`, follow it with `subagent_workflow_inspect`, and pause, resume, or cancel it with `subagent_workflow_control`. The run continues while you are idle, and its completion notice wakes you. Treat every worker output as unverified until a check or your own review confirms it.
+- **T3.** There is no workflow engine. Follow the skill's prose procedure, delegating each step per **Delegate**, and say in your reply that the workflow template was not available.

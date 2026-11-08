@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "Arena: {{name}}",
+  "cwd": "{{cwd}}",
+  "limits": { "concurrency": 2, "maxAttempts": 10, "timeoutSeconds": "{{timeoutSeconds:number}}" },
+  "steps": [
+    { "id": "runnerA", "kind": "task",
+      "worker": { "model": "{{runnerModelA}}", "tools": ["read", "write"], "contextFiles": false },
+      "instructions": "{{task}} Read the grounding in {{grounding}}. Write your proposal to proposal.md in your candidate directory: the caller's usage first, then types and signatures with unimplemented bodies, then a rationale. Produce a whole-shape design, not a point fix. Change nothing outside your candidate directory." },
+    { "id": "runnerB", "kind": "task",
+      "worker": { "model": "{{runnerModelB}}", "tools": ["read", "write"], "contextFiles": false },
+      "instructions": "{{task}} Read the grounding in {{grounding}}. Write your proposal to proposal.md in your candidate directory: the caller's usage first, then types and signatures with unimplemented bodies, then a rationale. Produce a whole-shape design, not a point fix. Change nothing outside your candidate directory." },
+    { "id": "synthesize", "kind": "task", "dependsOn": ["runnerA", "runnerB"],
+      "worker": { "model": "{{judgeModel}}", "tools": ["read", "write"], "contextFiles": false },
+      "instructions": "The inputs are anonymous proposals for: {{task}}. Pick one as the base, by interface depth and fit with the grounding in {{grounding}}. Graft at most two improvements from the other. If they diverge so far that no base fits, say so and propose how to reframe the task instead of averaging them. Write design.md (the synthesized sketch) and decision.md (the base, each graft, and why) to your candidate directory." },
+    { "id": "review", "kind": "check", "input": "synthesize",
+      "validator": { "kind": "agent",
+        "worker": { "model": "{{reviewerModel}}", "tools": ["read"], "contextFiles": false },
+        "instructions": "Judge design.md against this contract only: {{contract}}. Ignore decision.md's reasoning when deciding. Every finding names its evidence. Return verdict pass when the design meets the contract, fail otherwise, with findings." } }
+  ]
+}
