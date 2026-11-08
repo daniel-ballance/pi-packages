@@ -44,6 +44,8 @@ Role defaults: call `p3stack_roles` when it exists. Otherwise read `.pi/p3stack.
 
 Durable run state that is not part of the repository (decision trails, orchestration boards, plan drafts, subagent records) lives under `~/.pi/agent/p3stack/--<path>--/`, with `<path>` encoded as for **Session history**. Put the absolute store path in every brief that writes to it; a child does not know it otherwise.
 
+Run state lives under `<store>/runs/<run-id>/`: the execution ledger (`ledger.md`, per `p3stack-mode/references/execution-ledger.md`), child reports, and briefs. Delete a run's directory once it lands and its rulings are promoted.
+
 ## Wake and loop
 
 - **Terminal, on a clock.** When `subagent_catalog` shows `loops` enabled, use `subagent_loop`: `op: "start"` with a `task` that says what each tick checks and when to stop, an `intervalSeconds` no shorter than the catalog's minimum, and, if you want them tighter than the catalog's bounds, `maxIterations` and `maxDurationMinutes`. Call `op: "stop"` once the stop condition holds. A tick starts a turn only when you are idle; one loop runs at a time, and a reload stops it. Without loops, delegate a watcher child whose brief is "every N minutes, check X; report when Y", and give it a deadline.
