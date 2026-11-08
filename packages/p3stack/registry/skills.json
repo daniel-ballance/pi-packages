@@ -1587,6 +1587,96 @@
     "reason": "One router is sufficient. p3stack-mode composes poteto-mode."
   },
   {
+    "source": "superpowers",
+    "path": "skills/brainstorming/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Its open why-question and playback live in the questions house policy; grilling owns the interview."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/diagnosing-superpowers/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Diagnoses superpowers sessions specifically."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/dispatching-parallel-agents/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. swarm and the host map's Delegate cover parallel dispatch."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/executing-plans/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Inline execution ideas live in execution-ledger.md."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/finishing-a-development-branch/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Opening a PR, Babysit and Shipping cover finishing."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/receiving-code-review/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Its no-performative-agreement stance lives in review-stance.md."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/requesting-code-review/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. code-review and review-stance.md cover requesting review."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/subagent-driven-development/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Its ledger, rulings and fix-loop ideas live in execution-ledger.md, brief-contract.md and review-stance.md."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/systematic-debugging/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. diagnosing-bugs and the Bug fix playbook own debugging."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/test-driven-development/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Matt tdd and the testing house policy own test-first work."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/using-git-worktrees/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Isolation in the host capabilities owns worktrees."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/using-superpowers/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Its always-on bootstrap conflicts with the single router."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/verification-before-completion/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. prove-it-works, evidence labels and floor-check cover completion claims."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/writing-plans/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Its task contract lives in brief-contract.md."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/writing-skills/SKILL.md",
+    "action": "drop",
+    "reason": "Watch only. Its baseline-failure method feeds the authoring and Eval playbooks."
+  },
+  {
     "source": "p3stack",
     "path": "skills/release/SKILL.md",
     "action": "emit",

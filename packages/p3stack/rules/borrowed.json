@@ -1,0 +1,100 @@
+[
+  {
+    "source": "superpowers",
+    "path": "skills/subagent-driven-development/SKILL.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/execution-ledger.md",
+      "authored/skills/p3stack-mode/references/brief-contract.md"
+    ],
+    "idea": "Ledger that survives compaction; rulings, not stalls; briefs and review packages as files; no worker-spawned reviewers."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/subagent-driven-development/references/resuming.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/execution-ledger.md"
+    ],
+    "idea": "Resume from the ledger and git log, not memory."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/subagent-driven-development/references/fix-loop.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/review-stance.md"
+    ],
+    "idea": "Bounded fix loop; disputes recorded; parked findings."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/subagent-driven-development/task-reviewer-prompt.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/review-stance.md"
+    ],
+    "idea": "Spec compliance and quality from the diff, with evidence."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/subagent-driven-development/references/final-review.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/review-stance.md"
+    ],
+    "idea": "A spec's silence is not permission."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/writing-plans/SKILL.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/brief-contract.md"
+    ],
+    "idea": "Interfaces consumed and produced, global constraints verbatim, review focus, proportion."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/receiving-code-review/SKILL.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/review-stance.md"
+    ],
+    "idea": "Dispute with evidence rather than performative agreement."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/brainstorming/SKILL.md",
+    "by": [
+      "authored/skills/p3stack-mode/SKILL.md.tmpl"
+    ],
+    "idea": "Open why-question before menus; options steer."
+  },
+  {
+    "source": "superpowers",
+    "path": "docs/superpowers/specs/2026-06-10-positive-instruction-redesign-design.md",
+    "by": [
+      "authored/skills/p3stack-mode/SKILL.md.tmpl"
+    ],
+    "idea": "Which instruction phrasings measurably work; tripwires and recognition tables, positive recipes."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/doubt-driven-development/SKILL.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/review-stance.md"
+    ],
+    "idea": "Give the reviewer the artifact and contract, never the claim."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/interview-me/SKILL.md",
+    "by": [
+      "authored/skills/p3stack-mode/SKILL.md.tmpl"
+    ],
+    "idea": "Hypothesis with a confidence number; stop at about 95%."
+  },
+  {
+    "source": "agent-skills",
+    "path": "skills/constraint-driven-development/SKILL.md",
+    "by": [
+      "authored/skills/p3stack-mode/references/floor.md",
+      "authored/skills/p3stack-mode/scripts/floor-check.mjs"
+    ],
+    "idea": "The Floor that catches agents gaming green."
+  }
+]

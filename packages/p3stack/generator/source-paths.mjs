@@ -24,3 +24,9 @@ export function sourcePathClassifier(source, skills) {
     return { kind: "emitted", output };
   };
 }
+
+/** Notes when a changed upstream path is an idea p3stack borrowed in its own words (rules/borrowed.json). */
+export function borrowedNote(borrowed, source, path) {
+  const entry = (borrowed ?? []).find(row => row.source === source && row.path === path);
+  return entry ? ` [borrowed by ${entry.by.join(", ")}: review whether the borrowed idea changed]` : "";
+}

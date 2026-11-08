@@ -12,12 +12,34 @@ const cli = fileURLToPath(new URL("../generator/check-registry.mjs", import.meta
 const cache = process.env.P3STACK_FIXTURE_ROOT ?? tmpdir();
 const rows = () => JSON.parse(readFileSync(new URL("../registry/skills.json", import.meta.url), "utf8"));
 
+test("every borrowed upstream idea names an existing upstream path and existing p3stack files", () => {
+  const borrowed = JSON.parse(readFileSync(new URL("../rules/borrowed.json", import.meta.url), "utf8"));
+  const manifest = JSON.parse(readFileSync(new URL("../rules/manifest.json", import.meta.url), "utf8"));
+  assert.ok(borrowed.length > 0);
+  for (const row of borrowed) {
+    const source = manifest.sources.find(({ name }) => name === row.source);
+    assert.ok(source, row.source);
+    assert.ok(existsSync(new URL(`../${source.vendor}/${row.path}`, import.meta.url)), `${row.source}/${row.path}`);
+    for (const file of row.by) assert.ok(existsSync(new URL(`../${file}`, import.meta.url)), file);
+    assert.ok(row.idea.trim(), row.path);
+  }
+});
+
+test("a changed borrowed upstream path is flagged for review in a bump", async () => {
+  const { borrowedNote } = await import("../generator/source-paths.mjs");
+  const borrowed = [{ source: "superpowers", path: "skills/a/SKILL.md", by: ["authored/x.md"], idea: "y" }];
+  assert.match(borrowedNote(borrowed, "superpowers", "skills/a/SKILL.md"), /borrowed by authored\/x\.md: review/);
+  assert.equal(borrowedNote(borrowed, "superpowers", "skills/b/SKILL.md"), "");
+  assert.equal(borrowedNote(borrowed, "agent-skills", "skills/a/SKILL.md"), "");
+});
+
 test("registry admits 22 Pocock, 57 pstack, five owner, and four agent-skills skills with reasons for every drop", () => {
   const skills = rows();
   for (const [source, count] of [["matt-pocock", 22], ["cursor-plugins", 57], ["owner-plugins", 5], ["agent-skills", 4]]) {
     assert.equal(skills.filter(row => row.source === source && row.action === "emit").length, count, source);
   }
-  assert.equal(skills.filter(row => row.action === "drop").length, 45);
+  assert.equal(skills.filter(row => row.action === "drop").length, 60);
+  assert.equal(skills.filter(row => row.source === "superpowers" && row.action === "emit").length, 0, "superpowers is watch only");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
   for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").invocation, "user");

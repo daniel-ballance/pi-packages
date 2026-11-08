@@ -1,7 +1,7 @@
 # p3stack
 
 The Pi edition of Cursor's pstack, **generated** from the vendored upstream.
-`skills/`, `LICENSE`, `LICENSE-matt-pocock`, and `LICENSE-agent-skills` are generated output. Never edit them by hand: change a
+`skills/`, `LICENSE`, and the `LICENSE-*` files are generated output. Never edit them by hand: change a
 rule and regenerate. The package check fails on drift.
 
 Current architecture is in [`docs/p3stack.md`](../../docs/p3stack.md).
@@ -14,6 +14,8 @@ The generator contract below defines source and output ownership.
 | `vendor/pstack` | git submodule, `cursor/plugins`; pstack, dyl-stack, and thermos | upstream |
 | `vendor/matt-pocock` | git submodule, `mattpocock/skills` | upstream |
 | `vendor/agent-skills` | git submodule, `addyosmani/agent-skills` | upstream |
+| `vendor/superpowers` | git submodule, `obra/superpowers`, watch only | upstream |
+| `rules/borrowed.json` | upstream ideas p3stack restates in its own files | hand-written |
 | `registry/` | skill verdicts, emitted names, invocation, routes, and chains | hand-written |
 | `rules/manifest.json` | named sources with their vendor roots, path maps, resource exclusions, and upstream checkouts | hand-written |
 | `rules/tokens.json` | token rewrites | hand-written |
@@ -24,7 +26,7 @@ The generator contract below defines source and output ownership.
 | `authored/` | p3stack-owned skills and playbooks copied after `extra/` | hand-written |
 | `generator/` | the generator, the upstream updater and the lint wrapper | hand-written |
 | `extensions/p3stack/` | mode toggle, `ask_user`, `p3stack_roles`, `/p3stack-setup` | hand-written |
-| `skills/`, `LICENSE`, `LICENSE-matt-pocock`, `LICENSE-agent-skills` | generated | `generator/generate.mjs` |
+| `skills/`, `LICENSE`, `LICENSE-*` | generated | `generator/generate.mjs` |
 
 ## Commands
 
@@ -46,7 +48,7 @@ so install the workspace first.
 `rules/manifest.json` contains a `sources` array. Each source has a unique `name`,
 a `vendor` root, a `map` of input prefixes to output prefixes, an optional
 `exclude` list of regular expressions, and optional `upstream` checkout details.
-The sources are `cursor-plugins`, `matt-pocock`, `owner-plugins`, and `agent-skills`. `agent-skills` emits four skills (`constraints`, `source-grounding`, `security-hardening`, `instrumentation`) and maps two shared checklists into the skills that use them; every other agent-skills skill is dropped with a reason. The owner
+The sources are `cursor-plugins`, `matt-pocock`, `owner-plugins`, and `agent-skills`. `agent-skills` emits four skills (`constraints`, `source-grounding`, `security-hardening`, `instrumentation`) and maps two shared checklists into the skills that use them; every other agent-skills skill is dropped with a reason. `superpowers` is watch only: it emits only its license, and every skill row is a drop naming the p3stack file that restates its idea. `rules/borrowed.json` lists each borrowed upstream path and the p3stack files that restate it; a bump's scope report marks a changed borrowed path so the restatement gets reviewed. The owner
 source reads dyl-stack and thermos from the same Cursor checkout, with no new pin.
 A source's optional `required` list names output paths that it must supply.
 `registry/skills.json` classifies every upstream skill under each source's
@@ -169,6 +171,7 @@ npm run bump -- cursor-plugins        # the tip of upstream main
 npm run bump -- cursor-plugins <ref>  # or a commit or tag
 npm run bump -- matt-pocock <ref>     # update the Pocock source
 npm run bump -- agent-skills <ref>    # update the agent-skills source
+npm run bump -- superpowers <ref>     # move the watch-only superpowers pin
 ```
 
 The command requires a source name. It fetches only that source's checkout,
