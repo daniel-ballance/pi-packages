@@ -16,6 +16,14 @@
     "when": "No failing reproduction exists yet. Then continue Bug fix from the plan step."
   },
   {
+    "id": "feature-source-grounding",
+    "playbook": "playbooks/feature.md",
+    "anchor": "4. Delegate code-writing to a subagent",
+    "position": "before",
+    "skill": "source-grounding",
+    "when": "The code uses a framework or library API whose correct use depends on the installed version. Put the cited doc pages in the brief."
+  },
+  {
     "id": "feature-brief-contract",
     "playbook": "playbooks/feature.md",
     "anchor": "4. Delegate code-writing to a subagent",

@@ -4,3 +4,6 @@
 [submodule "packages/pistack/vendor/pstack"]
 	path = packages/p3stack/vendor/pstack
 	url = https://github.com/cursor/plugins.git
+[submodule "packages/p3stack/vendor/agent-skills"]
+	path = packages/p3stack/vendor/agent-skills
+	url = https://github.com/addyosmani/agent-skills.git

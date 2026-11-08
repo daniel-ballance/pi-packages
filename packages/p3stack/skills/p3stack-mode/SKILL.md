@@ -54,6 +54,9 @@ Match the request and grant below. After poteto-mode, read the target and follow
 | Open a PR | any | `<this file's directory>/../poteto-mode/playbooks/opening-a-pr.md` |
 | Drive an existing PR to readiness | any | `<this file's directory>/../poteto-mode/playbooks/babysit.md` |
 | Land a verified stack when authorized | any | `<this file's directory>/../poteto-mode/playbooks/shipping.md` |
+| Set or audit the project's quality bar | any | `<this file's directory>/../constraints/SKILL.md` |
+| Harden or threat-model a change | any | `<this file's directory>/../security-hardening/SKILL.md` |
+| Add telemetry, metrics, or alerts | any | `<this file's directory>/../instrumentation/SKILL.md` |
 | Survey codebase health | any | `<this file's directory>/../improve-codebase-architecture/SKILL.md` |
 | Implement a tracker ticket graph | any | `<this file's directory>/../implement-spec/SKILL.md` |
 | Run a standing program of PRs | any | `<this file's directory>/../poteto-mode/playbooks/orchestrate.md` |
@@ -76,6 +79,7 @@ Apply each matching chain at its anchor in table order. For a reported bug witho
 | --- | --- | --- | --- | --- |
 | `<this file's directory>/../poteto-mode/playbooks/feature.md` | 2. `architect` for parallel design exploration. | after | `<this file's directory>/../tdd/SKILL.md` | Use the seams named by architect. Confirm them with the human under the default grant. |
 | `<this file's directory>/../poteto-mode/playbooks/bug-fix.md` | Reproduce it yourself on the matching surface via the control skill (Non-negotiables), even when a debug or instrumentation protocol says to ask the user to reproduce. | before | `<this file's directory>/../diagnosing-bugs/SKILL.md` | No failing reproduction exists yet. Then continue Bug fix from the plan step. |
+| `<this file's directory>/../poteto-mode/playbooks/feature.md` | 4. Delegate code-writing to a subagent | before | `<this file's directory>/../source-grounding/SKILL.md` | The code uses a framework or library API whose correct use depends on the installed version. Put the cited doc pages in the brief. |
 | `<this file's directory>/../poteto-mode/playbooks/feature.md` | 4. Delegate code-writing to a subagent | before | `<this file's directory>/../p3stack-mode/references/brief-contract.md` | Always when delegating code. Write the brief at hand-off; never store it in a tracker ticket. |
 | `<this file's directory>/../poteto-mode/playbooks/feature.md` | 4. Delegate code-writing to a subagent | before | `<this file's directory>/../p3stack-mode/references/execution-ledger.md` | More than one delegated unit, or work that may outlive this context. |
 | `<this file's directory>/../poteto-mode/playbooks/feature.md` | 7. If the design is contested, `interrogate` before shipping. | before | `<this file's directory>/../p3stack-mode/references/floor.md` | Always. Run floor-check before no-comments; explain or remove every finding. |

@@ -60,6 +60,10 @@ Ask only for a product or preference call no experiment can settle. Use `ask_use
 
 Use the `todo` tool when it exists. Without it, keep a Markdown checklist in your reply and update it as steps change. Never delete a step; mark it skipped with a reason.
 
+## Fetch official docs
+
+For the exact version the project pins, fetch the specific documentation page, not a homepage or a search snippet. Use a documentation MCP server (such as context7, reached through codemode) when one is configured, else `web_search` with a `site:` filter for the official domain, then fetch the page. Cite the URL beside the code it justifies. When no fetch tool works, say the pattern is unverified against current docs. Both hosts use the same tools when they are present.
+
 ## Read and search
 
 Use your host's read and search tools (`read`, `grep`, `find`, `ls`, or `bash`) wherever a skill says to read, search or follow a call chain.
