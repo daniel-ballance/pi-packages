@@ -10,3 +10,5 @@ disable-model-invocation: true
 
 **Pattern:**
 - **Size phases and cap scope.** Limit files per phase, set turn budgets, account for mechanism costs.
+
+**Where the procedure lives.** **Delegate** in the poteto-mode host capabilities (`../poteto-mode/references/host-capabilities.md`): send bulk reading to children, brief them with file pointers rather than pasted context, and keep their reports out of your context except for the summary. Save decisions and evidence paths in durable notes before you compact.

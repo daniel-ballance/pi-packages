@@ -7,3 +7,5 @@ disable-model-invocation: true
 # Exhaust the Design Space
 
 It also applies to product design decisions where user experience depends on feel, not logic.
+
+**Where the procedure lives.** The **architect** skill runs it through **arena**: at least two structurally distinct candidates, judged by a model of another family. For a choice someone must judge by feel, use the Prototype playbook (`../poteto-mode/playbooks/prototype.md`).

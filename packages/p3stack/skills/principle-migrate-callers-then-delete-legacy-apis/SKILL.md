@@ -12,3 +12,5 @@ disable-model-invocation: true
 - No external users depend on backward compatibility
 - The project can absorb coordinated breaking changes
 - The new API is part of a simplification or refactor initiative
+
+**When it does not apply.** External consumers, persisted data, or staged deploys need expand–contract instead: add the new form beside the old, migrate callers in batches that each stay green, then delete the old form (`to-tickets` sequences this).
