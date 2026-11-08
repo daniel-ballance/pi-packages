@@ -12,8 +12,8 @@ Templates for the subagents workflow engine. Each one backs a p3stack procedure 
 ## Use
 
 1. List a template's placeholders: `node <p3stack-mode directory>/scripts/workflow-template.mjs <template> --list`.
-2. Resolve every model with `p3stack_roles` (`distinctFrom` the author's model for adversaries, judges, reviewers, and graders) and check them against `subagent_catalog`.
+2. Resolve every model with `p3stack_roles` (`distinctFrom` the author's model for adversaries, judges, reviewers, and graders) and check them against the delegation catalog (**Delegate** in the poteto-mode host capabilities).
 3. Fill it: `node <p3stack-mode directory>/scripts/workflow-template.mjs <template> --set name=value ... --out <store>/runs/<run-id>/workflow.json`. Placeholders inside text are `{{name}}`; whole numbers are `"{{name:number}}"`. A placeholder left unfilled, or a value for one that does not exist, is an error.
-4. Start it with `subagent_workflow_start`, which validates the definition against the live policy, then supervise it per **Run a workflow** in the poteto-mode host capabilities.
+4. Start and supervise it per **Run a workflow** in the poteto-mode host capabilities. Starting validates the definition against the live policy.
 
 To change the number of adversaries, runners, or candidates, copy or delete steps in the filled file before starting it.

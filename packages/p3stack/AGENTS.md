@@ -36,7 +36,7 @@ npm run generate -- --check            # fail on drift; writes nothing
 npm run bump -- <source> [ref]         # move one source pin and regenerate
 npm run check                         # drift check, lint-skill on every skill, static routing check
 node test/static-routing/run.mjs      # tier A: model-invoked descriptions vs realistic prompts
-npm run eval:routing                  # tier B: live routing eval (spends tokens)
+npm run eval:routing                  # tier B: live routing eval, 3 runs per prompt, pass at 2 of 3 (spends tokens)
 npm run eval:behavior -- --agent-dir <dir>  # tier C: behavior eval, mode on vs off (spends tokens)
 npm test                              # generator tests on fixtures
 ```

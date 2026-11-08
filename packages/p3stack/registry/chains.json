@@ -120,12 +120,20 @@
     "when": "Author or modify agent-facing instructions."
   },
   {
+    "id": "skill-baseline",
+    "playbook": "playbooks/authoring-a-skill.md",
+    "anchor": "1. Use the skill-authoring procedure",
+    "position": "before",
+    "skill": "playbooks/eval.md",
+    "when": "The change alters behavior, not only wording. Before editing, run the task once without the change and record how the agent fails. After editing, compare against that baseline per the Eval playbook, with the skill-eval workflow template in a terminal."
+  },
+  {
     "id": "prototype-human-judge",
     "playbook": "playbooks/prototype.md",
     "anchor": "Scope the decision the prototype exists to make",
     "position": "after",
     "skill": "interactive-prototype",
-    "when": "A human must judge the result by trying it, or a stakeholder must drive it. Build per its logic or UI branch in step 3: one shareable HTML file around a pure module, or variants on the real route on a prototype/<name> branch in its own worktree."
+    "when": "A human will choose, try, or judge the result: they ask to pick between options (\"so I can pick one\"), to see or click through it, or name someone else who will (\"the PM\", \"the team\"); or a stakeholder must drive it. Then this is the human-judged path for logic and UI alike. Build per its logic or UI branch in step 3: one shareable HTML file around a pure module, or variants on the real route on a prototype/<name> branch in its own worktree."
   },
   {
     "id": "prototype-human-verify",
@@ -190,5 +198,37 @@
     "position": "before",
     "skill": "poteto-mode",
     "when": "In a terminal with workflow tools, run steps 4 and 5 from the skill-eval workflow template (Run a workflow in the host capabilities)."
+  },
+  {
+    "id": "orchestrate-ledger",
+    "playbook": "playbooks/orchestrate.md",
+    "anchor": "Keep the program's state in `notes.md`",
+    "position": "after",
+    "skill": "p3stack-mode/references/execution-ledger.md",
+    "when": "Always. Keep the run's ledger beside notes.md: dispatches, completions, and rulings, so a compacted coordinator never redispatches finished work."
+  },
+  {
+    "id": "orchestrate-floor",
+    "playbook": "playbooks/orchestrate.md",
+    "anchor": "**Each PR gets a verifier that isn't its author,**",
+    "position": "after",
+    "skill": "p3stack-mode/references/floor.md",
+    "when": "Always. The verifier runs floor-check at the PR's head; a finding without a reason fails the verdict."
+  },
+  {
+    "id": "autopilot-ledger",
+    "playbook": "playbooks/autopilot-full.md",
+    "anchor": "2. **Spawn one owner per PR, and keep its work where a replacement can find it.**",
+    "position": "after",
+    "skill": "p3stack-mode/references/execution-ledger.md",
+    "when": "Always, for Autopilot-stack too. Keep one ledger for the queue: each owner's dispatch, PR, verdicts, and rulings."
+  },
+  {
+    "id": "autopilot-floor",
+    "playbook": "playbooks/autopilot-full.md",
+    "anchor": "4. **Swarm-verify once.**",
+    "position": "after",
+    "skill": "p3stack-mode/references/floor.md",
+    "when": "Always, for Autopilot-stack too. The verdict at the code-ready head includes a clean floor-check; a finding without a reason fails it."
   }
 ]

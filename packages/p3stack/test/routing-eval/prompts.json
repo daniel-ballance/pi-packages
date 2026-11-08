@@ -1,5 +1,7 @@
 {
   "model": "openai-codex/gpt-6-luna:low",
+  "runs": 3,
+  "minRate": 0.66,
   "prompts": [
     { "id": "feature", "prompt": "Add a --json flag to the CLI.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/feature.md"] },
     { "id": "triage", "prompt": "Triage the open issues.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "triage/SKILL.md"] },

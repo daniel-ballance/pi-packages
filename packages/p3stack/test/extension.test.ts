@@ -61,10 +61,11 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   } as never);
   const emit = async (name: string, event: any = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); return event; };
   const reminders = async (event: any) => { const out = []; for (const handler of handlers.get("before_agent_start") ?? []) { const result = await handler(event, ctx); if (result?.message) out.push(result.message); } return out; };
+  const results = async (name: string, event: any) => { const out = []; for (const handler of handlers.get(name) ?? []) out.push(await handler(event, ctx)); return out.filter(Boolean); };
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
   const dispose = () => { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; rmSync(root, { recursive: true, force: true }); };
-  return { root, cwd, agentDir, ctx, tools, commands, emit, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
+  return { root, cwd, agentDir, ctx, tools, commands, emit, results, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
 }
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
 
@@ -348,6 +349,26 @@ test("delegated briefs carry the grant, the brief contract for writers, and the 
       assert.match(event.input.task, /Grant: full-autonomy\.\n\nReview it\.$/);
       assert.doesNotMatch(event.input.task, /done predicate/);
     }
+  } finally { h.dispose(); }
+});
+
+test("the parent is told when an implementation brief named no interfaces or done predicate", async () => {
+  const h = harness();
+  try {
+    await h.command("p3stack", "on");
+    const result = (id: string) => ({ toolCallId: id, content: [{ type: "text", text: "spawned" }], structuredContent: { id: "child-1" }, details: { d: 1 } });
+    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "thin", input: { task: "Fix the export.", tools: ["read", "edit"] } });
+    const [note] = await h.results("tool_result", result("thin"));
+    assert.equal(note.content[0].text, "spawned");
+    assert.match(note.content[1].text, /^p3stack: this brief named no interfaces and no done predicate\. .*check them in its report/);
+    assert.deepEqual(note.structuredContent, { id: "child-1" }, "structured content survives");
+    assert.deepEqual(await h.results("tool_result", result("thin")), [], "noted once");
+    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "full", input: { task: "Fix the export. Interfaces: exportCsv(rows). Done when `npm test` prints 0 failures.", tools: ["read", "edit"] } });
+    assert.deepEqual(await h.results("tool_result", result("full")), []);
+    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "reader", input: { task: "Audit it.", tools: ["read"] } });
+    assert.deepEqual(await h.results("tool_result", result("reader")), [], "read-only briefs are not held to the implementation contract");
+    await h.emit("tool_call", { toolName: "mcp__t3-code__delegate_task", toolCallId: "t3", input: { task: "Build the importer.", role: "implementation" } });
+    assert.match((await h.results("tool_result", result("t3")))[0].content[1].text, /named no interfaces and no done predicate/);
   } finally { h.dispose(); }
 });
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Fills a p3stack workflow template. Placeholders are {{name}} inside JSON
 // strings, and "{{name:number}}" for a whole numeric value. A placeholder left
-// unfilled is an error. subagent_workflow_start validates the result in full.
+// unfilled is an error. Starting the workflow validates the result in full.
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
