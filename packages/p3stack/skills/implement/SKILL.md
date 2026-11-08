@@ -12,6 +12,4 @@ Read [tdd](../tdd/SKILL.md) where possible, at pre-agreed seams.
 
 Run typechecking regularly, single test files regularly, and the full test suite once at the end.
 
-Once done, read [code-review](../code-review/SKILL.md) to review the work.
-
-Commit your work to the current branch.
+Once done, commit your work to the current branch. Then read [code-review](../code-review/SKILL.md) to review the committed work: it diffs against `HEAD`, so uncommitted changes would be missed. Commit any fixes it leads to.
