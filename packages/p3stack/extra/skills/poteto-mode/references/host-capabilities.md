@@ -64,7 +64,13 @@ Use the `todo` tool when it exists. Without it, keep a Markdown checklist in you
 
 ## Fetch official docs
 
-For the exact version the project pins, fetch the specific documentation page, not a homepage or a search snippet. Use a documentation MCP server (such as context7, reached through codemode) when one is configured, else `web_search` with a `site:` filter for the official domain, then fetch the page. Cite the URL beside the code it justifies. When no fetch tool works, say the pattern is unverified against current docs. Both hosts use the same tools when they are present.
+For the version the project pins, get the specific documentation, not a homepage or a search snippet. Try these in order and cite the URL beside the code it justifies:
+
+1. **context7**, when the `context7` MCP server is configured (reach it through codemode or `tool_search`): `resolve_library_id`, then `query_docs` with one concept per call. It returns code and source URLs in seconds. It serves the default branch unless the library id names a version (`/org/project/<version>`), so pass the pinned version when the resolver lists it, and say so when it does not.
+2. **Fetch a known official page** with `curl -sL <url>` in `bash` when you know the docs URL. Pages run from tens of kilobytes to over a megabyte, so save the page and `grep` the section you need rather than reading it whole.
+3. **`web_search`** with a `site:` filter for the official domain, to find the page URL, then step 2. DuckDuckGo blocks bursts and can keep blocking an address for minutes: send one query at a time, and on `[blocked]` do not retry; fall back to steps 1 and 2.
+
+When none of these works, say the pattern is unverified against current docs. Both hosts use the same tools when they are present.
 
 ## Read and search
 

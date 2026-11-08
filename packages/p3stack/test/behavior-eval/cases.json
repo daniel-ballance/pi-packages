@@ -1,0 +1,173 @@
+{
+  "model": "openai-codex/gpt-6-luna:medium",
+  "timeoutSeconds": 900,
+  "cases": [
+    {
+      "id": "floor-review",
+      "about": "The review route runs floor-check, and the reply names the skipped test.",
+      "fixture": "floor-review",
+      "grant": "default",
+      "prompt": "I've finished the sumAll change in this repo; it is uncommitted. Review my change before I open a PR. Do not commit, push, or open a PR.",
+      "tools": "read,bash,grep,find,ls",
+      "expect": [
+        {
+          "id": "ran-floor-check",
+          "kind": "bash",
+          "pattern": "floor-check\\.mjs"
+        },
+        {
+          "id": "names-skipped-test",
+          "kind": "final",
+          "pattern": "skip"
+        }
+      ]
+    },
+    {
+      "id": "bug-red-first",
+      "about": "A reported bug gets a red reproduction before the fix, a regression test, and a passing suite.",
+      "fixture": "bug-red-first",
+      "grant": "default",
+      "prompt": "Customers say splitting a bill sometimes loses cents: splitting 1000 cents three ways only adds up to 999. Fix it.",
+      "tools": "read,bash,edit,write,grep,find,ls",
+      "expect": [
+        {
+          "id": "read-diagnosing-bugs",
+          "kind": "read",
+          "pattern": "diagnosing-bugs/SKILL\\.md"
+        },
+        {
+          "id": "red-before-fix",
+          "kind": "order",
+          "first": {
+            "kind": "bash",
+            "pattern": "node\\b|npm (?:run )?test"
+          },
+          "before": {
+            "kind": "edit",
+            "pattern": "src/split\\.js"
+          }
+        },
+        {
+          "id": "regression-test",
+          "kind": "file",
+          "pattern": "^test/.*\\.js$",
+          "contains": "1000"
+        },
+        {
+          "id": "suite-passes",
+          "kind": "command",
+          "run": "node --test"
+        },
+        {
+          "id": "bug-fixed",
+          "kind": "command",
+          "run": "node -e \"import('./src/split.js').then(m => { const r = m.splitCents(1000, 3); process.exit(r.length === 3 && r.reduce((a, b) => a + b, 0) === 1000 && Math.max(...r) - Math.min(...r) <= 1 ? 0 : 1); })\""
+        }
+      ]
+    },
+    {
+      "id": "prototype-logic",
+      "about": "A click-through request yields one self-contained HTML file a PM can open.",
+      "fixture": "prototype-logic",
+      "grant": "default",
+      "prompt": "Before we build refunds, make something our PM can click through to try the refund states: requested, approved, rejected, and refunded. A partial refund can be approved more than once until the order is fully refunded.",
+      "tools": "read,bash,edit,write,grep,find,ls,ask_user",
+      "expect": [
+        {
+          "id": "read-interactive-prototype",
+          "kind": "read",
+          "pattern": "interactive-prototype/SKILL\\.md"
+        },
+        {
+          "id": "single-html",
+          "kind": "file",
+          "pattern": "\\.html$",
+          "contains": "<button"
+        },
+        {
+          "id": "self-contained",
+          "kind": "file",
+          "pattern": "\\.html$",
+          "absent": "<script[^>]+src=\"https?:"
+        },
+        {
+          "id": "covers-states",
+          "kind": "file",
+          "pattern": "\\.html$",
+          "contains": "refunded"
+        }
+      ]
+    },
+    {
+      "id": "source-grounding",
+      "about": "Version-sensitive framework config is grounded in fetched docs and cited.",
+      "fixture": "source-grounding",
+      "grant": "default",
+      "mcp": true,
+      "prompt": "Make the test run fail when line coverage drops below 80%, using Vitest's documented config for the version this project uses. Don't install anything.",
+      "tools": "read,bash,edit,write,grep,find,ls,web_search,codemode,tool_search,mcp__*",
+      "expect": [
+        {
+          "id": "fetched-docs",
+          "kind": "any",
+          "of": [
+            {
+              "kind": "tool",
+              "pattern": "^web_search$"
+            },
+            {
+              "kind": "tool",
+              "pattern": "^mcp__context7__query_docs$"
+            },
+            {
+              "kind": "tool",
+              "pattern": "^codemode$",
+              "args": "context7"
+            },
+            {
+              "kind": "bash",
+              "pattern": "curl .*vitest"
+            }
+          ]
+        },
+        {
+          "id": "versioned-docs",
+          "kind": "any",
+          "of": [
+            {
+              "kind": "tool",
+              "pattern": "^mcp__context7__query_docs$",
+              "args": "3[._]2"
+            },
+            {
+              "kind": "tool",
+              "pattern": "^codemode$",
+              "args": "context7.*3[._]2"
+            },
+            {
+              "kind": "final",
+              "pattern": "3\\.2"
+            }
+          ]
+        },
+        {
+          "id": "cites-source",
+          "kind": "final",
+          "pattern": "https?://\\S*vitest"
+        },
+        {
+          "id": "configured",
+          "kind": "file",
+          "pattern": "^vitest\\.config\\.ts$",
+          "contains": "thresholds"
+        },
+        {
+          "id": "eighty",
+          "kind": "file",
+          "pattern": "^vitest\\.config\\.ts$",
+          "contains": "80"
+        }
+      ]
+    }
+  ]
+}
