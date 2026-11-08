@@ -8,7 +8,7 @@ import { createAgentSession, DefaultResourceLoader, FooterComponent, initTheme, 
 import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import p3stack from "../extensions/p3stack/index.ts";
 import type { Context } from "../extensions/p3stack/src/mode.ts";
-import { candidates, DEFAULT_ROLES, thinkingFor } from "../extensions/p3stack/src/roles.ts";
+import { candidates, DEFAULT_ROLES, family, thinkingFor } from "../extensions/p3stack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
   ({ provider, id, reasoning, thinkingLevelMap: levels });
@@ -149,6 +149,28 @@ test("roles resolve against the live allowlist, clamp thinking down, and report 
     assert.equal(second.roles["swarm workers"], "xai/grok-4.7:low");
     assert.equal(second.roles["judgment and prose"], undefined);
     assert.match(second.problems.join("\n"), /judgment and prose.*no live catalog selection/);
+  } finally { h.dispose(); }
+});
+
+test("distinctFrom moves each role off the author's family when the catalog offers another, and says so", async () => {
+  assert.equal(family("claude-subscription/claude-opus-5-5:xhigh"), "claude");
+  assert.equal(family("xai/grok-4.7"), "grok");
+  assert.equal(family("openai-codex/gpt-6-astra"), "gpt");
+  const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude-subscription/claude-opus-5-5:xhigh", "openai-codex/gpt-6-astra:xhigh"] };
+  const h = harness({ subagents: catalog });
+  try {
+    const plain = (await h.call("p3stack_roles", {})).structuredContent;
+    assert.equal(plain.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:xhigh");
+    const result = await h.call("p3stack_roles", { distinctFrom: "claude-subscription/claude-opus-5-5:xhigh" });
+    const roles = result.structuredContent.roles;
+    assert.equal(roles["judgment and prose"], "openai-codex/gpt-6-astra:xhigh", "the closest level outside the family");
+    assert.equal(roles["swarm workers"], "xai/grok-4.7:high", "already outside the family");
+    assert.deepEqual(roles["interrogate reviewers"], ["openai-codex/gpt-6-astra:xhigh", "xai/grok-4.7:high"]);
+    assert.match(text(result), /judgment and prose: substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude-subscription/);
+    catalog.models = ["claude-subscription/claude-opus-5-5:xhigh"];
+    const only = await h.call("p3stack_roles", { distinctFrom: "claude" });
+    assert.equal(only.structuredContent.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:xhigh");
+    assert.match(text(only), /judgment and prose: no model outside the claude family is offered/);
   } finally { h.dispose(); }
 });
 
@@ -589,6 +611,19 @@ test("/p3stack-setup maps a budget and two models onto every role and writes the
     assert.equal(written.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:max");
     assert.deepEqual(written.roles["interrogate reviewers"], ["claude-subscription/claude-opus-5-5:max", "xai/grok-4.7:xhigh"]);
     assert.match(h.notices.at(-1)![0], /Wrote .*p3stack\.json/);
+  } finally { h.dispose(); restore(); }
+});
+
+test("/p3stack-setup keeps review and prose roles at high thinking or above on the small budget", async () => {
+  const restore = asTerminal();
+  const h = harness({ answers: ["small, medium thinking", "xai/grok-4.7:medium", "claude-subscription/claude-opus-5-5:high"] });
+  try {
+    await h.command("p3stack-setup");
+    const written = JSON.parse(readFileSync(join(h.agentDir, "p3stack.json"), "utf8"));
+    assert.equal(written.roles["swarm workers"], "xai/grok-4.7:medium");
+    assert.equal(written.roles["interrogate reviewers"][0], "claude-subscription/claude-opus-5-5:high");
+    assert.match(h.asked.find(question => question.startsWith("Model for judgment"))!, /claude-opus-5-5:high/);
+    assert.match(h.notices.at(-1)![0], /Review and prose roles stay at high thinking or above/);
   } finally { h.dispose(); restore(); }
 });
 

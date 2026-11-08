@@ -24,7 +24,10 @@ export function registerSetup(pi: Pi) {
       const names = candidates(budget.name, models, catalog?.models);
       if (!names.length) { ctx.ui.notify(`No ${catalog ? "permitted " : ""}model offers thinking at or below ${budget.level}. Choose a larger budget${catalog ? " or permit more models in subagents.json" : ""}.`, "warning"); return; }
       const code = await ctx.ui.select("Model for code roles (feature, bug-fix, swarm workers, explorers)", names);
-      const judgment = code && await ctx.ui.select("Model for judgment and prose roles (a different family suits review panels)", names);
+      // Review and prose roles keep at least high thinking: a cheaper reviewer that takes more turns costs more (turn count beats token price).
+      const judgmentBudget = budget.name === "small" ? "medium" : budget.name;
+      const judgmentNames = candidates(judgmentBudget, models, catalog?.models);
+      const judgment = code && await ctx.ui.select("Model for judgment, review and prose roles (a different family suits review panels; never below high thinking)", judgmentNames.length ? judgmentNames : names);
       if (!code || !judgment) { ctx.ui.notify("Setup cancelled. Nothing written.", "info"); return; }
       const roles = Object.fromEntries([
         ...CODE_ROLES.map(role => [role, code]), ...JUDGMENT_ROLES.map(role => [role, judgment]),
@@ -34,7 +37,8 @@ export function registerSetup(pi: Pi) {
       if (existsSync(path) && !await ctx.ui.confirm("Replace the role defaults?", `${path} exists. Setup rewrites it whole.`)) { ctx.ui.notify("Kept the existing file.", "info"); return; }
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, JSON.stringify({ budget: `${budget.name} (${budget.level})`, roles }, null, 2) + "\n");
-      ctx.ui.notify(`Wrote ${path}. Code roles use ${code}, judgment roles use ${judgment}.${catalog ? " Both are permitted by your subagents policy." : ""}`, "info");
+      const floor = judgmentBudget !== budget.name ? " Review and prose roles stay at high thinking or above." : "";
+      ctx.ui.notify(`Wrote ${path}. Code roles use ${code}, judgment roles use ${judgment}.${floor}${catalog ? " Both are permitted by your subagents policy." : ""}`, "info");
     },
   });
 }
