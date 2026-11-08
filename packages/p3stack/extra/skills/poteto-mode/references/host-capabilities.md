@@ -80,6 +80,8 @@ Use your host's read and search tools (`read`, `grep`, `find`, `ls`, or `bash`) 
 
 Prove a change on the real surface, the way a user would. Use the project's verification skill (a `verify-*` skill; create one with `/skill:create-verification-skill`) or its existing harness. Otherwise drive the surface directly: a CLI or TUI through `bash`, a web UI through a browser driver such as a Playwright MCP server, a macOS app through the `computer-use` package where installed. Under T3, `mcp__t3-code__preview_*` drive a web preview. A surface you cannot drive is a risk you report, not a pass.
 
+For an interactive prototype, open what the human will open. A logic prototype is one local HTML file: load it as `file://<absolute path>` in the browser driver, click through every walkthrough and the free-play buttons, and capture the state panel after each step. A UI prototype is a route on the `prototype/<name>` worktree's dev server: start the server from that worktree, load the route with each `?variant=` value, switch variants with the floating bar, and screenshot each. Under T3, use `mcp__t3-code__preview_*` for the dev-server URL. Hand the human the same file path or URL you checked.
+
 ## Visuals
 
 - **Terminal.** Write the file and give its path.
