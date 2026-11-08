@@ -181,7 +181,24 @@ function resolveHint(hint: string, catalog: Selection[], parent: string | undefi
     .sort((a, b) => LEVELS.indexOf(b.level ?? "off") - LEVELS.indexOf(a.level ?? "off"))[0];
 }
 
-export async function liveRoles(pi: CatalogApi, ctx: RoleContext) {
+/** A model's family is the leading word of its id without the provider: claude-opus-5-5 -> claude, xai/grok-4.7 -> grok. */
+export function family(model: string): string {
+  const name = model.split("/").at(-1)!.replace(/:(off|minimal|low|medium|high|xhigh|max)$/, "");
+  return (name.match(/^[a-z]+/i)?.[0] ?? name).toLowerCase();
+}
+
+const selectionFamily = (selection: Selection) => family(selection.model);
+
+/** Prefers a selection from another family than `avoid`, at the same or the closest lower thinking level. */
+function diversify(selection: Selection, catalog: Selection[], avoid: string): Selection | undefined {
+  if (selectionFamily(selection) !== avoid) return selection;
+  const wanted = LEVELS.indexOf(selection.level ?? "off");
+  const others = catalog.filter(entry => selectionFamily(entry) !== avoid);
+  const at = (entry: Selection) => LEVELS.indexOf(entry.level ?? "off");
+  return others.filter(entry => at(entry) <= wanted).sort((a, b) => at(b) - at(a))[0] ?? others.sort((a, b) => at(a) - at(b))[0];
+}
+
+export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?: string) {
   const defaults = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
   const roles: Record<string, string | Target | (string | Target)[]> = {};
   const problems = [...defaults.problems];
@@ -190,10 +207,15 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext) {
   catch (error) { return { source: defaults.source, budget: defaults.budget, roles, problems: [...problems, `catalog unavailable, ${String(error)}`] }; }
   const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}:${pi.getThinkingLevel()}` : undefined;
   for (const [role, { value }] of Object.entries(defaults.roles)) {
+    const avoid = distinctFrom ? family(distinctFrom) : undefined;
     const resolved = (Array.isArray(value) ? value : [value]).map(hint => {
-      const selection = resolveHint(hint, catalog, parent);
-      if (!selection) problems.push(`${role} has no live catalog selection for ${hint}`);
-      return selection?.value;
+      const found = resolveHint(hint, catalog, parent);
+      if (!found) problems.push(`${role} has no live catalog selection for ${hint}`);
+      if (!found || !avoid) return found?.value;
+      const selection = diversify(found, catalog, avoid);
+      if (!selection) problems.push(`${role}: no model outside the ${avoid} family is offered, so ${hint} stays on it`);
+      else if (selection !== found) problems.push(`${role}: substituted ${selection.model}${selection.level ? `:${selection.level}` : ""} for ${hint} to differ from ${distinctFrom}`);
+      return (selection ?? found).value;
     });
     if (resolved.every(value => value !== undefined)) roles[role] = Array.isArray(value) ? resolved : resolved[0]!;
   }
@@ -206,13 +228,13 @@ const selectionSchema = Type.Union([Type.String(), targetSchema]);
 export function registerRoles(pi: Pi) {
   pi.registerTool({
     name: "p3stack_roles", label: "p3stack roles",
-    description: "Resolve every p3stack role against the live catalog. Return exact provider/model:thinking identities or ready T3 targets, and report unavailable roles.",
+    description: "Resolve every p3stack role against the live catalog. Return exact provider/model:thinking identities or ready T3 targets, and report unavailable roles. Pass distinctFrom with the author's model to get reviewers from another model family.",
     promptSnippet: "p3stack_roles resolves role models against the live delegation catalog.",
-    parameters: Type.Object({}, { additionalProperties: false }),
+    parameters: Type.Object({ distinctFrom: Type.Optional(Type.String({ description: "The author's model or model family. Reviewers, judges, and adversaries pass it so each role resolves to a different family when the catalog offers one." })) }, { additionalProperties: false }),
     reachesTools: () => ["mcp__t3-code__orchestrator_capabilities"],
     outputSchema: Type.Object({ source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), problems: Type.Array(Type.String()) }),
-    async execute(_call: string, _args: unknown, _signal: unknown, _update: unknown, ctx: Context) {
-      const resolved = await liveRoles(pi, ctx);
+    async execute(_call: string, args: { distinctFrom?: string } | undefined, _signal: unknown, _update: unknown, ctx: Context) {
+      const resolved = await liveRoles(pi, ctx, args?.distinctFrom?.trim() || undefined);
       const lines = Object.entries(resolved.roles).map(([role, value]) => `${role}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
       const head = `Role defaults from ${resolved.source}${resolved.budget ? ` (budget ${resolved.budget})` : ""}.`;
       return { content: [{ type: "text", text: [head, ...resolved.problems, ...lines].join("\n") }], details: resolved, structuredContent: resolved };

@@ -28,6 +28,8 @@ When the catalog offers no model of the hinted family, do not retry the hint. Us
 
 A role value written on the other host is a hint, not an identity: a T3 value (`<provider instance>/<model>:<thinking>`) in a terminal, or a Pi value (`provider/model:thinking`) under T3. Match its model family and thinking level as above. The role defaults file is shared by both hosts and holds whatever the last setup wrote.
 
+Reviewers, judges, and adversaries come from a different model family than the author: call `p3stack_roles` with `distinctFrom` set to the author's model, and it substitutes another family where the catalog offers one and reports each substitution.
+
 Role defaults: call `p3stack_roles` when it exists. Otherwise read `.pi/p3stack.json` in a trusted project, else `~/.pi/agent/p3stack.json`. The file is `{"budget": "...", "roles": {"<role>": "<model>" or ["<model>", ...]}}`. A missing file or role means the skill's default hint.
 
 ## Isolation
