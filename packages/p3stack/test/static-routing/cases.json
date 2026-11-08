@@ -1,0 +1,166 @@
+{
+  "rankOneFloor": 0.95,
+  "collisionThreshold": 0.4,
+  "cases": [
+    { "skill": "code-review",
+      "positive": [
+        { "prompt": "Review my branch against main before I open the PR." },
+        { "prompt": "Does this diff follow our coding standards and match the issue it closes?" },
+        { "prompt": "Check the changes since the last tag for spec drift." }
+      ],
+      "negative": [
+        { "prompt": "Write the description for this pull request.", "owner": "pr" },
+        { "prompt": "The export crashes when the file is empty, find out why.", "owner": "diagnosing-bugs" }
+      ] },
+    { "skill": "codebase-design",
+      "positive": [
+        { "prompt": "This module's interface is too wide, help me make it deeper." },
+        { "prompt": "Where should the seam go so the payment code is testable?" },
+        { "prompt": "Find deepening opportunities in the sync package." }
+      ],
+      "negative": [
+        { "prompt": "What does 'settlement' mean in this codebase? Add it to the glossary.", "owner": "domain-modeling" },
+        { "prompt": "Write the failing test first, then implement the parser.", "owner": "tdd" }
+      ] },
+    { "skill": "diagnosing-bugs",
+      "positive": [
+        { "prompt": "The nightly import keeps failing with a timeout, debug this." },
+        { "prompt": "Requests got slow after yesterday's deploy, diagnose the regression." },
+        { "prompt": "The app throws on startup for some users and I can't reproduce it." }
+      ],
+      "negative": [
+        { "prompt": "Review the changes on this branch against the spec.", "owner": "code-review" },
+        { "prompt": "Write me a step by step script for rotating the production database credentials.", "owner": "wizard" }
+      ] },
+    { "skill": "domain-modeling",
+      "positive": [
+        { "prompt": "We keep saying 'account' for two different things, sort out the terminology." },
+        { "prompt": "Record an ADR for choosing event sourcing for orders." },
+        { "prompt": "Update GLOSSARY.md with the terms we just agreed." }
+      ],
+      "negative": [
+        { "prompt": "Stress-test my plan for the migration, grill me.", "owner": "grilling" },
+        { "prompt": "Edit AGENTS.md so agents find the test command.", "owner": "writing-for-agents" }
+      ] },
+    { "skill": "grilling",
+      "positive": [
+        { "prompt": "Grill me on this plan before I commit to it." },
+        { "prompt": "Stress-test my thinking about the pricing change." },
+        { "prompt": "Interview me relentlessly about this design idea." }
+      ],
+      "negative": [
+        { "prompt": "Make a clickable mockup the PM can try.", "owner": "interactive-prototype" },
+        { "prompt": "Research how other tools price API usage and write up the sources.", "owner": "research" }
+      ] },
+    { "skill": "pr",
+      "positive": [
+        { "prompt": "Write the PR body for this change." },
+        { "prompt": "Draft a pull request description with before and after evidence." },
+        { "prompt": "What should the PR description say for this branch?" }
+      ],
+      "negative": [
+        { "prompt": "Review the PR changes against our standards.", "owner": "code-review" },
+        { "prompt": "Prepare the release notes and bump the version.", "owner": "release" }
+      ] },
+    { "skill": "research",
+      "positive": [
+        { "prompt": "Research which OAuth flows the provider supports and cite primary sources." },
+        { "prompt": "Gather the API facts about rate limits and write them up as a markdown file." },
+        { "prompt": "Investigate this question in the background and capture the findings." }
+      ],
+      "negative": [
+        { "prompt": "Write this React hook from the official docs for the version we use.", "owner": "source-grounding" },
+        { "prompt": "Map this repository for me without changing any code.", "owner": "onboard-brownfield" }
+      ] },
+    { "skill": "tdd",
+      "positive": [
+        { "prompt": "Build the discount feature test-first." },
+        { "prompt": "Let's do red-green-refactor on the parser." },
+        { "prompt": "Add integration tests and drive the change from them." }
+      ],
+      "negative": [
+        { "prompt": "Diagnose why the checkout is failing in production.", "owner": "diagnosing-bugs" },
+        { "prompt": "Design a deeper interface for the cache module.", "owner": "codebase-design" }
+      ] },
+    { "skill": "wizard",
+      "positive": [
+        { "prompt": "Generate a bash wizard that walks me through setting up the CI secrets." },
+        { "prompt": "I need to provision the infrastructure by hand, walk me through it step by step." },
+        { "prompt": "Make an interactive script for the one-off cutover only I can do." }
+      ],
+      "negative": [
+        { "prompt": "Cut a release with notes and a version bump.", "owner": "release" },
+        { "prompt": "Configure which models pstack uses for each role.", "owner": "setup-pstack" }
+      ] },
+    { "skill": "writing-for-agents",
+      "positive": [
+        { "prompt": "Edit this skill so agents follow it more reliably." },
+        { "prompt": "Rewrite CLAUDE.md for the agents working in this repo." },
+        { "prompt": "Help me create a new skill document." }
+      ],
+      "negative": [
+        { "prompt": "Bump p3stack's vendored upstream skills.", "owner": "maintain-p3stack" },
+        { "prompt": "Add these terms to GLOSSARY.md.", "owner": "domain-modeling" }
+      ] },
+    { "skill": "setup-pstack",
+      "positive": [
+        { "prompt": "Configure pstack models for each role." },
+        { "prompt": "Change the pstack budget to small." },
+        { "prompt": "Which reasoning budget should my roles use? Set it up." }
+      ],
+      "negative": [
+        { "prompt": "Audit p3stack's source pins.", "owner": "maintain-p3stack" },
+        { "prompt": "Walk me through creating the API keys in the dashboard.", "owner": "wizard" }
+      ] },
+    { "skill": "release",
+      "positive": [
+        { "prompt": "Cut a release." },
+        { "prompt": "Prepare the release notes and bump the version locally." },
+        { "prompt": "Get version 2.1 ready to ship with notes." }
+      ],
+      "negative": [
+        { "prompt": "Write the body for this pull request.", "owner": "pr" },
+        { "prompt": "Refresh p3stack's upstream skills.", "owner": "maintain-p3stack" }
+      ] },
+    { "skill": "onboard-brownfield",
+      "positive": [
+        { "prompt": "Onboard me to this existing repository." },
+        { "prompt": "Map this brownfield codebase without changing anything." },
+        { "prompt": "I just inherited this repo, map it for me." }
+      ],
+      "negative": [
+        { "prompt": "Research the history of this protocol from primary sources.", "owner": "research" },
+        { "prompt": "Find deepening opportunities in this module's interface.", "owner": "codebase-design" }
+      ] },
+    { "skill": "maintain-p3stack",
+      "positive": [
+        { "prompt": "Audit p3stack's source pins." },
+        { "prompt": "Bump the vendored upstream skills and repair the generator rules." },
+        { "prompt": "Run the scheduled p3stack maintenance check." }
+      ],
+      "negative": [
+        { "prompt": "Change the pstack role models and budget.", "owner": "setup-pstack" },
+        { "prompt": "Cut a release with release notes.", "owner": "release" }
+      ] },
+    { "skill": "interactive-prototype",
+      "positive": [
+        { "prompt": "Make something the PM can click through to judge the refund states." },
+        { "prompt": "Show me three UI variants of the settings page to pick from." },
+        { "prompt": "Build a shareable HTML demo of the state model so the team can try it." }
+      ],
+      "negative": [
+        { "prompt": "Grill me about this design before we build it.", "owner": "grilling" },
+        { "prompt": "Find the root cause of the broken state transition.", "owner": "diagnosing-bugs" }
+      ] },
+    { "skill": "source-grounding",
+      "positive": [
+        { "prompt": "Implement the form with the official docs for the framework version we use, and cite them." },
+        { "prompt": "Verify this approach against the official documentation before implementing it." },
+        { "prompt": "I want authoritative, source-cited code, not outdated patterns from memory." }
+      ],
+      "negative": [
+        { "prompt": "Research the provider's rate limits and write a cited markdown file.", "owner": "research" },
+        { "prompt": "Build the parser test-first with red-green-refactor.", "owner": "tdd" }
+      ] }
+  ]
+}

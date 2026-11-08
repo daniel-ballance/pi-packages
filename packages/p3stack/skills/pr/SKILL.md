@@ -1,6 +1,6 @@
 ---
 name: pr
-description: "Use when writing a PR body."
+description: "Use when writing a PR body or a pull request description."
 metadata:
   credits: show-me
   author: Dex Horthy
