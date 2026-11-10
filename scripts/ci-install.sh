@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Pi 1.3.0, as locked, is the one supported runtime.
+# CI installs the Pi version the lockfiles select, the latest stable release at the last update.
 PI_VERSION="${1:-locked}"
 if [[ "$PI_VERSION" != locked ]]; then
-  printf 'Unsupported Pi version: %s (only the locked Pi 1.3.0 is supported)\n' "$PI_VERSION" >&2
+  printf 'Unsupported Pi version: %s (CI installs only the Pi version in the lockfiles)\n' "$PI_VERSION" >&2
   exit 2
 fi
 
@@ -37,7 +37,3 @@ for package_json in "${package_jsons[@]}"; do
   fi
   # Child lockfiles remain available for isolated standalone-package installs.
 done
-
-# npm otherwise honors the SDK's vulnerable published shrinkwrap, even when the
-# outer lock or an override names the patched dependency. No lifecycle hooks run.
-node "$ROOT/scripts/patch-pi-host-security.mts"

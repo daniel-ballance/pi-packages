@@ -5,7 +5,8 @@ import { stripVTControlCharacters } from "node:util";
 import type {
   AccountInfo, CanUseTool, Options, PermissionResult, SDKRateLimitInfo, SDKResultMessage, SettingSource,
 } from "@anthropic-ai/claude-agent-sdk";
-import { StringEnum, Type, type Static, type Usage } from "@earendil-works/pi-ai";
+import type { Usage } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 import {
   getAgentDir, hasTrustRequiringProjectResources, keyHint, ProjectTrustStore, truncateToVisualLines,
   type AgentToolResult, type ExtensionAPI, type ExtensionContext, type Theme, type ToolDefinition,
@@ -63,17 +64,22 @@ const APPENDED_PROMPT = [
   "Edits, shell commands and reads outside the working directory are confirmed by the Pi user. If one is declined, do not retry it; work without it or report what you needed.",
 ].join(" ");
 
+/** `{ type: "string", enum }`, the enum form every provider accepts, typed as its values. */
+function stringEnum<const T extends readonly string[]>(values: T, options: { description: string; default?: T[number] }) {
+  return Type.Unsafe<T[number]>({ type: "string", enum: [...values], ...options });
+}
+
 const TaskParameters = Type.Object({
   task: Type.String({
     minLength: 1,
     description: "The whole task, self-contained: goal, constraints, relevant paths, and what the report should contain. Claude Code sees none of this conversation.",
   }),
-  access: Type.Optional(StringEnum(ACCESS, {
+  access: Type.Optional(stringEnum(ACCESS, {
     description: "What Claude Code may do: read (read and search files, web lookups), edit (also edit files), full (also run shell commands). Default: read.",
     default: "read",
   })),
   model: Type.Optional(Type.String({ description: 'Claude model id or alias ("haiku", "sonnet", "opus"). Default: Claude Code\'s own default model.' })),
-  effort: Type.Optional(StringEnum(["low", "medium", "high", "xhigh", "max"] as const, { description: "Reasoning effort. Default: Claude Code's own." })),
+  effort: Type.Optional(stringEnum(["low", "medium", "high", "xhigh", "max"], { description: "Reasoning effort. Default: Claude Code's own." })),
   cwd: Type.Optional(Type.String({ description: "Working directory for the task. Default: Pi's working directory." })),
   resume: Type.Optional(Type.String({
     description: "Claude Code session id from the end of an earlier claude_code result. Continues that session with its history; task is the next instruction.",

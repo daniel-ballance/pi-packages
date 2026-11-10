@@ -85,7 +85,6 @@ Install the root package or this package by itself. From a local checkout:
 
 ```sh
 npm ci --ignore-scripts
-node scripts/patch-pi-host-security.mts
 pi install "$PWD"
 ```
 

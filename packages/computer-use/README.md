@@ -26,7 +26,6 @@ Or install this package from a local checkout after installing dependencies:
 
 ```sh
 npm ci --ignore-scripts
-node scripts/patch-pi-host-security.mts
 pi install "$PWD/packages/computer-use"
 ```
 

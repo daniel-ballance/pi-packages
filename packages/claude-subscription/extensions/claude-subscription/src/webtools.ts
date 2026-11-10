@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SDKRateLimitEvent } from "@anthropic-ai/claude-agent-sdk";
-import { Type, type Usage } from "@earendil-works/pi-ai";
+import { type Usage } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { truncateToVisualLines, type AgentToolResult, type ExtensionAPI, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Inbox, type AgentQuery, type QueryFunction } from "./sdk.js";
 

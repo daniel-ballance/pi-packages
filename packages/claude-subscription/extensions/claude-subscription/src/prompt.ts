@@ -26,7 +26,7 @@ export interface SystemPromptChoice {
 /** Pi's tool list, as its default prompt words it. */
 function toolList(tools: readonly string[], snippets: Record<string, string>): string {
   const listed = tools.filter(name => snippets[name]).map(name => `- ${name}: ${snippets[name]}`);
-  return `${listed.length ? listed.join("\n") : "(none)"}\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.`;
+  return `${listed.length ? listed.join("\n") : "(none)"}\n\nAdditional tools may be available.`;
 }
 
 /** Pi's rules, in its order: file-search advice, each tool's guidelines, then extension guidelines. */

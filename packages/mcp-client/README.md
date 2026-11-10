@@ -96,7 +96,6 @@ From this repository:
 
 ```sh
 npm ci --ignore-scripts
-node scripts/patch-pi-host-security.mts
 cd packages/mcp-client
 pi install "$PWD"
 ```

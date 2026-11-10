@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import {
-  normalizeContext, Type,
+  normalizeContext,
   type AssistantMessage, type AssistantMessageEvent, type Message, type SimpleStreamOptions, type Tool,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ClaudeSubscription } from "../extensions/claude-subscription/src/provider.js";
 import { fakeQuery, textOf, type Script } from "./support/claude.js";

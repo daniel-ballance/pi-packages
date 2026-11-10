@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeContext, Type, type AssistantMessage, type Message, type Tool } from "@earendil-works/pi-ai";
+import { normalizeContext, type AssistantMessage, type Message, type Tool } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { inputBlocks, readTranscript, seedBlocks, toolResult } from "../extensions/claude-subscription/src/transcript.js";
 
 const TOOLS: Tool[] = [{ name: "read", description: "Read a file", parameters: Type.Object({ path: Type.String() }) }];

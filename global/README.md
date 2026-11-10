@@ -16,7 +16,7 @@ Pi and Omarchy can write those files while running. Read the main checkout's `gi
 
 The package entry is `../../Code/pi-packages`, the checkout root. Relative package paths resolve from the Pi agent directory, not from the symlink target. The root package includes self-reload, so this repository's project settings do not add a second copy.
 
-mcp-client is not loaded. Native Pi reads `mcpServers`, seconds-based `timeout`, and `toolExposure` from `mcp.json`. Do not enable the optional replacement without reviewing its timeout and configuration migration rules. Playwright remains pinned to 0.0.82. The package move does not update a server or change the MCP file.
+mcp-client is not loaded. Native Pi reads `mcpServers`, seconds-based `timeout`, and `toolExposure` from `mcp.json`. Do not enable the optional replacement without reviewing its timeout and configuration migration rules. Playwright follows its latest release. The package move does not update a server or change the MCP file.
 
 Child policies replace the whole file rather than merge. Lookup uses the parent's launch directory and does not search ancestors. `workingDirectories` and tool allowlists reduce capabilities but do not provide an OS sandbox. The repository policy names the Claude provider as `loaded:claude-subscription`. That reference resolves to the file the parent loaded, so the policy holds no machine path.
 
