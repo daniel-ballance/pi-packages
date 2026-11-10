@@ -3,7 +3,7 @@
     "playwright": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@0.0.82", "--headless", "--executable-path", "/usr/bin/chromium"],
+      "args": ["-y", "@playwright/mcp@latest", "--headless", "--executable-path", "/usr/bin/chromium"],
       "protocol": "2025-11-25",
       "toolLoading": "deferred"
     },

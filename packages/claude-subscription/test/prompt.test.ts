@@ -14,7 +14,7 @@ interface PromptInput extends SystemPromptChoice {
   skills?: Array<{ name: string; description: string; filePath: string; disableModelInvocation: boolean }>;
 }
 
-const STOCK = "You are an expert coding assistant operating inside pi, a coding agent harness.";
+const STOCK = "You are a coding assistant running inside pi, a coding agent harness.";
 
 function options(extra: Partial<PromptInput> = {}): PromptInput {
   return {
@@ -67,14 +67,14 @@ test("what tools and extensions tell the model about themselves is still sent", 
   const prompt = buildSystemPrompt(input);
   assert.equal(section(prompt, "tools"), section(stock, "tools"));
   assert.equal(section(prompt, "rules"), section(stock, "rules"));
-  assert.match(section(prompt, "tools"), /^- read: Read file contents\n- bash: Execute bash commands\n\nIn addition to the tools above/);
+  assert.match(section(prompt, "tools"), /^- read: Read file contents\n- bash: Execute bash commands\n\nAdditional tools may be available/);
   assert.match(section(prompt, "rules"), /- Use read to examine files instead of cat or sed\.\n- Show your work\.\n- Be concise/);
 
   // A tool that is only reachable through another one is left out, as newer Pi releases leave it out.
   const hidden = options({ hiddenTools: ["bash"] });
   useOwnSystemPrompt(hidden, "claude-subscription");
   const hiddenPrompt = buildSystemPrompt(hidden);
-  assert.match(section(hiddenPrompt, "tools"), /^- read: Read file contents\n\nIn addition/);
+  assert.match(section(hiddenPrompt, "tools"), /^- read: Read file contents\n\nAdditional tools may be available/);
   assert.doesNotMatch(section(hiddenPrompt, "rules"), /Use bash for file operations/);
 
   // Sections an extension already supplied are its own to word.

@@ -8,7 +8,7 @@ The repository root is the Pi package. It loads five packages: [`claude-subscrip
 
 ## Install from GitHub
 
-Use Node.js 22.19.0 or newer and Pi 1.3.0.
+Use Node.js 22.19.0 or newer and the latest Pi release, which the checks run against.
 
 ```sh
 pi install git:github.com/daniel-ballance/pi-packages
@@ -22,7 +22,6 @@ Pi clones the repository into `~/.pi/agent/git/github.com/daniel-ballance/pi-pac
 git clone --recurse-submodules https://github.com/daniel-ballance/pi-packages.git
 cd pi-packages
 npm ci --ignore-scripts
-node scripts/patch-pi-host-security.mts
 ./scripts/check.sh
 pi install "$PWD"
 ```
@@ -62,11 +61,12 @@ Choose one package manager per checkout. Both root lockfiles are committed.
 
 ```sh
 npm ci --ignore-scripts
-node scripts/patch-pi-host-security.mts
 ./scripts/check.sh
 ```
 
-The pnpm alternative is `pnpm install --frozen-lockfile --ignore-scripts`, followed by the same security step and root check. CI selects Node.js 22.23.3 or 26.12.0, npm 12.2.0 or pnpm 12.14.0, and the locked Pi 1.3.0 SDK. [`scripts/ci-install.sh locked`](scripts/ci-install.sh) implements that installation contract.
+The pnpm alternative is `pnpm install --frozen-lockfile --ignore-scripts`, followed by the root check. CI selects the latest Node.js 22 and 26 releases, the latest npm or pnpm, and the Pi SDK the lockfiles select. [`scripts/ci-install.sh locked`](scripts/ci-install.sh) implements that installation contract.
+
+Dependencies follow the latest stable release. [`scripts/update-dependencies.mjs`](scripts/update-dependencies.mjs) sets every registry dependency to `^` its npm `latest` version and regenerates the npm, pnpm, and standalone locks; `--check` lists what is behind without writing. pnpm's release-age quarantine is off.
 
 `npm run check` and `pnpm run check` wrap the root gate. The gate validates configuration JSON, generated shared copies, global link tests, the registry, the static T3 contract, and every top-level and nested component's `check` and `test` scripts. It also runs the skill linter tests and mcp-client's format check. It does not need a globally installed Pi, live credentials, or paid provider calls.
 

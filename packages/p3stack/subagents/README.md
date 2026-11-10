@@ -7,7 +7,6 @@ Persistent Pi RPC children, composed by the parent from a user-controlled allowl
 ```bash
 # From the repository root:
 npm ci --ignore-scripts
-node scripts/patch-pi-host-security.mts
 pi install "$PWD"
 ```
 
