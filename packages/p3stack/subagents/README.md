@@ -71,9 +71,7 @@ The built-in policy applies only when no `subagents.json` exists. It is a menu a
     {"id": "openai/gpt-6.1-sol:high", "description": "Strong general model (API key)."},
     {"id": "xai/grok-4.7:high", "description": "Code work. Grok stops at high."},
     {"id": "anthropic/claude-opus-5-5:high", "description": "Judgment and prose. Claude stops at high."},
-    {"id": "anthropic/claude-fable-5-2:high", "description": "Strongest Claude, beyond Opus high; costly."},
-    {"id": "anthropic/claude-sonnet-5-5:high", "description": "Cheaper Claude reviewer."},
-    {"id": "google/gemini-3.1-pro-preview:high", "description": "Another family for review panels."}
+    {"id": "anthropic/claude-sonnet-5-5:high", "description": "Cheaper Claude reviewer."}
   ],
   "tools": ["read", "bash", "edit", "write", "grep", "find", "ls", "todo", "parent_send", "subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_close", "subagent_list", "subagent_send"],
   "extensions": [],
