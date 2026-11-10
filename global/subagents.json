@@ -35,15 +35,11 @@
     },
     {
       "id": "openai-codex/gpt-6.1-sol:max",
-      "description": "Last Sol step. If still blocked, return evidence to the parent or explicitly choose claude-subscription/claude-opus-5-5:xhigh for a costly cross-family escalation."
-    },
-    {
-      "id": "claude-subscription/claude-opus-5-5:xhigh",
-      "description": "Optional step beyond Sol max, and p3stack judgment/prose roles. Higher V5 score at a substantial task-cost premium. Stop Opus at xhigh in this menu. Next is claude-subscription/claude-fable-5-2:high. AA Default Fallback; subscription equivalence remains unverified."
+      "description": "Last Sol step. If still blocked, return evidence to the parent or explicitly choose claude-subscription/claude-fable-5-2:high for a costly cross-family escalation."
     },
     {
       "id": "claude-subscription/claude-fable-5-2:high",
-      "description": "Final, costliest step after Opus 5.5 xhigh: on V5 about 4 points higher for about 1.5x the task cost; CursorBench 4.0 also ranks it above Opus xhigh. Fable 5.2 xhigh adds little on either benchmark, and max costs about 3x high; return evidence to the parent instead. AA Default Fallback; subscription equivalence remains unverified."
+      "description": "Final, costliest step after Sol max or Opus 5.5 high: on V5 about 10 points above Opus 5.5 high for about 2.6x the task cost; CursorBench 4.0 shows a smaller gain. Anthropic models stop at high in this menu. AA Default Fallback; subscription equivalence remains unverified."
     },
     {
       "id": "xai/grok-4.7:low",
@@ -51,11 +47,7 @@
     },
     {
       "id": "xai/grok-4.7:high",
-      "description": "Next Grok backup step and p3stack code roles. Return to the primary pool when available; V5 does not support escalating to Grok xhigh for general value."
-    },
-    {
-      "id": "xai/grok-4.7:xhigh",
-      "description": "Retained for p3stack code roles at the large budget. V5 high dominates this effort; keep only for workflow compatibility or task-specific evidence, not as the default backup escalation."
+      "description": "Last Grok backup step and p3stack code roles. Grok models stop at high in this menu. Return to the primary pool when available."
     },
     {
       "id": "claude-subscription/claude-haiku-5-5:low",
@@ -63,15 +55,11 @@
     },
     {
       "id": "claude-subscription/claude-haiku-5-5:high",
-      "description": "Next compact Claude step after Haiku low. On the global V5 frontier. Next Claude step is claude-subscription/claude-haiku-5-5:xhigh."
-    },
-    {
-      "id": "claude-subscription/claude-haiku-5-5:xhigh",
-      "description": "More thorough bounded checks and light review within the Claude pool. Retained as a pool alternative despite global dominance. Next Claude step is claude-subscription/claude-sonnet-5-5:high."
+      "description": "Next compact Claude step after Haiku low. On the global V5 frontier. Next Claude step is claude-subscription/claude-sonnet-5-5:high."
     },
     {
       "id": "claude-subscription/claude-sonnet-5-5:high",
-      "description": "Claude reviewer after Haiku xhigh, especially while conserving ChatGPT capacity. Next Claude step is claude-subscription/claude-opus-5-5:medium. Globally dominated on V5; retained for pool and review diversity."
+      "description": "Claude reviewer after Haiku high, especially while conserving ChatGPT capacity. Next Claude step is claude-subscription/claude-opus-5-5:medium. Globally dominated on V5; retained for pool and review diversity."
     },
     {
       "id": "claude-subscription/claude-opus-5-5:medium",
@@ -79,7 +67,7 @@
     },
     {
       "id": "claude-subscription/claude-opus-5-5:high",
-      "description": "Next Claude-pool step after Opus medium. A cheaper Opus review option than xhigh, but no longer an upgrade beyond Sol max on V5. Next Claude step is claude-subscription/claude-opus-5-5:xhigh. AA Default Fallback; confirm with Pi outcomes."
+      "description": "p3stack judgment and prose roles, and the main Opus review step after Opus medium. On V5, Fable 5.2 low scores higher for slightly less; CursorBench 4.0 favors Opus high. Next Claude step is claude-subscription/claude-fable-5-2:high. AA Default Fallback; confirm with Pi outcomes."
     }
   ],
   "tools": [

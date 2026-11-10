@@ -1,6 +1,6 @@
 # Pi configuration
 
-This directory owns the nonsecret global configuration of the Omarchy machine. There, the four files in `~/.pi/agent/` link to the stable checkout at `~/Code/pi-packages/global/`, not to a worktree. The Mac does not link them. See [Set up the Mac](#set-up-the-mac).
+This directory owns the nonsecret global configuration of the Omarchy machine. There, the five files in `~/.pi/agent/` link to the stable checkout at `~/Code/pi-packages/global/`, not to a worktree. The Mac does not link them. See [Set up the Mac](#set-up-the-mac).
 
 Pi and Omarchy can write those files while running. Read the main checkout's `git diff global/` before changing repository copies. Commit intended changes through a worktree and preserve unrelated live edits.
 
@@ -12,6 +12,7 @@ Pi and Omarchy can write those files while running. Read the main checkout's `gi
 | `models.json` | Model metadata overrides |
 | `mcp.json` | Native Pi MCP server configuration |
 | `subagents.json` | Global child allowlist and the Claude provider mapping |
+| `p3stack.json` | p3stack role defaults, the file `/skill:setup-pstack` writes |
 
 The package entry is `../../Code/pi-packages`, the checkout root. Relative package paths resolve from the Pi agent directory, not from the symlink target. The root package includes self-reload, so this repository's project settings do not add a second copy.
 

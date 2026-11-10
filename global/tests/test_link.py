@@ -9,7 +9,7 @@ import unittest
 
 
 SOURCE = Path(__file__).resolve().parents[1]
-FILES = ("settings.json", "models.json", "mcp.json", "subagents.json")
+FILES = ("settings.json", "models.json", "mcp.json", "subagents.json", "p3stack.json")
 
 
 class LinkTests(unittest.TestCase):

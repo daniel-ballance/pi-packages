@@ -6,7 +6,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 AGENT_DIR="${PI_CODING_AGENT_DIR:-${PI_AGENT_DIR:-$HOME/.pi/agent}}"
-FILES=(settings.json models.json mcp.json subagents.json)
+FILES=(settings.json models.json mcp.json subagents.json p3stack.json)
 
 check_only=0
 case "${1:-}" in
