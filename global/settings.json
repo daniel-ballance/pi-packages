@@ -12,8 +12,7 @@
     "xai/grok-4.7",
     "claude-subscription/claude-fable-5-2",
     "openai-codex/gpt-6-astra",
-    "claude-subscription/claude-sonnet-5-5",
-    "claude-subscription/claude-haiku-5-5"
+    "claude-subscription/claude-sonnet-5-5"
   ],
   "hideThinkingBlock": true,
   "packages": [

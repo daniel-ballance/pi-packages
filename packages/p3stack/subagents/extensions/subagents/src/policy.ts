@@ -51,9 +51,7 @@ const MENU: { id: string; description: string }[] = [
   { id: "openai/gpt-6.1-sol:high", description: "Strong general model (API key)." },
   { id: "xai/grok-4.7:high", description: "Code work. Grok stops at high." },
   { id: "anthropic/claude-opus-5-5:high", description: "Judgment and prose. Claude stops at high." },
-  { id: "anthropic/claude-fable-5-2:high", description: "Strongest Claude, beyond Opus high; costly." },
   { id: "anthropic/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer." },
-  { id: "google/gemini-3.1-pro-preview:high", description: "Another family for review panels." },
 ];
 export const DEFAULT_POLICY: PolicyFile = {
   version: 1,
@@ -98,7 +96,6 @@ export function builtInPolicy(loaded: LoadedExtensions = new Map()): PolicyFile 
     ...DEFAULT_POLICY,
     models: [...MENU,
       { id: "claude-subscription/claude-opus-5-5:high", description: "Judgment and prose. Claude stops at high (Claude subscription)." },
-      { id: "claude-subscription/claude-fable-5-2:high", description: "Strongest Claude, beyond Opus high; costly (Claude subscription)." },
       { id: "claude-subscription/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer (Claude subscription)." }],
     extensions: [claudeSubscription],
     providerExtensions: { "claude-subscription": claudeSubscription },

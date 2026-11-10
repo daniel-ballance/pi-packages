@@ -2,28 +2,28 @@
   "version": 1,
   "models": [
     {
-      "id": "openai-codex/gpt-6-luna:low",
-      "description": "First step for lookups, triage and small grounded questions. Escalate to openai-codex/gpt-6-luna:medium when needed."
-    },
-    {
       "id": "openai-codex/gpt-6-luna:medium",
-      "description": "Routine reading, summaries and bounded checks. Next main step is openai-codex/gpt-6.1-terra:low; V5 favors moving to Terra before increasing Luna effort."
+      "description": "ChatGPT ladder start: lookups, triage, small grounded questions. Next is openai-codex/gpt-6.1-terra:low."
     },
     {
       "id": "openai-codex/gpt-6.1-terra:low",
-      "description": "First Terra step after Luna medium. Replaces Luna high, xhigh and max on the V5 task-cost frontier. Next is openai-codex/gpt-6.1-terra:medium. AA-only deployment hypothesis; confirm with accepted Pi outcomes."
+      "description": "Routine reading, summaries and bounded checks. Beats Luna high, xhigh and max on AA score and task cost. Next is openai-codex/gpt-6.1-sol:low."
+    },
+    {
+      "id": "openai-codex/gpt-6.1-sol:low",
+      "description": "Light investigation needing Sol's judgment at Terra's price. Next is openai-codex/gpt-6.1-terra:medium."
     },
     {
       "id": "openai-codex/gpt-6.1-terra:medium",
-      "description": "Broader investigation and scoped changes after Terra low. Sol low is also on the V5 frontier, but Terra medium offers a higher score for a small premium. Next is openai-codex/gpt-6.1-terra:high."
+      "description": "Broader investigation and scoped changes. Next is openai-codex/gpt-6.1-terra:high."
     },
     {
       "id": "openai-codex/gpt-6.1-terra:high",
-      "description": "Last Terra step in this menu. Next is openai-codex/gpt-6.1-sol:medium; it dominates Terra xhigh on V5 score and task cost."
+      "description": "Scoped changes that need more thinking. Next is openai-codex/gpt-6.1-sol:medium."
     },
     {
       "id": "openai-codex/gpt-6.1-sol:medium",
-      "description": "First Sol step for substantial changes and hard debugging after Terra high. Next is openai-codex/gpt-6.1-sol:high. Task guidance remains provisional until tested in Pi."
+      "description": "Substantial changes and hard debugging. Next is openai-codex/gpt-6.1-sol:high."
     },
     {
       "id": "openai-codex/gpt-6.1-sol:high",
@@ -31,43 +31,39 @@
     },
     {
       "id": "openai-codex/gpt-6.1-sol:xhigh",
-      "description": "Harder code and judgment after Sol high. Dominates Terra max on V5 score and task cost. Next is openai-codex/gpt-6.1-sol:max."
+      "description": "Top of the menu: hardest code and judgment. If still blocked, return evidence to the parent."
     },
     {
-      "id": "openai-codex/gpt-6.1-sol:max",
-      "description": "Last Sol step. If still blocked, return evidence to the parent or explicitly choose claude-subscription/claude-fable-5-2:high for a costly cross-family escalation."
+      "id": "claude-subscription/claude-sonnet-5-5:low",
+      "description": "Claude ladder start, for cross-family review or while conserving ChatGPT capacity. Next is claude-subscription/claude-sonnet-5-5:medium."
     },
     {
-      "id": "claude-subscription/claude-fable-5-2:high",
-      "description": "Final, costliest step after Sol max or Opus 5.5 high: on V5 about 10 points above Opus 5.5 high for about 2.6x the task cost; CursorBench 4.0 shows a smaller gain. Anthropic models stop at high in this menu. AA Default Fallback; subscription equivalence remains unverified."
+      "id": "claude-subscription/claude-sonnet-5-5:medium",
+      "description": "Claude bounded checks and light review. Next is claude-subscription/claude-opus-5-5:low."
     },
     {
-      "id": "xai/grok-4.7:low",
-      "description": "First Grok backup when conserving or lacking ChatGPT and Claude capacity. Older Grok 4.6 efforts have no complete V5 measurement. Next backup step is xai/grok-4.7:high."
-    },
-    {
-      "id": "xai/grok-4.7:high",
-      "description": "Last Grok backup step and p3stack code roles. Grok models stop at high in this menu. Return to the primary pool when available."
-    },
-    {
-      "id": "claude-subscription/claude-haiku-5-5:low",
-      "description": "Cheapest Claude-pool option for bounded reading and triage while conserving ChatGPT capacity. Next compact Claude step is claude-subscription/claude-haiku-5-5:high."
-    },
-    {
-      "id": "claude-subscription/claude-haiku-5-5:high",
-      "description": "Next compact Claude step after Haiku low. On the global V5 frontier. Next Claude step is claude-subscription/claude-sonnet-5-5:high."
+      "id": "claude-subscription/claude-opus-5-5:low",
+      "description": "Opus judgment at low cost. Next is claude-subscription/claude-sonnet-5-5:high."
     },
     {
       "id": "claude-subscription/claude-sonnet-5-5:high",
-      "description": "Claude reviewer after Haiku high, especially while conserving ChatGPT capacity. Next Claude step is claude-subscription/claude-opus-5-5:medium. Globally dominated on V5; retained for pool and review diversity."
+      "description": "Claude reviewer for substantial changes. Next is claude-subscription/claude-opus-5-5:medium."
     },
     {
       "id": "claude-subscription/claude-opus-5-5:medium",
-      "description": "First Opus step within the Claude pool after Sonnet high. Next is claude-subscription/claude-opus-5-5:high. AA Default Fallback; confirm with Pi outcomes."
+      "description": "Deeper Claude review and prose. Next is claude-subscription/claude-opus-5-5:high."
     },
     {
       "id": "claude-subscription/claude-opus-5-5:high",
-      "description": "p3stack judgment and prose roles, and the main Opus review step after Opus medium. On V5, Fable 5.2 low scores higher for slightly less; CursorBench 4.0 favors Opus high. Next Claude step is claude-subscription/claude-fable-5-2:high. AA Default Fallback; confirm with Pi outcomes."
+      "description": "Top of the Claude ladder and p3stack's judgment and prose roles. AA Default Fallback; subscription equivalence unverified."
+    },
+    {
+      "id": "xai/grok-4.7:low",
+      "description": "Grok backup when ChatGPT and Claude capacity run low. Next is xai/grok-4.7:high."
+    },
+    {
+      "id": "xai/grok-4.7:high",
+      "description": "Top of the Grok ladder and p3stack's code roles. Return to the ChatGPT ladder when capacity allows."
     }
   ],
   "tools": [
