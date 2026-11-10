@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { AuthContext, Model, ModelsPublication, ModelsStoreEntry, RefreshModelsContext } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { baselineModels, discoveredModels, thinkingFor } from "../extensions/claude-subscription/src/models.js";
 import { ClaudeSubscription } from "../extensions/claude-subscription/src/provider.js";
+import { installedSdkVersion } from "../extensions/claude-subscription/src/sdk.js";
 import { fakeQuery, type Script } from "./support/claude.js";
 
 const reported: Script = async claude => {
@@ -126,6 +130,51 @@ test("a stored catalog is restored offline and trusted for a day", async () => {
   assert.equal(spawned.length, 1);
   await subscription.provider.refreshModels?.(refresh({ stored: { ...stored, checkedAt: Date.now() - 25 * 60 * 60_000 } }));
   assert.equal(spawned.length, 2);
+});
+
+test("a catalog another Agent SDK reported is fetched again, however recent", async () => {
+  const { query, spawned } = fakeQuery(reported, reported);
+  const subscription = new ClaudeSubscription({ version: "0.0.0-test", sdkVersion: "0.3.322", query, env: {} });
+  const recent = Date.now() - 60_000;
+  const models = [{ ...baselineModels()[0], id: "claude-opus-5-5" }];
+
+  // An upgraded SDK can report models the older one did not know, so its answer replaces the old one.
+  const older = refresh({ stored: { models, checkedAt: recent, etag: "0.3.302" } });
+  await subscription.provider.refreshModels?.(older);
+  assert.equal(spawned.length, 1);
+  assert.equal(older.published.at(-1)?.persist?.etag, "0.3.322", "the catalog records the SDK that reported it");
+
+  // A catalog written before the SDK was recorded is fetched once more.
+  await subscription.provider.refreshModels?.(refresh({ stored: { models, checkedAt: recent } }));
+  assert.equal(spawned.length, 2);
+
+  await subscription.provider.refreshModels?.(refresh({ stored: { models, checkedAt: recent, etag: "0.3.322" } }));
+  assert.equal(spawned.length, 2, "the same SDK's recent catalog is trusted");
+});
+
+test("the installed Agent SDK version is the one the lockfile installed", () => {
+  const lock = JSON.parse(readFileSync(new URL("../../../package-lock.json", import.meta.url), "utf8")) as { packages: Record<string, { version: string }> };
+  assert.equal(installedSdkVersion(), lock.packages["node_modules/@anthropic-ai/claude-agent-sdk"].version);
+});
+
+test("the SDK manifest is the nearest one above the source, and a missing or versionless one is an error", () => {
+  const root = mkdtempSync(join(tmpdir(), "sdk-version-"));
+  try {
+    const manifest = (dir: string, value: unknown): void => {
+      const at = join(dir, "node_modules", "@anthropic-ai", "claude-agent-sdk");
+      mkdirSync(at, { recursive: true });
+      writeFileSync(join(at, "package.json"), JSON.stringify(value));
+    };
+    const source = join(root, "pkg", "src", "sdk.ts");
+    assert.throws(() => installedSdkVersion(source), /not installed above/);
+    manifest(root, { version: "1.0.0" });
+    manifest(join(root, "pkg"), { version: "2.0.0" });
+    assert.equal(installedSdkVersion(source), "2.0.0");
+    manifest(join(root, "pkg", "src"), { name: "broken" });
+    assert.throws(() => installedSdkVersion(source), /No version in/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the provider is configured exactly when Claude Code has a login to use, and never invents a key", async () => {

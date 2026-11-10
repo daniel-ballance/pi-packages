@@ -23,6 +23,8 @@ import { readTranscript, type Entry, type Transcript } from "./transcript.js";
 export interface SubscriptionOptions {
   /** Package version, reported to Anthropic as the calling app. */
   version: string;
+  /** Installed Agent SDK version. A catalog another version reported is fetched again. */
+  sdkVersion?: string;
   /** Substitute for the Agent SDK's `query()`. */
   query?: QueryFunction;
   env?: NodeJS.ProcessEnv;
@@ -362,7 +364,9 @@ export class ClaudeSubscription {
     }
     if (!context.allowNetwork || context.signal.aborted) return;
     const checkedAt = context.stored?.checkedAt;
-    if (!context.force && checkedAt !== undefined && Date.now() - checkedAt < CATALOG_MAX_AGE_MS) return;
+    // The SDK decides which models Claude Code can report, so an upgrade can reveal new ones.
+    const sameSdk = context.stored?.etag === this.options.sdkVersion;
+    if (!context.force && sameSdk && checkedAt !== undefined && Date.now() - checkedAt < CATALOG_MAX_AGE_MS) return;
     const models = await this.handshake(context.signal, async query => {
       const { account, models: reported } = await query.initializationResult();
       this.account = account;
@@ -376,7 +380,7 @@ export class ClaudeSubscription {
       return discovered;
     });
     if (!models.length || context.signal.aborted) return;
-    await context.publish({ persist: { models, checkedAt: Date.now() }, update: () => { this.models = models; } });
+    await context.publish({ persist: { models, checkedAt: Date.now(), etag: this.options.sdkVersion }, update: () => { this.models = models; } });
   }
 }
 

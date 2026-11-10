@@ -130,7 +130,10 @@ process has used at API list prices.
 
 The model list starts as Pi's own Claude catalog. Once a day, when network
 access is allowed, the provider asks Claude Code which models the account
-offers and narrows the list to those. Context windows and output limits are
+offers and narrows the list to those. It also asks again as soon as the
+installed Agent SDK changes, since a newer SDK can report newer models.
+`pi update --models` does not reach extension providers; start Pi
+interactively to refresh the list. Context windows and output limits are
 Claude Code's own, which can be smaller than the API's: on a Max plan today
 Opus 4.6 and Sonnet 4.6 have 200k through Claude Code, not 1M.
 

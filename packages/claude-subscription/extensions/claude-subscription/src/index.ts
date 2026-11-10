@@ -6,7 +6,7 @@ import { registerClaudeCode } from "./delegate.js";
 import { useOwnSystemPrompt } from "./prompt.js";
 import { SessionStore } from "./resume.js";
 import { ClaudeSubscription } from "./provider.js";
-import { loadQuery, subscriptionEnv } from "./sdk.js";
+import { installedSdkVersion, loadQuery, subscriptionEnv } from "./sdk.js";
 import { readUsage, renderReport } from "./usage.js";
 import { registerWebTools } from "./webtools.js";
 
@@ -23,6 +23,7 @@ export default function claudeSubscription(pi: ExtensionAPI) {
   let settings = loadConfig(getAgentDir());
   const subscription = new ClaudeSubscription({
     version,
+    sdkVersion: installedSdkVersion(),
     // Only when asked for: Claude Code then writes each conversation under its own directory.
     resume: settings.config.resume ? {
       store: new SessionStore(join(getAgentDir(), "claude-subscription", "sessions")),
