@@ -13,8 +13,10 @@ allowBuilds:
   esbuild: false
   protobufjs: false
 
-# Explicitly requested/verified Pi release. Keep pnpm's age quarantine for every
-# other version/package; no wildcard exclusions and no global age-check bypass.
+# Explicitly requested/verified releases: Pi 1.3.0, and Claude Agent SDK 0.3.322,
+# which reports Claude Fable 5.2 (no release past the age window does).
+# Keep pnpm's age quarantine for every other version/package; no wildcard
+# exclusions and no global age-check bypass.
 minimumReleaseAgeExclude:
   - '@earendil-works/pi-agent-core@1.3.0'
   - '@earendil-works/pi-ai@1.3.0'
@@ -23,6 +25,15 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-mcp@1.3.0'
   - '@earendil-works/pi-telemetry@1.3.0'
   - '@earendil-works/pi-tui@1.3.0'
+  - '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.322'
+  - '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.322'
+  - '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.322'
+  - '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.322'
+  - '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.322'
+  - '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.322'
+  - '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.322'
+  - '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.322'
+  - '@anthropic-ai/claude-agent-sdk@0.3.322'
 
 # Checks must not reinstall dependencies (including CI's temporary Pi override).
 verifyDepsBeforeRun: false

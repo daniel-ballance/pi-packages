@@ -1,0 +1,34 @@
+{
+  "budget": "medium (high)",
+  "roles": {
+    "feature, refactoring": "xai/grok-4.7:high",
+    "bug-fix": "xai/grok-4.7:high",
+    "perf-issue": "xai/grok-4.7:high",
+    "hillclimb": "xai/grok-4.7:high",
+    "how explorer": "xai/grok-4.7:high",
+    "why investigators": "xai/grok-4.7:high",
+    "reflect tooling": "xai/grok-4.7:high",
+    "swarm workers": "xai/grok-4.7:high",
+    "judgment and prose": "claude-subscription/claude-opus-5-5:high",
+    "hardest tasks": "claude-subscription/claude-opus-5-5:high",
+    "how explainer": "claude-subscription/claude-opus-5-5:high",
+    "why synthesizer": "claude-subscription/claude-opus-5-5:high",
+    "reflect judgment, divergent, synthesizer": "claude-subscription/claude-opus-5-5:high",
+    "arena runners": [
+      "claude-subscription/claude-opus-5-5:high",
+      "xai/grok-4.7:high"
+    ],
+    "arena cross-judge pool": [
+      "claude-subscription/claude-opus-5-5:high",
+      "xai/grok-4.7:high"
+    ],
+    "architect runners": [
+      "claude-subscription/claude-opus-5-5:high",
+      "xai/grok-4.7:high"
+    ],
+    "interrogate reviewers": [
+      "claude-subscription/claude-opus-5-5:high",
+      "xai/grok-4.7:high"
+    ]
+  }
+}
