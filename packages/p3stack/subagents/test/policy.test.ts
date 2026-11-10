@@ -8,7 +8,7 @@ import { tempRoot } from "./support/temp-root.js";
 test("built-in policy is a multi-provider menu with delegation, nesting and loops on, for use with no setup", () => {
   const policy = parsePolicy(DEFAULT_POLICY);
   const ids = policy.models.map(model => model.id);
-  for (const id of ["openai-codex/gpt-6-luna:medium", "openai-codex/gpt-6.1-sol:high", "xai/grok-4.7:xhigh", "anthropic/claude-opus-5-5:xhigh"]) assert.ok(ids.includes(id), id);
+  for (const id of ["openai-codex/gpt-6-luna:medium", "openai-codex/gpt-6.1-sol:high", "xai/grok-4.7:xhigh", "anthropic/claude-opus-5-5:xhigh", "anthropic/claude-fable-5-2:high"]) assert.ok(ids.includes(id), id);
   for (const tool of ["read", "bash", "edit", "write", "todo", "subagent_spawn", "subagent_catalog"]) assert.ok(policy.tools.includes(tool), tool);
   assert.equal(policy.maxDepth, 2);
   assert.equal(policy.loops?.enabled, true);
@@ -23,7 +23,7 @@ test("built-in policy offers Claude children exactly when the parent loaded clau
   const withClaude = parsePolicy(builtInPolicy(new Map([["claude-subscription", ["/x/claude-subscription/index.ts"]]])));
   assert.deepEqual(withClaude.extensions, ["loaded:claude-subscription"]);
   assert.deepEqual(withClaude.providerExtensions, { "claude-subscription": "loaded:claude-subscription" });
-  assert.ok(withClaude.models.some(model => model.id === "claude-subscription/claude-opus-5-5:xhigh"));
+  for (const id of ["claude-subscription/claude-opus-5-5:xhigh", "claude-subscription/claude-fable-5-2:high"]) assert.ok(withClaude.models.some(model => model.id === id), id);
   assert.equal(builtInPolicy(new Map()), DEFAULT_POLICY);
   assert.equal(builtInPolicy(new Map([["web-search", ["/x/web-search/index.ts"]]])), DEFAULT_POLICY);
   assert.equal(builtInPolicy(new Map([["claude-subscription", ["/x/claude-subscription/index.ts", "/y/claude-subscription/index.ts"]]])), DEFAULT_POLICY);

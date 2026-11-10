@@ -39,7 +39,11 @@
     },
     {
       "id": "claude-subscription/claude-opus-5-5:xhigh",
-      "description": "Optional final step beyond Sol max, and p3stack judgment/prose roles. Higher V5 score at a substantial task-cost premium. Stop at xhigh in this menu. AA Default Fallback; subscription equivalence remains unverified."
+      "description": "Optional step beyond Sol max, and p3stack judgment/prose roles. Higher V5 score at a substantial task-cost premium. Stop Opus at xhigh in this menu. Next is claude-subscription/claude-fable-5-2:high. AA Default Fallback; subscription equivalence remains unverified."
+    },
+    {
+      "id": "claude-subscription/claude-fable-5-2:high",
+      "description": "Final, costliest step after Opus 5.5 xhigh: on V5 about 4 points higher for about 1.5x the task cost; CursorBench 4.0 also ranks it above Opus xhigh. Fable 5.2 xhigh adds little on either benchmark, and max costs about 3x high; return evidence to the parent instead. AA Default Fallback; subscription equivalence remains unverified."
     },
     {
       "id": "xai/grok-4.7:low",

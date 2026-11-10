@@ -53,6 +53,7 @@ const MENU: { id: string; description: string }[] = [
   { id: "xai/grok-4.7:xhigh", description: "Code work, more thinking." },
   { id: "anthropic/claude-opus-5-5:high", description: "Judgment and prose." },
   { id: "anthropic/claude-opus-5-5:xhigh", description: "Judgment and prose, hardest tasks." },
+  { id: "anthropic/claude-fable-5-2:high", description: "Strongest Claude, beyond Opus xhigh; costly." },
   { id: "anthropic/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer." },
   { id: "google/gemini-3.1-pro-preview:high", description: "Another family for review panels." },
 ];
@@ -100,6 +101,7 @@ export function builtInPolicy(loaded: LoadedExtensions = new Map()): PolicyFile 
     models: [...MENU,
       { id: "claude-subscription/claude-opus-5-5:high", description: "Judgment and prose (Claude subscription)." },
       { id: "claude-subscription/claude-opus-5-5:xhigh", description: "Judgment and prose, hardest tasks (Claude subscription)." },
+      { id: "claude-subscription/claude-fable-5-2:high", description: "Strongest Claude, beyond Opus xhigh; costly (Claude subscription)." },
       { id: "claude-subscription/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer (Claude subscription)." }],
     extensions: [claudeSubscription],
     providerExtensions: { "claude-subscription": claudeSubscription },

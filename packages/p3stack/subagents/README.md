@@ -74,6 +74,7 @@ The built-in policy applies only when no `subagents.json` exists. It is a menu a
     {"id": "xai/grok-4.7:xhigh", "description": "Code work, more thinking."},
     {"id": "anthropic/claude-opus-5-5:high", "description": "Judgment and prose."},
     {"id": "anthropic/claude-opus-5-5:xhigh", "description": "Judgment and prose, hardest tasks."},
+    {"id": "anthropic/claude-fable-5-2:high", "description": "Strongest Claude, beyond Opus xhigh; costly."},
     {"id": "anthropic/claude-sonnet-5-5:high", "description": "Cheaper Claude reviewer."},
     {"id": "google/gemini-3.1-pro-preview:high", "description": "Another family for review panels."}
   ],
