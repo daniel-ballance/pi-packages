@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   EffortLevel,
   Options,
@@ -25,14 +25,23 @@ export interface AgentQuery extends AsyncIterable<SDKMessage> {
 /** The Agent SDK's `query()`, narrowed to streaming input. Tests substitute a scripted one. */
 export type QueryFunction = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => AgentQuery;
 
-/** The installed Agent SDK's version, read from its manifest without loading the SDK. */
-export function installedSdkVersion(): string {
-  const entry = createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk");
-  const manifest: unknown = JSON.parse(readFileSync(join(dirname(entry), "package.json"), "utf8"));
-  if (typeof manifest !== "object" || manifest === null || !("version" in manifest) || typeof manifest.version !== "string") {
-    throw new Error(`No version in the Agent SDK manifest beside ${entry}`);
+/**
+ * The installed Agent SDK's version, read from its manifest without loading the SDK. Pi's
+ * extension loader resolves neither `require` nor `import.meta.resolve`, so the manifest is
+ * found the way Node finds a package: in `node_modules`, from this file's directory upward.
+ */
+export function installedSdkVersion(from: string = fileURLToPath(import.meta.url)): string {
+  for (let dir = dirname(from); ; dir = dirname(dir)) {
+    const path = join(dir, "node_modules", "@anthropic-ai", "claude-agent-sdk", "package.json");
+    if (existsSync(path)) {
+      const manifest: unknown = JSON.parse(readFileSync(path, "utf8"));
+      if (typeof manifest !== "object" || manifest === null || !("version" in manifest) || typeof manifest.version !== "string") {
+        throw new Error(`No version in ${path}`);
+      }
+      return manifest.version;
+    }
+    if (dirname(dir) === dir) throw new Error(`The Agent SDK is not installed above ${from}`);
   }
-  return manifest.version;
 }
 
 let loaded: Promise<QueryFunction> | undefined;

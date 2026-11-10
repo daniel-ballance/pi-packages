@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { AuthContext, Model, ModelsPublication, ModelsStoreEntry, RefreshModelsContext } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
@@ -153,6 +155,26 @@ test("a catalog another Agent SDK reported is fetched again, however recent", as
 test("the installed Agent SDK version is the one the lockfile installed", () => {
   const lock = JSON.parse(readFileSync(new URL("../../../package-lock.json", import.meta.url), "utf8")) as { packages: Record<string, { version: string }> };
   assert.equal(installedSdkVersion(), lock.packages["node_modules/@anthropic-ai/claude-agent-sdk"].version);
+});
+
+test("the SDK manifest is the nearest one above the source, and a missing or versionless one is an error", () => {
+  const root = mkdtempSync(join(tmpdir(), "sdk-version-"));
+  try {
+    const manifest = (dir: string, value: unknown): void => {
+      const at = join(dir, "node_modules", "@anthropic-ai", "claude-agent-sdk");
+      mkdirSync(at, { recursive: true });
+      writeFileSync(join(at, "package.json"), JSON.stringify(value));
+    };
+    const source = join(root, "pkg", "src", "sdk.ts");
+    assert.throws(() => installedSdkVersion(source), /not installed above/);
+    manifest(root, { version: "1.0.0" });
+    manifest(join(root, "pkg"), { version: "2.0.0" });
+    assert.equal(installedSdkVersion(source), "2.0.0");
+    manifest(join(root, "pkg", "src"), { name: "broken" });
+    assert.throws(() => installedSdkVersion(source), /No version in/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the provider is configured exactly when Claude Code has a login to use, and never invents a key", async () => {
