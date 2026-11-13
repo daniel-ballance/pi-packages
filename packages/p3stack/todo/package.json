@@ -42,7 +42,7 @@
     "@earendil-works/pi-tui": "^1.5.2",
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
-    "typebox": "^1.4.6",
+    "typebox": "^1.4.7",
     "typescript": "^7.0.2"
   }
 }

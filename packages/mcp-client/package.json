@@ -49,9 +49,9 @@
     "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/server": "^2.4.0",
     "@types/node": "^26.6.6",
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.1",
     "tsx": "^4.23.15",
-    "typebox": "^1.4.6",
+    "typebox": "^1.4.7",
     "typescript": "^7.0.2"
   }
 }
