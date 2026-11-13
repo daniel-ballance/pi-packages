@@ -73,6 +73,6 @@
     ]
   },
   "p3stack": {
-    "upstream": "cursor/plugins@a5539b15a3d56e04992565aafee2b37051329ce3 pstack 0.15.36"
+    "upstream": "cursor/plugins@24621dbcc59e205a7faadb0e06d540f91712b5cc pstack 0.15.36"
   }
 }
