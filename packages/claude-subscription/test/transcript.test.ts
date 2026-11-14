@@ -8,7 +8,7 @@ const TOOLS: Tool[] = [{ name: "read", description: "Read a file", parameters: T
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 
 function assistant(overrides: Partial<AssistantMessage>): AssistantMessage {
-  return { role: "assistant", content: [], api: "claude-agent-sdk", provider: "claude-subscription", model: "claude-opus-5-5", usage, stopReason: "stop", timestamp: 1, ...overrides };
+  return { role: "assistant", content: [], api: "claude-agent-sdk", provider: "claude", model: "claude-opus-5-5", usage, stopReason: "stop", timestamp: 1, ...overrides };
 }
 
 function read(messages: Message[], systemPrompt = "You are Pi.") {

@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config.js";
 import { registerClaudeCode } from "./delegate.js";
-import { useOwnSystemPrompt } from "./prompt.js";
 import { SessionStore } from "./resume.js";
 import { ClaudeSubscription } from "./provider.js";
 import { installedSdkVersion, loadQuery, subscriptionEnv } from "./sdk.js";
@@ -50,11 +49,6 @@ export default function claudeSubscription(pi: ExtensionAPI) {
       onResult: result => subscription.countRun(result),
     });
   }
-
-  // Pi's default preamble is not sent. A prompt the user already set is kept.
-  pi.on("before_agent_start", (event, ctx) => {
-    useOwnSystemPrompt(event.systemPromptOptions, ctx.model?.provider);
-  });
 
   // Each Claude Code process belongs to the conversation that started it.
   pi.on("session_shutdown", () => {

@@ -20,7 +20,7 @@ export function demoSource(now = Date.now()): InspectorSource {
   });
   const reviewed = makeAgent("history", "Review dependencies", "idle", "xai/grok-4.7", "off");
   reviewed.readCursor = reviewed.cursor;
-  const agents = [makeAgent("cache", "Investigate caching", "working", "claude-subscription/claude-opus-5-5", "xhigh"), reviewed,
+  const agents = [makeAgent("cache", "Investigate caching", "working", "claude/claude-opus-5-5", "xhigh"), reviewed,
     makeAgent("security", "Security review", "working", "xai/grok-4.7", "high", "workflow-demo"), makeAgent("compat", "Compatibility review", "stopped", "openai-codex/gpt-6-luna", "medium", "workflow-demo")];
   const run: WorkflowRun = {
     id: "workflow-demo", definition: { version: 1, name: "Documentation refresh", cwd: "/demo/project", limits: { concurrency: 2, maxAttempts: 12, timeoutSeconds: 300 },

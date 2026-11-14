@@ -22,7 +22,7 @@ Doctor checks an inventory, not argument schemas, return shapes, or behavior. Co
 
 ## Models and role defaults
 
-Skills name a role, such as `swarm workers` or `interrogate reviewers`, and a default hint such as `claude-opus-5-5-xhigh` or `grok-4.7-xhigh-fast`. A hint is a model family plus a thinking level. Resolve it to an exact model the catalog offers: in a terminal `provider/model:thinking` (for example `claude-subscription/claude-opus-5-5:xhigh`), under T3 a provider instance, model id and thinking option. Pi has no speed variants, so drop `-fast`. Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`. Each model supports a subset. When the hinted level is not offered, use the closest offered level below it.
+Skills name a role, such as `swarm workers` or `interrogate reviewers`, and a default hint such as `claude-opus-5-5-xhigh` or `grok-4.7-xhigh-fast`. A hint is a model family plus a thinking level. Resolve it to an exact model the catalog offers: in a terminal `provider/model:thinking` (for example `claude/claude-opus-5-5:xhigh`), under T3 a provider instance, model id and thinking option. Pi has no speed variants, so drop `-fast`. Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`. Each model supports a subset. When the hinted level is not offered, use the closest offered level below it.
 
 When the catalog offers no model of the hinted family, do not retry the hint. Use another offered model, preferring a different family from yours when the role is a reviewer or judge, and name the substitution in your reply. When the catalog offers nothing usable for the role, report the role as blocked and ask for a role default or allowlist change.
 

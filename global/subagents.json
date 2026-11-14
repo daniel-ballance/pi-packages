@@ -34,27 +34,27 @@
       "description": "Top of the menu: hardest code and judgment. If still blocked, return evidence to the parent."
     },
     {
-      "id": "claude-subscription/claude-sonnet-5-5:low",
-      "description": "Claude ladder start, for cross-family review or while conserving ChatGPT capacity. Next is claude-subscription/claude-sonnet-5-5:medium."
+      "id": "claude/claude-sonnet-5-5:low",
+      "description": "Claude ladder start, for cross-family review or while conserving ChatGPT capacity. Next is claude/claude-sonnet-5-5:medium."
     },
     {
-      "id": "claude-subscription/claude-sonnet-5-5:medium",
-      "description": "Claude bounded checks and light review. Next is claude-subscription/claude-opus-5-5:low."
+      "id": "claude/claude-sonnet-5-5:medium",
+      "description": "Claude bounded checks and light review. Next is claude/claude-opus-5-5:low."
     },
     {
-      "id": "claude-subscription/claude-opus-5-5:low",
-      "description": "Opus judgment at low cost. Next is claude-subscription/claude-sonnet-5-5:high."
+      "id": "claude/claude-opus-5-5:low",
+      "description": "Opus judgment at low cost. Next is claude/claude-sonnet-5-5:high."
     },
     {
-      "id": "claude-subscription/claude-sonnet-5-5:high",
-      "description": "Claude reviewer for substantial changes. Next is claude-subscription/claude-opus-5-5:medium."
+      "id": "claude/claude-sonnet-5-5:high",
+      "description": "Claude reviewer for substantial changes. Next is claude/claude-opus-5-5:medium."
     },
     {
-      "id": "claude-subscription/claude-opus-5-5:medium",
-      "description": "Deeper Claude review and prose. Next is claude-subscription/claude-opus-5-5:high."
+      "id": "claude/claude-opus-5-5:medium",
+      "description": "Deeper Claude review and prose. Next is claude/claude-opus-5-5:high."
     },
     {
-      "id": "claude-subscription/claude-opus-5-5:high",
+      "id": "claude/claude-opus-5-5:high",
       "description": "Top of the Claude ladder and p3stack's judgment and prose roles. AA Default Fallback; subscription equivalence unverified."
     },
     {
@@ -101,7 +101,7 @@
     "/home/danballance/Code/pi-packages"
   ],
   "providerExtensions": {
-    "claude-subscription": "loaded:claude-subscription"
+    "claude": "loaded:claude-subscription"
   },
   "maxDepth": 2,
   "loops": {

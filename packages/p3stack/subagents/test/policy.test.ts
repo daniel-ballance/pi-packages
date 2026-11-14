@@ -22,13 +22,13 @@ test("built-in policy is a multi-provider menu with delegation, nesting and loop
 test("built-in policy offers Claude children exactly when the parent loaded claude-subscription once", () => {
   const withClaude = parsePolicy(builtInPolicy(new Map([["claude-subscription", ["/x/claude-subscription/index.ts"]]])));
   assert.deepEqual(withClaude.extensions, ["loaded:claude-subscription"]);
-  assert.deepEqual(withClaude.providerExtensions, { "claude-subscription": "loaded:claude-subscription" });
-  assert.ok(withClaude.models.some(model => model.id === "claude-subscription/claude-opus-5-5:high"));
+  assert.deepEqual(withClaude.providerExtensions, { "claude": "loaded:claude-subscription" });
+  assert.ok(withClaude.models.some(model => model.id === "claude/claude-opus-5-5:high"));
   // The owner's realm: Anthropic and Grok stop at high, GPT at xhigh with max for Luna only,
   // Haiku is excluded, Fable and Astra are parent-only, and other families are outside.
   const outside = withClaude.models.map(model => model.id).filter(id =>
-    !/^(openai-codex|openai|anthropic|claude-subscription|xai)\//.test(id) || /haiku|fable|astra/.test(id) ||
-    (/^(anthropic|claude-subscription|xai)\//.test(id) && /:(xhigh|max)$/.test(id)) || (!/gpt-6-luna/.test(id) && /:max$/.test(id)));
+    !/^(openai-codex|openai|anthropic|claude|xai)\//.test(id) || /haiku|fable|astra/.test(id) ||
+    (/^(anthropic|claude|xai)\//.test(id) && /:(xhigh|max)$/.test(id)) || (!/gpt-6-luna/.test(id) && /:max$/.test(id)));
   assert.deepEqual(outside, []);
   assert.equal(builtInPolicy(new Map()), DEFAULT_POLICY);
   assert.equal(builtInPolicy(new Map([["web-search", ["/x/web-search/index.ts"]]])), DEFAULT_POLICY);
@@ -209,16 +209,16 @@ test("loaded: names the one file the parent loaded, in extensions and providerEx
   try {
     const file = extensionFile(f.root, "clone");
     const luna = f.environment.models()[0];
-    f.environment.models = () => [luna, { ...luna, provider: "claude-subscription", id: "claude-opus-5-5", thinkingLevels: ["high"] }];
+    f.environment.models = () => [luna, { ...luna, provider: "claude", id: "claude-opus-5-5", thinkingLevels: ["high"] }];
     f.environment.loadedExtensions = () => loadedExtensions([{ sourceInfo: { path: "builtin:read" } }, { sourceInfo: { path: file } }]);
     f.put(f.global, {
-      version: 1, models: [{ id: "claude-subscription/claude-opus-5-5:high" }],
-      extensions: ["loaded:claude-subscription"], providerExtensions: { "claude-subscription": "loaded:claude-subscription" },
+      version: 1, models: [{ id: "claude/claude-opus-5-5:high" }],
+      extensions: ["loaded:claude-subscription"], providerExtensions: { "claude": "loaded:claude-subscription" },
     });
     const policy = new SubagentPolicy(f.environment);
     assert.deepEqual(policy.catalog().extensions, [file]);
     assert.deepEqual(policy.diagnostics, []);
-    const compiled = policy.compile(f.cwd, { model: "claude-subscription/claude-opus-5-5:high", tools: [] });
+    const compiled = policy.compile(f.cwd, { model: "claude/claude-opus-5-5:high", tools: [] });
     assert.deepEqual(compiled.selection!.extensions, [file]);
     assert.ok(compiled.cliArgs!.includes(file));
   } finally { f.cleanup(); }
@@ -240,14 +240,14 @@ test("a loaded: reference that is not loaded, or loaded from two files, is a dia
 });
 
 test("parse accepts loaded: only where an extension file belongs, and only with a name", () => {
-  const extension = { extensions: ["loaded:claude-subscription"], alwaysExtensions: ["loaded:claude-subscription"], providerExtensions: { "claude-subscription": "loaded:claude-subscription" } };
+  const extension = { extensions: ["loaded:claude-subscription"], alwaysExtensions: ["loaded:claude-subscription"], providerExtensions: { "claude": "loaded:claude-subscription" } };
   assert.deepEqual(parsePolicy({ ...DEFAULT_POLICY, ...extension }).providerExtensions, extension.providerExtensions);
   for (const key of ["skills", "promptTemplates", "themes", "workingDirectories"]) {
     assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, [key]: ["loaded:claude-subscription"] }), /loaded:/, key);
   }
   assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, extensions: ["loaded:"] }), /loaded:/);
   assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, extensions: ["loaded: "] }), /loaded:/);
-  assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, extensions: ["loaded:"], providerExtensions: { "claude-subscription": "loaded:" } }), /loaded:/);
+  assert.throws(() => parsePolicy({ ...DEFAULT_POLICY, extensions: ["loaded:"], providerExtensions: { "claude": "loaded:" } }), /loaded:/);
 });
 
 test("config snapshot changes only after reload, availability is rechecked every time", () => {

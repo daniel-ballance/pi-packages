@@ -1,22 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SYSTEM_PROMPT, useOwnSystemPrompt, type SystemPromptChoice } from "../extensions/claude-subscription/src/prompt.js";
+import type { BuildSystemPromptOptions, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import claudeSubscription from "../extensions/claude-subscription/index.js";
 
 /** Pi does not export its prompt builder. Resolve the public entry, then the file beside it. */
 const { buildSystemPrompt } = await import(
   new URL("./core/system-prompt.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href,
-) as { buildSystemPrompt: (input: PromptInput) => string };
-
-interface PromptInput extends SystemPromptChoice {
-  cwd: string;
-  appendSystemPrompt?: string;
-  contextFiles?: Array<{ path: string; content: string }>;
-  skills?: Array<{ name: string; description: string; filePath: string; disableModelInvocation: boolean }>;
-}
+) as { buildSystemPrompt: (input: BuildSystemPromptOptions) => string };
 
 const STOCK = "You are a coding assistant running inside pi, a coding agent harness.";
 
-function options(extra: Partial<PromptInput> = {}): PromptInput {
+function options(extra: Partial<BuildSystemPromptOptions> = {}): BuildSystemPromptOptions {
   return {
     cwd: "/work/pi-packages",
     selectedTools: ["read", "bash", "edit", "write"],
@@ -29,121 +23,95 @@ function options(extra: Partial<PromptInput> = {}): PromptInput {
       name: "review",
       description: "Review a change.",
       filePath: "/work/pi-packages/skills/review/SKILL.md",
+      baseDir: "/work/pi-packages/skills/review",
+      sourceInfo: { path: "/work/pi-packages/skills/review/SKILL.md", source: "test", scope: "project", origin: "top-level" },
       disableModelInvocation: false,
     }],
     ...extra,
   };
 }
 
-function escape(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Exercise any prompt hook the real extension registers, not a substitute prompt helper. */
+function throughExtension(input: BuildSystemPromptOptions, provider?: string): string {
+  type Handler = (event: { systemPrompt: string; systemPromptOptions: BuildSystemPromptOptions }, ctx: { model: { provider: string } }) => { systemPrompt?: string } | void;
+  const handlers: Handler[] = [];
+  let registeredProvider = "";
+  claudeSubscription({
+    registerProvider(value: { id: string }) { registeredProvider = value.id; },
+    registerCommand() {},
+    on(event: string, handler: Handler) {
+      if (event === "before_agent_start") handlers.push(handler);
+    },
+  } as unknown as ExtensionAPI);
+  for (const handler of handlers) {
+    const result = handler({ systemPrompt: buildSystemPrompt(input), systemPromptOptions: input }, { model: { provider: provider ?? registeredProvider } });
+    if (result?.systemPrompt !== undefined) input.forceSystemPrompt = result.systemPrompt;
+  }
+  return buildSystemPrompt(input);
 }
 
-test("the rendered prompt is this package's own, and still carries the project around it", () => {
-  const input = options();
-  const stock = buildSystemPrompt(input);
-  assert.match(stock, new RegExp(escape(STOCK)));
-  assert.match(stock, /Pi documentation/);
-  assert.match(stock, /Use read to examine files instead of cat or sed/);
-  assert.match(stock, /- read: Read file contents/);
+function unchanged(input: BuildSystemPromptOptions, provider?: string): string {
+  const before = structuredClone(input);
+  const expected = buildSystemPrompt(input);
+  const prompt = throughExtension(input, provider);
+  assert.deepEqual(input, before, "the provider leaves Pi's structured prompt inputs untouched");
+  assert.equal(prompt, expected, "Pi renders the same prompt with or without the provider");
+  return prompt;
+}
 
-  useOwnSystemPrompt(input, "claude-subscription");
-  const prompt = buildSystemPrompt(input);
-  assert.match(prompt, new RegExp(`^${escape(SYSTEM_PROMPT)}`));
-  assert.doesNotMatch(prompt, /operating inside pi|coding agent harness|Pi documentation/i);
+test("the provider leaves Pi's stock prompt and project context intact", () => {
+  const prompt = unchanged(options());
+  assert.ok(prompt.startsWith(STOCK));
+  assert.match(prompt, /Pi documentation/);
   assert.match(prompt, /<addendum>\nKeep edits on a worktree\.\n<\/addendum>/);
   assert.match(prompt, /<project_context>[\s\S]*This repository is pi-packages\.[\s\S]*<\/project_context>/);
-  assert.match(prompt, /<skills>[\s\S]*<name>review<\/name>[\s\S]*<\/skills>/);
-  assert.match(prompt, /<cwd>\n\/work\/pi-packages\n<\/cwd>/);
-});
-
-test("what tools and extensions tell the model about themselves is still sent", () => {
-  const stock = buildSystemPrompt(options());
-  const section = (prompt: string, name: string): string => new RegExp(`<${name}>\n([\\s\\S]*?)\n</${name}>`).exec(prompt)?.[1] ?? "";
-
-  // Pi drops its tool list and rules whenever the preamble is replaced; they come back as sections, word for word.
-  const input = options();
-  useOwnSystemPrompt(input, "claude-subscription");
-  const prompt = buildSystemPrompt(input);
-  assert.equal(section(prompt, "tools"), section(stock, "tools"));
-  assert.equal(section(prompt, "rules"), section(stock, "rules"));
-  assert.match(section(prompt, "tools"), /^- read: Read file contents\n- bash: Execute bash commands\n\nAdditional tools may be available/);
-  assert.match(section(prompt, "rules"), /- Use read to examine files instead of cat or sed\.\n- Show your work\.\n- Be concise/);
-
-  // A tool that is only reachable through another one is left out, as newer Pi releases leave it out.
-  const hidden = options({ hiddenTools: ["bash"] });
-  useOwnSystemPrompt(hidden, "claude-subscription");
-  const hiddenPrompt = buildSystemPrompt(hidden);
-  assert.match(section(hiddenPrompt, "tools"), /^- read: Read file contents\n\nAdditional tools may be available/);
-  assert.doesNotMatch(section(hiddenPrompt, "rules"), /Use bash for file operations/);
-
-  // Sections an extension already supplied are its own to word.
-  const supplied = options({ sections: { rules: "Only these." } });
-  useOwnSystemPrompt(supplied, "claude-subscription");
-  assert.equal(section(buildSystemPrompt(supplied), "rules"), "Only these.");
-  assert.match(SYSTEM_PROMPT, /`read` is `mcp__pi__read`/);
-});
-
-test("a prompt the user wrote is rendered unchanged, and an empty one is left for Pi", () => {
-  const chosen = options({ customPrompt: "Follow the notes in AGENTS.md." });
-  useOwnSystemPrompt(chosen, "claude-subscription");
-  const prompt = buildSystemPrompt(chosen);
-  assert.match(prompt, /^Follow the notes in AGENTS\.md\./);
-  assert.doesNotMatch(prompt, /operating inside pi/);
-  assert.match(prompt, /This repository is pi-packages/);
-  assert.match(prompt, /<cwd>\n\/work\/pi-packages\n<\/cwd>/);
-
-  // Pi treats an empty custom prompt as "no custom prompt" and builds its default.
-  const empty = options({ customPrompt: "" });
-  useOwnSystemPrompt(empty, "claude-subscription");
-  assert.equal(empty.customPrompt, "");
-  assert.match(buildSystemPrompt(empty), new RegExp(escape(STOCK)));
-
-  const forced = options({ forceSystemPrompt: "Exactly this." });
-  useOwnSystemPrompt(forced, "claude-subscription");
-  assert.equal(buildSystemPrompt(forced), "Exactly this.");
-});
-
-test("another provider still gets Pi's default prompt", () => {
-  const input = options();
-  useOwnSystemPrompt(input, "anthropic");
-  const prompt = buildSystemPrompt(input);
-  assert.match(prompt, new RegExp(escape(STOCK)));
-  assert.match(prompt, /Pi documentation/);
   assert.match(prompt, /<skills>[\s\S]*<name>review<\/name>/);
   assert.match(prompt, /<cwd>\n\/work\/pi-packages\n<\/cwd>/);
 });
 
-test("host guidance composes with the provider prompt when sections or provider-first ordering are used", () => {
+test("Pi owns tool declarations, hidden tools and extension guidelines", () => {
+  const prompt = unchanged(options());
+  assert.match(prompt, /- read: Read file contents\n- bash: Execute bash commands/);
+  assert.match(prompt, /Use read to examine files instead of cat or sed\./);
+  assert.match(prompt, /Show your work\./);
+  const hidden = unchanged(options({ hiddenTools: ["bash"] }));
+  assert.doesNotMatch(hidden, /- bash: Execute bash commands|Use bash for file operations/);
+  const supplied = unchanged(options({ sections: { rules: "Only these." } }));
+  assert.match(supplied, /<rules>\nOnly these\.\n<\/rules>/);
+});
+
+test("custom, empty and forced prompts retain Pi's native semantics", () => {
+  const chosen = unchanged(options({ customPrompt: "Follow the notes in AGENTS.md." }));
+  assert.match(chosen, /^Follow the notes in AGENTS\.md\./);
+  assert.match(chosen, /This repository is pi-packages/);
+  assert.ok(unchanged(options({ customPrompt: "" })).startsWith(STOCK));
+  assert.equal(unchanged(options({ forceSystemPrompt: "Exactly this." })), "Exactly this.");
+});
+
+test("switching providers does not change the prompt inputs", () => {
+  const input = options();
+  const prompt = unchanged(input);
+  assert.equal(unchanged(input, "anthropic"), prompt);
+  assert.equal(unchanged(input), prompt);
+});
+
+test("host prompt guidance composes in either extension order", () => {
   const guidance = "Use the host's orchestration tools for delegated work.";
-  // This is the full-prompt return used by T3's before_agent_start handler.
-  const freeze = (input: PromptInput): void => {
-    input.forceSystemPrompt = `${buildSystemPrompt(input)}\n\n${guidance}`;
-  };
-
-  const hostFirst = options();
-  freeze(hostFirst);
-  useOwnSystemPrompt(hostFirst, "claude-subscription");
-  assert.match(buildSystemPrompt(hostFirst), new RegExp(escape(STOCK)), "an earlier forced prompt is intentionally respected");
-
-  const providerFirst = options();
-  useOwnSystemPrompt(providerFirst, "claude-subscription");
-  freeze(providerFirst);
-  const rendered = buildSystemPrompt(providerFirst);
-  assert.ok(rendered.startsWith(SYSTEM_PROMPT));
-  assert.ok(rendered.endsWith(guidance));
-  assert.match(rendered, /This repository is pi-packages/);
-
   for (const hostFirst of [true, false]) {
     const input = options();
-    const addSection = (): void => { (input.sections ??= {}).t3_orchestration = guidance; };
-    if (hostFirst) addSection();
-    useOwnSystemPrompt(input, "claude-subscription");
-    if (!hostFirst) addSection();
-    const prompt = buildSystemPrompt(input);
-    assert.ok(prompt.startsWith(SYSTEM_PROMPT));
-    assert.ok(prompt.includes(`<t3_orchestration>\n${guidance}\n</t3_orchestration>`));
-    assert.match(prompt, /This repository is pi-packages/);
-    assert.equal(input.forceSystemPrompt, undefined);
+    if (!hostFirst) unchanged(input);
+    input.forceSystemPrompt = `${buildSystemPrompt(input)}\n\n${guidance}`;
+    const forced = unchanged(input);
+    assert.ok(forced.startsWith(STOCK));
+    assert.ok(forced.endsWith(guidance));
+    assert.match(forced, /This repository is pi-packages/);
+
+    const structured = options();
+    if (!hostFirst) unchanged(structured);
+    structured.sections = { t3_orchestration: guidance };
+    const prompt = unchanged(structured);
+    assert.ok(prompt.startsWith(STOCK));
+    assert.match(prompt, /<t3_orchestration>\nUse the host's orchestration tools for delegated work\.\n<\/t3_orchestration>/);
+    assert.equal(structured.forceSystemPrompt, undefined);
   }
 });

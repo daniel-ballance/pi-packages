@@ -10,19 +10,19 @@ Write `~/.pi/agent/p3stack.json`, or `.pi/p3stack.json` when the user wants a pr
     "bug-fix": "xai/grok-4.7:xhigh",
     "perf-issue": "xai/grok-4.7:xhigh",
     "hillclimb": "xai/grok-4.7:xhigh",
-    "judgment and prose": "claude-subscription/claude-opus-5-5:xhigh",
-    "hardest tasks": "claude-subscription/claude-opus-5-5:xhigh",
+    "judgment and prose": "claude/claude-opus-5-5:xhigh",
+    "hardest tasks": "claude/claude-opus-5-5:xhigh",
     "how explorer": "xai/grok-4.7:xhigh",
-    "how explainer": "claude-subscription/claude-opus-5-5:xhigh",
+    "how explainer": "claude/claude-opus-5-5:xhigh",
     "why investigators": "xai/grok-4.7:xhigh",
-    "why synthesizer": "claude-subscription/claude-opus-5-5:xhigh",
+    "why synthesizer": "claude/claude-opus-5-5:xhigh",
     "reflect tooling": "xai/grok-4.7:xhigh",
-    "reflect judgment, divergent, synthesizer": "claude-subscription/claude-opus-5-5:xhigh",
-    "arena runners": ["claude-subscription/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
-    "arena cross-judge pool": ["claude-subscription/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
+    "reflect judgment, divergent, synthesizer": "claude/claude-opus-5-5:xhigh",
+    "arena runners": ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
+    "arena cross-judge pool": ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
     "swarm workers": "xai/grok-4.7:xhigh",
-    "architect runners": ["claude-subscription/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
-    "interrogate reviewers": ["claude-subscription/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"]
+    "architect runners": ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
+    "interrogate reviewers": ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"]
   }
 }
 ```

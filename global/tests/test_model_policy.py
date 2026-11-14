@@ -6,12 +6,12 @@ GLOBAL = Path(__file__).resolve().parents[1]
 EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
 # The owner's realm, kept in step with Pareto's .pi/model-selection.json. The first matching
 # rule decides; a model no rule matches is outside the realm.
-REALM_EXCLUDE = ("claude-subscription/claude-haiku", "anthropic/claude-haiku")
+REALM_EXCLUDE = ("claude/claude-haiku", "anthropic/claude-haiku")
 REALM_EFFORTS = (
     ("openai-codex/gpt-6-luna", "medium", "max"),
     ("openai-codex/", "low", "xhigh"),
     ("openai/", "low", "xhigh"),
-    ("claude-subscription/", "low", "high"),
+    ("claude/", "low", "high"),
     ("anthropic/", "low", "high"),
     ("xai/", "low", "high"),
 )
@@ -44,12 +44,12 @@ class ModelPolicyTest(unittest.TestCase):
         self.assertEqual(
             outside_realm([
                 "openai-codex/gpt-6-luna:max", "openai-codex/gpt-6.1-sol:xhigh", "xai/grok-4.7:low",
-                "openai-codex/gpt-6.1-sol:max", "openai-codex/gpt-6-luna:low", "claude-subscription/claude-opus-5-5:xhigh",
-                "claude-subscription/claude-haiku-5-5:high", "claude-subscription/claude-fable-5-2:low", "google/gemini-3.1-pro:high",
+                "openai-codex/gpt-6.1-sol:max", "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh",
+                "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high",
             ]),
             [
-                "openai-codex/gpt-6.1-sol:max", "openai-codex/gpt-6-luna:low", "claude-subscription/claude-opus-5-5:xhigh",
-                "claude-subscription/claude-haiku-5-5:high", "claude-subscription/claude-fable-5-2:low", "google/gemini-3.1-pro:high",
+                "openai-codex/gpt-6.1-sol:max", "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh",
+                "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high",
             ],
         )
 

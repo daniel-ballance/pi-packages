@@ -85,7 +85,7 @@ test("a turn that calls tools pauses on Pi and resumes in the same Claude Code s
     "toolcall_start", "toolcall_delta", "toolcall_delta", "toolcall_end", "done",
   ]);
   assert.equal(called.message.responseId, "msg_1");
-  assert.equal(called.message.provider, "claude-subscription");
+  assert.equal(called.message.provider, "claude");
 
   h.answer(called.message, { toolu_1: "alpha", toolu_2: "a.txt b.txt" });
   const finished = await h.ask();

@@ -27,7 +27,7 @@ const reports = (report: string) => async (run: Run): Promise<void> => {
 test("each access level starts Claude Code with its own tools for that level and no more", async t => {
   const h = harness(t, reports("ok"), reports("ok"), reports("ok"));
   await h.run({ task: "Survey the notes." });
-  await h.run({ task: "Fix the notes.", access: "edit", model: "claude-subscription/claude-haiku-5-5", effort: "low", maxTurns: 7 });
+  await h.run({ task: "Fix the notes.", access: "edit", model: "claude/claude-haiku-5-5", effort: "low", maxTurns: 7 });
   await h.run({ task: "Run the tests.", access: "full", cwd: "src" });
   const [read, edit, full] = h.spawned.map(claude => claude.options);
 

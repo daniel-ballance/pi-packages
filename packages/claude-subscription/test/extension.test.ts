@@ -7,7 +7,6 @@ import { normalizeContext, type Provider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import claudeSubscription from "../extensions/claude-subscription/index.js";
 import { ClaudeSubscription } from "../extensions/claude-subscription/src/provider.js";
-import { SYSTEM_PROMPT, useOwnSystemPrompt, type SystemPromptChoice } from "../extensions/claude-subscription/src/prompt.js";
 import { fakeQuery } from "./support/claude.js";
 
 test("the extension registers one native provider, a status command and shutdown cleanup", () => {
@@ -24,48 +23,27 @@ test("the extension registers one native provider, a status command and shutdown
   claudeSubscription(pi);
   assert.deepEqual(tools, [], "the extras are off until the user's settings ask for them");
   assert.equal(providers.length, 1);
-  assert.equal(providers[0].id, "claude-subscription");
-  assert.equal(providers[0].name, "Claude subscription (Agent SDK)");
+  assert.equal(providers[0].id, "claude");
+  assert.equal(providers[0].name, "Claude (Agent SDK)");
   assert.equal(providers[0].auth.oauth, undefined, "sign-in is Claude Code's own; Pi holds no OAuth credential for it");
   assert.equal((providers[0].auth.apiKey as { isSubscription?: boolean } | undefined)?.isSubscription, true);
   assert.ok(providers[0].getModels().length > 0);
-  assert.ok(providers[0].getModels().every(model => model.provider === "claude-subscription" && model.api === "claude-agent-sdk"));
+  assert.ok(providers[0].getModels().every(model => model.provider === "claude" && model.api === "claude-agent-sdk"));
   assert.ok(providers[0].getModels().some(model => model.cost.input > 0), "turns are priced as the API prices them");
   assert.deepEqual(commands, ["claude-subscription"]);
-  assert.deepEqual(events.sort(), ["before_agent_start", "session_shutdown"]);
+  assert.deepEqual(events, ["session_shutdown"]);
 });
 
-test("a turn on this provider uses its own prompt, and a prompt already chosen stays", () => {
-  assert.doesNotMatch(SYSTEM_PROMPT, /operating inside pi|coding agent harness/i);
-  const fresh: SystemPromptChoice = {};
-  useOwnSystemPrompt(fresh, "claude-subscription");
-  assert.equal(fresh.customPrompt, SYSTEM_PROMPT);
-
-  const chosen: SystemPromptChoice = { customPrompt: "Follow the project notes." };
-  useOwnSystemPrompt(chosen, "claude-subscription");
-  assert.equal(chosen.customPrompt, "Follow the project notes.");
-
-  const forced: SystemPromptChoice = { forceSystemPrompt: "Exactly this." };
-  useOwnSystemPrompt(forced, "claude-subscription");
-  assert.equal(forced.customPrompt, undefined);
-  assert.equal(forced.forceSystemPrompt, "Exactly this.");
-
-  const other: SystemPromptChoice = {};
-  useOwnSystemPrompt(other, "anthropic");
-  useOwnSystemPrompt(other, undefined);
-  assert.equal(other.customPrompt, undefined);
-
-  const handlers = new Map<string, (event: { systemPromptOptions: SystemPromptChoice }, ctx: { model?: { provider?: string } }) => void>();
+test("the provider does not register prompt or context rewriting hooks", () => {
+  const events: string[] = [];
   claudeSubscription({
     registerProvider() {},
     registerCommand() {},
-    on(event: string, handler: (event: { systemPromptOptions: SystemPromptChoice }, ctx: { model?: { provider?: string } }) => void) {
-      handlers.set(event, handler);
-    },
+    on(event: string) { events.push(event); },
   } as unknown as ExtensionAPI);
-  const event: { systemPromptOptions: SystemPromptChoice } = { systemPromptOptions: {} };
-  handlers.get("before_agent_start")?.(event, { model: { provider: "claude-subscription" } });
-  assert.equal(event.systemPromptOptions.customPrompt, SYSTEM_PROMPT);
+  for (const event of ["before_agent_start", "context", "context_with_system", "before_provider_request"]) {
+    assert.ok(!events.includes(event), `${event} stays under Pi and the caller's control`);
+  }
 });
 
 const rateLimit = {
@@ -97,7 +75,7 @@ function harness(t: TestContext, config?: unknown) {
   const tools: string[] = [];
   const ctx = {
     hasUI: true, mode: "rpc", signal: undefined,
-    model: { provider: "claude-subscription" },
+    model: { provider: "claude" },
     ui: {
       setStatus(_key: string, value: string | undefined) { statuses.push(value); },
       notify(value: string, type: string) { assert.equal(type, "info"); notices.push(value); },

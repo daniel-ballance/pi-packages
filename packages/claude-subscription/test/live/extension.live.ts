@@ -48,7 +48,10 @@ describe("claude-subscription against the real Claude Code", { skip: skip ? `liv
     assert.equal(assistantMessages(run.events).length, 1);
     assert.match(textOf(message).toLowerCase(), /kumquat/);
     assert.equal(message.stopReason, "stop");
-    assert.equal(message.provider, "claude-subscription");
+    assert.equal(message.provider, "claude");
+    const prompt = ws.sdkMessages().find(m => m.type === "pi_system_prompt")?.text;
+    assert.match(prompt ?? "", /^You are a coding assistant running inside pi, a coding agent harness\./);
+    assert.match(prompt ?? "", /Pi documentation/);
     assert.ok(message.usage.totalTokens > 0, "token usage is reported");
     assert.ok(message.usage.input + message.usage.output + message.usage.cacheRead + message.usage.cacheWrite > 0);
     assert.ok(message.usage.cost.total > 0, "catalog models report an API list-price estimate, not a subscription charge");
@@ -171,7 +174,9 @@ describe("claude-subscription against the real Claude Code", { skip: skip ? `liv
 
     const events = ws.sdkMessages().filter(m => m.type === "rate_limit_event");
     assert.ok(events.length > 0, "no rate_limit_event arrived during the turn");
-    const windows = Object.entries<Loose>(events.at(-1).rate_limit_info.unifiedWindows ?? {});
+    const info = events.at(-1).rate_limit_info;
+    t.diagnostic(`billing: ${JSON.stringify({ status: info.status, rateLimitType: info.rateLimitType, isUsingOverage: info.isUsingOverage, overageStatus: info.overageStatus })}`);
+    const windows = Object.entries<Loose>(info.unifiedWindows ?? {});
     assert.ok(windows.length > 0, `the event carries no per-window figures: ${JSON.stringify(events.at(-1).rate_limit_info)}`);
     for (const [name, window] of windows) {
       assert.equal(typeof window.utilization, "number", `${name} has a utilization`);
@@ -182,7 +187,7 @@ describe("claude-subscription against the real Claude Code", { skip: skip ? `liv
 
   it("lists models that each have a context window and an output limit", { timeout: 60_000 }, async t => {
     const ws = workspace(t);
-    const run = await runPiRaw(ws, ws.extensionArgs("--list-models", "claude-subscription"));
+    const run = await runPiRaw(ws, ws.extensionArgs("--list-models", "claude"));
     succeeded(run);
 
     const [header, ...rows] = run.stdout.split("\n").filter(line => line.trim());
@@ -193,7 +198,7 @@ describe("claude-subscription against the real Claude Code", { skip: skip ? `liv
     assert.ok(rows.length > 0, "no claude-subscription models are listed");
     for (const row of rows) {
       const cells = row.trim().split(/\s+/);
-      assert.equal(cells[0], "claude-subscription", `unexpected provider in: ${row}`);
+      assert.equal(cells[0], "claude", `unexpected provider in: ${row}`);
       assert.match(cells[context], /^\d+(\.\d+)?[KM]?$/, `no context window in: ${row}`);
       assert.match(cells[maxOut], /^\d+(\.\d+)?[KM]?$/, `no output limit in: ${row}`);
       assert.notEqual(parseFloat(cells[context]), 0, `empty context window in: ${row}`);
@@ -206,7 +211,7 @@ describe("claude-subscription against the real Claude Code", { skip: skip ? `liv
   it("fails on an unknown model id with a readable error instead of hanging", { timeout: TEST_TIMEOUT_MS }, async t => {
     const ws = workspace(t);
     const started = Date.now();
-    const run = await runPiRaw(ws, ws.extensionArgs("--no-session", "--model", "claude-subscription/claude-no-such-model-9", "-p", "Reply with the word kumquat."));
+    const run = await runPiRaw(ws, ws.extensionArgs("--no-session", "--model", "claude/claude-no-such-model-9", "-p", "Reply with the word kumquat."));
 
     const output = `${run.stdout}\n${run.stderr}`;
     assert.notEqual(run.code, 0, "an unknown model must not look like success");

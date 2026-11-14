@@ -463,7 +463,7 @@ if plain-CLI babysit is wanted; under T3 use `watch_pull_request`.
    medium | high | xhigh | max` (`pi-ai` `types.d.ts`); each model supports a
    subset (`getSupportedThinkingLevels`). Live catalog on this workstation:
    `openai-codex/gpt-6.1-sol` minimal–max, `xai/grok-4.7` low–xhigh,
-   `claude-subscription/claude-opus-5-5` low–max, `claude-fable-5-1`
+   `claude/claude-opus-5-5` low–max, `claude-fable-5-1`
    minimal–max, `halogen/qwen3.8-flash-next-w4b` off–xhigh. pstack's budget
    ladder (`unlimited/large/medium/small` → `max/xhigh/high/medium`) maps onto
    these names directly; clamp to the closest supported level below. No speed

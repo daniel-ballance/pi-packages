@@ -2,8 +2,8 @@ import type { EffortLevel, ModelInfo, ThinkingConfig } from "@anthropic-ai/claud
 import type { Api, Model, SimpleStreamOptions, ThinkingLevel } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 
-export const PROVIDER_ID = "claude-subscription";
-export const PROVIDER_NAME = "Claude subscription (Agent SDK)";
+export const PROVIDER_ID = "claude";
+export const PROVIDER_NAME = "Claude (Agent SDK)";
 /** Custom API id: these models stream through the Agent SDK, not an HTTP endpoint Pi knows. */
 export const API_ID = "claude-agent-sdk";
 export type SubscriptionModel = Model<typeof API_ID>;
