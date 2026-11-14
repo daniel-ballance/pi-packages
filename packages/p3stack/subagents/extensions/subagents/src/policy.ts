@@ -95,10 +95,10 @@ export function builtInPolicy(loaded: LoadedExtensions = new Map()): PolicyFile 
   return {
     ...DEFAULT_POLICY,
     models: [...MENU,
-      { id: "claude-subscription/claude-opus-5-5:high", description: "Judgment and prose. Claude stops at high (Claude subscription)." },
-      { id: "claude-subscription/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer (Claude subscription)." }],
+      { id: "claude/claude-opus-5-5:high", description: "Judgment and prose. Claude stops at high (Claude subscription)." },
+      { id: "claude/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer (Claude subscription)." }],
     extensions: [claudeSubscription],
-    providerExtensions: { "claude-subscription": claudeSubscription },
+    providerExtensions: { "claude": claudeSubscription },
   };
 }
 const RESOURCES = ["extensions", "skills", "promptTemplates", "themes"] as const;

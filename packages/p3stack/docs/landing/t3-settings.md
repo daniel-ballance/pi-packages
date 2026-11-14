@@ -1,6 +1,6 @@
 # Configure T3 on each machine
 
-T3 starts Pi with `providerInstances.pi.config.launchArgs`. That value loads claude-subscription before T3 appends its bridge extension, so claude-subscription sets the system prompt first. The path must be the same file that the Pi package loads. Pi then loads the file once, in the launch-argument position. A different copy of the file loads twice, and its duplicate tools stop Pi from starting.
+T3 starts Pi with `providerInstances.pi.config.launchArgs`. Existing settings explicitly load claude-subscription before T3 appends its bridge extension. The provider now leaves Pi's native system prompt unchanged, so that ordering is no longer required for prompt selection. The launch argument can be omitted when Pi discovers the installed package normally. If kept, its path must be the same file the package loads: a different copy registers duplicate tools and stops Pi from starting.
 
 Each machine loads the root package from a different place, so each has its own value.
 
@@ -72,7 +72,7 @@ T3 reads `launchArgs` when it starts a thread's Pi process. A running Pi process
 
 1. Open a fresh T3 thread.
 2. Run `/p3stack doctor`. It writes `~/.pi/agent/p3stack/t3-contract.json`.
-3. Check that the report has `claudeSubscriptionBeforeBridge: true`, one entry in `claudeSubscriptionFiles`, and no `problems`. The entry must equal the path in `launchArgs`.
+3. Check that the report has one entry in `claudeSubscriptionFiles` and no `problems`. If an explicit launch argument is kept, the entry must equal its path. `claudeSubscriptionBeforeBridge` records the ordering only; either value is compatible with the native prompt.
 4. Run the operator's T3 smoke and record it as a new dated file in this directory. The [2026-10-20 record](2026-10-20-t3-smoke.md) shows the format.
 
 ## Undo if the smoke fails

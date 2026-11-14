@@ -13,60 +13,32 @@ listed under [Compared with the `anthropic` provider](#compared-with-the-anthrop
 ## Read this first: how Anthropic bills it
 
 Anthropic's [support article](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
-says Agent SDK, `claude -p` and third-party app usage draw from subscription
-limits. In practice the outcome depends on what the request contains.
+says Agent SDK, `claude -p` and third-party app usage can draw from subscription
+limits. Anthropic decides how a request is classified; this package cannot
+guarantee its billing treatment.
 
-Checked on 2026-10-13 with a Max plan and Agent SDK 0.3.296:
+The [2026-11-14 live recheck](../../docs/claude-subscription-prompt-billing-2026-11-14.md)
+accepted the full stock Pi prompt on Haiku 5.5 and Opus 5.5 through a Max
+subscription, with extra usage disabled and `isUsingOverage: false` on every
+request. The earlier [October rejection](../../docs/claude-subscription-t3-400.md)
+did not reproduce.
 
-| Request sent through this provider | Anthropic's response |
-|---|---|
-| This package's own prompt (below) and Pi's tools | Accepted, counted against plan limits |
-| Pi's stock system prompt | `400 Third-party apps now draw from your extra usage, not your plan limits.` |
+The provider sends the system prompt Pi builds unchanged. Pi owns its default
+prompt, tool guidance, project context, skills, appended instructions and
+`SYSTEM.md` / `--system-prompt` behavior. No substitute preamble or
+provider-before-T3 prompt ordering is required. Each request still identifies
+this package as `pi-claude-subscription/<version>`.
 
-So with Pi's default prompt, Anthropic treats the traffic as a third-party app
-and bills it to **extra usage**, not plan limits. If extra usage is off for the
-account, a request that still carries that prompt is rejected with that message,
-which Pi shows as is.
+An Anthropic rejection reaches Pi unaltered. A successful request alone, or
+Pi's cost estimate, does not establish the account's final billing treatment.
 
-This package does not send that default. When the selected model belongs to
-this provider and you have not set your own prompt, it sets Pi's `customPrompt`
-to a short text of its own. That is the option `SYSTEM.md` and
-`--system-prompt` fill, so a prompt from either of those is sent as you wrote
-it, and one that is Pi's default text can still draw the rejection above.
-Everything else Pi puts in a prompt is still sent: its tool list, the rules
-tools and extensions contribute, project context, skills, an appended prompt
-and the working directory. Each request names this package to Anthropic as
-`pi-claude-subscription/<version>`.
+### Running Pi through T3 Code
 
-How Anthropic classifies a request is theirs to decide and may change. An error
-from them reaches Pi unaltered.
-
-### HTTP 400 when running Pi through T3 Code
-
-If standalone Pi works but T3 returns `400 Third-party apps now draw from your
-extra usage`, explicitly load this extension in T3's Pi provider **launch arguments**:
-
-```text
---extension /absolute/path/to/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts
-```
-
-Put it before other launch arguments and keep any existing arguments. T3 appends
-its own extension afterwards. Name the same file that the installed package loads.
-Pi then loads it once. `node scripts/root-package.mjs --t3-launch-args`, run from
-that install, prints the argument. The p3stack
-[T3 guide](../p3stack/docs/landing/t3-settings.md) gives the value for each
-machine. Restart the affected Pi provider session so the new load order takes
-effect; retry in a fresh conversation if it retains a previous forced prompt.
-
-T3's current prompt hook returns a full system prompt. When that hook runs first,
-it freezes Pi's stock prompt and this provider correctly respects the resulting
-`forceSystemPrompt`. Loading this provider first lets it choose its prompt before
-T3 appends its instructions. A T3-side fix is to add those instructions through
-`event.systemPromptOptions.sections` instead of returning a full `systemPrompt`.
-
-Both approaches passed live Haiku, Sonnet and Opus 5.5 tests on 2026-10-15.
-See the [investigation](../../docs/claude-subscription-t3-400.md) for the evidence,
-policy-source discrepancy and limits of this workaround.
+Install the package normally. Existing explicit T3 launch arguments remain
+compatible, but are not needed to choose a different system prompt. If you keep
+one, it must name the same extension file the installed package loads; a second
+copy registers duplicate tools. See the
+[T3 settings guide](../p3stack/docs/landing/t3-settings.md).
 
 Pi prices each turn at the API's list prices from its own Claude catalog, as
 it does for other subscription providers, so the footer shows what the same
@@ -93,7 +65,7 @@ try it without changing settings:
 
 ```sh
 pi -e ./packages/claude-subscription/extensions/claude-subscription/index.ts \
-  --model claude-subscription/claude-sonnet-5-5
+  --model claude/claude-sonnet-5-5
 ```
 
 The Agent SDK ships the Claude Code binary for your platform (about 250 MB
@@ -106,7 +78,7 @@ the provider appears in `/model` as soon as it sees that login.
 
 Otherwise run `/login` in Pi, choose **Sign in with an API key** (Pi has no
 other place for a login it does not hold) and then
-**Claude subscription (Agent SDK)**:
+**Claude (Agent SDK)**:
 
 - **Sign in with Claude Code** runs Claude Code's own browser sign-in. The
   credential stays with Claude Code; Pi stores nothing.
@@ -119,8 +91,8 @@ other place for a login it does not hold) and then
 
 ## Use
 
-Pick a model with `/model` (provider `claude-subscription`) or
-`--model claude-subscription/<id>`. Thinking levels map to Claude's effort
+Pick a model with `/model` (provider `claude`) or
+`--model claude/<id>`. Thinking levels map to Claude's effort
 levels the way Pi's own Anthropic adapter maps them.
 
 The extension adds nothing to Pi's footer. `/claude-subscription` shows the
@@ -136,6 +108,20 @@ installed Agent SDK changes, since a newer SDK can report newer models.
 interactively to refresh the list. Context windows and output limits are
 Claude Code's own, which can be smaller than the API's: on a Max plan today
 Opus 4.6 and Sonnet 4.6 have 200k through Claude Code, not 1M.
+
+### Migrating the provider name
+
+The provider ID is now `claude`, formerly `claude-subscription`. Change
+`claude-subscription/<model>` to `claude/<model>` in model selections, role
+defaults and child policies. Update `defaultProvider` and `providerExtensions`
+keys too. When resuming a session saved under the old provider, select its
+`claude/<model>` explicitly.
+
+The package, extension path, `claude-subscription.json`, session storage,
+`/claude-subscription` command and `loaded:claude-subscription` reference keep
+their names. Claude Code's browser login is unchanged. If you stored a long-lived
+token in Pi, sign in for the new provider with `/login`; its old provider-scoped
+credential is not migrated automatically.
 
 ## Settings
 
@@ -174,8 +160,8 @@ copy ends where the record says. Anything else falls back to the text record.
 
 | | `anthropic` with an API key | This provider |
 |---|---|---|
-| System prompt | Pi's default | This package's short preamble in place of Pi's first paragraph and its pointer to Pi's docs; the rest of Pi's prompt is the same. Claude Code adds one line ("You are a Claude agent, built on Anthropic's Claude Agent SDK.") and `<system-reminder>` blocks with the working directory, platform, model, date and account email. |
-| Tool names | `read` | The model is shown `mcp__pi__read`. Pi's screen, transcript and sessions say `read`, and the model is told to call tools by Pi's names when it talks to you. |
+| System prompt | Pi's default | Pi's default, unchanged. Claude Code adds one line ("You are a Claude agent, built on Anthropic's Claude Agent SDK.") and `<system-reminder>` blocks with the working directory, platform, model, date and account email. |
+| Tool names | `read` | The model is shown `mcp__pi__read`. Pi's screen, transcript and sessions say `read`; the provider maps the MCP names back to Pi's names. |
 | Cost in the footer | Dollars | The same API list prices, without a `(sub)` marker: Pi shows that only for its own OAuth subscription sign-in. |
 | Context window, output limit | The API's | Claude Code's, which may be smaller. |
 | After a restart | The transcript, replayed exactly | A text record of it, or the kept session with `resume` on. |
@@ -228,7 +214,7 @@ an explanation instead of running.
 A child Pi process needs this extension loaded to use these models. With
 p3stack's subagents component, name it as `loaded:claude-subscription` in the
 subagent policy's `extensions` allowlist and under `providerExtensions` for
-`claude-subscription`. The built-in policy does this when no `subagents.json`
+`claude`. The built-in policy does this when no `subagents.json`
 exists and this extension loaded from one file. A child started with its own
 `--system-prompt` keeps that prompt, as described under billing above.
 

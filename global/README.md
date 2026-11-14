@@ -18,7 +18,7 @@ The package entry is `../../Code/pi-packages`, the checkout root. Relative packa
 
 mcp-client is not loaded. Native Pi reads `mcpServers`, seconds-based `timeout`, and `toolExposure` from `mcp.json`. Do not enable the optional replacement without reviewing its timeout and configuration migration rules. Playwright follows its latest release. The package move does not update a server or change the MCP file.
 
-Child policies replace the whole file rather than merge. Lookup uses the parent's launch directory and does not search ancestors. `workingDirectories` and tool allowlists reduce capabilities but do not provide an OS sandbox. The repository policy names the Claude provider as `loaded:claude-subscription`. That reference resolves to the file the parent loaded, so the policy holds no machine path.
+Child policies replace the whole file rather than merge. Lookup uses the parent's launch directory and does not search ancestors. `workingDirectories` and tool allowlists reduce capabilities but do not provide an OS sandbox. The repository policy maps the `claude` provider to `loaded:claude-subscription`. That reference resolves to the file the parent loaded, so the policy holds no machine path.
 
 Parent and child model choices are independent. A local parent does not imply local-only work. Hosted models, MCP servers, and web search can contact external services. Do not put credentials in these files.
 

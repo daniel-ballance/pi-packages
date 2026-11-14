@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 export type Loose = any;
 
 /** Use a full provider/model id to repeat the suite on another subscription model. */
-export const MODEL = process.env.CS_LIVE_MODEL ?? "claude-subscription/claude-haiku-5-5";
+export const MODEL = process.env.CS_LIVE_MODEL ?? "claude/claude-haiku-5-5";
 
 const EXTENSION = fileURLToPath(new URL("../../extensions/claude-subscription/index.ts", import.meta.url));
 const RECORDER = fileURLToPath(new URL("./record-sdk-messages.ts", import.meta.url));
@@ -70,9 +70,9 @@ export function unavailable(): string | undefined {
     }
   }
   const probe = new Workspace();
-  const listed = spawnSync(PI, [...providerArgs(), "--list-models", "claude-subscription"], { encoding: "utf8", env: probe.env() });
+  const listed = spawnSync(PI, [...providerArgs(), "--list-models", "claude"], { encoding: "utf8", env: probe.env() });
   probe.remove();
-  if (!/claude-haiku-5-5/.test(listed.stdout)) return "Pi lists no claude-subscription models, so Claude Code has no usable login";
+  if (!/claude-haiku-5-5/.test(listed.stdout)) return "Pi lists no claude models, so Claude Code has no usable login";
   return undefined;
 }
 

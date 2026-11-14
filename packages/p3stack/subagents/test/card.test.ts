@@ -56,7 +56,7 @@ test("each record shape has its own review rule", () => {
 
 test("badges drop the provider and variant noise but keep the size", () => {
   for (const [full, short] of [
-    ["claude-subscription/claude-opus-5-5", "opus-5-5"],
+    ["claude/claude-opus-5-5", "opus-5-5"],
     ["xai/grok-4.7", "grok-4.7"],
     ["openai-codex/gpt-6-luna", "gpt-6-luna"],
     ["halogen/qwen3.8-flash-next-w4b", "qwen3.8-flash"],

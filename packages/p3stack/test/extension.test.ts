@@ -12,7 +12,7 @@ import { candidates, DEFAULT_ROLES, family, thinkingFor } from "../extensions/p3
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
   ({ provider, id, reasoning, thinkingLevelMap: levels });
-const opus = model("claude-subscription", "claude-opus-5-5", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" });
+const opus = model("claude", "claude-opus-5-5", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" });
 const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: null });
 
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
@@ -99,7 +99,7 @@ test("a budget sets each model's thinking level, clamped to what that model offe
   assert.equal(thinkingFor("large", model("p", "plain", undefined, false)), "off", "a model without reasoning stays off");
   const highOnly = model("p", "deep", { off: null, minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null });
   assert.equal(thinkingFor("small", highOnly), undefined, "never above the budget");
-  assert.deepEqual(candidates("small", [opus, highOnly]), ["claude-subscription/claude-opus-5-5:medium"]);
+  assert.deepEqual(candidates("small", [opus, highOnly]), ["claude/claude-opus-5-5:medium"]);
 });
 
 test("with a subagents catalog, only its identities are offered, at the highest level within the budget", () => {
@@ -114,7 +114,7 @@ test("p3stack_roles answers with the role table as text, from the file or the de
     const result = await h.call("p3stack_roles", {});
     assert.match(text(result), /^Role defaults from .*agent\/p3stack\.json \(budget large \(xhigh\)\)/);
     assert.match(text(result), /swarm workers: xai\/grok-4\.7:xhigh\n/);
-    assert.match(text(result), /judgment and prose: claude-subscription\/claude-opus-5-5:xhigh/);
+    assert.match(text(result), /judgment and prose: claude\/claude-opus-5-5:xhigh/);
     assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:xhigh");
     assert.equal(Object.keys(result.structuredContent.roles).length, Object.keys(DEFAULT_ROLES).length);
   } finally { h.dispose(); }
@@ -138,13 +138,13 @@ test("a trusted project's file wins over the personal one, and a broken file is 
 });
 
 test("roles resolve against the live allowlist, clamp thinking down, and report missing selections", async () => {
-  const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude-subscription/claude-opus-5-5:xhigh"] };
+  const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude/claude-opus-5-5:xhigh"] };
   const h = harness({ subagents: catalog });
   try {
     const first = (await h.call("p3stack_roles", {})).structuredContent;
     assert.equal(first.roles["swarm workers"], "xai/grok-4.7:high");
-    assert.equal(first.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:xhigh");
-    assert.deepEqual(first.roles["architect runners"], ["claude-subscription/claude-opus-5-5:xhigh", "xai/grok-4.7:high"]);
+    assert.equal(first.roles["judgment and prose"], "claude/claude-opus-5-5:xhigh");
+    assert.deepEqual(first.roles["architect runners"], ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:high"]);
     catalog.models = ["xai/grok-4.7:low"];
     const second = (await h.call("p3stack_roles", {})).structuredContent;
     assert.equal(second.roles["swarm workers"], "xai/grok-4.7:low");
@@ -154,23 +154,23 @@ test("roles resolve against the live allowlist, clamp thinking down, and report 
 });
 
 test("distinctFrom moves each role off the author's family when the catalog offers another, and says so", async () => {
-  assert.equal(family("claude-subscription/claude-opus-5-5:xhigh"), "claude");
+  assert.equal(family("claude/claude-opus-5-5:xhigh"), "claude");
   assert.equal(family("xai/grok-4.7"), "grok");
   assert.equal(family("openai-codex/gpt-6-astra"), "gpt");
-  const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude-subscription/claude-opus-5-5:xhigh", "openai-codex/gpt-6-astra:xhigh"] };
+  const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude/claude-opus-5-5:xhigh", "openai-codex/gpt-6-astra:xhigh"] };
   const h = harness({ subagents: catalog });
   try {
     const plain = (await h.call("p3stack_roles", {})).structuredContent;
-    assert.equal(plain.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:xhigh");
-    const result = await h.call("p3stack_roles", { distinctFrom: "claude-subscription/claude-opus-5-5:xhigh" });
+    assert.equal(plain.roles["judgment and prose"], "claude/claude-opus-5-5:xhigh");
+    const result = await h.call("p3stack_roles", { distinctFrom: "claude/claude-opus-5-5:xhigh" });
     const roles = result.structuredContent.roles;
     assert.equal(roles["judgment and prose"], "openai-codex/gpt-6-astra:xhigh", "the closest level outside the family");
     assert.equal(roles["swarm workers"], "xai/grok-4.7:high", "already outside the family");
     assert.deepEqual(roles["interrogate reviewers"], ["openai-codex/gpt-6-astra:xhigh", "xai/grok-4.7:high"]);
-    assert.match(text(result), /judgment and prose: substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude-subscription/);
-    catalog.models = ["claude-subscription/claude-opus-5-5:xhigh"];
+    assert.match(text(result), /judgment and prose: substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude\//);
+    catalog.models = ["claude/claude-opus-5-5:xhigh"];
     const only = await h.call("p3stack_roles", { distinctFrom: "claude" });
-    assert.equal(only.structuredContent.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:xhigh");
+    assert.equal(only.structuredContent.roles["judgment and prose"], "claude/claude-opus-5-5:xhigh");
     assert.match(text(only), /judgment and prose: no model outside the claude family is offered/);
   } finally { h.dispose(); }
 });
@@ -179,32 +179,32 @@ test("a registered T3 catalog takes precedence and returns ready targets with ad
   const h = harness({ subagents: { spawnEnabled: true, models: [] }, t3: { providers: [
     { providerInstanceId: "pi-main", canRunChildTask: true, models: [
       { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "low" }, { id: "high" }] }] },
-      { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
+      { id: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
     ] },
     { providerInstanceId: "unavailable", canRunChildTask: false, models: [{ id: "claude-opus-5-5" }] },
   ] } });
   try {
     const result = (await h.call("p3stack_roles", {})).structuredContent;
-    assert.deepEqual(result.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
+    assert.deepEqual(result.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
     assert.deepEqual(result.roles["swarm workers"], { providerInstanceId: "pi-main", model: "xai/grok-4.7", options: [{ id: "thinkingLevel", value: "high" }] });
   } finally { h.dispose(); }
 });
 
 test("T3 bridge MCP envelopes resolve roles and preserve the inherited target without guessing options", async () => {
   const h = harness({ t3: { content: [], structuredContent: {
-    inheritedProviderInstanceId: "pi-main", inheritedModel: "claude-subscription/claude-opus-5-5",
-    providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude-subscription/claude-opus-5-5" }] }],
+    inheritedProviderInstanceId: "pi-main", inheritedModel: "claude/claude-opus-5-5",
+    providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude/claude-opus-5-5" }] }],
   } }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
   try {
     const roles = (await h.call("p3stack_roles", {})).structuredContent.roles;
-    assert.deepEqual(roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5" });
+    assert.deepEqual(roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5" });
     assert.deepEqual(roles["bug-fix"], roles["judgment and prose"]);
   } finally { h.dispose(); }
 });
 
 test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or text", async () => {
   const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [
-    { id: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
+    { id: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
     { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "high" }] }] },
   ] }] };
   for (const structuredContent of [{ content: [], structuredContent: capabilities }, undefined]) {
@@ -220,7 +220,7 @@ test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or te
     };
     try {
       const result = await h.call("p3stack_roles", {});
-      assert.deepEqual(result.structuredContent.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude-subscription/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
+      assert.deepEqual(result.structuredContent.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
       assert.equal(Object.keys(result.structuredContent.roles).length, 17);
       assert.deepEqual(result.structuredContent.problems, []);
     } finally { h.dispose(); }
@@ -228,8 +228,8 @@ test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or te
 });
 
 test("a failed Pi tool-call outcome reports the T3 failure and resolves the subagents allowlist", async () => {
-  const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude-subscription/claude-opus-5-5" }] }] };
-  const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: ["claude-subscription/claude-opus-5-5:low", "xai/grok-4.7:low"] } });
+  const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude/claude-opus-5-5" }] }] };
+  const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: ["claude/claude-opus-5-5:low", "xai/grok-4.7:low"] } });
   h.ctx.executeTool = async (name, args) => {
     assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
     assert.deepEqual(args, {});
@@ -241,7 +241,7 @@ test("a failed Pi tool-call outcome reports the T3 failure and resolves the suba
   };
   try {
     const result = await h.call("p3stack_roles", {});
-    assert.equal(result.structuredContent.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:low");
+    assert.equal(result.structuredContent.roles["judgment and prose"], "claude/claude-opus-5-5:low");
     assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:low");
     assert.equal(Object.keys(result.structuredContent.roles).length, 17);
     assert.equal(result.structuredContent.problems.length, 1);
@@ -250,8 +250,8 @@ test("a failed Pi tool-call outcome reports the T3 failure and resolves the suba
 });
 
 test("inherit-parent resolves to an exact permitted identity and disabled catalogs never invent a model", async () => {
-  const h = harness({ parent: { provider: "claude-subscription", id: "claude-opus-5-5" }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
-  try { assert.equal((await h.call("p3stack_roles", {})).structuredContent.roles["bug-fix"], "claude-subscription/claude-opus-5-5:xhigh"); } finally { h.dispose(); }
+  const h = harness({ parent: { provider: "claude", id: "claude-opus-5-5" }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
+  try { assert.equal((await h.call("p3stack_roles", {})).structuredContent.roles["bug-fix"], "claude/claude-opus-5-5:xhigh"); } finally { h.dispose(); }
   for (const subagents of ["old", { spawnEnabled: false, models: ["xai/grok-4.7:xhigh"] }] as Subagents[]) {
     const h = harness({ subagents });
     try {
@@ -623,26 +623,26 @@ function asTerminal() {
 
 test("/p3stack-setup maps a budget and two models onto every role and writes the file", async () => {
   const restore = asTerminal();
-  const h = harness({ answers: ["unlimited, max thinking", "xai/grok-4.7:xhigh", "claude-subscription/claude-opus-5-5:max"] });
+  const h = harness({ answers: ["unlimited, max thinking", "xai/grok-4.7:xhigh", "claude/claude-opus-5-5:max"] });
   try {
     await h.command("p3stack-setup");
     const written = JSON.parse(readFileSync(join(h.agentDir, "p3stack.json"), "utf8"));
     assert.equal(written.budget, "unlimited (max)");
     assert.equal(written.roles["swarm workers"], "xai/grok-4.7:xhigh");
-    assert.equal(written.roles["judgment and prose"], "claude-subscription/claude-opus-5-5:max");
-    assert.deepEqual(written.roles["interrogate reviewers"], ["claude-subscription/claude-opus-5-5:max", "xai/grok-4.7:xhigh"]);
+    assert.equal(written.roles["judgment and prose"], "claude/claude-opus-5-5:max");
+    assert.deepEqual(written.roles["interrogate reviewers"], ["claude/claude-opus-5-5:max", "xai/grok-4.7:xhigh"]);
     assert.match(h.notices.at(-1)![0], /Wrote .*p3stack\.json/);
   } finally { h.dispose(); restore(); }
 });
 
 test("/p3stack-setup keeps review and prose roles at high thinking or above on the small budget", async () => {
   const restore = asTerminal();
-  const h = harness({ answers: ["small, medium thinking", "xai/grok-4.7:medium", "claude-subscription/claude-opus-5-5:high"] });
+  const h = harness({ answers: ["small, medium thinking", "xai/grok-4.7:medium", "claude/claude-opus-5-5:high"] });
   try {
     await h.command("p3stack-setup");
     const written = JSON.parse(readFileSync(join(h.agentDir, "p3stack.json"), "utf8"));
     assert.equal(written.roles["swarm workers"], "xai/grok-4.7:medium");
-    assert.equal(written.roles["interrogate reviewers"][0], "claude-subscription/claude-opus-5-5:high");
+    assert.equal(written.roles["interrogate reviewers"][0], "claude/claude-opus-5-5:high");
     assert.match(h.asked.find(question => question.startsWith("Model for judgment"))!, /claude-opus-5-5:high/);
     assert.match(h.notices.at(-1)![0], /Review and prose roles stay at high thinking or above/);
   } finally { h.dispose(); restore(); }

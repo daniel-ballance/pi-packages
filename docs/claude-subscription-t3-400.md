@@ -1,5 +1,10 @@
 # Claude subscription HTTP 400 in T3 Code — 2026-10-15
 
+> Historical investigation. The [2026-11-14 recheck](claude-subscription-prompt-billing-2026-11-14.md)
+> accepted the full stock Pi prompt without extra usage. The provider now leaves
+> Pi's prompt unchanged; the prompt-replacement and load-order workaround below
+> is no longer required for prompt selection.
+
 The observed failure is a prompt-composition interaction in T3's Pi integration.
 The same installed provider and login succeed in standalone Pi. Loading the
 subscription extension before T3's extension also succeeds, with T3's complete

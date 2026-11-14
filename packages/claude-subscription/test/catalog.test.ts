@@ -44,7 +44,7 @@ test("the catalog is Pi's own Claude catalog, priced as the API prices it", () =
   const source = builtin.find(model => model.id === "claude-opus-5-5");
   assert.ok(opus && source);
   assert.deepEqual(opus, {
-    id: "claude-opus-5-5", name: source.name, api: "claude-agent-sdk", provider: "claude-subscription", baseUrl: "",
+    id: "claude-opus-5-5", name: source.name, api: "claude-agent-sdk", provider: "claude", baseUrl: "",
     reasoning: true, thinkingLevelMap: source.thinkingLevelMap, input: source.input, inputLimits: source.inputLimits,
     cost: source.cost, contextWindow: source.contextWindow, maxTokens: source.maxTokens,
   });
@@ -62,7 +62,7 @@ test("reported models resolve aliases once; a model Pi does not know gets conser
   assert.deepEqual(models[0], baseline.find(model => model.id === "claude-opus-5-5"));
   assert.notEqual(models[0], baseline.find(model => model.id === "claude-opus-5-5"), "a copy, so correcting its limits leaves Pi's catalog alone");
   assert.deepEqual(models[1], {
-    id: "claude-next-9", name: "Claude Next 9", api: "claude-agent-sdk", provider: "claude-subscription", baseUrl: "",
+    id: "claude-next-9", name: "Claude Next 9", api: "claude-agent-sdk", provider: "claude", baseUrl: "",
     reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     thinkingLevelMap: { off: null, minimal: null, low: "low", medium: null, high: "high", xhigh: null, max: "max" },
     contextWindow: 200_000, maxTokens: 32_000,

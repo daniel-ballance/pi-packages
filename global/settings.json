@@ -1,18 +1,18 @@
 {
   "theme": "omarchy-system",
   "lastChangelogVersion": "1.5.0",
-  "defaultProvider": "claude-subscription",
+  "defaultProvider": "claude",
   "defaultModel": "claude-opus-5-5",
   "defaultThinkingLevel": "high",
   "enabledModels": [
-    "claude-subscription/claude-opus-5-5",
+    "claude/claude-opus-5-5",
     "openai-codex/gpt-6.1-sol",
     "openai-codex/gpt-6.1-terra",
     "openai-codex/gpt-6-luna",
     "xai/grok-4.7",
-    "claude-subscription/claude-fable-5-2",
+    "claude/claude-fable-5-2",
     "openai-codex/gpt-6-astra",
-    "claude-subscription/claude-sonnet-5-5"
+    "claude/claude-sonnet-5-5"
   ],
   "hideThinkingBlock": true,
   "packages": [

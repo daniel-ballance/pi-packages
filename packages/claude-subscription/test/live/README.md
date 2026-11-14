@@ -8,8 +8,8 @@ It is not part of `npm test` (that runs `test/*.test.ts`, which does not reach t
 ```sh
 npm run test:live          # tsx --test test/live/*.live.ts
 # Repeat against the other current models:
-CS_LIVE_MODEL=claude-subscription/claude-sonnet-5-5 npm run test:live
-CS_LIVE_MODEL=claude-subscription/claude-opus-5-5 npm run test:live
+CS_LIVE_MODEL=claude/claude-sonnet-5-5 npm run test:live
+CS_LIVE_MODEL=claude/claude-opus-5-5 npm run test:live
 ```
 
 ## What it needs

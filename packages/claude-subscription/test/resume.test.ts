@@ -20,7 +20,7 @@ function user(content: string): Message {
 }
 
 function assistant(content = "done", overrides: Partial<AssistantMessage> = {}): AssistantMessage {
-  return { role: "assistant", content: [{ type: "text", text: content }], api: "claude-agent-sdk", provider: "claude-subscription", model: "claude-haiku-5-5", responseId: `msg_${content}`, usage, stopReason: "stop", timestamp: 1, ...overrides };
+  return { role: "assistant", content: [{ type: "text", text: content }], api: "claude-agent-sdk", provider: "claude", model: "claude-haiku-5-5", responseId: `msg_${content}`, usage, stopReason: "stop", timestamp: 1, ...overrides };
 }
 
 function read(messages: Message[], systemPrompt = "You are Pi.", tools = TOOLS): Transcript {
