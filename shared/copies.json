@@ -2,6 +2,7 @@
   "host.ts": [
     "packages/p3stack/subagents/extensions/subagents/src/host.ts",
     "packages/p3stack/extensions/p3stack/src/host.ts",
-    "packages/p3stack/todo/extensions/todo/src/host.ts"
+    "packages/p3stack/todo/extensions/todo/src/host.ts",
+    "packages/t3-agent/extensions/t3-agent/src/host.ts"
   ]
 }

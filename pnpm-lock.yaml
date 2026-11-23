@@ -207,6 +207,24 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/t3-agent:
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: ^1.5.2
+        version: 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7))(@smithy/signature-v4@5.7.5)(ws@8.23.0)(zod@4.6.7)
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typebox:
+        specifier: ^1.4.7
+        version: 1.4.7
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/web-search:
     dependencies:
       cheerio:

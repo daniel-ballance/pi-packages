@@ -1,7 +1,7 @@
 # p3stack
 
-The repository root is one Pi package. It loads five packages: claude-subscription,
-p3stack, computer-use, self-reload, and web-search. p3stack owns the router, the
+The repository root is one Pi package. It loads six packages: claude-subscription,
+p3stack, computer-use, self-reload, web-search, and t3-agent. p3stack owns the router, the
 generated workflows, and its nested subagents and todo components. Each package keeps
 its own tests. `packages/mcp-client/` stays a separate optional replacement for native MCP.
 
@@ -182,6 +182,19 @@ A tool whose Contract T3 already satisfies natively. Under T3 it is registered w
 `deferred` exposure: reachable through tool search and codemode, absent from the
 prompt. Under the CLI it is registered as usual.
 _Avoid_: hidden, disabled (both mean unreachable, which deferred is not)
+
+**Loadout**:
+The set of T3 tools t3-agent declares to the model beyond the three the bridge
+declares (`lean`, `standard` or `full`), plus the tools its open Handles make
+relevant. Declaring a tool activates one the bridge registered `deferred`; it does
+not change its exposure.
+_Avoid_: toolset, profile
+
+**Handle**:
+A T3 object a session created and must still act on or clean up: a delegated task,
+a schedule, a watched pull request, a launched thread, a preview tab, a device.
+t3-agent records Handles from T3 tool results so their ids survive compaction.
+_Avoid_: resource (Pi uses that word for skills, prompts and themes), task (one kind of Handle)
 
 **Role default**:
 The model, with thinking level, that one p3stack role uses unless the skill or the

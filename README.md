@@ -4,7 +4,7 @@ Pi packages for routed engineering workflows, child agents, task tracking, web s
 
 `p3stack` is unrelated to [RealSid08/p3stack](https://github.com/RealSid08/p3stack).
 
-The repository root is the Pi package. It loads five packages: [`claude-subscription`](packages/claude-subscription/README.md), [`p3stack`](packages/p3stack/README.md), [`computer-use`](packages/computer-use/README.md), [`self-reload`](packages/self-reload/README.md), and [`web-search`](packages/web-search/README.md). [`mcp-client`](packages/mcp-client/README.md) stays separate as an optional replacement for Pi's built-in MCP client.
+The repository root is the Pi package. It loads six packages: [`claude-subscription`](packages/claude-subscription/README.md), [`p3stack`](packages/p3stack/README.md), [`computer-use`](packages/computer-use/README.md), [`self-reload`](packages/self-reload/README.md), [`web-search`](packages/web-search/README.md), and [`t3-agent`](packages/t3-agent/README.md). [`mcp-client`](packages/mcp-client/README.md) stays separate as an optional replacement for Pi's built-in MCP client.
 
 ## Install from GitHub
 
@@ -43,13 +43,14 @@ The owner's nonsecret preferences live in [`global/`](global/README.md). Those f
 - [`web-search`](packages/web-search/README.md) searches DuckDuckGo without an API key.
 - [`self-reload`](packages/self-reload/README.md) reloads Pi with automatic continuation.
 - [`claude-subscription`](packages/claude-subscription/README.md) provides Claude models through the Claude Agent SDK and Claude Code login. Read its billing note before use.
+- [`t3-agent`](packages/t3-agent/README.md) tunes Pi for T3 Code: a host prompt section, a T3 tool loadout, a ledger of the T3 objects a session opens, and T3 workflow templates. It does nothing unless T3 launched Pi.
 - [`computer-use`](packages/computer-use/README.md) uses the installed macOS Computer Use Companion locally, or over SSH with `PI_COMPUTER_USE_SSH`. No MCP entry or bridge is required. Local mode stays inactive when the required applications are absent.
 
 Native Pi reads `mcp.json`. The root package does not load mcp-client or replace `/mcp`. The optional replacement has a different protocol stack, configuration limits, and timeout units. Read its migration notes before enabling it.
 
 ## Package structure
 
-`package.json` lists the five packages in `piBundle`, in load order, with claude-subscription first. Each package's own `pi` block lists its resources. [`scripts/root-package.mjs`](scripts/root-package.mjs) writes the root `pi` block from those blocks, and the root check fails when the root block is stale. To add a package to the default install, add its directory to `piBundle`, run `node scripts/root-package.mjs`, and commit `package.json`.
+`package.json` lists the six packages in `piBundle`, in load order, with claude-subscription first. Each package's own `pi` block lists its resources. [`scripts/root-package.mjs`](scripts/root-package.mjs) writes the root `pi` block from those blocks, and the root check fails when the root block is stale. To add a package to the default install, add its directory to `piBundle`, run `node scripts/root-package.mjs`, and commit `package.json`.
 
 p3stack nests its subagents and todo components, and its own manifest loads them. claude-subscription, computer-use, self-reload, and web-search are top-level packages. Each package keeps its manifest, tests, resource directories, and standalone npm lockfile. Each declares its own runtime dependencies. Pi-provided APIs remain peers. The root supports npm and pnpm workspaces, including `packages/p3stack/*`.
 

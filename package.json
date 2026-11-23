@@ -19,7 +19,8 @@
     "packages/p3stack",
     "packages/computer-use",
     "packages/self-reload",
-    "packages/web-search"
+    "packages/web-search",
+    "packages/t3-agent"
   ],
   "pi": {
     "extensions": [
@@ -29,7 +30,8 @@
       "./packages/p3stack/todo/extensions/todo/index.ts",
       "./packages/computer-use/extensions/computer-use/index.ts",
       "./packages/self-reload/extensions/self-reload/index.ts",
-      "./packages/web-search/extensions/web-search/index.ts"
+      "./packages/web-search/extensions/web-search/index.ts",
+      "./packages/t3-agent/extensions/t3-agent/index.ts"
     ],
     "skills": [
       "./packages/claude-subscription/skills",
@@ -37,21 +39,24 @@
       "./packages/p3stack/subagents/skills",
       "./packages/computer-use/skills",
       "./packages/self-reload/skills",
-      "./packages/web-search/skills"
+      "./packages/web-search/skills",
+      "./packages/t3-agent/skills"
     ],
     "prompts": [
       "./packages/claude-subscription/prompts/**/*.md",
       "./packages/p3stack/prompts/**/*.md",
       "./packages/computer-use/prompts/**/*.md",
       "./packages/self-reload/prompts/**/*.md",
-      "./packages/web-search/prompts/**/*.md"
+      "./packages/web-search/prompts/**/*.md",
+      "./packages/t3-agent/prompts/**/*.md"
     ],
     "themes": [
       "./packages/claude-subscription/themes/**/*.json",
       "./packages/p3stack/themes/**/*.json",
       "./packages/computer-use/themes/**/*.json",
       "./packages/self-reload/themes/**/*.json",
-      "./packages/web-search/themes/**/*.json"
+      "./packages/web-search/themes/**/*.json",
+      "./packages/t3-agent/themes/**/*.json"
     ]
   }
 }

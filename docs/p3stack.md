@@ -42,11 +42,11 @@ The default T3 checker validates [`rules/t3-pin.json`](../packages/p3stack/rules
 
 The procedure checks the generated diff, registry, loader, static host contract, live T3 capabilities and behavior when under T3, and routing when route or chain rules changed. Changed-source notes go under [`docs/bumps/`](../packages/p3stack/docs/bumps/README.md). A green PR lands: an admin squash merge, then the root check on `main` at the merge commit. A red check reverts the merge through a second PR. The procedure never updates Pi or T3. Dependency refreshes use the separate repository procedure.
 
-## The root installs five packages, and mcp-client is not one
+## The root installs six packages, and mcp-client is not one
 
-Pi 1.3.0 installs a Git source by cloning the whole repository and reading only the root `package.json`. It cannot install a subdirectory. The root manifest therefore loads claude-subscription, p3stack, computer-use, self-reload, and web-search. Each package's own `pi` block stays the source of its resources. `scripts/root-package.mjs` generates the root block from the `piBundle` list, because a hand-written root list would repeat five manifests and drift from them.
+Pi 1.3.0 installs a Git source by cloning the whole repository and reading only the root `package.json`. It cannot install a subdirectory. The root manifest therefore loads claude-subscription, p3stack, computer-use, self-reload, web-search, and t3-agent. Each package's own `pi` block stays the source of its resources. `scripts/root-package.mjs` generates the root block from the `piBundle` list, because a hand-written root list would repeat six manifests and drift from them.
 
-p3stack keeps subagents and todo nested, because its workflows need them. The other four packages stand alone. p3stack also installs by itself, and a session without claude-subscription is a valid setup.
+p3stack keeps subagents and todo nested, because its workflows need them. The other five packages stand alone. p3stack also installs by itself, and a session without claude-subscription is a valid setup.
 
 subagents asks Pi which claude-subscription file it loaded instead of looking beside itself. A policy entry `loaded:claude-subscription` resolves to the file behind that extension's commands and tools. One `subagents.json` therefore works in a checkout, a Git clone, and a T3 launch, and a child loads the same copy as its parent.
 
