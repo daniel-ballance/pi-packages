@@ -1,0 +1,30 @@
+{
+  "name": "t3-agent",
+  "version": "0.1.0",
+  "description": "Tunes Pi for T3 Code: host-aware prompt, T3 tool loadout, handle ledger, and T3 workflows. Inert outside T3.",
+  "type": "module",
+  "keywords": ["pi-package", "t3-code"],
+  "files": ["extensions", "resources", "skills", "prompts", "themes", "README.md"],
+  "pi": {
+    "extensions": ["./extensions/t3-agent/index.ts"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts/**/*.md"],
+    "themes": ["./themes/**/*.json"]
+  },
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "check": "tsc --noEmit && node ../../scripts/lint-skill/lint-skill.mjs --strict resources/skills/t3-code",
+    "test": "tsx --test test/*.test.ts && T3_MCP_URL=http://t3.invalid/mcp tsx --test test/*.test.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.5.0",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.2",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "typebox": "^1.4.7"
+  }
+}

@@ -20,6 +20,7 @@ const rootExtensions = [
   "packages/computer-use/extensions/computer-use/index.ts",
   "packages/self-reload/extensions/self-reload/index.ts",
   "packages/web-search/extensions/web-search/index.ts",
+  "packages/t3-agent/extensions/t3-agent/index.ts",
 ];
 const packageDirs: Record<string, string> = {
   "claude-subscription": "packages/claude-subscription",
@@ -28,6 +29,7 @@ const packageDirs: Record<string, string> = {
   p3stack: "packages/p3stack",
   "self-reload": "packages/self-reload",
   subagents: "packages/p3stack/subagents",
+  "t3-agent": "packages/t3-agent",
   todo: "packages/p3stack/todo",
   "web-search": "packages/web-search",
 };
@@ -102,7 +104,7 @@ test("project settings do not reference the retired pi-pocock-skills package", a
   assert.deepEqual(sources.filter((source: string) => source.includes("pi-pocock-skills")), []);
 });
 
-test("pi install git:github.com/daniel-ballance/pi-packages loads the five packages, and T3's launch argument loads claude-subscription once, first", async () => {
+test("pi install git:github.com/daniel-ballance/pi-packages loads the six packages, and T3's launch argument loads claude-subscription once, first", async () => {
   const temp = tempRoot("pi-git-install-");
   const agentDir = join(temp, "agent"), home = join(temp, "home");
   try {
@@ -140,7 +142,7 @@ test("pi install git:github.com/daniel-ballance/pi-packages loads the five packa
     for (const dir of ["", ...Object.values(packageDirs)]) {
       await assert.rejects(readFile(join(installed, dir, "node_modules/@earendil-works/pi-coding-agent/package.json")), dir || "root");
     }
-    for (const dir of ["packages/claude-subscription", "packages/p3stack", "packages/computer-use", "packages/self-reload", "packages/web-search"]) {
+    for (const dir of ["packages/claude-subscription", "packages/p3stack", "packages/computer-use", "packages/self-reload", "packages/web-search", "packages/t3-agent"]) {
       const manifest = JSON.parse(await readFile(join(installed, dir, "package.json"), "utf8"));
       for (const dependency of Object.keys(manifest.dependencies ?? {})) {
         const paths = createRequire(join(installed, dir, "package.json")).resolve.paths(dependency) ?? [];
@@ -227,7 +229,7 @@ test("every package has resource directories and packs its declared extension im
     assert.ok(!files.some((file: string) => /(^|\/)test\//.test(file)));
     if (name === "p3stack") {
       for (const extension of ["subagents/extensions/subagents/index.ts", "todo/extensions/todo/index.ts"]) assert.ok(files.includes(extension), extension);
-      for (const moved of ["claude-subscription", "computer-use", "self-reload", "web-search"]) {
+      for (const moved of ["claude-subscription", "computer-use", "self-reload", "web-search", "t3-agent"]) {
         assert.ok(!files.some((file: string) => file.startsWith(`${moved}/`)), moved);
       }
       assert.ok(files.includes("subagents/skills/subagents/SKILL.md"));
