@@ -59,6 +59,7 @@ async function handle(cmd) {
       return respond(cmd, { disposition: "handled" });
     }
     if (cmd.type === "prompt") {
+      if (cmd.message === "CONSUME") return respond(cmd, { disposition: "handled" });
       const allowed = JSON.parse(process.env.PI_SUBAGENT_ALLOWED_TOOLS ?? "[]");
       const prompted = process.env.SPAWN_ON;
       if (allowed.includes("subagent_spawn") && (prompted ? cmd.message === prompted : !!process.env.SPAWN_PROOF)) {

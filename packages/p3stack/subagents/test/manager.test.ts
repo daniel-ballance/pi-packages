@@ -423,6 +423,34 @@ test("read detaches UI packets and hold details without changing acknowledgement
   } finally { await s.cleanup(); }
 });
 
+for (const tasks of [["B original"], ["B original", "C original"]]) {
+  test("Pi-delivered follow-ups without a new agent_start: " + tasks.join(", "), async () => {
+    const s = await setup();
+    try {
+      const a = await s.spawn("queue-fixture-A");
+      const original = s.manager.get(a.id).assignment!.id;
+      for (const task of tasks) {
+        assert.equal((await s.manager.send(a.id, task, "followUp")).disposition, "queued");
+        assert.equal(s.manager.get(a.id).assignment!.id, original);
+      }
+      // The steer has the same text as a queued follow-up, but is not a new assignment.
+      await s.manager.send(a.id, "B delivered", "steer");
+      await s.manager.wait([a.id], "all", 2000);
+      const record = s.manager.get(a.id), next = record.assignment!;
+      assert.notEqual(next.id, original);
+      assert.equal(next.task, tasks.map(t => t.replace("original", "delivered")).join("\n\n"));
+      assert.deepEqual(record.queuedAssignments, []);
+      assert.equal(next.status, "completed");
+      assert.deepEqual(record.updates.filter(u => u.kind === "assistant").map(u => u.assignmentId), [original, next.id]);
+      assert.deepEqual(s.manager.pendingNotices().map(n => n.text), ["answer A", "answer " + tasks.map(t => t.replace("original", "delivered")).join(" and ")]);
+      await s.manager.send(a.id, "fresh");
+      await s.manager.wait([a.id], "all", 2000);
+      assert.equal(record.assignment!.task, "fresh");
+      assert.notEqual(record.assignment!.id, next.id);
+    } finally { await s.cleanup(); }
+  });
+}
+
 test("follow-up assignments remain queued until a new run and are not replayed after abort", async () => {
   const s = await setup();
   try {

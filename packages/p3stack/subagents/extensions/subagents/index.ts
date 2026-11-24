@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { SubagentManager } from "./src/manager.js";
+import { SubagentManager, type InputDisposition } from "./src/manager.js";
 import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
@@ -33,7 +33,7 @@ import type { TSchema } from "typebox";
 
 const { id, message } = SHARED_SCHEMAS;
 type SpawnReceipt = ChildNews & {
-  model?: string; thinking?: string; worktree?: Worktree;
+  model?: string; thinking?: string; worktree?: Worktree; disposition?: InputDisposition; workStarted?: false;
   coordinationWarnings: ReturnType<typeof coordinationWarnings>;
   coordinationWarningCount: number;
   overlapsOutsideYourSubtree?: number;
@@ -395,6 +395,8 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         const outside = all.length - warnings.length;
         const receipt: SpawnReceipt = {
           ...childNews(record),
+          disposition: child.lastSubmission?.disposition,
+          ...(child.lastSubmission?.disposition === "handled" ? { workStarted: false } : {}),
           ...(record.model ? { model: record.model } : {}),
           ...(record.thinking ? { thinking: record.thinking } : {}),
           ...(worktree ? { worktree } : {}),

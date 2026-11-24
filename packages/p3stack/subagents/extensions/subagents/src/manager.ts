@@ -60,10 +60,17 @@ export interface AgentRecord {
   uncertainSubmission?: { at: string; reason: string };
   /** A signalled process whose close was never observed still occupies a slot. */
   unconfirmedStop?: string;
-  /** Accepted follow-ups start a new assignment only when their own run begins. */
-  queuedAssignments?: { id: string; task: string; at: string; startAt: number }[];
+  /** Submitted follow-ups are not assignments until a user message is delivered. */
+  queuedAssignments?: { id: string; task: string; at: string }[];
   /** parent_send messages used during the assignment they were sent in. */
   parentMessages?: { assignmentId: string; used: number };
+}
+interface InputDelivery {
+  followUp?: string[];
+  steering?: string[];
+  removed?: { queue: "followUp" | "steering"; text: string };
+  firstUser?: boolean;
+  batch?: boolean;
 }
 export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string }
 export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
@@ -536,6 +543,7 @@ export class SubagentManager {
     record.status = "starting";
     record.error = undefined;
     record.uiRequests = [];
+    const delivery: InputDelivery = {};
     const child = new RpcChild({
       executable: config.executable || "pi", args, cwd: resolve(config.cwd), env,
       peerRequest: config.selection?.tools.includes("peer_send") && this.peerMessageLimit > 0 ? async packet => {
@@ -560,7 +568,7 @@ export class SubagentManager {
         if (this.children.get(record.id) !== child) throw new Error("Stale child process");
         return this.messageParent(record, message);
       } : undefined,
-      event: packet => this.event(record, packet),
+      event: packet => this.event(record, packet, delivery),
       stderr: text => this.log(record.stderrFile, text),
       exit: error => {
         this.peers.interrupt(record.id);
@@ -644,18 +652,73 @@ export class SubagentManager {
       return record ? this.refreshUsage(record) : undefined;
     }));
   }
-  private event(record: AgentRecord, packet: Packet) {
+  private finishAssignment(record: AgentRecord, humanCancellation = false) {
+    const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
+    if (record.assignment?.status === "running") record.assignment.status = record.error ? "failed" : record.aborted ? "cancelled" : "completed";
+    const last = record.updates.findLast(u => u.kind === (record.error ? "error" : record.aborted ? "aborted" : "assistant") && u.cursor > (record.runStartCursor ?? 0));
+    const text = record.error || last?.text || "Run settled without a text response.";
+    if (!last) this.appendUpdate(record, kind, text);
+    if (record.assignment && !record.assignment.finishedAt) {
+      record.assignment.finishedAt = new Date().toISOString();
+      record.assignment.resultCursor = last?.cursor ?? record.cursor;
+      record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last?.truncated || this.savedFinal(record)?.readThrough === last.cursor - 1) ? "reviewed" : "unreviewed" };
+    }
+    // announce commits the result and its wake notice together, before calling
+    // the scheduler. A suppressed notice still needs the settlement committed.
+    if ((humanCancellation && kind === "aborted") || !this.announce(record, kind, text, last?.cursor ?? record.cursor)) this.persist();
+  }
+  private deliveredInput(record: AgentRecord, delivery: InputDelivery, text: string) {
+    const removed = delivery.removed, first = delivery.firstUser;
+    delivery.removed = undefined;
+    delivery.firstUser = false;
+    if (record.hold || record.status === "stopping") return;
+    const queued = record.queuedAssignments ?? [];
+    // The queue snapshots contain the text *after* Pi's input hooks. A steer
+    // may even be identical to a follow-up; only the depleted queue identifies it.
+    const match = queued.findIndex(q => q.task === text);
+    const followUp = removed?.text === text ? removed.queue === "followUp" :
+      (delivery.followUp === undefined || (first && !delivery.followUp.includes(text))) && match >= 0;
+    if (followUp) {
+      const next = queued.splice(match < 0 ? 0 : match, 1)[0];
+      if (delivery.batch && record.assignment?.status === "running") {
+        // Pi's all-at-once mode delivers these together for one assistant answer.
+        record.assignment.task += `\n\n${text}`;
+        this.persist();
+      } else {
+        if (record.assignment && !record.assignment.finishedAt) this.finishAssignment(record);
+        record.runStartCursor = record.cursor;
+        this.beginAssignment(record, text, next?.id, next?.at);
+        delivery.batch = true;
+      }
+    } else if (first && !removed) {
+      // The first prompt can be transformed as well, or an extension can
+      // actually start a turn for a slash command.
+      if (record.assignment?.status !== "running") this.beginAssignment(record, text);
+      else if (record.assignment.task !== text) { record.assignment.task = text; this.persist(); }
+    }
+  }
+  private event(record: AgentRecord, packet: Packet, delivery: InputDelivery) {
     this.log(record.logFile, JSON.stringify(packet) + "\n");
     let activity = this.activityFeeds.get(record.id);
     if (!activity) this.activityFeeds.set(record.id, activity = new ActivityFeed());
     try { activity.accept(packet); }
     catch { this.activityFeeds.delete(record.id); } // Cosmetic data must never break execution.
     switch (packet.type) {
-      case "agent_start":
-        if (record.queuedAssignments?.length && !record.hold && record.queuedAssignments[0].startAt <= (record.runRevision ?? 0) + 1) {
-          const next = record.queuedAssignments.shift()!;
-          this.beginAssignment(record, next.task, next.id, next.at);
+      case "queue_update":
+        // AgentSession removes a delivered user message before message_start.
+        for (const queue of ["steering", "followUp"] as const) {
+          const before = delivery[queue], after: string[] = packet[queue] ?? [];
+          if (before?.length === after.length + 1) {
+            const index = before.findIndex((text, i) => text !== after[i]);
+            delivery.removed = { queue, text: before[index] };
+          }
+          delivery[queue] = after;
         }
+        break;
+      case "turn_start":
+        delivery.batch = false; break;
+      case "agent_start":
+        delivery.firstUser = true;
         record.runRevision = (record.runRevision ?? 0) + 1;
         this.activeRuns.add(record.id);
         const intent = this.abortIntents.get(record.id);
@@ -678,11 +741,13 @@ export class SubagentManager {
         const message = packet.message;
         if (message?.role === "user") {
           const text = typeof message.content === "string" ? message.content : (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
+          this.deliveredInput(record, delivery, text);
           this.peers.received(record.id, text);
         }
         if (message?.role === "assistant") record.usage = noteAssistantCacheHit(record.usage, message);
         if (message?.role === "assistant" || message?.role === "toolResult") void this.refreshUsage(record);
         if (message?.role !== "assistant") break;
+        delivery.firstUser = false; delivery.batch = false;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
         if (text) this.update(record, "assistant", text, !["toolUse", "error", "aborted"].includes(message.stopReason));
         const intent = this.abortIntents.get(record.id);
@@ -725,19 +790,7 @@ export class SubagentManager {
         record.activity = record.error ? "Run failed; process remains available" : record.aborted ? "Work aborted; waiting for instructions" : "Waiting for instructions";
         record.uiRequests = [];
         this.expireInputNotices(record);
-        const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
-        if (record.assignment?.status === "running") record.assignment.status = record.error ? "failed" : record.aborted ? "cancelled" : "completed";
-        const last = record.updates.findLast(u => u.kind === (record.error ? "error" : record.aborted ? "aborted" : "assistant") && u.cursor > (record.runStartCursor ?? 0));
-        const text = record.error || last?.text || "Run settled without a text response.";
-        if (!last) this.appendUpdate(record, kind, text);
-        if (record.assignment && !record.assignment.finishedAt) {
-          record.assignment.finishedAt = new Date().toISOString();
-          record.assignment.resultCursor = last?.cursor ?? record.cursor;
-          record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last?.truncated || this.savedFinal(record)?.readThrough === last.cursor - 1) ? "reviewed" : "unreviewed" };
-        }
-        // announce commits the result and its wake notice together, before calling
-        // the scheduler. A suppressed notice still needs the settlement committed.
-        if ((humanCancellation && kind === "aborted") || !this.announce(record, kind, text, last?.cursor ?? record.cursor)) this.persist();
+        this.finishAssignment(record, humanCancellation);
         void this.refreshUsage(record);
         break;
       }
@@ -790,8 +843,8 @@ export class SubagentManager {
     }
     const priorAssignment = record.assignment;
     const priorReview = record.resultReview;
-    const queued = !message.startsWith("/") && behavior === "followUp" && previous === "working"
-      ? { id: randomUUID(), task: message, at: new Date().toISOString(), startAt: (record.runRevision ?? 0) + (this.activeRuns.has(id) ? 1 : 2) } : undefined;
+    const queued = behavior === "followUp" && (previous === "working" || previous === "waiting_input")
+      ? { id: randomUUID(), task: message, at: new Date().toISOString() } : undefined;
     if (queued) (record.queuedAssignments ??= []).push(queued);
     else if (!message.startsWith("/") && (!record.assignment || record.assignment.status !== "running")) this.beginAssignment(record, message);
     this.persist();

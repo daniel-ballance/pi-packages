@@ -69,6 +69,15 @@ test("manager shutdown still runs if workflow shutdown rejects", async (t) => {
   assert.equal(cleanup.mock.callCount(), 1);
 });
 
+test("a consumed first input returns a compact handled/no-work spawn receipt", { skip: process.platform === "win32" }, async () => {
+  await withSpawn(async (spawn, repo) => {
+    const { details } = await spawn({ name: "consumed", task: "CONSUME", cwd: repo, model: "p/m:off", tools: [] });
+    assert.equal(details.disposition, "handled");
+    assert.equal(details.workStarted, false);
+    assert.equal(details.status, "idle");
+  });
+});
+
 test("a spawn with a 2KB task returns neither the task nor sessionFile, under 1KB, and the card still shows name, state and model", { timeout: 20000, skip: process.platform === "win32" }, async () => {
   assert.equal(Buffer.byteLength(task), 2048);
   await withSpawn(async (spawn, repo) => {
