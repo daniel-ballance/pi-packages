@@ -46,25 +46,18 @@ function pi(root: string, session: string) {
   };
 }
 
-// Count streamSimple invocations, not just settle events. The file (not the todo
-// state or the model's reply) tells us whether the open item was actually finished.
-for (const scenario of ["forgotten update", "waiting on user", "already current"]) test(`settle turn cost: ${scenario}`, async () => {
-  const root = mkdtempSync(join(tmpdir(), "todo-settle-")), session = join(root, "session.jsonl");
+// Count streamSimple invocations: a run that leaves an item open ends on the model's own reply.
+test("a run that ends with an open item costs no extra provider call", async () => {
+  const root = mkdtempSync(join(tmpdir(), "todo-end-")), session = join(root, "session.jsonl");
   const client = pi(root, session);
   try {
-    const waiting = scenario === "waiting on user";
-    const set = { op: "set", items: [waiting ? "Collect the user's signed receipt" : "Write receipt.txt"] };
-    const work = waiting ? { name: "ls", arguments: { path: "." } } : { name: "write", arguments: { path: "receipt.txt", content: "received" } };
-    const update = { op: "update", id: 1, state: "done" };
-    const steps = scenario === "already current" ? [set, work, update, null] : [set, work, null, waiting ? null : update];
+    const steps = [{ op: "set", items: ["Write receipt.txt"] }, { name: "write", arguments: { path: "receipt.txt", content: "received" } }, null];
     await client.prompt(`RUN ${JSON.stringify(steps)}`);
-    assert.equal(existsSync(join(root, "receipt.txt")), !waiting);
+    assert.equal(existsSync(join(root, "receipt.txt")), true);
     const entries = readFileSync(session, "utf8").trim().split("\n").map(line => JSON.parse(line));
-    assert.equal(entries.filter(e => e.customType === "todo").at(-1).data.items[0].state, waiting ? "pending" : "done");
-    const requests = readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
-    const extra = requests.filter(({ messages }) => messages.some((m: Packet) => m.role === "user" && JSON.stringify(m.content).includes("The run is ending with")));
-    assert.equal(extra.length, scenario === "already current" ? 0 : waiting ? 1 : 2);
-    assert.equal(requests.length - extra.length, scenario === "already current" ? 4 : 3);
+    assert.equal(entries.filter(e => e.customType === "todo").at(-1).data.items[0].state, "pending");
+    const requests = readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n");
+    assert.equal(requests.length, 3);
   } finally { await client.stop(); rmSync(root, { recursive: true, force: true }); }
 });
 

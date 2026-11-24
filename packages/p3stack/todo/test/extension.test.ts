@@ -253,11 +253,10 @@ test("in a terminal, a tool that merely looks like T3's changes nothing", async 
 });
 
 for (const peerFirst of [true, false]) {
-  test(`both boundaries preserve entries from a handler registered ${peerFirst ? "before" : "after"} todo`, async () => {
+  test(`the reminder preserves entries from a handler registered ${peerFirst ? "before" : "after"} todo`, async () => {
     const entry = { type: "custom" as const, customType: "peer-report", data: { id: 7 } };
     const peer = (pi: ExtensionAPI) => {
       pi.on("turn_end", event => ({ entries: [...event.entries, entry], continue: true }));
-      pi.on("agent_before_settle", event => ({ entries: [...event.entries, entry] }));
     };
     const h = harness({ extensions: peerFirst ? [peer, todo] : [todo, peer] });
     await h.call({ op: "set", items: ["Review"] });
@@ -265,25 +264,11 @@ for (const peerFirst of [true, false]) {
     const work = { toolResults: [{ toolName: "read" }] };
     for (let i = 0; i < 3; i++) await h.emit("turn_end", work);
     const reminder = (await h.emit("turn_end", work)).at(-1);
-    const nudge = (await h.emit("agent_before_settle", settle())).at(-1);
-    for (const [proposal, type] of [[reminder, "todo-reminder"], [nudge, "todo-settle"]]) {
-      assert.deepEqual(proposal.entries.map((e: { customType: string }) => e.customType), peerFirst ? ["peer-report", type] : [type, "peer-report"]);
-      assert.deepEqual(proposal.entries[peerFirst ? 0 : 1], entry);
-      assert.equal(proposal.continue, true);
-    }
+    assert.deepEqual(reminder.entries.map((e: { customType: string }) => e.customType), peerFirst ? ["peer-report", "todo-reminder"] : ["todo-reminder", "peer-report"]);
+    assert.deepEqual(reminder.entries[peerFirst ? 0 : 1], entry);
+    assert.equal(reminder.continue, true);
   });
 }
-
-test("a continuation already requested by another extension is not a todo check", async () => {
-  const entry = { type: "custom_message" as const, customType: "peer-report", content: "Inspect the report", display: false };
-  const peer = (pi: ExtensionAPI) => { pi.on("agent_before_settle", () => ({ entries: [entry], continue: true })); };
-  const h = harness({ extensions: [peer, todo] });
-  await h.call({ op: "set", items: ["Review"] });
-  await h.emit("turn_end", turn("todo"));
-  await h.emit("turn_end", turn("read"));
-  assert.deepEqual((await h.emit("agent_before_settle", { outcome: "completed" })).at(-1), { entries: [entry], continue: true });
-  assert.doesNotMatch(text(await h.call({ op: "get" })), /end your turn/i);
-});
 
 test("after a few turns without a todo call, open items get one hidden reminder", async () => {
   const h = harness(), idle = { toolResults: [{ toolName: "bash" }] };
@@ -304,22 +289,19 @@ test("after a few turns without a todo call, open items get one hidden reminder"
   for (let turn = 0; turn < 6; turn++) assert.deepEqual(await h.emit("turn_end", idle), [], "nothing open, nothing to say");
 });
 
-test("codemode counts its actual nested calls, not the script wrapper, for both reminders", async () => {
+test("codemode counts its actual nested calls, not the script wrapper", async () => {
   const h = harness();
   const script = (...tools: string[]) => ({ toolResults: [{ toolName: "codemode", nestedCalls: {
     calls: tools.map((name, i) => ({ id: `script/${i + 1}`, name, status: "ok" })), complete: true,
   } }] });
   await h.call({ op: "set", items: ["Review"] });
   await h.emit("turn_end", script("todo"));
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "no work after the nested todo");
   for (let i = 1; i < 4; i++) assert.deepEqual(await h.emit("turn_end", turn("read")), []);
   assert.equal((await h.emit("turn_end", script("read"))).length, 1, "the fourth work turn can be a script");
-  await h.call({ op: "get" });
+  await h.call({ op: "get" }); // The nested call runs execute() as well.
   await h.emit("turn_end", script("read", "todo"));
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "work before a nested todo doesn't count");
-  await h.call({ op: "get" });
-  await h.emit("turn_end", script("todo", "read"));
-  assert.equal((await h.emit("agent_before_settle", settle())).length, 1, "work after a nested todo counts at settle");
+  for (let i = 1; i < 4; i++) assert.deepEqual(await h.emit("turn_end", turn("read")), [], "a script that ran todo resets the count");
+  assert.equal((await h.emit("turn_end", turn("read"))).length, 1);
 });
 
 test("a script that ran todo is still a todo turn if the nested-call record omits it", async () => {
@@ -329,42 +311,8 @@ test("a script that ran todo is still a todo turn if the nested-call record omit
   await h.emit("turn_end", { toolResults: [{ toolName: "codemode", nestedCalls: {
     calls: [{ id: "script/1", name: "read", status: "ok" }], complete: false,
   } }] });
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), []);
   for (let i = 1; i < 4; i++) assert.deepEqual(await h.emit("turn_end", turn("read")), []);
   assert.equal((await h.emit("turn_end", turn("read"))).length, 1);
-});
-
-for (const role of ["user", "custom"]) {
-  test(`a queued ${role} message supersedes the todo check before its first answer`, async () => {
-    const h = harness();
-    await h.call({ op: "set", items: ["Inspect the report"] });
-    await h.emit("turn_end", turn("todo", "read"));
-    assert.equal((await h.emit("agent_before_settle", settle())).length, 1);
-    // Streaming delivery does not fire before_agent_start. Use the SDK's custom-message queue path.
-    const messages: unknown[] = [];
-    if (role === "custom") {
-      const recipient = { isStreaming: true, agent: { followUp: (message: unknown) => messages.push(message) } };
-      await AgentSession.prototype.sendCustomMessage.call(recipient as unknown as AgentSession,
-        { customType: "completion", content: "The report is ready", display: true }, { triggerTurn: true, deliverAs: "followUp" });
-    } else messages.push({ role: "user", content: [{ type: "text", text: "Explain the report" }], timestamp: Date.now() });
-    for (const message of messages) await h.emit("message_start", { message });
-    assert.doesNotMatch(text(await h.call({ op: "update", id: 1, state: "done" })), /end your turn/i);
-    assert.deepEqual(await h.emit("agent_before_settle", settle()), []);
-  });
-}
-
-test("a custom wake after a settle nudge is a new request, not its silent continuation", async () => {
-  const h = harness();
-  await h.emit("before_agent_start", { messageType: "user" });
-  await h.call({ op: "set", items: ["Inspect the child report"] });
-  await h.emit("turn_end", turn("todo"));
-  await h.emit("turn_end", turn("read"));
-  assert.equal((await h.emit("agent_before_settle", settle())).length, 1);
-  await h.emit("before_agent_start", { messageType: "custom", message: { customType: "subagent-report" } });
-  assert.doesNotMatch(text(await h.call({ op: "get" })), /end your turn/i);
-  await h.emit("turn_end", turn("todo"));
-  await h.emit("turn_end", turn("read"));
-  assert.equal((await h.emit("agent_before_settle", settle())).length, 1, "the wake gets its own check");
 });
 
 test("each new request starts a fresh four-work-turn reminder interval for the open list", async () => {
@@ -376,40 +324,15 @@ test("each new request starts a fresh four-work-turn reminder interval for the o
     await h.emit("before_agent_start", { messageType });
     for (let i = 0; i < 3; i++) assert.deepEqual(await h.emit("turn_end", turn("read")), []);
     assert.equal((await h.emit("turn_end", turn("read"))).length, 1);
-    assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "this request hasn't used the list");
   }
 });
 
-test("a run that used the list and leaves items open gets one more turn to mark them", async () => {
+test("a run that ends with open items gets no extra turn", async () => {
   const h = harness();
   await h.emit("before_agent_start", { messageType: "user" });
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "no list: nothing to check");
   await h.call({ op: "set", items: ["Frame", "Report"] });
-  await h.call({ op: "update", id: 1, state: "done" });
-  await h.emit("turn_end", turn("todo"));
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "the list is as the model last left it");
-  await h.emit("turn_end", turn("bash", "todo"));
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "work before the todo call in a turn is covered by it");
   await h.emit("turn_end", turn("todo", "bash"));
-  await h.emit("turn_end", turn());
-  const [nudge] = await h.emit("agent_before_settle", settle());
-  assert.equal(nudge.continue, true);
-  assert.equal(nudge.entries[0].display, false);
-  assert.match(nudge.entries[0].content, /^<todo-extension-note>\nAutomated note from the todo tool's extension, not from the user/);
-  assert.match(nudge.entries[0].content, /ending with 1 open item: 2\. Report\. Mark any that are finished done, or skipped .*open on purpose.*Then end your turn without writing anything/);
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "once per request");
-  await h.emit("agent_start");
-  const answer = await h.call({ op: "update", id: 2, state: "in_progress" });
-  assert.match(text(answer), /^Item 2 is in progress\.\nThat answers the todo check\. End your turn now without writing anything/, "the update answering the check says to stop there");
-  assert.doesNotMatch(text(await h.call({ op: "get" })), /end your turn/i, "the first answer consumes the hint");
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "the continuation it asked for is not nudged again");
-  await h.emit("before_agent_start", { messageType: "user" });
-  assert.doesNotMatch(text(await h.call({ op: "get" })), /todo check/, "a new request is not answering it");
-  await h.emit("before_agent_start", { messageType: "user" });
-  assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "a later run that never touched the list is left alone");
-  await h.call({ op: "get" });
-  await h.emit("turn_end", turn("todo"));
   await h.emit("turn_end", turn("read"));
-  assert.deepEqual(await h.emit("agent_before_settle", settle("aborted")), [], "not after an abort");
-  assert.equal((await h.emit("agent_before_settle", settle("completed", false))).length, 1, "a normal end has canContinue false; the hidden message is what continues");
+  assert.deepEqual(await h.emit("agent_before_settle", settle()), []);
+  assert.doesNotMatch(text(await h.call({ op: "update", id: 1, state: "done" })), /end your turn/i);
 });

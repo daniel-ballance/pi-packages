@@ -38,17 +38,12 @@ their context mentions it again. The extension does, with hidden messages the us
 does not see. Pi gives a hidden message to the model as a user message, so each is
 labelled as the extension's, says the user does not see it, and asks for no reply.
 
-- **During a run:** after four turns with tool calls but no `todo` call while
-  items are open, one short reminder of the count and the next open item. It
-  repeats only after the next `todo` call or in a new request. Calls to
-  `tools.todo` inside codemode scripts count as todo calls.
-- **At the end of a request:** if the request used the list, then used other
-  tools after its last `todo` call, and items are still open, one more turn to
-  mark them done or skipped. Items left open on purpose, for example waiting on
-  delegated work, stay as they are, and the model is asked to end without
-  writing anything, so the user's last answer stands. This happens once per
-  request, never for the continuation it starts. A run whose last tool call was
-  `todo` is not checked: the list is as the model left it.
+After four turns with tool calls but no `todo` call while items are open, the
+model gets one short reminder of the count and the next open item. It repeats
+only after the next `todo` call or in a new request. Calls to `tools.todo` inside
+codemode scripts count as todo calls. There is no check at the end of a request:
+counted across real sessions, it mostly produced a visible reply about items left
+open on purpose, such as work waiting on a delegate.
 
 `set`'s result also says to update items as they finish, and that codemode
 scripts can call `tools.todo`.
