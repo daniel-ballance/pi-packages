@@ -203,6 +203,21 @@ test("the command lint distinguishes dropped commands from resource paths and UR
   assert.throws(f.build, /read.md:1: removed skill command \/retired/);
 });
 
+test("untranslated fenced and indented invocations fail at the installed file and line", t => {
+  const f = fixture(t);
+  f.write("registry/chains.json", []);
+  const examples = [
+    "GET /first HTTP/1.1", "cd /first", '[endpoint](/first)', '<a href="/first">path</a>',
+    "/first the topic", "Then invoke **/first**.",
+  ];
+  f.write("extra/agents/examples.md", ["# Prompts", "", "~~~~md", ...examples, "~~~~", "", "    Run `/first` next.", ""].join("\n"));
+  assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), error => {
+    const hits = error.message.split("\n").filter(line => line.includes("untranslated fenced command"));
+    assert.deepEqual(hits, [8, 9, 12].map(line => `agents/examples.md:${line}: untranslated fenced command /first`));
+    return true;
+  });
+});
+
 test("a reference cannot own another reference", t => {
   const f = referenceFixture(t, "middle"), path = "skills/middle/SKILL.md";
   f.write("vendor/demo/" + path, f.skill("middle"));

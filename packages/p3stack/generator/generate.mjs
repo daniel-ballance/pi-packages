@@ -487,10 +487,34 @@ export function removedCommandPattern(skills) {
   return new RegExp(`(?:/skill:|(?<![\\w./:-])(?<!\\][(:][ \\t]*<?)/)(?:${[...new Set(names)].map(escapeRegex).join("|")})(?![\\w/-]|[.?#][\\w/])`, "g");
 }
 
-function lint(outDir, deny, problems, removed) {
+// Bare /name is also a valid HTTP or filesystem operand, even inside an example.
+function pathOperand(before, after) {
+  return /(?:\b(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE|cd|pushd|ls|cat|mkdir)\s+|\]\(\s*<?|\b(?:href|src)\s*=\s*)[`*"']*$/i.test(before) || /^\s+HTTP\/\d/i.test(after);
+}
+
+function lintFencedCommands(text, path, names, problems) {
+  function visit(node) {
+    if (node.type !== "code") return node.children?.forEach(visit);
+    const start = node.position.start;
+    const fenced = /^(?:`{3,}|~{3,})/.test(text.slice(start.offset));
+    node.value.split("\n").forEach((line, i) => {
+      for (const hit of line.matchAll(/(?<![\w./:-])\/([\w-]+)(?![\w/-]|[.?#][\w/])/g)) {
+        if (names.has(hit[1]) && !pathOperand(line.slice(0, hit.index), line.slice(hit.index + hit[0].length))) {
+          problems.push(`${path}:${start.line + Number(fenced) + i}: untranslated fenced command ${hit[0]}`);
+        }
+      }
+    });
+  }
+  visit(fromMarkdown(text));
+}
+
+function lint(outDir, deny, problems, skills) {
+  const removed = skills && removedCommandPattern(skills);
+  const upstream = new Set(skills?.filter(row => row.source !== "p3stack").flatMap(row => [row.name, posix.basename(posix.dirname(row.path))]));
   for (const path of walk(outDir)) {
     const text = decode(readFileSync(join(outDir, path)));
     if (text === undefined) continue;
+    if (upstream.size && path.endsWith(".md")) lintFencedCommands(text, path, upstream, problems);
     text.split("\n").forEach((line, index) => {
       for (const command of removed ? line.match(removed) ?? [] : []) problems.push(`${path}:${index + 1}: removed skill command ${command}`);
       for (const token of deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
@@ -559,7 +583,7 @@ export function generate({ packageDir, outDir }) {
     chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
   }
   const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
-  lint(outDir, checks.deny, lintProblems, registry && removedCommandPattern(registry.skills));
+  lint(outDir, checks.deny, lintProblems, registry?.skills);
   for (const { file, contains } of checks.require ?? []) {
     const text = existsSync(join(outDir, file)) ? readFileSync(join(outDir, file), "utf8") : "";
     for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);
