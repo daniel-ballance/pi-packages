@@ -83,3 +83,25 @@ test("host lint catches terminal and T3 calls in agents and skill resources, but
     resource + ":1: subagent_workflow_inspect", resource + ":2: mcp__t3_code__delegate_task",
   ]);
 });
+
+test("slash translation recognizes commands, not URL segments, file paths, or unshipped names", t => {
+  const commands = "Run /research. Try [`/research`](../research/SKILL.md), not /wait-what or /research-more.";
+  const examples = [
+    "Mount the route at `/prototype/<name>` or /research/<name>.",
+    "Open https://example.test/research or /research?variant=1#data. See [route](/research).",
+    "Read /research.md, /research/output.json, ../research/SKILL.md and docs/research.",
+  ];
+  const path = "skills/notes/examples.md";
+  const output = translate(t, "matt-pocock", {
+    "skills/research/SKILL.md": "# Research\n",
+    [path]: [commands, ...examples].join("\n"),
+  });
+  assert.equal(output(path), [
+    "Run /skill:research. Try [`/skill:research`](../research/SKILL.md), not /wait-what or /research-more.",
+    ...examples,
+  ].join("\n"));
+});
+
+test("the prototype's throwaway page is an app route", () => {
+  assert.ok(read("skills/interactive-prototype/UI.md").includes("route under `/prototype/<name>`"));
+});
