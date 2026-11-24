@@ -93,6 +93,14 @@ process.stdin.on('data', chunk => {
         }, 80);
         continue;
       }
+      if (cmd.message === 'exit-during-retry' || cmd.message === 'close-during-retry') {
+        emit({ type: 'agent_start' }); user(cmd.message);
+        emit({ type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'error', errorMessage: '503 provider unavailable' } });
+        emit({ type: 'agent_end' }); // A retry can follow; there is no agent_settled yet.
+        respond(cmd);
+        if (cmd.message === 'exit-during-retry') process.exit(2);
+        continue;
+      }
       working = true; emit({ type: 'agent_start' }); user(cmd.message); respond(cmd);
       if (cmd.message === "retry-success") {
         emit({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "retryable" } });

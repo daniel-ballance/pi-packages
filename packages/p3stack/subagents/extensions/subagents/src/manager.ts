@@ -482,7 +482,8 @@ export class SubagentManager {
         record.activity = expected ? "Stopped; saved conversation available" : "Process exited";
         record.uiRequests = [];
         this.inbox.expireInputNotices(record);
-        if (!expected) record.error = error?.message || "Child exited unexpectedly";
+        if (delivery.error) record.error = delivery.error;
+        else if (!expected) record.error = error?.message || "Child exited unexpectedly";
         const update = this.inbox.appendUpdate(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
         if (record.assignment?.status === "running") {
           record.assignment.status = expected ? "cancelled" : "failed";
@@ -657,10 +658,11 @@ export class SubagentManager {
         const requestedAbort = intent && !intent.awaitingStart && intent.revision === (record.runRevision ?? 0);
         const cancelled = message.stopReason === "aborted" ||
           (message.stopReason === "error" && requestedAbort && isCancellationError(message.errorMessage));
-        // Pi can retry after agent_end. Keep a provisional error in the run
-        // (and raw event log), not in the reviewable reports or durable status.
+        // Pi can retry after agent_end. Expose the diagnostic without a failure notice or review.
+        if (cancelled && record.status === "stopping" && delivery.error) record.lastError = delivery.error;
         delivery.cancelled = cancelled;
         delivery.error = !cancelled && message.stopReason === "error" ? message.errorMessage || "Assistant request failed" : undefined;
+        if (delivery.error) this.update(record, "provider_error", delivery.error);
         const update = text && !cancelled && !delivery.error ? this.update(record, "assistant", text, terminal) : undefined;
         delivery.lastResult = terminal ? update : undefined;
         break;

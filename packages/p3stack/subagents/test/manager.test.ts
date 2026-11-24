@@ -548,6 +548,29 @@ test("assistant errors are provisional until settlement or exit commits the resu
   } finally { await s.cleanup(); }
 });
 
+test("a process exit during provider retry reports the provider failure", async () => {
+  const s = await setup();
+  try {
+    const { id } = await s.spawn("exit-during-retry");
+    await s.manager.wait([id], "all", 2000);
+    assert.equal(s.manager.read(id, undefined, false).error, "503 provider unavailable");
+    assert.deepEqual(s.manager.pendingNotices().map(n => [n.kind, n.text]), [["failure", "503 provider unavailable"]]);
+    assert.equal(s.manager.get(id).assignment?.status, "failed");
+  } finally { await s.cleanup(); }
+});
+
+test("closing during retry archives the provider error without a failure wake", async () => {
+  const s = await setup();
+  try {
+    const { id } = await s.spawn("close-during-retry");
+    const closed = await s.manager.close(id);
+    assert.equal(closed.status, "stopped");
+    assert.equal(closed.lastError, "503 provider unavailable");
+    assert.ok(s.manager.read(id).updates.some(u => u.kind === "provider_error" && u.text === closed.lastError));
+    assert.deepEqual(s.notices, []);
+  } finally { await s.cleanup(); }
+});
+
 test("follow-up assignments remain queued until a new run and are not replayed after abort", async () => {
   const s = await setup();
   try {
