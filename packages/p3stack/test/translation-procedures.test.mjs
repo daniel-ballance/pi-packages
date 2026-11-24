@@ -173,18 +173,29 @@ test("plan checker accepts installed files outside the consumer repo, not missin
   const cwd = scratch(t), file = join(cwd, "plan.md");
   const skeleton = playbook("multi-phase-plan").split("````markdown\n")[1].split("\n````")[0]
     .replace("<swarm workers model>", "test-model");
-  const check = pointer => {
-    const arm = `### Arm the program\n- [ ] Installed file. \`${pointer}\`\n`;
-    writeFileSync(file, skeleton.replace(/### Arm the program\n[\s\S]*?(?=- \[ \] On the operator's go)/, arm));
+  const skills = join(pkg, "skills"), fixed = [join(skills, "swarm/SKILL.md"), join(skills, "poteto-mode/playbooks/opening-a-pr.md")];
+  const execution = mode => join(skills, "poteto-mode/playbooks", mode + ".md");
+  const check = (pointers, mode = "autopilot-stack", elsewhere = []) => {
+    const boxes = paths => paths.map(path => `- [ ] Installed file. \`${path}\``).join("\n");
+    const plan = skeleton.replace("<execution playbook>", mode)
+      .replace(/### Arm the program\n[\s\S]*?(?=- \[ \] On the operator's go)/, "### Arm the program\n" + boxes(pointers) + "\n")
+      .replace("### Spawn owners", "### Spawn owners\n" + boxes(elsewhere));
+    writeFileSync(file, plan);
     return spawnSync(process.execPath, [join(pkg, "skills/poteto-mode/scripts/check-plan.mjs"), file], { cwd, encoding: "utf8" });
   };
-  const ok = check(join(pkg, "skills/swarm/SKILL.md"));
-  assert.equal(ok.status, 0, ok.stderr);
-  for (const pointer of ["git show origin/main:pstack/skills/swarm/SKILL.md", join(cwd, "absent.md")]) {
-    const bad = check(pointer);
-    assert.equal(bad.status, 1);
+  for (const mode of ["autopilot-stack", "autopilot-full", "orchestrate"]) {
+    const ok = check([execution(mode), ...fixed], mode);
+    assert.equal(ok.status, 0, ok.stderr);
+  }
+  const required = [execution("autopilot-stack"), ...fixed];
+  for (const pointers of [[file], fixed, [execution("autopilot-full"), ...fixed],
+    [required[0], fixed[0], fixed[0]], [required[0], fixed[1]], [...required, join(cwd, "absent.md")],
+    [...required, "git show origin/main:pstack/skills/swarm/SKILL.md"]]) {
+    const bad = check(pointers);
+    assert.equal(bad.status, 1, JSON.stringify(pointers));
     assert.match(bad.stderr, /installed file/i);
   }
+  assert.equal(check(fixed, "autopilot-stack", [required[0]]).status, 1, "outside Arm the program");
 });
 
 for (const name of ["swarm", "arena"]) {
