@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_CONFIG, LOADOUTS, readConfig, type Config, type Loadout } from "./config.ts";
 import { detectHost } from "./host.ts";
-import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, trackRunTab, type Handle } from "./ledger.ts";
+import { ENTRY_TYPE, Ledger, observe, observationTarget, observeScope, rebuild, resultPayload, trackRunTab, type Handle, type ReceiptScope } from "./ledger.ts";
 import { desiredTools, manageableTool, nextActive } from "./loadout.ts";
 import { buildSection, SECTION } from "./prompt.ts";
 import { modeLabel, runtimeMode, t3ToolName, T3_PREFIX, type Environment } from "./runtime.ts";
@@ -30,7 +30,11 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
   let sessionLoadout: Loadout | undefined;
   let managed = new Set<string>();
   let workspace: Workspace | undefined;
-  let pending: Handle[] = [];
+  let scope: ReceiptScope;
+  let allowLegacy: boolean;
+  const scoped = (handle: Handle) => ({ ...handle, version: 1, scope });
+  const draft = (data: ReturnType<typeof scoped>) => ({ type: "custom" as const, customType: ENTRY_TYPE, data });
+  let pending: ReturnType<typeof draft>[] = [];
   let openedThisRun = new Set<string>();
   let reminded = false;
 
@@ -81,7 +85,9 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
 
   const restore = (ctx: ExtensionContext) => {
     const branch = ctx.sessionManager.getBranch() as Entry[];
-    rebuild(ledger, branch);
+    pending = [];
+    openedThisRun.clear();
+    rebuild(ledger, branch, scope, allowLegacy);
     sessionLoadout = undefined;
     managed = new Set();
     for (const entry of branch) {
@@ -96,7 +102,9 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     workspace = await readWorkspace((command, args, options) => pi.exec(command, args, options), ctx.cwd);
   };
 
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
+    scope = { sessionId: ctx.sessionManager.getSessionId() };
+    allowLegacy = event.reason !== "fork" && !ctx.sessionManager.getHeader()?.parentSession;
     ({ config, problems } = readConfig(ctx.cwd, ctx.isProjectTrusted()));
     restore(ctx);
     await refreshWorkspace(ctx);
@@ -141,12 +149,22 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     const tool = t3ToolName(event.toolName);
     if (tool === undefined || event.isError) return undefined;
     const result = resultPayload(event.content, event.structuredContent);
-    trackRunTab(openedThisRun, tool, event.input, result);
-    const updates = observe(tool, event.input, result, ledger);
+    const caller = observeScope(scope, tool, event.input, result);
+    if (caller !== scope) {
+      if ((scope.threadId && caller.threadId !== scope.threadId) || (scope.environmentId && caller.environmentId !== scope.environmentId)) openedThisRun.clear();
+      scope = caller;
+      rebuild(ledger, [...ctx.sessionManager.getBranch(), ...pending], scope, allowLegacy);
+      applyLoadout(ctx);
+      refreshStatus(ctx);
+    }
+    const target = observationTarget(scope, tool, event.input);
+    if (target === false) return undefined;
+    if (!target) trackRunTab(openedThisRun, tool, event.input, result);
+    const updates = observe(tool, event.input, result, ledger, target);
     if (updates.length === 0) return undefined;
     for (const update of updates) {
       ledger.apply(update);
-      pending.push(update);
+      pending.push(draft(scoped(update)));
     }
     applyLoadout(ctx);
     refreshStatus(ctx);
@@ -154,7 +172,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
   });
 
   const flush = () => {
-    const drafts = pending.map(data => ({ type: "custom" as const, customType: ENTRY_TYPE, data }));
+    const drafts = pending;
     pending = [];
     return drafts;
   };
@@ -216,7 +234,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
           return;
         }
         for (const draft of flush()) pi.appendEntry(draft.customType, draft.data);
-        for (const close of closing) pi.appendEntry(ENTRY_TYPE, close);
+        for (const close of closing) pi.appendEntry(ENTRY_TYPE, scoped(close));
         applyLoadout(ctx);
         refreshStatus(ctx);
         notify(`Forgot ${closing.length} T3 handle${closing.length === 1 ? "" : "s"}. This closes nothing in T3.`, "info");

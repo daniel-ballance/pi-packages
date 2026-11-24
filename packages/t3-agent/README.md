@@ -43,6 +43,10 @@ Open handles add the tools that act on them: `t3_preview_close` while a preview 
 
 Terminal task results, confirmed schedule deletions, PR unwatches, tab and device closes remove open handles. A pending cancel stays open as cancelling; disabling a schedule keeps it open as paused. Device identities include the host ID when known. Updates are saved as custom session entries at each turn boundary, so the ledger follows `/tree` branches and survives restarts. It is rendered into the prompt section, so the long ids that `task_cancel` and `t3_preview_close` need survive compaction.
 
+Receipts belong to the recording Pi session. When a local T3 result identifies the caller's thread or environment, new receipts also carry those IDs; replay withholds them until the observed IDs match. A fork does not inherit the parent's receipts. Legacy entries with no session ID replay only in unforked sessions. For an explicit target outside the known caller scope, `/t3-agent ledger` shows the handle with a qualified ID. It never supplies that handle as local work to the prompt, loadout or tab reminder. A remotely delegated task's ID still belongs to the calling parent.
+
+Rewinding Pi does not rewind T3. To check a stale observation, ask for that thread's preview tabs or PR watches, or for a schedule by ID. The ledger observes the requested native list result. A partial list cannot prove absence; schedule lists are project-filtered and can confirm paused/enabled state, not deletion. The extension never polls T3, reads a delegate result on your behalf, or closes anything to reconcile its ledger.
+
 The ledger keeps bounded identifiers, caller-supplied titles, states and checked thread or pull request links. It drops legacy titles on replay. A PR is keyed by forge, repository and number; without a known public link format, its handle is `repository#number@host`. Older `owner/repo#number` watches keep their host unspecified. For an old self-hosted PR URL, the ledger shows a fingerprint, number and host rather than copying an unverified URL path. A later structured forge result matches that fingerprint. It does not copy task briefs, preview URLs, webhook URLs or free-form result details. Replay applies the same checks to older entries; it does not erase old transcripts. Use T3's schedule settings for webhook details.
 
 **A preview-tab reminder.** T3's guidance says to close a preview tab you opened before replying. Only a confirmed new, caller-owned tab still open at settlement triggers one automated reminder and an extra model request. Reusing an existing tab does not claim it. Revisiting a tab this run created keeps the reminder unless a close or takeover was observed.
@@ -69,7 +73,7 @@ The skill and templates are contributed through `resources_discover` only under 
 - `/t3-agent` or `/t3-agent status` reports the mode, loadout, active tools, workspace, open handles and configuration problems.
 - `/t3-agent loadout lean|standard|full` sets this session's loadout. The choice is saved in the session.
 - `/t3-agent ledger` lists open handles.
-- `/t3-agent forget <id|all>` drops stale handles from the ledger (use `hostId/deviceId` for a scoped device). It changes nothing in T3.
+- `/t3-agent forget <id|all>` drops stale handles from the ledger (use `hostId/deviceId` for a scoped device, or the bracketed ID in the listing for another thread or environment). It changes nothing in T3.
 
 ## Configuration
 

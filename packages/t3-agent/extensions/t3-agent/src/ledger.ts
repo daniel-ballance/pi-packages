@@ -16,12 +16,16 @@ type State = (typeof STATES)[number];
 export interface Handle {
   kind: HandleKind;
   id: string;
+  target?: Target;
   hostId?: string; // part of a device's identity
   explicitTitle?: string; // Old `title` fields could contain prompt text; never replay them.
   link?: string;
   status?: State;
   open: boolean;
 }
+
+interface Target { threadId?: string; environmentId?: string }
+export interface ReceiptScope extends Target { sessionId: string }
 
 export const ENTRY_TYPE = "t3-agent.handle";
 const MAX_LINES = 24;
@@ -129,6 +133,35 @@ function receipt(data: unknown): Handle | undefined {
   return { kind, id, open, ...(hostId && { hostId }), ...(explicitTitle && { explicitTitle }), ...(link && { link }), ...(status && { status }) };
 }
 
+const scopeId = (id: unknown) => typeof id === "string" && id.length <= 256 && /^(?:[\w.:-]|%[\da-fA-F]{2})+$/.test(id) ? id : undefined;
+
+// These results identify the caller. Child links, schedule destinations and remote catalogs do not.
+export function observeScope(scope: ReceiptScope, tool: string, input: Json, result?: Json): ReceiptScope {
+  if (!result || input.environmentId !== undefined) return scope;
+  const thread = tool === "orchestrator_capabilities" ? result.parentThreadId : tool === "t3_thread_list" ? result.currentThreadId : undefined;
+  const threadId = scopeId(thread);
+  const environmentId = (tool === "t3_environment_read" || tool === "t3_environment_links") ? safeId(result.environmentId) : undefined;
+  if (threadId && threadId !== scope.threadId) return { ...scope, threadId };
+  if (environmentId && environmentId !== scope.environmentId) return { ...scope, environmentId };
+  return scope;
+}
+
+// Undefined is the caller; false is malformed, never a fallback to the caller.
+function relativeTarget(scope: ReceiptScope, raw: Json): Target | undefined | false {
+  const env = scopeId(raw.environmentId), thread = scopeId(raw.threadId);
+  if ((raw.environmentId !== undefined && !env) || (raw.threadId !== undefined && !thread)) return false;
+  const environmentId = env !== scope.environmentId ? env : undefined;
+  const threadId = environmentId || thread !== scope.threadId ? thread : undefined;
+  return environmentId || threadId ? { ...(environmentId && { environmentId }), ...(threadId && { threadId }) } : undefined;
+}
+
+export function observationTarget(scope: ReceiptScope, tool: string, input: Json) {
+  // A PR watch belongs to its target thread. A delegate taskId belongs to its parent,
+  // not the child it launched. Its nested target selects where that child runs.
+  const pr = ["watch_pull_request", "unwatch_pull_request", "list_thread_pull_requests"].includes(tool);
+  return relativeTarget(scope, { environmentId: input.environmentId, threadId: pr ? input.threadId : undefined });
+}
+
 /** T3 returns its result as JSON text; prefer structured content when a newer bridge supplies it. */
 export function resultPayload(content: ReadonlyArray<{ type: string; text?: string }>, structured?: unknown): Json | undefined {
   const outer = record(structured);
@@ -182,11 +215,14 @@ function prKey(input: Json, result?: Json) {
 }
 
 /** Translate one successful T3 tool call into ledger updates. Pure, so it is easy to test. */
-export function observe(tool: string, input: Json, result: Json | undefined, ledger?: Ledger): Handle[] {
-  return observations(tool, input, result, ledger).flatMap(raw => receipt(raw) ?? []);
+export function observe(tool: string, input: Json, result: Json | undefined, ledger?: Ledger, target?: Target): Handle[] {
+  return observations(tool, input, result, ledger, target).flatMap(raw => {
+    const update = receipt(raw);
+    return update ? [{ ...update, ...(target && { target }) }] : [];
+  });
 }
 
-function observations(tool: string, input: Json, result: Json | undefined, ledger?: Ledger): Json[] {
+function observations(tool: string, input: Json, result: Json | undefined, ledger?: Ledger, target?: Target): Json[] {
   switch (tool) {
     case "delegate_task":
     case "t3_thread_send": // Only a send that started a fresh child task returns a taskId.
@@ -213,6 +249,38 @@ function observations(tool: string, input: Json, result: Json | undefined, ledge
     case "delete_scheduled_task": {
       const id = result?.scheduledTaskId ?? input.scheduledTaskId;
       return result?.deleted === true ? [{ kind: "schedule", id, status: "deleted", open: false }] : [];
+    }
+    case "list_scheduled_tasks": {
+      // Lists are project-filtered. Absence alone doesn't establish deletion.
+      const tasks = result?.tasks;
+      if (!Array.isArray(tasks)) return [];
+      return (ledger?.open("schedule", target) ?? []).flatMap(h => {
+        const task = tasks.find(t => record(t)?.scheduledTaskId === h.id);
+        if (typeof task?.enabled !== "boolean") return [];
+        const status = task.enabled ? "enabled" : "paused";
+        return h.status === status ? [] : [{ kind: h.kind, id: h.id, open: true, status }];
+      });
+    }
+    case "list_thread_pull_requests": {
+      const prs = result?.pullRequests;
+      if (!Array.isArray(prs)) return [];
+      const watching = new Map<string, boolean>();
+      const hostless = new Set<string>();
+      for (const pr of prs) {
+        const id = forgeKey(pr?.host, pr?.repository, pr?.number);
+        if (!id || typeof pr.watching !== "boolean") return [];
+        watching.set(id, pr.watching);
+        if (id.includes("@")) watching.set(legacyAlias(id), pr.watching);
+        if (pr.watching) hostless.add(repoNumber(pr.repository, pr.number)!);
+      }
+      const complete = input.cursor === undefined && input.states === undefined && result?.nextCursor === null;
+      return (ledger?.open("pr", target) ?? []).filter(h => watching.has(h.id) ? !watching.get(h.id) : complete && !hostless.has(h.id)).map(h => ({ kind: h.kind, id: h.id, open: false, status: "unwatched" }));
+    }
+    case "t3_preview_list": {
+      const tabs = result?.sessions;
+      if (!Array.isArray(tabs) || tabs.some(tab => !safeId(tab?.tabId)) || result?.nextCursor !== null || (input.cursor ?? 0) !== 0) return [];
+      const listed = new Set(tabs.map(tab => tab.tabId));
+      return (ledger?.open("preview", target) ?? []).filter(h => !listed.has(h.id)).map(h => ({ kind: h.kind, id: h.id, open: false }));
     }
     case "watch_pull_request":
     case "unwatch_pull_request": {
@@ -247,7 +315,7 @@ function observations(tool: string, input: Json, result: Json | undefined, ledge
       const id = device?.id ?? result?.deviceId ?? input.deviceId;
       const hostId = device?.hostId ?? result?.hostId ?? input.hostId;
       if (tool === "device_open") return id ? [{ kind: "device", id, hostId, open: true }] : [];
-      return (ledger?.open("device") ?? []).filter(h => (id === undefined || h.id === id) && (hostId === undefined || h.hostId === hostId))
+      return (ledger?.open("device", target) ?? []).filter(h => (id === undefined || h.id === id) && (hostId === undefined || h.hostId === hostId))
         .map(h => ({ kind: "device", id: h.id, hostId: h.hostId, open: false }));
     }
     default:
@@ -255,7 +323,8 @@ function observations(tool: string, input: Json, result: Json | undefined, ledge
   }
 }
 
-export const scopedId = (handle: Handle) => handle.hostId ? `${handle.hostId}/${handle.id}` : handle.id;
+const targetKey = (t?: Target) => [t?.environmentId && `env=${t.environmentId}`, t?.threadId && `thread=${t.threadId}`].filter(Boolean).join(",");
+export const scopedId = (h: Handle) => [targetKey(h.target), h.hostId, h.id].filter(Boolean).join("/");
 
 export class Ledger {
   private readonly handles = new Map<string, Handle>();
@@ -263,7 +332,7 @@ export class Ledger {
   apply(update: Handle): void {
     const key = `${update.kind}:${scopedId(update)}`;
     if (update.kind === "pr" && update.id.includes("@") && !update.id.startsWith("legacy:")) {
-      this.handles.delete(`pr:${legacyAlias(update.id)}`);
+      this.handles.delete(`pr:${scopedId({ ...update, id: legacyAlias(update.id) })}`);
     }
     const previous = this.handles.get(key);
     // Re-insert open receipts so iteration order is most recent last. Closed IDs need no cache.
@@ -275,14 +344,15 @@ export class Ledger {
     this.handles.clear();
   }
 
-  open(kind?: HandleKind): Handle[] {
-    return [...this.handles.values()].filter(handle => kind === undefined || handle.kind === kind);
+  open(kind?: HandleKind, target?: Target): Handle[] {
+    const key = targetKey(target);
+    return [...this.handles.values()].filter(h => (kind === undefined || h.kind === kind) && targetKey(h.target) === key);
   }
 
   /** Drop matching handles locally; the caller persists just their closing receipts. */
   forget(target: string): Handle[] {
-    const closing = this.open().filter(handle => target === "all" || scopedId(handle) === target)
-      .map(({ kind, id, hostId }) => ({ kind, id, ...(hostId && { hostId }), open: false }));
+    const closing = [...this.handles.values()].filter(handle => target === "all" || scopedId(handle) === target)
+      .map(({ kind, id, hostId, target }) => ({ kind, id, ...(hostId && { hostId }), ...(target && { target }), open: false }));
     for (const update of closing) this.apply(update);
     return closing;
   }
@@ -294,16 +364,17 @@ export class Ledger {
     const shown = [...open.filter(handle => handle.kind !== "thread"), ...threads].slice(0, MAX_LINES).map(handleLine);
     const omitted = open.length - shown.length;
     if (omitted) shown.push(`- … ${omitted} more; run /t3-agent ledger`);
+    if (this.handles.size > open.length) shown.push(`- ${this.handles.size - open.length} in other targets; run /t3-agent ledger`);
     return shown.join("\n") || undefined;
   }
 
   /** Human listing: page the output, not the underlying set of handles. */
   pages(): string[] {
-    const open = this.open();
+    const open = [...this.handles.values()];
     const pages: string[] = [];
     for (let i = 0; i < open.length; i += MAX_LINES) {
       const header = open.length > MAX_LINES ? `T3 handles (${1 + i / MAX_LINES}/${Math.ceil(open.length / MAX_LINES)})\n` : "";
-      pages.push(header + open.slice(i, i + MAX_LINES).map(handleLine).join("\n"));
+      pages.push(header + open.slice(i, i + MAX_LINES).map(h => handleLine(h) + (h.target ? ` [${scopedId(h)}]` : "")).join("\n"));
     }
     return pages;
   }
@@ -324,11 +395,32 @@ function handleLine(handle: Handle): string {
 }
 
 /** Rebuild from the custom entries on the current branch. */
-export function rebuild(ledger: Ledger, entries: ReadonlyArray<{ type: string; customType?: string; data?: unknown }>): void {
+export function rebuild(ledger: Ledger, entries: ReadonlyArray<{ type: string; customType?: string; data?: unknown }>, scope?: ReceiptScope, allowLegacy = true): void {
   ledger.clear();
   for (const entry of entries) {
     if (entry.type !== "custom" || entry.customType !== ENTRY_TYPE) continue;
-    const update = receipt(entry.data);
-    if (update) ledger.apply(update);
+    const data = record(entry.data);
+    if (!data) continue;
+    const update = receipt(data);
+    if (!update) continue;
+    if (data.version === undefined && data.scope === undefined) {
+      if (allowLegacy && data.target === undefined) ledger.apply(update);
+      continue;
+    }
+    const saved = record(data.scope);
+    if (data.version !== 1 || !scope || saved?.sessionId !== scope.sessionId) continue;
+    if (data.target !== undefined) {
+      const raw = record(data.target);
+      if (!raw || (raw.threadId === undefined && raw.environmentId === undefined)) continue;
+      const target = relativeTarget(scope, raw);
+      if (target === false) continue;
+      if (target) update.target = target;
+    }
+    const fields = ["threadId", "environmentId"] as const;
+    if (fields.some(k => saved[k] !== undefined && (!scopeId(saved[k]) || (scope[k] !== undefined && saved[k] !== scope[k])))) continue;
+    // Withhold a scoped observation (and any older, less specific one for the same id)
+    // until the caller is known. Reading T3 just to discover that scope would be polling.
+    const confirmed = fields.every(k => saved[k] === undefined || saved[k] === scope[k]);
+    ledger.apply(confirmed ? update : { ...update, open: false });
   }
 }

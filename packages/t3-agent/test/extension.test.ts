@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import t3Agent, { LOADOUT_ENTRY, REMINDER_TYPE, STATUS_KEY } from "../extensions/t3-agent/src/index.ts";
 import { ENTRY_TYPE } from "../extensions/t3-agent/src/ledger.ts";
 
@@ -16,7 +16,7 @@ const T3_TOOLS = ["orchestrator_capabilities", "delegate_task", "task_status", "
 
 type Handler = (event: any, ctx: any) => any;
 
-function fixture(env: Record<string, string | undefined>, options: { branch?: unknown[]; active?: string[]; t3Tools?: string[]; direct?: Set<string>; excluded?: Set<string> } = {}) {
+function fixture(env: Record<string, string | undefined>, options: { branch?: unknown[]; sessionId?: string; parentSession?: string; active?: string[]; t3Tools?: string[]; direct?: Set<string>; excluded?: Set<string> } = {}) {
   const handlers = new Map<string, Handler[]>();
   const commands = new Map<string, any>();
   const appended: unknown[][] = [];
@@ -53,7 +53,7 @@ function fixture(env: Record<string, string | undefined>, options: { branch?: un
     hasUI: true,
     isProjectTrusted: () => false,
     model: { api: "openai-responses" },
-    sessionManager: { getBranch: () => branch },
+    sessionManager: { getBranch: () => branch, getSessionId: () => options.sessionId ?? "pi-session", getHeader: () => ({ parentSession: options.parentSession }) },
     ui: { setStatus: (...args: unknown[]) => statuses.push(args), notify: (...args: unknown[]) => notices.push(args) },
   };
   t3Agent(pi, env);
@@ -119,6 +119,102 @@ test("old branch entries pass the same privacy and type checks when replayed", a
     assert.match(receipt, /https:\/\/github\.com\/o\/r\/pull\/7/);
     assert.match(receipt, /<t3-thread:\/\/v2\/e\/t>/);
   }
+});
+
+test("foreign PR watches cannot close this thread's watch, and a Pi fork does not inherit it", async () => {
+  const session = SessionManager.inMemory();
+  const f = fixture(T3, { sessionId: session.getSessionId() });
+  await f.emit("session_start");
+  await toolResult(f, "orchestrator_capabilities", {}, { parentThreadId: "thread:here", runtimeMode: "auto", providers: [] });
+  await toolResult(f, "t3_environment_links", {}, { environmentId: "env-here", links: [], notListed: "" });
+  const pr = { host: "github.com", repository: "o/r", number: 7, url: "https://github.com/o/r/pull/7", watching: true, wasWatching: false };
+  await toolResult(f, "watch_pull_request", { url: pr.url }, pr);
+  for (const input of [{ threadId: "elsewhere" }, { threadId: "thread:here", environmentId: "env-remote" }]) {
+    await toolResult(f, "unwatch_pull_request", { url: pr.url, ...input }, { ...pr, watching: false, wasWatching: true });
+  }
+  assert.match((await startTurn(f)).t3_agent!, /watching PR .*\/pull\/7/);
+  const { entries } = await f.emit("turn_end", { entries: [] });
+  assert.deepEqual(entries.map((e: any) => e.data.target), [undefined, { threadId: "elsewhere" }, { environmentId: "env-remote", threadId: "thread:here" }]);
+  for (const { data } of entries) assert.deepEqual(data.scope, { sessionId: session.getSessionId(), threadId: "thread:here", environmentId: "env-here" });
+  for (const entry of entries) session.appendCustomEntry(entry.customType, entry.data);
+  const resumed = fixture(T3, { sessionId: session.getSessionId(), branch: session.getBranch() });
+  await resumed.emit("session_start");
+  await toolResult(resumed, "t3_thread_list", {}, { currentThreadId: "thread:here", threads: [], nextCursor: null, total: 0 });
+  await toolResult(resumed, "t3_environment_read", {}, { environmentId: "env-remote", label: "Other", preferences: {} });
+  assert.doesNotMatch((await startTurn(resumed)).t3_agent!, /watching PR/);
+  await toolResult(resumed, "t3_environment_read", {}, { environmentId: "env-here", label: "Local", preferences: {} });
+  assert.match((await startTurn(resumed)).t3_agent!, /watching PR/);
+  session.appendCustomEntry(ENTRY_TYPE, { kind: "preview", id: "legacy-tab", open: true });
+  session.createBranchedSession(session.getLeafId()!);
+  const fork = fixture(T3, { branch: session.getBranch(), sessionId: session.getSessionId(), parentSession: "/parent.jsonl" });
+  await fork.emit("session_start", { reason: "fork", previousSessionFile: "/parent.jsonl" });
+  assert.doesNotMatch((await startTurn(fork)).t3_agent!, /watching PR|legacy-tab/);
+});
+
+test("same schedule id on a linked environment is retained but never treated as the local schedule", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  const here = { scheduledTaskId: "s", enabled: true, projectId: "project", boundThreadId: null };
+  await toolResult(f, "schedule_task", { prompt: "deploy", title: "Here" }, here);
+  await toolResult(f, "schedule_task", { environmentId: "linked", prompt: "deploy", title: "There" }, { ...here, enabled: false });
+  const branch = (await f.emit("turn_end", { entries: [] })).entries;
+  const restart = fixture(T3, { branch });
+  await restart.emit("session_start");
+  const listing = async () => {
+    await restart.commands.get("t3-agent").handler("ledger", restart.ctx);
+    return String(restart.notices.at(-1)![0]);
+  };
+  const both = await listing();
+  assert.match(both, /Here.*status enabled/);
+  assert.match(both, /There.*status paused.*env=linked\/s/);
+  assert.doesNotMatch((await startTurn(restart)).t3_agent!, /There/);
+  await restart.commands.get("t3-agent").handler("forget env=linked/s", restart.ctx);
+  assert.match(await listing(), /Here/);
+  assert.doesNotMatch(await listing(), /There/);
+});
+
+test("requested PR and schedule lists reconcile recorded observations, not unrelated or filtered-out IDs", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  const pr = { host: "gitlab.example", repository: "team/p", number: 4, url: "https://gitlab.example/team/p/-/merge_requests/4" };
+  await toolResult(f, "watch_pull_request", { url: pr.url }, { ...pr, watching: true, wasWatching: false });
+  await toolResult(f, "schedule_task", { prompt: "Check" }, { scheduledTaskId: "s", projectId: "p", boundThreadId: null, enabled: true });
+  const empty = { pullRequests: [], chains: [], nextCursor: null };
+  await toolResult(f, "list_thread_pull_requests", { states: ["closed"] }, empty);
+  await toolResult(f, "list_thread_pull_requests", {}, { ...empty, nextCursor: "page2" });
+  await toolResult(f, "list_thread_pull_requests", { environmentId: "remote" }, empty);
+  await toolResult(f, "list_scheduled_tasks", { scheduledTaskId: "s", projectId: "other" }, { tasks: [] });
+  const partial = (await startTurn(f)).t3_agent!;
+  assert.match(partial, /watching PR team\/p#4@gitlab\.example/);
+  assert.match(partial, /scheduledTaskId=s, status enabled/);
+  await toolResult(f, "list_thread_pull_requests", {}, { ...empty, pullRequests: [{ ...pr, state: "open", watching: false, source: "manual", stack: null }] });
+  await toolResult(f, "list_scheduled_tasks", { scheduledTaskId: "s" }, { tasks: [{ scheduledTaskId: "s", enabled: false, prompt: "PRIVATE" }] });
+  const checked = (await startTurn(f)).t3_agent!;
+  assert.doesNotMatch(checked, /watching PR|PRIVATE/);
+  assert.match(checked, /scheduledTaskId=s, status paused/);
+});
+
+test("rewinding replays a tab observation, not T3 undo; a requested complete tab list reconciles it", async () => {
+  const branch: unknown[] = [];
+  const f = fixture(T3, { branch });
+  await f.emit("session_start");
+  await toolResult(f, "preview_open", { reuseExistingTab: false }, { tabId: "gone", available: true, control: { owner: "agent", ownedByCaller: true } });
+  branch.push(...(await f.emit("turn_end", { entries: [] })).entries);
+  const beforeClose = branch.length;
+  await toolResult(f, "t3_preview_close", { tabId: "gone" }, {});
+  branch.push(...(await f.emit("turn_end", { entries: [] })).entries);
+  branch.splice(beforeClose);
+  await f.emit("session_tree", { oldLeafId: "close", newLeafId: "open" });
+  assert.match((await startTurn(f)).t3_agent!, /tabId=gone/);
+  const list = { sessions: [], serverEpoch: "server-1", revision: 10, nextCursor: null };
+  await toolResult(f, "t3_preview_list", { cursor: 3 }, list);
+  assert.match((await startTurn(f)).t3_agent!, /tabId=gone/, "one page is not a full observation");
+  await toolResult(f, "t3_preview_list", {}, list);
+  assert.doesNotMatch((await startTurn(f)).t3_agent!, /tabId=gone/);
+  branch.push(...(await f.emit("turn_end", { entries: [] })).entries);
+  const restart = fixture(T3, { branch });
+  await restart.emit("session_start");
+  assert.doesNotMatch((await startTurn(restart)).t3_agent!, /tabId=gone/);
 });
 
 test("outside T3 the package registers nothing", () => {
@@ -231,7 +327,7 @@ test("T3 results feed the ledger, persist at the turn boundary and reach the pro
   await f.emit("tool_result", { toolName: "mcp__t3-code__html_render", toolCallId: "c2", isError: true, input: {}, content: [{ type: "text", text: "{\"taskId\":\"x\"}" }] });
   assert.deepEqual(f.statuses.at(-1), [STATUS_KEY, "t3-agent: full access · standard loadout · 1 delegate"]);
   const boundary = await f.emit("turn_end", { entries: [], continue: false });
-  assert.deepEqual(boundary.entries, [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "delegate", id: "node:task-1", open: true, explicitTitle: "Review the branch", link: "<t3-thread://v2/e/t1>", status: "working" } }]);
+  assert.deepEqual(boundary.entries, [{ type: "custom", customType: ENTRY_TYPE, data: { version: 1, scope: { sessionId: "pi-session" }, kind: "delegate", id: "node:task-1", open: true, explicitTitle: "Review the branch", link: "<t3-thread://v2/e/t1>", status: "working" } }]);
   assert.equal(await f.emit("turn_end", { entries: [], continue: false }), undefined);
   assert.match((await startTurn(f)).t3_agent!, /### Open T3 handles[\s\S]*delegate "Review the branch" taskId=node:task-1, status working/);
 });
@@ -353,7 +449,7 @@ test("/t3-agent forget closes ledger entries without touching T3", async () => {
   await command.handler("ledger", f.ctx);
   assert.ok(String(f.notices.at(-1)![0]).includes(`watching PR ${id}`));
   await command.handler(`forget ${id}`, f.ctx);
-  assert.deepEqual(f.appended.at(-1), [ENTRY_TYPE, { kind: "pr", id, open: false }]);
+  assert.deepEqual(f.appended.at(-1), [ENTRY_TYPE, { version: 1, scope: { sessionId: "pi-session" }, kind: "pr", id, open: false }]);
   await command.handler(`forget ${id}`, f.ctx);
   assert.match(String(f.notices.at(-1)![0]), /Nothing open matched/);
 });
