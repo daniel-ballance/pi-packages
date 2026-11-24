@@ -1,12 +1,12 @@
 # Show me your work
 
-Keep a reviewable decision trail for long-running or unattended work: a TSV log with one row per decision (what, why, evidence, result). Local by default; commit it when a reviewer needs the trail to trust the result.
+Audit a run's decisions and the evidence behind them.
 
-Keep one canonical log.
+Use the run's [execution ledger](../p3stack-mode/references/execution-ledger.md) as the decision log. Start it if the task calls for a trail and none exists. Review the recorded rows and their evidence at handoff.
 
-## The format
+## Optional TSV export
 
-A single TSV file, one row per decision. Cells stay single-line. Evidence is a pointer, not prose.
+For a reviewer who needs a portable copy, export the relevant ledger rows to a fresh TSV, one row per decision. Cells stay single-line. Evidence is a pointer, not prose.
 
 Copy `../p3stack-mode/references/show-me-your-work/references/decision-log-template.tsv` (the header row) to start a clean log. Columns:
 
@@ -27,43 +27,35 @@ ts	phase	decision	why	evidence	result
 2026-05-24T12:30:00Z	widget	threw out a helper's work because its screenshots were blank	checked the real files instead of trusting its summary	worktree reset	reverted, tightened the instructions for next time
 ```
 
-## Logging a row
+## Export a row
 
-Write each entry the way you'd tell a teammate what you did. Plain words, concrete actions, no AI speak or abstract jargon (the [unslop](../technical-writing/references/unslop.md) reference applies to log text too).
-
-Use the helper `../p3stack-mode/references/show-me-your-work/scripts/log.sh <logfile> <phase> <decision> <why> <evidence> <result>`. It stamps `ts`, writes the header on first use, strips stray tabs/newlines, and prefixes any cell starting with `=`, `+`, `-`, or `@` with a single quote. A bare `printf` appending a row works too, but mind those same bytes if cells come from generated or user-supplied text.
-
-Log decision points and checkpoints, not every action: a fork chosen, a unit completed with its verification result, a pivot or revert with its trigger, a blocker surfaced, a gate fixed. For loop runs, one row per iteration. Skip the trivial and self-evident.
-
-A run is one agent conversation, including its later turns and any summary of it. A pickup, a replacement agent, or a new chat starts a new run. When a run adds to a log that already has rows, its first row has phase `start`, and so does its first row after another run's `start` row. So a run that comes back to a log in a later turn first reads the log's last rows to see whether another run wrote since. A `start` row names the `ts` range of the rows before it that this run did not write, and its evidence names this run, such as its agent id. Use phase `start` for nothing else.
+Use `../p3stack-mode/references/show-me-your-work/scripts/log.sh <logfile> <phase> <decision> <why> <evidence> <result>` to write selected ledger rows to a fresh export. It stamps the export time, writes the header on first use, strips stray tabs and newlines, and quotes cells that might be spreadsheet formulas. Keep the reviewed commit and a retrievable evidence pointer with each claim.
 
 ## Where it lives
 
-By default the log is a working artifact, not committed. Keep it at `decisions.tsv` in the work dir, or `.audit/<task-slug>.tsv` when several efforts run at once, and leave it out of git.
-
-Commit it only when the work is ambitious enough that a reviewer needs the trail to trust the result.
+Keep the recovery ledger private. Share only the export when the handoff needs a durable trail. Remove private details and check that its evidence links resolve for the recipient before retiring the run directory.
 
 ## Rules
 
-- Append-only. A wrong call gets a new row that supersedes it. Never edit or delete history.
+- Correct the ledger first, then regenerate the export.
 - Prefer evidence produced by committed scripts over hand-made one-offs (the [encode-lessons-in-structure](../poteto-mode/references/principle-encode-lessons-in-structure.md) reference).
 
-## Audit the log against the transcript
+## Audit the ledger
 
-At the end of the run, before handing back, check the log told the truth. Read this run's transcript in this project's Pi session directory (**Session history** in the host capabilities). Never read other projects' sessions. Walk this run's rows against what actually happened. Each stretch of them begins at one of this run's `start` rows, or at the first row if this run created the log, and ends at the next `start` row of another run:
+Before handoff, check the rows for this run against the cited artifacts at the recorded head. For a transcript check, use only the run's in-scope [Session history](../poteto-mode/references/host-capabilities.md#session-history).
 
 - Check that every row maps to a real decision or action.
 - Check that each row's evidence resolves and shows what the row claims.
-- A fork, pivot, or abandoned approach that shaped the work but isn't logged is a gap. Add it.
+- Flag a fork, pivot, or abandoned approach that shaped the work but is missing from the ledger.
 
-Correct the log, not the story. The audit never edits or removes a row, even an invented one. When a row records neither a real decision nor a real action, or its claim or evidence is wrong, add a row that supersedes it with what actually happened and a pointer that resolves. This audit does not check rows outside this run's stretches. If this run's own work shows one of them is wrong, supersede it like any wrong call.
+As a reviewer, return gaps and corrections to the coordinator. The coordinator appends a superseding row for a bad claim. Mark claims with missing evidence unverified.
 
 ## Cross-model review of the trail
 
-Before handing back, spawn a subagent on a different model family from the one that did the work. Self-review is not a substitute. The subagent reads the audit trail and the run's transcript, then flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky. Resolve each subagent's role per the Subagents section of the **poteto-mode** skill.
+Before handing back, spawn a subagent on a different model family from the one that did the work. Self-review is not a substitute. The subagent checks the ledger rows against the cited evidence and flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky. Resolve each subagent's role per the Subagents section of the **poteto-mode** skill.
 
 - Decisions logged with weak or absent evidence.
-- Verification steps skipped or claimed without proof in the transcript.
+- Verification skipped or claimed without evidence at the reviewed head.
 - Choices that look risky in hindsight (premature, scope-creeping, papering over a symptom).
 - Gaps the user would otherwise miss on a casual skim.
 
@@ -75,4 +67,4 @@ Read top to bottom, follow the evidence pointers, spot-check. GitHub renders a c
 
 ## Composing this skill
 
-Other skills route their audit trail here instead of inventing one. Reference it by name and let it own the format. Don't restate the columns.
+Other skills record decisions in the execution ledger. Use this reference to review or share them.

@@ -6,13 +6,13 @@ disable-model-invocation: true
 
 # Architect
 
-Sketch types, function signatures, class shapes, and module boundaries with `not implemented` bodies and pseudocode. Synthesize across multiple model perspectives, then fill in code against the chosen sketch.
+Sketch types, function signatures, class shapes, and module boundaries with `not implemented` bodies and pseudocode. Synthesize across multiple model perspectives.
 
 ## Start
 
-With no human to interview, rewrite the request per [sharpen](references/sharpen.md) before designing; when asked only to sharpen a prompt, return the rewritten prompt and stop. For a design request, stop at the design synthesis and return the recommendation.
+With no human to interview, rewrite the request per [sharpen](references/sharpen.md) before designing; when asked only to sharpen a prompt, return the rewritten prompt and stop. For a design request or a playbook's design step, stop at the design synthesis. Return the sketch, proposed seams and recommendation without changing production code.
 
-Open a todolist with one entry per phase before starting.
+Open a todolist for the phases assigned to you:
 
 1. Ground
 2. Sketch
@@ -44,7 +44,7 @@ Arena returns one synthesized design package. Its synthesis decision fills the r
 
 ## Phase C: Agree (opt-in)
 
-Default: proceed directly to implementation with the synthesized design. No human checkpoint.
+Continue past synthesis only if the caller assigned you implementation.
 
 Opt in to a checkpoint when the invoker explicitly asks: "/skill:architect with checkpoint," "stop and show me before implementing," or similar. Then surface the synthesized design and pause for sign-off.
 

@@ -1,6 +1,6 @@
 # Writing Agent Briefs
 
-An agent brief is a structured comment posted on a GitHub issue or PR when it moves to `ready-for-agent`. It is the authoritative specification that an AFK agent will work from. The original body and discussion are context: the agent brief is the contract.
+The Agent Brief comment on an issue or PR records durable acceptance criteria: what should change, what stays the same, and how a reader can tell.
 
 The brief states **what the agent should do**, which stretches to both surfaces: for an issue, that's building the change from nothing; for a PR, it's what's left to do *to the existing diff*: finish it, close gaps, address review points. Same principles either way; the PR example below shows the difference.
 
@@ -10,17 +10,13 @@ The brief states **what the agent should do**, which stretches to both surfaces:
 
 The issue may sit in `ready-for-agent` for days or weeks. The codebase will change in the meantime. Write the brief so it stays useful even as files are renamed, moved, or refactored.
 
-- **Do** describe interfaces, types, and behavioral contracts
-- **Do** name specific types, function signatures, or config shapes that the agent should look for or modify
-- **Don't** reference file paths: they go stale
-- **Don't** reference line numbers
-- **Don't** assume the current implementation structure will remain the same
+Describe the public contract: behavior, inputs and observable results. At dispatch the parent checks the assigned base and puts current signatures, checkout-relative paths and the done command in the [private dispatch brief](../p3stack-mode/references/brief-contract.md).
 
 ### Behavioral, not procedural
 
 Describe **what** the system should do, not **how** to implement it. The agent will explore the codebase fresh and make its own implementation decisions.
 
-- **Good:** "The `SkillConfig` type should accept an optional `schedule` field of type `CronExpression`"
+- **Good:** "Users can set a cron schedule for a skill. Without a schedule it still runs on demand."
 - **Bad:** "Open src/types/skill.ts and add a schedule field on line 42"
 - **Good:** "When a user runs `/skill:triage` with no arguments, they should see a summary of issues needing attention"
 - **Bad:** "Add a switch statement in the main handler function"
@@ -52,11 +48,6 @@ For enhancements, this is the status quo the feature builds on.
 Describe what should happen after the agent's work is complete.
 Be specific about edge cases and error conditions.
 
-**Key interfaces:**
-- `TypeName`: what needs to change and why
-- `functionName()` return type: what it currently returns vs what it should return
-- Config shape: any new configuration options needed
-
 **Acceptance criteria:**
 - [ ] Specific, testable criterion 1
 - [ ] Specific, testable criterion 2
@@ -85,12 +76,6 @@ that end mid-word (e.g. "Use when the user wants to confi").
 **Desired behavior:**
 Truncation should break at the last word boundary before 1024 characters
 and append "..." to indicate truncation.
-
-**Key interfaces:**
-- The `SkillMetadata` type's `description` field: no type change needed,
-  but the validation/processing logic that populates it needs to respect
-  word boundaries
-- Any function that reads SKILL.md frontmatter and extracts the description
 
 **Acceptance criteria:**
 - [ ] Descriptions under 1024 chars are unchanged
@@ -124,13 +109,6 @@ files that capture the decision, reasoning, and links to all issues that
 requested the feature. When triaging new issues, these files should be
 checked for matches.
 
-**Key interfaces:**
-- Markdown file format in `.out-of-scope/`: each file should have a
-  `# Concept Name` heading, a `**Decision:**` line, a `**Reason:**` line,
-  and a `**Prior requests:**` list with issue links
-- The triage workflow should read all `.out-of-scope/*.md` files early
-  and match incoming issues against them by concept similarity
-
 **Acceptance criteria:**
 - [ ] Closing a feature as wontfix creates/updates a file in `.out-of-scope/`
 - [ ] The file includes the decision, reasoning, and link to the closed issue
@@ -162,14 +140,9 @@ remain: errors are still printed as human text (not JSON), and the new flag has
 no test coverage.
 
 **Desired behavior:**
-With `--json`, all output (including errors) is well-formed JSON on stdout,
-and the command's exit codes are unchanged. The existing human-readable output
+With `--json`, all output is well-formed JSON on stdout. Errors have the shape
+`{ "error": string }`. The command's exit codes are unchanged. The existing human-readable output
 is untouched when the flag is absent.
-
-**Key interfaces:**
-- The command's error path should emit `{ "error": string }` under `--json`
-  instead of the plain-text error
-- Reuse the existing serializer the PR already added; don't introduce a second
 
 **Acceptance criteria:**
 - [ ] `triage list --json` emits valid JSON for both success and error cases
