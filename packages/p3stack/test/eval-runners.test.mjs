@@ -18,8 +18,13 @@ const reads = paths.flatMap((path, i) => [
 const stub = `#!${process.execPath}
 const fs = require('node:fs'), path = require('node:path');
 const dir = process.env.PI_CODING_AGENT_DIR;
-fs.appendFileSync(process.env.LOG, JSON.stringify({dir, mode:fs.statSync(dir).mode & 511, files:fs.readdirSync(dir), settings:JSON.parse(fs.readFileSync(path.join(dir,'settings.json'))), gitDir:process.env.GIT_DIR})+'\\n');
+fs.appendFileSync(process.env.LOG, JSON.stringify({dir, mode:fs.statSync(dir).mode & 511, files:fs.readdirSync(dir), settings:JSON.parse(fs.readFileSync(path.join(dir,'settings.json'))), gitVars:Object.keys(process.env).filter(k=>k.startsWith("GIT_"))})+'\\n');
 if (process.env.TRAP_TERM) process.on('SIGTERM', () => process.exit(143)); // Pi print-mode disposal
+if (process.env.HELPER) {
+  const p = require('node:child_process').spawn(process.execPath, ['-e', "process.on('SIGTERM',()=>{}); setTimeout(()=>{},5000)"], {stdio:['ignore',1,2]});
+  fs.writeFileSync(process.env.HELPER, String(p.pid));
+  p.unref(); // the leader exits, the helper still holds the output pipes
+}
 process.stdout.write(process.env.STREAM);
 if (process.env.HANG) setInterval(() => {}, 1000);
 process.exitCode = Number(process.env.CODE ?? 0);`;
@@ -102,6 +107,32 @@ for (const tier of ["behavior", "routing"]) {
     assert.equal(existsSync(f.log), false);
   });
 
+  test(`${tier}: neither Git (including discovery) nor Pi inherits any GIT_ variables`, t => {
+    const f = setup(t, tier), tracePath = join(f.root, "unexpected trace");
+    const result = f.run([], { GIT_DIR: join(f.root, "wrong.git"), GIT_WORK_TREE: f.root, GIT_TRACE2_EVENT: tracePath,
+      GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "test.outer", GIT_CONFIG_VALUE_0: "outer" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(f.calls()[0].gitVars, []);
+    assert.equal(existsSync(tracePath), false, "even the first Git subprocess has a scrubbed environment");
+  });
+
+  test(`${tier}: an empty assistant or a tool start without an end is not a run`, t => {
+    const f = setup(t, tier), args = tier === "routing" ? ["--mode-off"] : [];
+    for (const events of [[], [reads[0]]]) {
+      invalid(f.run(args, { STREAM: jsonl([...events,
+        { type: "message_end", message: { role: "assistant", content: [] } }, ...finish.slice(1)]) }), /no completed|incomplete/i);
+    }
+  });
+
+  test(`${tier}: a timeout kills a helper holding the leader's output pipes`, t => {
+    const f = setup(t, tier), pidFile = join(f.root, "helper.pid"), start = Date.now();
+    invalid(f.run(["--timeout-seconds", "1"], { HELPER: pidFile, STREAM: jsonl(finish) }), /timed out/);
+    assert.ok(Date.now() - start < 3500, "do not wait for the helper's 5s timer");
+    assert.ok(!existsSync(f.calls()[0].dir), "remove the private agent directory at the deadline");
+    const ps = spawnSync("ps", ["-p", readFileSync(pidFile, "utf8"), "-o", "stat="], { encoding: "utf8" });
+    assert.ok(ps.status === 1 || ps.stdout.trim().startsWith("Z"), "the helper is not still executing");
+  });
+
   test(`${tier}: a malformed, empty, truncated, timed-out or nonzero process is not a grade`, t => {
     const f = setup(t, tier);
     invalid(f.run([], { STREAM: jsonl(finish) + "bad JSON\n" }), /JSONL/);
@@ -115,14 +146,6 @@ for (const tier of ["behavior", "routing"]) {
     assert.ok(!readdirSync(f.output, { recursive: true }).some(name => name.endsWith("results.json")));
   });
 }
-
-test("behavior: fixture git and its agent do not inherit the caller's repository", t => {
-  const f = setup(t, "behavior"), other = join(f.root, "not-the-fixture.git");
-  const result = f.run([], { GIT_DIR: other, GIT_WORK_TREE: f.root });
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(existsSync(other), false);
-  assert.equal(f.calls()[0].gitDir, undefined);
-});
 
 test("behavior: copy mcp.json only for the selected MCP case; fail without it", t => {
   const f = setup(t, "behavior");

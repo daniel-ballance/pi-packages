@@ -25,9 +25,9 @@ export function lintHosts(root, paths = [""]) {
       return;
     }
     const output = path.split("\\").join("/");
-    if (output === hostMap("capabilities")) return; // Names the T3 namespace for host detection.
     readFileSync(absolute, "utf8").split("\n").forEach((line, index) => {
       for (const name of hostToolNames(line)) {
+        if (output === hostMap("capabilities") && name === "mcp__t3-code__*") continue;
         if (output !== hostMap(name.startsWith("subagent_") ? "terminal" : "t3")) problems.push(`${output}:${index + 1}: ${name}`);
       }
     });

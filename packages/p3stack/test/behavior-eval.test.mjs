@@ -83,7 +83,7 @@ test("outcome is the gate, not a blended score", t => {
   seen.final = "No tests were skipped.";
   const bad = assess(row, seen, root, before);
   assert.equal(bad.passed, false);
-  assert.equal(bad.process.score, 1);
+  assert.equal(bad.process.score, 0, "a script name with no recorded finding is not evidence");
   assert.equal(bad.outcome.score, 0.5);
 });
 

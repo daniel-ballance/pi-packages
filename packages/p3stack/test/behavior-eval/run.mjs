@@ -8,12 +8,11 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { gitEnv } from "../../generator/git-env.mjs";
-import { agentSource, defaultOutput, parseEvent, positiveInteger, receipts, runPi } from "../routing-eval/harness.mjs";
+import { agentSource, defaultOutput, evalEnv, parseEvent, positiveInteger, receipts, runPi } from "../routing-eval/harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SUBSTITUTIONS = { "{{SKIP}}": "skip" };
-const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe", env: { ...gitEnv(), GIT_AUTHOR_NAME: "eval", GIT_AUTHOR_EMAIL: "eval@example.com", GIT_COMMITTER_NAME: "eval", GIT_COMMITTER_EMAIL: "eval@example.com" } }).toString();
+const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe", env: { ...evalEnv(), GIT_AUTHOR_NAME: "eval", GIT_AUTHOR_EMAIL: "eval@example.com", GIT_COMMITTER_NAME: "eval", GIT_COMMITTER_EMAIL: "eval@example.com" } }).toString();
 
 function walk(dir, base = dir) {
   return readdirSync(dir).flatMap(name => {
@@ -48,7 +47,7 @@ function treeState(root) {
 }
 
 function runCheck(command, args, cwd) {
-  const env = gitEnv();
+  const env = evalEnv();
   delete env.NODE_TEST_CONTEXT; // node --test otherwise skips discovery inside our own test suite.
   const result = spawnSync(command, args, { cwd, env, encoding: "utf8", timeout: 120000 });
   if (result.error) throw result.error;
@@ -105,7 +104,11 @@ const pathOf = call => String(call.args.path ?? call.args.file_path ?? "");
 function matches(step, calls) {
   const pattern = new RegExp(step.pattern, "i");
   const toolMatches = c => pattern.test(c.tool) && (!step.args || new RegExp(step.args, "i").test(argText(c)));
-  return calls.findIndex(call => call.ok === true && (!step.result || new RegExp(step.result, "i").test(call.result ?? "")) && (
+  // Expected assertion/floor diagnostics are completed operations, not successful exits.
+  const completed = call => step.kind === "bash" && step.diagnostic
+    ? call.end !== undefined && new RegExp(step.diagnostic, "i").test(call.result ?? "")
+    : call.ok === true;
+  return calls.findIndex(call => completed(call) && (!step.result || new RegExp(step.result, "i").test(call.result ?? "")) && (
     step.kind === "bash" ? call.tool === "bash" && pattern.test(String(call.args.command ?? "")) :
     step.kind === "read" ? call.tool === "read" && pattern.test(pathOf(call)) :
     step.kind === "edit" ? ["edit", "write"].includes(call.tool) && pattern.test(pathOf(call)) :
@@ -135,7 +138,7 @@ export function grade(check, { calls, final }, project, beforeRun) {
     case "skipped-test": return final.split(/(?<=[.!?])\s+/).some(sentence =>
       /\b(?:skips?|skipped|disabled)\b/i.test(sentence) && /sumAll|sum\.test\.js/i.test(sentence) &&
       /empty[- ](?:list|array|input)|\[\s*\]|sum\.test\.js:13\b/i.test(sentence) &&
-      !/\b(?:not|never|no tests?(?: were| was| are| is)?) (?:skipped|disabled)\b/i.test(sentence));
+      !/(?:\b(?:not|never|nothing|none|no longer|no tests?)\b|n['’]t\b).*?\b(?:skips?|skipped|disabled)\b/is.test(sentence));
     case "unchanged": return beforeRun !== undefined && treeState(project) === beforeRun;
     case "regression": return regressionFailsOnOriginal(project);
     case "oracle": return runCheck(process.execPath, [join(here, "oracles", check.script)], project).status === 0;

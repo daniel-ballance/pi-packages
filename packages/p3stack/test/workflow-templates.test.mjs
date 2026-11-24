@@ -63,6 +63,11 @@ test("a repro that checks only a directory exists exits 0 even with correct code
   assert.ok(steps.every(step => step.kind === "task" && !step.worker.tools.includes("bash")));
   const collector = steps.at(-1);
   assert.deepEqual(collector.dependsOn, steps.slice(0, -1).map(s => s.id));
+  for (const worker of steps.slice(0, -1)) {
+    assert.match(worker.instructions, /manifest\.json/);
+    assert.match(worker.instructions, /\[\]/, "publish the empty inventory too");
+  }
+  assert.match(collector.instructions, /read[^.]*manifest\.json/i);
   assert.match(collector.instructions, /finding\.md.*repro\.sh|repro\.sh.*finding\.md/);
   assert.match(doc(), /disposable checkout/i);
   for (const state of ["verified", "contradicted", "could not run"]) assert.ok(doc().includes(state));
@@ -77,7 +82,8 @@ test("the skill variants get neutral assignments on one model; grading behavior 
   assert.deepEqual(grade.dependsOn, [left.id, right.id]);
   assert.match(grade.instructions, /transcript/i);
   assert.match(grade.instructions, /null/);
-  assert.doesNotMatch(doc(), /two blinded candidates/i);
+  assert.match(doc(), /engine[^.]*candidate[^.]*directory/i);
+  assert.match(doc(), /strictly blind[^.]*prose[^.]*neutral sessions/i);
 });
 
 test("the handoff patch reconstructs committed, staged, unstaged, deleted and untracked files", t => {
@@ -87,15 +93,24 @@ test("the handoff patch reconstructs committed, staged, unstaged, deleted and un
   git("init", "-q"); git("config", "user.name", "t"); git("config", "user.email", "t@example.org");
   for (const path of ["one", "two", "three", "gone"]) writeFileSync(join(work, path), "initial\n");
   git("add", "."); git("commit", "-qm", "base");
-  const base = git("rev-parse", "HEAD").trim();
+  const base = "base$lane";
+  git("tag", base);
+  const { steps: [worker, , grader] } = template("skill-eval", { base, prompt: "Explain file one; change no files." });
+  const command = worker.instructions.match(/`(git add [^`]+)`/)?.[1];
+  assert.ok(command);
+  const run = () => spawnSync("bash", ["-c", command], { cwd: work, env: { ...process.env, lane: "wrong" }, encoding: "utf8" });
+  const empty = run();
+  assert.equal(empty.status, 0, empty.stderr);
+  assert.equal(readFileSync(join(root, "changes.diff")).length, 0);
+  assert.match(worker.instructions, /final (answer|reply)[^.]*request/i);
+  assert.match(grader.instructions, /response\.md/);
+  assert.match(grader.instructions, /changes\.diff/);
   writeFileSync(join(work, "one"), "committed\n"); git("commit", "-qam", "one");
   writeFileSync(join(work, "two"), "staged\n"); git("add", "two");
   writeFileSync(join(work, "three"), "unstaged\n"); unlinkSync(join(work, "gone"));
   writeFileSync(join(work, "new asset"), Buffer.from([0, 42, 255]));
-  const command = template("skill-eval", { base }).steps[0].instructions.match(/`(git add [^`]+)`/)?.[1];
-  assert.ok(command, "handoff command in the brief");
-  const run = spawnSync("bash", ["-c", command], { cwd: work, encoding: "utf8" });
-  assert.equal(run.status, 0, run.stderr);
+  const changed = run();
+  assert.equal(changed.status, 0, changed.stderr);
   git("reset", "--hard", base); git("apply", "--index", join(root, "changes.diff"));
   assert.equal(git("diff", "--cached", "--name-status").trim(), "D\tgone\nA\tnew asset\nM\tone\nM\tthree\nM\ttwo");
   assert.deepEqual(readFileSync(join(work, "new asset")), Buffer.from([0, 42, 255]));

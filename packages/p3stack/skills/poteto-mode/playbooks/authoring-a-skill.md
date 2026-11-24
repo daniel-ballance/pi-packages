@@ -4,7 +4,7 @@
 
 > **p3stack only:** [writing-for-agents](../writing-for-agents/SKILL.md) — Author or modify agent-facing instructions.
 
-> **p3stack only:** [eval](../poteto-mode/playbooks/eval.md) — If the change alters behavior, run the task before editing and record how the agent fails. After editing, compare against that baseline per the Eval playbook, with the skill-eval workflow template in a terminal.
+> **p3stack only:** [eval](../poteto-mode/playbooks/eval.md) — If the change alters behavior, run the task before editing and record how the agent fails. After editing, compare against that baseline per the Eval playbook.
 
 1. Use the skill-authoring procedure (**Author a skill** in the host capabilities).
 2. Validate the skill: frontmatter has `name` and `description`, referenced files exist, cross-skill links resolve.

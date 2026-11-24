@@ -150,7 +150,9 @@ test("tokens, sections and the file map produce the translated tree", () => {
 
 test("slash commands discover emitted skill paths, including new skills and principles, without rewriting other tokens", () => {
   const rule = JSON.parse(readFileSync(new URL("../rules/tokens.json", import.meta.url), "utf8")).find(({ id }) => id === "slash-skill");
+  const paths = "~~~http\nGET /future-check HTTP/1.1\n~~~\n\n[run](\n /future-check \"doc\") and <a href=\"/future-check\">here</a>\n";
   const { root, out, read, dispose } = fixture({
+    "vendor/up/skills/demo/paths.md": paths + "\nRun `/future-check`.\n",
     "vendor/up/skills/future-check/SKILL.md": "# Future\n\nRun /future-check and /principle-future.\n",
     "vendor/up/skills/principle-future/SKILL.md": "# Principle\n",
     "vendor/up/skills/omitted/SKILL.md": "# Omitted\n",
@@ -166,6 +168,7 @@ test("slash commands discover emitted skill paths, including new skills and prin
     generate({ packageDir: root, outDir: out });
     assert.equal(read("skills/future-check/SKILL.md"), "# Future\n\nRun /skill:future-check and /skill:principle-future.\n");
     assert.equal(read("agents/helper.md"), "Run /skill:future-check.\n");
+    assert.equal(read("skills/demo/paths.md"), paths + "\nRun `/skill:future-check`.\n");
     assert.equal(read("skills/demo/launcher"), 'entry=$(dirname "$self")/future-check.ts\n');
     assert.equal(read("skills/demo/commands.md"), "/skill:demo /skill:future-check /skill:principle-future /not-a-skill /omitted /principle-missing\n/skill:future-check docs/future-check https://example.test/future-check ./future-check ../future-check /future-check-more /future-check_word\n");
   } finally { dispose(); }
@@ -327,10 +330,11 @@ test("patch bytes and context matching do not depend on Git whitespace configura
   const patch = [...header, " ## Next", " ", "-Kept.", "+        Indented.", ""].join("\n");
   const { root, dispose } = fixture({ "patches/demo.patch": patch });
   t.after(dispose);
-  const env = { ...process.env, P3STACK_PACKAGE_DIR: root, GIT_CONFIG_COUNT: "3",
+  const env = { ...process.env, P3STACK_PACKAGE_DIR: root, GIT_CONFIG_COUNT: "4",
     GIT_CONFIG_KEY_0: "core.whitespace", GIT_CONFIG_VALUE_0: "indent-with-non-tab",
     GIT_CONFIG_KEY_1: "apply.whitespace", GIT_CONFIG_VALUE_1: "fix",
-    GIT_CONFIG_KEY_2: "apply.ignoreWhitespace", GIT_CONFIG_VALUE_2: "change" };
+    GIT_CONFIG_KEY_2: "apply.ignoreWhitespace", GIT_CONFIG_VALUE_2: "change",
+    GIT_CONFIG_KEY_3: "core.autocrlf", GIT_CONFIG_VALUE_3: "true" };
   const run = () => spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8", env });
   const result = run();
   assert.equal(result.status, 0, result.stderr);

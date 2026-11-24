@@ -18,7 +18,7 @@
 2. **Set up sanitized environments.** Per-candidate working dir with the variant in place. Plant any context an organic task would have: a project skeleton, the skills the candidate would naturally read.
 3. **Author one organic prompt.** What a user would type. No leakage of what's being measured.
 
-> **p3stack only:** [host-capabilities](../poteto-mode/references/host-capabilities.md) — In a terminal with workflow tools, follow **Run a workflow** with the skill-eval template for steps 4 and 5.
+> **p3stack only:** [host-capabilities](../poteto-mode/references/host-capabilities.md) — For a strictly blind comparison, use separate neutral sessions: the workflow engine names the candidate in its own framing. Otherwise, in a terminal with workflow tools, follow **Run a workflow** with the skill-eval template for steps 4 and 5.
 
 4. **Spawn N parallel candidates** on different models per the **arena** skill's Phase B. Each works in its own sanitized dir. Same prompt to each. Resolve each subagent's role per the Subagents section.
 5. **Spawn one blinded judge** on a different model family per the **arena** skill's Phase C. Judge sees outputs by sanitized label and the rubric, never a model name.

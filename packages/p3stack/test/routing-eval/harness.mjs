@@ -4,7 +4,9 @@ import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSy
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gitEnv } from "../../generator/git-env.mjs";
+
+// Unlike the generator, eval children must inherit neither Git selectors nor config/trace destinations.
+export const evalEnv = () => Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
 
 export const pkg = fileURLToPath(new URL("../../", import.meta.url)).replace(/\/$/, "");
 export const defaultOutput = join(pkg, "test/eval-output");
@@ -69,7 +71,7 @@ export async function runPi({ source, mcp, cwd, args, timeoutSeconds, log, onEve
   try {
     for (const name of ["auth.json", "models.json", ...(mcp ? ["mcp.json"] : [])]) copyFileSync(join(source.dir, name), join(dir, name));
     writeFileSync(join(dir, "settings.json"), JSON.stringify(source.settings), { mode: 0o600 });
-    const env = gitEnv({ ...process.env, PI_CODING_AGENT_DIR: dir });
+    const env = { ...evalEnv(), PI_CODING_AGENT_DIR: dir };
     for (const key of ["PI_SUBAGENT", "PI_SUBAGENT_POLICY", "PI_SUBAGENT_ALLOWED_TOOLS", "PI_SUBAGENT_PEER_FD", "T3_MCP_URL"]) delete env[key];
     return await capture({ cwd, env, args, timeoutSeconds, log, onEvent });
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -77,13 +79,28 @@ export async function runPi({ source, mcp, cwd, args, timeoutSeconds, log, onEve
 
 function capture({ cwd, env, args, timeoutSeconds, log, onEvent }) {
   return new Promise((done, fail) => {
-    const child = spawn("pi", args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("pi", args, { cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "", tail = "", reason, error, killTimer, settled = false, worked = false, modelError;
+    const active = new Set();
+    const signalGroup = signal => {
+      if (!child.pid) return;
+      try { process.kill(-child.pid, signal); }
+      catch (e) { if (e.code !== "ESRCH") error = e; }
+    };
+    const hardStop = () => {
+      signalGroup("SIGKILL");
+      // A descendant can keep a pipe open even after the leader exits.
+      child.stdout.destroy();
+      child.stderr.destroy();
+    };
     const stop = why => {
       if (reason) return;
       reason = why;
-      child.kill("SIGTERM");
-      killTimer = setTimeout(() => child.kill("SIGKILL"), 2000);
+      if (why === "timeout") hardStop();
+      else {
+        signalGroup("SIGTERM");
+        killTimer = setTimeout(hardStop, 2000);
+      }
     };
     const timer = setTimeout(() => stop("timeout"), timeoutSeconds * 1000);
     const record = line => {
@@ -92,9 +109,10 @@ function capture({ cwd, env, args, timeoutSeconds, log, onEvent }) {
         const event = parseEvent(line);
         if (event.type === "agent_start") settled = false;
         if (event.type === "agent_settled") settled = event.aborted === false;
-        if (event.type === "tool_execution_start") worked = true;
+        if (event.type === "tool_execution_start") active.add(event.toolCallId);
+        if (event.type === "tool_execution_end" && active.delete(event.toolCallId)) worked = true;
         if (event.type === "message_end" && event.message?.role === "assistant") {
-          worked = true;
+          if (event.message.content?.some(p => p.type === "text" && p.text?.trim())) worked = true;
           modelError = ["aborted", "error"].includes(event.message.stopReason) ? event.message.stopReason : undefined;
         }
         if (onEvent?.(event)) stop("read limit");
@@ -112,6 +130,7 @@ function capture({ cwd, env, args, timeoutSeconds, log, onEvent }) {
       record(tail);
       clearTimeout(timer);
       clearTimeout(killTimer);
+      if (reason && reason !== "timeout") signalGroup("SIGKILL"); // Also stop helpers that already closed their pipes.
       try {
         writeFileSync(`${log}.jsonl`, stdout, { mode: 0o600 });
         writeFileSync(`${log}.stderr`, stderr, { mode: 0o600 });
@@ -120,7 +139,7 @@ function capture({ cwd, env, args, timeoutSeconds, log, onEvent }) {
         const capped = reason === "read limit";
         // Pi traps our SIGTERM, disposes its runtime, and exits 143.
         if (code !== 0 && !(capped && (code === 143 || ["SIGTERM", "SIGKILL"].includes(signal)))) throw new Error(`Pi exited ${code ?? signal}`);
-        if (!worked || (!settled && !capped) || modelError) throw new Error(`No completed Pi run (${modelError ?? "empty or incomplete event stream"})`);
+        if (!worked || ((!settled || active.size) && !capped) || modelError) throw new Error(`No completed Pi run (${modelError ?? "empty or incomplete event stream"})`);
         done({ stdout, reason: reason ?? "completed", code, signal });
       } catch (e) { fail(new Error(`${e.message} (log: ${log})`)); }
     });

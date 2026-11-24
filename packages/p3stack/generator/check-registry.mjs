@@ -44,11 +44,12 @@ export function skillFrontmatter(text, path) {
   if (!header) throw new Error(`${path}: expected a leading --- frontmatter block`);
   const [, opening, yaml] = header, doc = parseDocument(yaml);
   if (doc.errors.length || !isMap(doc.contents)) throw new Error(`${path}: invalid frontmatter: ${doc.errors[0]?.message ?? "expected a YAML mapping"}`);
+  const fields = doc.toJS(); // Resolve scalar aliases; retain nodes only for source ranges.
   const flag = doc.get(INVOCATION_FLAG, true);
-  if (flag && typeof flag.value !== "boolean") throw new Error(`${path}: frontmatter ${INVOCATION_FLAG} must be a boolean`);
-  const hidden = flag?.value === true;
+  if (flag && typeof fields[INVOCATION_FLAG] !== "boolean") throw new Error(`${path}: frontmatter ${INVOCATION_FLAG} must be a boolean`);
+  const hidden = fields[INVOCATION_FLAG] === true;
   return {
-    name: doc.get("name"), description: doc.get("description"), hidden,
+    name: fields.name, description: fields.description, hidden,
     withInvocation(userOnly) {
       if (userOnly === hidden) return text;
       // Edit just the flag, preserving other fields, comments, newlines and the entire body.

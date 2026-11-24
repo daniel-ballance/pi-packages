@@ -34,8 +34,8 @@ function auditFixture(t, name = "worker") {
   git("-C", repo, "add", ".");
   git("-C", repo, "-c", "user.name=Fixture", "-c", "user.email=test@example.org", "commit", "-qm", "base");
   git("-C", repo, "worktree", "add", "--detach", wt, "HEAD");
-  function rows() {
-    const result = execFileSync("bash", [audit, "-b", "main", repo], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  function rows(...args) {
+    const result = execFileSync("bash", [audit, "-b", "main", ...args, repo], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     return result.trimEnd().split("\n").slice(2).map(line => line.split("\t"));
   }
   return { repo, wt, env, git, rows };
@@ -46,13 +46,39 @@ test("audit preserves whole worktree paths and omits the main checkout", t => {
   assert.deepEqual(rows().map(row => [row[8], row[7]]), [[wt, "safe"]]);
 });
 
-for (const [file, description] of [["new-module.ts", "only copy of new source"], ["build/output", "ignored build output"]]) {
-  test(`audit holds ${description}, even when user settings hide untracked files`, t => {
+test("audit inspects the named worktree, not the caller's Git directory and index", t => {
+  const { repo, wt, env, rows } = auditFixture(t);
+  Object.assign(env, { GIT_DIR: join(repo, ".git"), GIT_WORK_TREE: repo, GIT_INDEX_FILE: join(repo, ".git/index") });
+  writeFileSync(join(wt, "new.ts"), "only copy");
+  assert.equal(rows()[0][7], "hold-untracked");
+});
+
+test("a missing gitfile must not fall back to an enclosing checkout", t => {
+  const { wt, rows } = auditFixture(t, "main tree/nested");
+  rmSync(join(wt, ".git"));
+  assert.equal(rows()[0][7], "unknown");
+});
+
+for (const flag of ["--skip-worktree", "--assume-unchanged"]) {
+  test(`audit holds index paths marked ${flag}`, t => {
+    const { wt, git, rows } = auditFixture(t);
+    git("-C", wt, "update-index", flag, ".gitignore");
+    writeFileSync(join(wt, ".gitignore"), "hidden edit");
+    const row = rows()[0];
+    assert.equal(row[7], "hold-wip");
+    assert.doesNotMatch(row[3], /clean/);
+  });
+}
+
+for (const [file, description, bucket, ignored] of [["new-module.ts", "only copy of new source", "hold-untracked", 0], ["build/output", "ignored build output", "safe", 1]]) {
+  test(`audit counts ${description}, even when user settings hide untracked files`, t => {
     const { wt, git, rows } = auditFixture(t);
     git("-C", wt, "config", "status.showUntrackedFiles", "no");
     mkdirSync(join(wt, "build"));
     writeFileSync(join(wt, file), "only copy\n");
-    assert.equal(rows()[0][7], "hold-untracked");
+    const row = rows()[0];
+    assert.equal(row[7], bucket);
+    assert.match(row[3], new RegExp(`ignored:${ignored}\\b`));
   });
 }
 
@@ -73,6 +99,30 @@ test("a recent Pi session started in a worktree subdirectory holds the worktree 
   assert.equal(rows()[0][7], "verify-recent-chat");
 });
 
+for (const source of ["main subdirectory", "settings", "settings in tilde agent directory", "argument", "uninspectable custom directory"]) {
+  test(`session inventory: ${source}`, t => {
+    const { repo, wt, env, rows } = auditFixture(t);
+    const cwd = join(repo, "packages"), agent = env.PI_CODING_AGENT_DIR, custom = join(env.HOME, "custom sessions");
+    mkdirSync(cwd); mkdirSync(agent);
+    const args = [];
+    let dir = custom;
+    if (source === "main subdirectory") dir = join(agent, "sessions", `--${cwd.slice(1).replaceAll("/", "-")}--`);
+    if (source.startsWith("settings")) {
+      if (source.includes("tilde")) env.PI_CODING_AGENT_DIR = "~/agent";
+      writeFileSync(join(agent, "settings.json"), JSON.stringify({ sessionDir: "~/custom sessions" }));
+    }
+    if (source === "argument") args.push("--session-dir", custom);
+    if (source === "uninspectable custom directory") {
+      env.PI_CODING_AGENT_SESSION_DIR = custom;
+      assert.equal(rows()[0][7], "unknown");
+      return;
+    }
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "session.jsonl"), [ { type: "session", cwd }, { type: "message", path: join(wt, ".gitignore") } ].map(x => JSON.stringify(x)).join("\n"));
+    assert.equal(rows(...args)[0][7], "verify-recent-chat");
+  });
+}
+
 test("moving session storage does not hide earlier activity in the default directory", t => {
   const { wt, env, rows } = auditFixture(t);
   const dir = join(env.PI_CODING_AGENT_DIR, "sessions", `--${wt.slice(1).replaceAll("/", "-")}--`);
@@ -92,7 +142,7 @@ test("audit help discloses the fetch rather than promising a read-only operation
 test("cleanup requires approval for the named non-versioned files and holds unknown owners", () => {
   const text = playbook("worktree-cleanup");
   assert.match(text, /hold-untracked/);
-  assert.match(text, /list[^\n]*untracked[^\n]*ignored[^\n]*operator[^\n]*approv/i);
+  assert.match(text, /list[^\n]*untracked[^\n]*operator[^\n]*approv/i);
   assert.match(text, /owner you cannot establish counts as in use/);
   assert.doesNotMatch(text, /throwaway|rm -rf|remove --force|delete all/i);
 });
@@ -135,18 +185,29 @@ test("plan checker accepts installed files outside the consumer repo, not missin
   const cwd = scratch(t), file = join(cwd, "plan.md");
   const skeleton = playbook("multi-phase-plan").split("````markdown\n")[1].split("\n````")[0]
     .replace("<swarm workers model>", "test-model");
-  const check = pointer => {
-    const arm = `### Arm the program\n- [ ] Installed file. \`${pointer}\`\n`;
-    writeFileSync(file, skeleton.replace(/### Arm the program\n[\s\S]*?(?=- \[ \] On the operator's go)/, arm));
+  const skills = join(pkg, "skills"), fixed = [join(skills, "swarm/SKILL.md"), join(skills, "poteto-mode/playbooks/opening-a-pr.md")];
+  const execution = mode => join(skills, "poteto-mode/playbooks", mode + ".md");
+  const check = (pointers, mode = "autopilot-stack", elsewhere = []) => {
+    const boxes = paths => paths.map(path => `- [ ] Installed file. \`${path}\``).join("\n");
+    const plan = skeleton.replace("<execution playbook>", mode)
+      .replace(/### Arm the program\n[\s\S]*?(?=- \[ \] On the operator's go)/, "### Arm the program\n" + boxes(pointers) + "\n")
+      .replace("### Spawn owners", "### Spawn owners\n" + boxes(elsewhere));
+    writeFileSync(file, plan);
     return spawnSync(process.execPath, [join(pkg, "skills/poteto-mode/scripts/check-plan.mjs"), file], { cwd, encoding: "utf8" });
   };
-  const ok = check(join(pkg, "skills/swarm/SKILL.md"));
-  assert.equal(ok.status, 0, ok.stderr);
-  for (const pointer of ["git show origin/main:pstack/skills/swarm/SKILL.md", join(cwd, "absent.md")]) {
-    const bad = check(pointer);
-    assert.equal(bad.status, 1);
+  for (const mode of ["autopilot-stack", "autopilot-full", "orchestrate"]) {
+    const ok = check([execution(mode), ...fixed], mode);
+    assert.equal(ok.status, 0, ok.stderr);
+  }
+  const required = [execution("autopilot-stack"), ...fixed];
+  for (const pointers of [[file], fixed, [execution("autopilot-full"), ...fixed],
+    [required[0], fixed[0], fixed[0]], [required[0], fixed[1]], [...required, join(cwd, "absent.md")],
+    [...required, "git show origin/main:pstack/skills/swarm/SKILL.md"]]) {
+    const bad = check(pointers);
+    assert.equal(bad.status, 1, JSON.stringify(pointers));
     assert.match(bad.stderr, /installed file/i);
   }
+  assert.equal(check(fixed, "autopilot-stack", [required[0]]).status, 1, "outside Arm the program");
 });
 
 for (const name of ["swarm", "arena"]) {

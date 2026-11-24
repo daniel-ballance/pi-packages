@@ -117,7 +117,7 @@
     "anchor": "1. Use the skill-authoring procedure",
     "position": "before",
     "skill": "playbooks/eval.md",
-    "when": "If the change alters behavior, run the task before editing and record how the agent fails. After editing, compare against that baseline per the Eval playbook, with the skill-eval workflow template in a terminal."
+    "when": "If the change alters behavior, run the task before editing and record how the agent fails. After editing, compare against that baseline per the Eval playbook."
   },
   {
     "id": "prototype-human-judge",
@@ -189,7 +189,7 @@
     "anchor": "4. **Spawn N parallel candidates**",
     "position": "before",
     "skill": "poteto-mode/references/host-capabilities.md",
-    "when": "In a terminal with workflow tools, follow **Run a workflow** with the skill-eval template for steps 4 and 5."
+    "when": "For a strictly blind comparison, use separate neutral sessions: the workflow engine names the candidate in its own framing. Otherwise, in a terminal with workflow tools, follow **Run a workflow** with the skill-eval template for steps 4 and 5."
   },
   {
     "id": "orchestrate-ledger",

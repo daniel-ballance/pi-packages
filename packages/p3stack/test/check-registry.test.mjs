@@ -143,6 +143,19 @@ test("registry accepts quoted and folded frontmatter fields without reading the 
   assert.equal(result.status, 0, result.stderr);
 });
 
+test("registry reads resolved YAML aliases and edits invocation at its use site", t => {
+  const f = fixture(t), path = "skills/first/SKILL.md";
+  const source = "---\nmetadata:\n  label: &name first\n  blurb: &blurb A fixture skill.\n  manual: &flag true\nname: *name\ndescription: *blurb\ndisable-model-invocation: *flag # local flag\n---\n" + example;
+  f.write("registry/chains.json", []);
+  f.write(`vendor/demo/${path}`, source);
+  const outDir = join(f.root, "out");
+  generate({ packageDir: f.root, outDir });
+  assert.equal(readFileSync(join(outDir, path), "utf8"), source.replace("*flag # local", "false # local"));
+  f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
+  generate({ packageDir: f.root, outDir });
+  assert.equal(readFileSync(join(outDir, path), "utf8"), source);
+});
+
 for (const invocation of ["model", "user"]) {
   test(`generation sets ${invocation} invocation only in frontmatter and preserves the body bytes`, t => {
     const f = fixture(t), path = "skills/first/SKILL.md";
@@ -160,6 +173,12 @@ for (const invocation of ["model", "user"]) {
 }
 
 const featurePath = "skills/poteto-mode/playbooks/feature.md";
+
+test("mixed LF and CRLF cannot misplace a chain row", t => {
+  const f = fixture(t), outDir = join(f.root, "out");
+  f.write(`extra/${featurePath}`, "# Feature\r\n\n1. Prep.\n2. Implement the sketch.\n3. Ship.\n");
+  assert.throws(() => generate({ packageDir: f.root, outDir }), /feature\.md.*mixed line endings/i);
+});
 
 test("chains surround the whole step, in registry order, without renumbering its neighbors", t => {
   const f = fixture(t), outDir = join(f.root, "out");
