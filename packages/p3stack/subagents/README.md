@@ -135,7 +135,7 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 
 ## Tools
 
-The parent starts with catalog, spawn, send, wait, read and close. For history, recovery, workflows, loops or peers, search for the tool by name. Without tool search, call `subagent_catalog({})` and pass the names you need back in `activate`, for example `subagent_catalog({activate:["subagent_list"]})`. These `managementTools` are for the root parent; `tools` is the child's composition menu. Human stop controls in `/subagents` and `/loop stop` do not depend on model tool discovery.
+The parent starts with catalog, spawn, send, wait, read, respond and close. For history, recovery, workflows, loops or peers, search for the tool by name. Without tool search, call `subagent_catalog({})` and pass the names you need back in `activate`, for example `subagent_catalog({activate:["subagent_list"]})`. These `managementTools` are for the root parent; `tools` is the child's composition menu. Human stop controls in `/subagents` and `/loop stop` do not depend on model tool discovery.
 
 | Tool | Purpose |
 |---|---|

@@ -2,7 +2,7 @@
 
 ## Delegate
 
-Check `subagent_catalog` for spawn permission, models, tools and limits. Call `subagent_spawn` with a `name`, standalone `task`, absolute allowed `cwd`, exact catalog `model` and explicit `tools`. Select only what the brief needs, including required extensions for those tools. Use `coordination.owns` to declare work areas, not to enforce them. For a report-only child, omit delegation tools, `edit` and `write`. Omit `bash` unless the brief needs commands. Report-only is a stance, not a permission boundary: policy `alwaysTools` still apply.
+Check `subagent_catalog` for spawn permission, models, tools and limits. At the root, activate deferred management tools with `subagent_catalog({activate:[name]})` or find them with `tool_search`. Call `subagent_spawn` with a `name`, standalone `task`, absolute allowed `cwd`, exact catalog `model` and explicit `tools`. Select only what the brief needs, including required extensions for those tools. Use `coordination.owns` to declare work areas, not to enforce them. For a report-only child, omit delegation tools, `edit` and `write`. Omit `bash` unless the brief needs commands. Report-only is a stance, not a permission boundary: policy `alwaysTools` still apply.
 
 With p3stack on, the dispatch hook supplies the header. For a task-specific grant, start the assignment with `Task grant: default` or `Task grant: full-autonomy` on its own line. A coordinator passes its grant or a narrower one to its workers.
 

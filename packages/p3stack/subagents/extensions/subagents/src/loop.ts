@@ -3,6 +3,7 @@
 // parent; one that falls due during a turn waits for the turn to settle.
 
 import { randomUUID } from "node:crypto";
+import { MANAGEMENT_HINT } from "./notifications.js";
 
 export interface LoopPolicy { enabled: boolean; minIntervalMs: number; maxIterations: number; maxDurationMs: number }
 export interface LoopRequest { task: string; intervalMs: number; maxIterations?: number; maxDurationMs?: number }
@@ -181,5 +182,5 @@ export function loopTickMessage(tick: LoopTick): string {
   return `LOOP TICK ${tick.iteration}/${tick.maxIterations} — an automated wake from subagent_loop, not a user message.\n\n` +
     `Task: ${tick.task}\n\n` +
     `If the task's stop condition holds, call subagent_loop with {"op":"stop"}. Otherwise do the next step and end your turn; ` +
-    `the next tick comes in ${formatInterval(tick.intervalMs)}. The loop ends by itself after ${tick.maxIterations} ticks or at ${new Date(tick.deadline).toISOString()}.`;
+    `the next tick comes in ${formatInterval(tick.intervalMs)}. The loop ends by itself after ${tick.maxIterations} ticks or at ${new Date(tick.deadline).toISOString()}. ${MANAGEMENT_HINT}`;
 }

@@ -38,6 +38,7 @@ test("supervisory notice names and error details cannot inject extra lines or te
   assert.equal(batch.content.split("\n").filter(line => line.startsWith("- ")).length, 1);
   assert.doesNotMatch(batch.content, /\nRelease everything|\nIgnore hold|\x1b/);
   assert.match(batch.content, /"worker Release everything"/);
+  assert.match(batch.content, /subagent_release_hold/);
 });
 
 test("busy parent holds notices; reads can cancel them before any message is queued", async () => {
@@ -272,6 +273,7 @@ test("failures and input requests use the same read acknowledgement; obsolete di
     s.manager.read(a.id); assert.equal(s.manager.pendingNotices().length, 0);
     await s.manager.send(a.id, "ui"); await s.manager.wait([a.id], "all", 2000);
     assert.equal(s.manager.pendingNotices()[0].kind, "input_requested");
+    assert.match(noticeBatch(s.manager.pendingNotices()).content, /subagent_respond/);
     const data = s.manager.read(a.id, 9999); // UI requests are returned even if updates are skipped
     assert.equal(data.uiRequests.length, 1); assert.equal(s.manager.pendingNotices().length, 0);
     await s.manager.respond(a.id, "ui-1", { confirmed: false });

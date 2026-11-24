@@ -91,8 +91,8 @@ test("management extension registers nothing inside a marked child", () => {
 test("ordinary delegation is direct; history, recovery, loops, workflows and peers are searchable", async () => {
   const tools = await nativeTools();
   assert.deepEqual(tools.filter(t => (t.exposure ?? "direct") === "direct").map(t => t.name).sort(),
-    ["subagent_catalog", "subagent_close", "subagent_read", "subagent_send", "subagent_spawn", "subagent_wait"]);
-  for (const op of ["list", "abort", "resume", "respond", "release_hold", "loop", "workflow_start", "workflow_inspect", "workflow_control", "connect", "disconnect", "renew", "peers"]) {
+    ["subagent_catalog", "subagent_close", "subagent_read", "subagent_respond", "subagent_send", "subagent_spawn", "subagent_wait"]);
+  for (const op of ["list", "abort", "resume", "release_hold", "loop", "workflow_start", "workflow_inspect", "workflow_control", "connect", "disconnect", "renew", "peers"]) {
     assert.equal(tools.find(t => t.name === `subagent_${op}`)?.exposure, "deferred", op);
   }
 });
@@ -109,5 +109,7 @@ test("agent-facing spawn schema has no raw argument, executable or environment e
   assert.match(wait.description, /end your turn.*reports wake you/i);
   assert.match(wait.description, /ids.*mode.*all/i);
   assert.match(wait.parameters.properties.final.description, /last report/i);
-  assert.ok(tools.some(t => t.name === "subagent_catalog"));
+  const catalog = tools.find(t => t.name === "subagent_catalog");
+  assert.match(catalog.description, /tool_search/);
+  assert.match(catalog.description, /subagent_catalog\(\{activate:/);
 });
