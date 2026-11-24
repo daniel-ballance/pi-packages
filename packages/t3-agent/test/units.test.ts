@@ -8,7 +8,7 @@ import { Ledger, observe, rebuild, resultPayload, ENTRY_TYPE } from "../extensio
 import { contextualTools, desiredTools, nextActive, type ToolInfo } from "../extensions/t3-agent/src/loadout.ts";
 import { buildSection } from "../extensions/t3-agent/src/prompt.ts";
 import { modeLabel, runtimeMode, t3ToolName } from "../extensions/t3-agent/src/runtime.ts";
-import { readWorkspace, type Exec } from "../extensions/t3-agent/src/workspace.ts";
+import { workspaceReader, type Exec } from "../extensions/t3-agent/src/workspace.ts";
 
 // Recorded from real T3 sessions: results arrive as JSON text with no structured content.
 const delegateResult = [{ type: "text", text: JSON.stringify({
@@ -319,20 +319,18 @@ test("the prompt section states mode, workspace, loadout and open handles", () =
 
 test("readWorkspace reports a T3 worktree from git", async () => {
   const replies: Record<string, string | undefined> = {
-    "rev-parse": "/home/u/.t3/worktrees/p/t3-1\n/home/u/Code/p/.git/worktrees/t3-1\n/home/u/Code/p/.git",
-    "branch": "feat/x",
+    "rev-parse": "/home/u/.t3/worktrees/p/t3-1\n/home/u/Code/p/.git/worktrees/t3-1\n/home/u/Code/p/.git\nrefs/heads/feat/x",
     "worktree": "worktree /home/u/Code/p\nHEAD abc\nbranch refs/heads/main\n",
     "symbolic-ref": "origin/main",
-    "rev-parse@{u}": undefined,
   };
   const exec: Exec = async (_command, args) => {
-    const key = args.includes("@{u}") ? "rev-parse@{u}" : args[0]!;
+    const key = args[0]!;
     const stdout = replies[key];
     return stdout === undefined ? { stdout: "", code: 128 } : { stdout, code: 0 };
   };
-  assert.deepEqual(await readWorkspace(exec, "/home/u/.t3/worktrees/p/t3-1"), {
+  assert.deepEqual(await workspaceReader(exec)("/home/u/.t3/worktrees/p/t3-1"), {
     root: "/home/u/.t3/worktrees/p/t3-1", branch: "feat/x", linked: true, mainCheckout: "/home/u/Code/p", t3Managed: true, defaultBranch: "origin/main",
   });
-  assert.equal(await readWorkspace(async () => ({ stdout: "", code: 128 }), "/tmp"), undefined);
-  assert.equal(await readWorkspace(async () => { throw new Error("no git"); }, "/tmp"), undefined);
+  assert.equal(await workspaceReader(async () => ({ stdout: "", code: 128 }))("/tmp"), undefined);
+  assert.equal(await workspaceReader(async () => { throw new Error("no git"); })("/tmp"), undefined);
 });

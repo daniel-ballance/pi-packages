@@ -20,7 +20,7 @@ T3 injects its own extension into every Pi it launches. The bridge owns the MCP 
 - Pi has no native subagent tool under T3, so wherever T3's guidance says "your native tool", Pi uses `delegate_task`.
 - The open T3 handles, described below.
 
-The section is rebuilt before each prompt. Pi can resend changed sections to providers that support mid-conversation system messages.
+The section is rebuilt before each prompt. Git checks the checkout, branch, upstream and origin/HEAD again; the worktree listing is reused while the checkout paths match. Pi can resend changed sections to providers that support mid-conversation system messages.
 
 **A T3 tool loadout.** The model can discover deferred tools with `tool_search` or call known ones in codemode. A loadout activates a chosen set up front. Codemode-only can hide declarations without deactivating the tools:
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import { test } from "node:test";
 import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import t3Agent, { LOADOUT_ENTRY, REMINDER_TYPE, STATUS_KEY } from "../extensions/t3-agent/src/index.ts";
 import { ENTRY_TYPE } from "../extensions/t3-agent/src/ledger.ts";
+import type { Exec } from "../extensions/t3-agent/src/workspace.ts";
 
 // Never read the developer's own t3-agent.json.
 process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "t3-agent-home-"));
@@ -16,7 +18,7 @@ const T3_TOOLS = ["orchestrator_capabilities", "delegate_task", "task_status", "
 
 type Handler = (event: any, ctx: any) => any;
 
-function fixture(env: Record<string, string | undefined>, options: { branch?: unknown[]; sessionId?: string; parentSession?: string; active?: string[]; t3Tools?: string[]; direct?: Set<string>; excluded?: Set<string> } = {}) {
+function fixture(env: Record<string, string | undefined>, options: { branch?: unknown[]; sessionId?: string; parentSession?: string; exec?: Exec; active?: string[]; t3Tools?: string[]; direct?: Set<string>; excluded?: Set<string> } = {}) {
   const handlers = new Map<string, Handler[]>();
   const commands = new Map<string, any>();
   const appended: unknown[][] = [];
@@ -41,7 +43,7 @@ function fixture(env: Record<string, string | undefined>, options: { branch?: un
       branch.push({ type: "custom", customType, data });
     },
     sendMessage: (message: { content: string }) => messages.push(message),
-    exec: async () => ({ stdout: "", stderr: "", code: 128, killed: false, truncated: false }),
+    exec: options.exec ?? (async () => ({ stdout: "", stderr: "", code: 128, killed: false, truncated: false })),
   }, {
     get(target, key: string) {
       calls.push(key);
@@ -300,6 +302,50 @@ test("composer status updates only when its displayed text changes", async () =>
     [STATUS_KEY, "t3-agent: full access · standard loadout · 1 delegate"],
     [STATUS_KEY, "t3-agent: full access · standard loadout"],
   ]);
+});
+
+test("workspace refresh counts Git processes and follows changed refs and checkouts", async t => {
+  const dir = mkdtempSync(join(tmpdir(), "t3-git-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const main = join(dir, "main"), linked = join(dir, ".t3/worktrees/shared");
+  mkdirSync(main);
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
+  git(main, "init", "-b", "main");
+  git(main, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "base");
+  git(main, "worktree", "add", "-b", "feature", linked);
+  git(main, "tag", "feature"); // --abbrev-ref alone would report the branch as heads/feature.
+  let processes = 0;
+  const f = fixture(T3, { exec: async (cmd, args, { cwd }) => {
+    assert.equal(cmd, "git");
+    processes++;
+    const { stdout, status } = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+    return { code: status ?? -1, stdout };
+  } });
+  const repeats = [];
+  for (const cwd of [main, linked]) {
+    f.ctx.cwd = cwd;
+    await startTurn(f);
+    for (let i = 0; i < 2; i++) {
+      processes = 0;
+      const section = (await startTurn(f)).t3_agent!;
+      if (cwd === linked) assert.match(section, /other threads or delegates may be using it/i);
+      repeats.push(processes);
+    }
+  }
+  t.diagnostic(`Git processes per repeated prompt (main, main, linked, linked): ${repeats}`);
+  assert.ok(repeats.every(n => n <= 2), String(repeats));
+  git(linked, "branch", "--set-upstream-to=main");
+  git(linked, "update-ref", "refs/remotes/origin/main", "HEAD");
+  git(linked, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+  const changed = (await startTurn(f)).t3_agent!;
+  assert.match(changed, /branch `feature` \(upstream `main`\)/);
+  assert.match(changed, /origin\/HEAD points to `origin\/main`/);
+  git(linked, "checkout", "--detach");
+  assert.match((await startTurn(f)).t3_agent!, /a detached HEAD/);
+  git(linked, "checkout", "--orphan", "newborn");
+  assert.match((await startTurn(f)).t3_agent!, /branch `newborn`/);
+  f.ctx.cwd = dir;
+  assert.doesNotMatch((await startTurn(f)).t3_agent!, /Workspace:/);
 });
 
 test("supervised threads get Pi's read-only search tools", async () => {

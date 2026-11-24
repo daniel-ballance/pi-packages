@@ -7,7 +7,7 @@ import { ENTRY_TYPE, Ledger, observe, observationTarget, observeScope, rebuild, 
 import { desiredTools, manageableTool, nextActive } from "./loadout.ts";
 import { buildSection, SECTION } from "./prompt.ts";
 import { modeLabel, runtimeMode, t3ToolName, T3_PREFIX, type Environment } from "./runtime.ts";
-import { readWorkspace, type Workspace } from "./workspace.ts";
+import { workspaceReader, type Workspace } from "./workspace.ts";
 
 export const STATUS_KEY = "t3-agent";
 export const LOADOUT_ENTRY = "t3-agent.loadout";
@@ -98,16 +98,14 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     }
   };
 
-  const refreshWorkspace = async (ctx: ExtensionContext) => {
-    workspace = await readWorkspace((command, args, options) => pi.exec(command, args, options), ctx.cwd);
-  };
+  const readWorkspace = workspaceReader((command, args, options) => pi.exec(command, args, options));
 
   pi.on("session_start", async (event, ctx) => {
     scope = { sessionId: ctx.sessionManager.getSessionId() };
     allowLegacy = event.reason !== "fork" && !ctx.sessionManager.getHeader()?.parentSession;
     ({ config, problems } = readConfig(ctx.cwd, ctx.isProjectTrusted()));
     restore(ctx);
-    await refreshWorkspace(ctx);
+    workspace = await readWorkspace(ctx.cwd);
     applyLoadout(ctx);
     refreshStatus(ctx);
   });
@@ -129,7 +127,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
       problemsReported = true;
       ctx.ui.notify(`t3-agent configuration:\n${problems.join("\n")}`, "warning");
     }
-    await refreshWorkspace(ctx);
+    workspace = await readWorkspace(ctx.cwd);
     applyLoadout(ctx);
     const section = buildSection({
       mode,
