@@ -97,7 +97,16 @@ export function isCancellationError(message: unknown): boolean {
   return typeof message === "string" && /^(?:AbortError:\s*)?(?:(?:(?:the|this) )?operation (?:was )?aborted|request (?:was )?aborted|aborted|cancelled|canceled)[.!]?$/i.test(message.trim());
 }
 
+// Only ESRCH proves absence; a reused PID or permission failure retains the slot.
+function processGone(pid?: number) {
+  if (!Number.isSafeInteger(pid) || !pid || pid < 1) return false;
+  try { process.kill(pid, 0); return false; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH"; }
+}
+
 export class SubagentManager {
+  private static owners = new Map<string, SubagentManager>();
+  private get current() { return SubagentManager.owners.get(this.registry) === this; }
   private records = new Map<string, AgentRecord>();
   private activityFeeds = new Map<string, ActivityFeed>();
   private children = new Map<string, RpcChild>();
@@ -145,10 +154,10 @@ export class SubagentManager {
   constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, private readonly limit: ChildLimit = OMITTED_CHILD_LIMIT, private authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], readonly peerMessageLimit = 0, readonly parentMessageLimit = 0) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     enforcePrivatePath(directory, 0o700, true);
-    this.registry = join(directory, "registry.json");
+    this.registry = resolve(directory, "registry.json");
     let peerState: PeerState | undefined;
     const recoveredHolds: AgentRecord[] = [];
-    let discardedQueuedAssignments = false;
+    let recoveredChanges = false;
     if (enforcePrivatePathIfPresent(this.registry, 0o600, false)) {
       const stored = JSON.parse(readFileSync(this.registry, "utf8"));
       if (stored.version !== 1 || !Array.isArray(stored.agents)) throw new Error("Unsupported subagent registry");
@@ -172,14 +181,18 @@ export class SubagentManager {
           record.assignment.resultCursor ??= record.cursor;
           record.resultReview ??= { assignmentId: record.assignment.id, status: "unreviewed" };
         }
+        if (record.status === "stopping" || record.uncertainSubmission) record.unconfirmedStop ??= "Stop not confirmed before parent restart.";
+        if (record.unconfirmedStop && processGone(record.pid)) {
+          delete record.unconfirmedStop; delete record.uncertainSubmission;
+          record.status = "stopped"; recoveredChanges = true;
+        }
         record.status = record.status === "failed" ? "failed" : "stopped";
         if (record.status === "stopped" && record.error) {
           record.lastError = record.error; delete record.error;
         }
-        if (record.uncertainSubmission) record.unconfirmedStop ??= "Unconfirmed stop after uncertain prompt acceptance. Inspect for orphaned work.";
         if (record.unconfirmedStop) record.status = "stopping";
         else delete record.pid;
-        if (record.queuedAssignments?.length) discardedQueuedAssignments = true;
+        if (record.queuedAssignments?.length) recoveredChanges = true;
         record.queuedAssignments = []; // Interrupted follow-ups are never replayed on explicit resume.
         record.uiRequests = [];
         record.activity = record.unconfirmedStop ?? "No process attached. Resume explicitly to continue the saved conversation.";
@@ -193,6 +206,7 @@ export class SubagentManager {
         if (record && notice.kind !== "input_requested" && (notice.kind === "human_intervention" || !record.observedCursors?.includes(notice.cursor))) this.notices.set(notice.key, notice);
       }
     }
+    SubagentManager.owners.set(this.registry, this);
     this.peers = new PeerBroker({
       state: peerState, ceiling: peerMessageLimit, persist: () => this.persist(),
       participant: id => {
@@ -208,9 +222,10 @@ export class SubagentManager {
       const text = `Human ${record.hold!.kind} for ${record.name} (${record.id}): failed (confirmation interrupted by parent restart). ${record.hold!.detail}`;
       this.report(record, "human_intervention", text);
     }
-    if (discardedQueuedAssignments) this.persist();
+    if (recoveredChanges) this.persist();
   }
   private persist() {
+    if (!this.current) return;
     const temp = this.registry + ".tmp";
     enforcePrivatePathIfPresent(temp, 0o600, false);
     writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()], pendingNotices: [...this.notices.values()], peers: this.peers?.state }, null, 2), { mode: 0o600 });
@@ -254,6 +269,7 @@ export class SubagentManager {
     if (!this.announce(record, noticeKind, text, update.cursor, requestId)) this.persist();
   }
   private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
+    if (!this.current) return;
     if (kind !== "human_intervention" && (this.shuttingDown || this.workflowChildren.has(record.id) || record.observedCursors?.includes(cursor))) return;
     const key = `${record.id}:${cursor}:${kind}`;
     if (this.notices.has(key)) return;
@@ -555,11 +571,11 @@ export class SubagentManager {
     const child = new RpcChild({
       executable: config.executable || "pi", args, cwd: resolve(config.cwd), env,
       peerRequest: config.selection?.tools.includes("peer_send") && this.peerMessageLimit > 0 ? async packet => {
-        if (this.children.get(record.id) !== child) throw new Error("Stale peer process");
+        if (!this.current || this.children.get(record.id) !== child) throw new Error("Stale peer process");
         return this.peers.send(record.id, packet.recipient, packet.message);
       } : undefined,
       manageRequest: config.selection?.tools.some(isProxiedTool) && !record.workflow ? async (request, cancelled) => {
-        if (this.children.get(record.id) !== child) throw new Error("Stale child process");
+        if (!this.current || this.children.get(record.id) !== child) throw new Error("Stale child process");
         if (!this.management) throw new Error("Delegation is not available from this parent");
         this.assertDelegationOpen(record);
         // A call outlives its caller only as a cancelled operation: nobody can receive its result.
@@ -573,12 +589,13 @@ export class SubagentManager {
         finally { calls.delete(controller); if (!calls.size && this.callerCalls.get(record.id) === calls) this.callerCalls.delete(record.id); }
       } : undefined,
       parentMessage: config.selection?.tools.includes("parent_send") && this.parentMessageLimit > 0 ? async message => {
-        if (this.children.get(record.id) !== child) throw new Error("Stale child process");
+        if (!this.current || this.children.get(record.id) !== child) throw new Error("Stale child process");
         return this.messageParent(record, message);
       } : undefined,
-      event: packet => this.event(record, packet, delivery),
-      stderr: text => this.log(record.stderrFile, text),
+      event: packet => { if (this.current) this.event(record, packet, delivery); },
+      stderr: text => { if (this.current) this.log(record.stderrFile, text); },
       exit: error => {
+        if (!this.current) { this.children.delete(record.id); delete record.unconfirmedStop; return; }
         this.peers.interrupt(record.id);
         for (const call of this.callerCalls.get(record.id) ?? []) call.abort(new Error(`${record.id} exited; its delegated call was cancelled`));
         this.callerCalls.delete(record.id);
@@ -946,6 +963,15 @@ export class SubagentManager {
       else this.checkDetached(record);
     });
   }
+  /** Human command only, after independent inspection; never signal a recovered PID. */
+  confirmDetachedStop(id: string) {
+    const record = this.get(id);
+    if (this.children.has(id) || !record.unconfirmedStop) throw new Error("Only a detached, unconfirmed stop can be cleared.");
+    delete record.unconfirmedStop; delete record.uncertainSubmission; delete record.pid;
+    record.status = "stopped";
+    record.activity = "Stop confirmed by operator; no process attached.";
+    this.update(record, "lifecycle", record.activity);
+  }
   private checkDetached(record: AgentRecord) {
     if (record.unconfirmedStop || record.uncertainSubmission) throw new Error("Process stop unconfirmed; inspect for orphaned work.");
   }
@@ -1003,6 +1029,8 @@ export class SubagentManager {
       if (kind === "kill") {
         this.peers.interrupt(id);
         if (!child) throw new Error("No managed process attached; force termination cannot be confirmed. Inspect for orphaned work.");
+        record.unconfirmedStop = "Awaiting process kill confirmation";
+        this.persist();
         try { await child.kill(); }
         catch (error) { if (this.children.get(id) === child) record.unconfirmedStop = String(error); throw error; }
       } else if (child) await this.abortOne(record);
@@ -1081,6 +1109,7 @@ export class SubagentManager {
     }
     this.markAbortIntent(record);
     record.status = "stopping";
+    record.unconfirmedStop = "Awaiting process close confirmation";
     this.peers.interrupt(id);
     this.persist();
     // Cancel active tools before terminating the process. Cleanup still happens
@@ -1181,6 +1210,7 @@ export class SubagentManager {
     const failures: string[] = [];
     await Promise.all([...this.children.keys()].map(id => this.closeOne(this.get(id), true)
       .catch(error => { failures.push(`${id}: ${String(error)}`); })));
+    if (this.current) SubagentManager.owners.delete(this.registry);
     if (failures.length) throw new Error(`Shutdown unconfirmed: ${failures.join("; ")}`);
   }
 }

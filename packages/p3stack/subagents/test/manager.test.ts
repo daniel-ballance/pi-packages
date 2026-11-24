@@ -107,6 +107,52 @@ test("close bounds the wait after SIGKILL without freeing an unconfirmed slot, e
   }
 });
 
+for (const stop of ["close", "kill"] as const) test(`restart during ${stop} retains only a process whose death is unconfirmed`, async () => {
+  const s = await setup(parseChildLimit(1));
+  const { id } = await s.spawn("until-abort");
+  const child = (s.manager as any).children.get(id) as RpcChild;
+  const method = stop === "kill" ? "kill" : "stop";
+  const original = child[method].bind(child);
+  let entered!: () => void;
+  const signalling = new Promise<void>(resolve => { entered = resolve; });
+  let pending: string | undefined;
+  child[method] = async () => { pending = requireRegistry(s.dir).agents[0].unconfirmedStop; entered(); throw new Error("no close receipt"); };
+  try {
+    const stopping = stop === "kill" ? s.manager.intervene(id, "kill") : s.manager.close(id);
+    await signalling;
+    await stopping;
+    assert.ok(pending, "durable before signalling");
+    const restored = new SubagentManager(s.dir, undefined, undefined, parseChildLimit(1));
+    assert.equal(restored.capacity().available, 0);
+    await original();
+    const gone = new SubagentManager(s.dir, undefined, undefined, parseChildLimit(1));
+    assert.equal(gone.capacity().available, 1);
+    assert.equal(gone.get(id).status, "stopped");
+    assert.equal(requireRegistry(s.dir).agents[0].unconfirmedStop, undefined);
+    await gone.shutdown();
+  } finally { child[method] = original; await s.cleanup(); }
+});
+
+for (const shutdown of [true, false]) test(`late process events cannot write a successor's registry (shutdown=${shutdown})`, async () => {
+  const s = await setup();
+  const { id } = await s.spawn("until-abort");
+  const child = (s.manager as any).children.get(id) as RpcChild;
+  const stop = child.stop.bind(child);
+  let successor: SubagentManager | undefined;
+  try {
+    if (shutdown) {
+      child.stop = async () => { throw new Error("no close receipt"); };
+      await assert.rejects(s.manager.shutdown(), /unconfirmed/);
+    }
+    successor = new SubagentManager(s.dir);
+    const next = await successor.spawn({ name: "new", task: "new", cwd: s.dir, executable: process.execPath, executableArgs: [fixture] });
+    await successor.wait([next.id], "all", 2000);
+    const before = requireRegistry(s.dir);
+    await child.kill();
+    assert.deepEqual(requireRegistry(s.dir), before);
+  } finally { child.stop = stop; await successor?.shutdown(); await s.cleanup(); }
+});
+
 test("parallel children, incremental read, follow-up and usage", async () => {
   const s = await setup();
   try {

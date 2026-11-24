@@ -628,6 +628,14 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         ctx.ui.notify(`Policy: ${policy.source}\n${policy.diagnostics.join("\n") || "No policy diagnostics."}`, policy.diagnostics.length ? "warning" : "info");
         return;
       }
+      if (action === "confirm-stopped" && target) {
+        const child = manager.get(target);
+        if (await ctx.ui.confirm("Confirm detached process is gone?", `Have you independently checked that ${child.name} (${target}, recorded PID ${child.pid ?? "unknown"}) is no longer running? This releases its slot without signalling any process.`)) {
+          manager.confirmDetachedStop(target);
+          ctx.ui.notify(`Stop confirmed for ${target}; slot released. No work started.`, "info");
+        }
+        return;
+      }
       if ((action === "halt" || action === "kill") && target) {
         const child = manager.get(target);
         if (action === "kill" && !await ctx.ui.confirm("kill subagent process?", `Force-stop ${child.name} (${child.id})? Saved history remains, edits are not rolled back, and detached subprocesses may remain. The parent will be notified and work held.`)) return;
@@ -636,7 +644,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         ctx.ui.notify(`${action} ${outcome.hold?.outcome ?? "unknown"} · ${child.name.toLowerCase()} (${child.id})\n${outcome.hold?.detail ?? "Inspect the worker state."}\nparent notified; work remains held.${!confirmed && action === "halt" ? `\nIf necessary, use /subagents kill ${child.id} for confirmed break-glass process termination.` : ""}`, confirmed ? "info" : "warning");
         return;
       }
-      else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | halt <id> | kill <id>]. Ask the parent to manage agents.");
+      else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | halt <id> | kill <id> | confirm-stopped <id>]. Ask the parent to manage agents.");
       await manager.refreshUsageSnapshots();
       ctx.ui.notify(cardsFromDetails(manager.list(), "summary").map(card => listingLine(card).text).join("\n") || "No subagents tracked.", "info");
     },
