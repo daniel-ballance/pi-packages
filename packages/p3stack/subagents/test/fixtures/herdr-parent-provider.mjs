@@ -16,7 +16,8 @@ export default function (pi) {
       if (prompt.includes("SUBAGENT REPORTS")) content = [{ type: "text", text: "ack reports" }];
       else if (words[0] === "SPAWN" && !after.length) calls(words.slice(1).map((ms, i) => ["subagent_spawn",
         { name: `child ${i + 1}`, task: /^\d+$/.test(ms) ? `sleep:${ms}` : ms, cwd: process.env.HERDR_E2E_ROOT, model: "herdr-e2e-child/stub:off", tools: [] }]));
-      else if (words[0] === "WORKFLOW" && !after.length) calls([["subagent_workflow_start", { path: process.env.HERDR_E2E_WORKFLOW }]]);
+      else if (words[0] === "WORKFLOW" && !after.length) calls([["subagent_catalog", { activate: ["subagent_workflow_start"] }]]);
+      else if (words[0] === "WORKFLOW" && after.at(-1)?.toolName === "subagent_catalog") calls([["subagent_workflow_start", { path: process.env.HERDR_E2E_WORKFLOW }]]);
       else if (words[0] === "TURN") delay = Number(words[1]);
       else if (after.length) content = [{ type: "text", text: `done: ${after.map(m => text(m)).join(" ").slice(0, 200)}` }];
       const output = { role: "assistant", api: model.api, provider: model.provider, model: model.id, content, stopReason, timestamp: Date.now(),

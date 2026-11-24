@@ -1,8 +1,6 @@
 import type { Host } from "../extensions/subagents/src/host.js";
 
-// The package suite runs twice, the second time with a fake T3_MCP_URL (see
-// package.json). Tests of host-specific behaviour pin their host here instead
-// of inheriting the caller's environment.
+// Host-sensitive fixtures select a launch explicitly, independent of the test runner.
 export function asHost<T>(host: Host, run: () => T): T {
   const previous = process.env.T3_MCP_URL;
   if (host === "t3") process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";

@@ -6,7 +6,7 @@ import type { Workflows } from "./workflows.js";
 import { subagentRenderers, type NameLookup } from "./render.js";
 
 type Result = { content: { type: "text"; text: string }[]; details: unknown };
-export function registerWorkflowUI(pi: ExtensionAPI, get: (ctx: ExtensionContext) => Workflows, result: (data: unknown, ctx: ExtensionContext) => Result, names?: NameLookup) {
+export function registerWorkflowUI(pi: Pick<ExtensionAPI, "registerTool" | "registerCommand">, get: (ctx: ExtensionContext) => Workflows, result: (data: unknown, ctx: ExtensionContext) => Result, names?: NameLookup) {
   pi.registerTool({
     name: "subagent_workflow_start", label: "Start Workflow", ...subagentRenderers("workflow-start", names),
     description: "Start the JSON definition at path. Review its tasks, commands and limits first: starting authorizes execution. Returns a run ID, not completion.",

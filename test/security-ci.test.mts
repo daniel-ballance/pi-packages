@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
-const repository = fileURLToPath(new URL("../../../..", import.meta.url));
+const repository = fileURLToPath(new URL("..", import.meta.url));
 
 test("CI installs only the Pi version in the lockfiles and refuses any other runtime before installing anything", async (): Promise<void> => {
   for (const version of ["0.99.2", "1.2.0", "latest"]) {

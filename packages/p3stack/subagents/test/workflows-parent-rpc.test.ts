@@ -23,7 +23,7 @@ test("real parent launches autonomous workflow, gets one completion notice, and 
   ] }));
   const events: Packet[] = []; let stderr = "";
   const parent = new RpcChild({ executable: process.env.PEER_TEST_EXECUTABLE ?? process.execPath,
-    args: [...(process.env.PEER_TEST_EXECUTABLE ? [] : [cli]), "--offline", "--no-extensions", "--no-skills", "--no-context-files", "--no-prompt-templates", "--no-themes", "--approve", "-e", extension, "-e", parentFixture, "--model", "workflow-parent/stub", "--mode", "rpc", "--session", join(root, "parent.jsonl")],
+    args: [...(process.env.PEER_TEST_EXECUTABLE ? [] : [cli]), "--offline", "--no-extensions", "--no-skills", "--no-context-files", "--no-prompt-templates", "--no-themes", "--approve", "-e", "builtin:tool-search", "--tools", "+tool_search", "-e", extension, "-e", parentFixture, "--model", "workflow-parent/stub", "--mode", "rpc", "--session", join(root, "parent.jsonl")],
     cwd: root, env: { ...cliEnv(), PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PATH: `${bin}:${process.env.PATH}`, WORKFLOW_SMOKE_OUTPUT: proof, WORKFLOW_SMOKE_DEFINITION: definition },
     event: e => events.push(e), stderr: text => { stderr += text; }, exit: () => {},
   });
@@ -34,6 +34,8 @@ test("real parent launches autonomous workflow, gets one completion notice, and 
     const result = JSON.parse(readFileSync(proof, "utf8"));
     assert.equal(result.status, "succeeded"); assert.equal(result.usedAttempts, 4);
     assert.equal(result.steps[0].iteration, 2);
+    const search = events.find(e => e.type === "tool_execution_end" && e.toolName === "tool_search");
+    assert.deepEqual(search?.result.details.loaded.sort(), ["subagent_workflow_inspect", "subagent_workflow_start"], events.filter(e => e.type === "tool_execution_end").map(e => e.toolName).join(", "));
     const notices = events.filter(e => e.type === "message_end" && e.message?.customType === "subagent-report");
     assert.equal(notices.length, 1, "Only workflow completion, not every child result");
     assert.equal(events.some(e => e.type === "extension_error"), false, stderr);

@@ -19,7 +19,7 @@ export default function (pi) {
       const A = spawned(1), B = spawned(2), C = spawned(3);
       const spawn = name => ["subagent_spawn", { name, task: "Ready", cwd: process.cwd(), model: "peer-test/stub:off", tools: ["peer_send"], extensions: [fileURLToPath(new URL("./peer-provider.mjs", import.meta.url))] }];
       const steps = [
-        ["subagent_catalog", {}], spawn("smoke-A"), spawn("smoke-B"), spawn("smoke-C"),
+        ["subagent_catalog", { activate: ["subagent_connect", "subagent_peers", "subagent_disconnect"] }], spawn("smoke-A"), spawn("smoke-B"), spawn("smoke-C"),
         ["subagent_wait", { ids: [A, B, C], mode: "all", timeoutSeconds: 10 }],
         ["subagent_connect", { a: B, b: C, limit: 2 }],
         ["subagent_send", { id: A, message: `SEND ${JSON.stringify({ recipient: B, message: "forbidden" })}` }],

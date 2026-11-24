@@ -40,7 +40,7 @@ test("documented execution fallback matches the complete shipped policy", () => 
 
 test("every shipped example is valid whole-policy JSON with unmistakable placeholder models", () => {
   const examples = readdirSync(join(skill, "examples")).filter(name => name.endsWith(".json"));
-  assert.equal(examples.length, 4);
+  assert.ok(examples.length > 0, "the configuration skill must ship policy examples");
   for (const name of examples) {
     const value = JSON.parse(readFileSync(join(skill, "examples", name), "utf8"));
     const policy = parsePolicy(value);

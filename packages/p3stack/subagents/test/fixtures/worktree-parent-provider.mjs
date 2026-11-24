@@ -20,6 +20,7 @@ export default function (pi) {
         ["subagent_spawn", { name: "Worktree Smoke", task: "Ready", cwd: process.cwd(), model: "peer-test/stub:off", tools: [],
           extensions: [fileURLToPath(new URL("./peer-provider.mjs", import.meta.url))], worktree: true }],
         ["subagent_wait", { ids: [child], timeoutSeconds: 10 }],
+        ["subagent_catalog", { activate: ["subagent_list"] }],
         ["subagent_list", {}],
         ["subagent_close", { id: child }],
       ];
@@ -30,7 +31,7 @@ export default function (pi) {
       } else {
         const proof = results.some(r => r.isError)
           ? { error: text(results.find(r => r.isError)) }
-          : { spawned: data(0), listed: data(2).agents.find(agent => agent.id === child) };
+          : { spawned: data(0), listed: data(3).agents.find(agent => agent.id === child) };
         if (process.env.WORKTREE_SMOKE_OUTPUT) writeFileSync(process.env.WORKTREE_SMOKE_OUTPUT, JSON.stringify(proof, null, 2));
         content = [{ type: "text", text: "WORKTREE SMOKE DONE" }];
       }
