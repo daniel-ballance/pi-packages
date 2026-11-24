@@ -151,8 +151,10 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       showLoop();
     },
     ended: (reason, state, requested) => {
-      // A bound ended it: tell the model at its next turn without starting one.
-      if (!requested) pi.sendMessage({ customType: "subagent-loop-end", content: `LOOP ENDED — ${JSON.stringify(state.task)} ${reason}.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+      if (!requested) {
+        try { pi.sendMessage({ customType: "subagent-loop-end", content: `LOOP ENDED — ${JSON.stringify(state.task)} ${reason}.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" }); }
+        catch { pi.appendEntry("subagent-loop-end", { task: state.task, reason }); }
+      }
       if (!requested && context?.hasUI) context.ui.notify(`Loop ended: ${reason}`, "info");
       showLoop();
     },

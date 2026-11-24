@@ -15,7 +15,7 @@ test("loops are off unless a policy enables them, with every ceiling explicit", 
   ]) assert.throws(() => parsePolicy({ ...base, loops: bad }), /loops/, JSON.stringify(bad));
 });
 
-function harness(policy: typeof loops | null = loops) {
+function harness(policy: typeof loops | null = loops, send?: (tick: LoopTick) => void) {
   let now = 0, idle = true;
   const timers = new Map<number, { at: number; run: () => void }>();
   let nextTimer = 0;
@@ -23,7 +23,7 @@ function harness(policy: typeof loops | null = loops) {
   const controller = new LoopController({
     policy: () => policy ?? undefined,
     idle: () => idle,
-    send: tick => ticks.push(tick),
+    send: send ?? (tick => ticks.push(tick)),
     ended: reason => ended.push(reason),
     clock: () => now,
     setTimer: (run, ms) => { timers.set(++nextTimer, { at: now + ms, run }); return nextTimer; },
@@ -103,8 +103,25 @@ test("one loop per parent, and a new start after the end is allowed", () => {
 
 test("an interval longer than the run, or beyond the timer range, is refused", () => {
   const { controller } = harness({ ...loops, maxDurationMs: 600_000 });
-  assert.throws(() => controller.start({ task: "x", intervalMs: 600_001 }), /no longer than the run/);
-  assert.throws(() => controller.start({ task: "x", intervalMs: 2_147_484_000, maxDurationMs: 600_000 }), /no longer than the run/);
+  assert.throws(() => controller.start({ task: "x", intervalMs: 600_001 }), /shorter than the run/);
+  assert.throws(() => controller.start({ task: "x", intervalMs: 2_147_484_000, maxDurationMs: 600_000 }), /shorter than the run/);
+});
+
+test("an interval equal to the run duration cannot produce even one tick", () => {
+  const h = harness();
+  assert.throws(() => h.controller.start({ task: "x", intervalMs: 60_000, maxDurationMs: 60_000 }), /shorter/);
+  assert.equal(h.timers.size, 0);
+});
+
+test("failed tick delivery ends the loop with its reason and no retry", () => {
+  let submissions = 0;
+  const h = harness(loops, () => { submissions++; throw new Error("queue closed"); });
+  h.controller.start({ task: "x", intervalMs: 60_000 });
+  h.advance(60_000);
+  assert.equal(h.controller.status(), undefined);
+  assert.match(h.ended[0]!, /tick.*queue closed/i);
+  h.advance(60_000);
+  assert.equal(submissions, 1);
 });
 
 test("the duration bound ends the loop at the deadline, not at the next tick after it", () => {
