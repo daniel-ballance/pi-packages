@@ -70,7 +70,14 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     ].filter(([count]) => (count as number) > 0).map(([count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`);
     return [`t3-agent: ${modeLabel(mode)}`, `${loadout()} loadout`, ...counts].join(" · ");
   };
-  const refreshStatus = (ctx: ExtensionContext) => ctx.ui.setStatus(STATUS_KEY, statusText());
+  let lastStatus: string | undefined;
+  const refreshStatus = (ctx: ExtensionContext) => {
+    if (!ctx.hasUI) return;
+    const status = statusText();
+    if (status === lastStatus) return;
+    ctx.ui.setStatus(STATUS_KEY, status);
+    lastStatus = status;
+  };
 
   const restore = (ctx: ExtensionContext) => {
     const branch = ctx.sessionManager.getBranch() as Entry[];
@@ -110,7 +117,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     openedThisRun = new Set();
     reminded = false;
     // T3 drops notices outside a turn, so report configuration problems on the first turn.
-    if (!problemsReported && problems.length > 0) {
+    if (ctx.hasUI && !problemsReported && problems.length > 0) {
       problemsReported = true;
       ctx.ui.notify(`t3-agent configuration:\n${problems.join("\n")}`, "warning");
     }
@@ -185,41 +192,45 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     getArgumentCompletions: prefix => ["status", "ledger", ...LOADOUTS.map(name => `loadout ${name}`), "forget all"]
       .filter(value => value.startsWith(prefix)).map(value => ({ value, label: value })),
     handler: async (args, ctx) => {
+      const notify = (message: string, type: "info" | "warning") => {
+        if (ctx.hasUI) ctx.ui.notify(message, type);
+        else pi.sendMessage({ customType: "t3-agent.command", content: message, display: true }, { triggerTurn: false });
+      };
       const [verb = "status", value] = args.trim().split(/\s+/).filter(Boolean);
       if (verb === "loadout") {
         if (!LOADOUTS.includes(value as Loadout)) {
-          ctx.ui.notify(`Usage: /t3-agent loadout ${LOADOUTS.join("|")}. Current: ${loadout()}.`, "warning");
+          notify(`Usage: /t3-agent loadout ${LOADOUTS.join("|")}. Current: ${loadout()}.`, "warning");
           return;
         }
         sessionLoadout = value as Loadout;
         pi.appendEntry(LOADOUT_ENTRY, { loadout: sessionLoadout });
         applyLoadout(ctx);
         refreshStatus(ctx);
-        ctx.ui.notify(`t3-agent loadout: ${sessionLoadout} for this session. ${declarationReport()}`, "info");
+        notify(`t3-agent loadout: ${sessionLoadout} for this session. ${declarationReport()}`, "info");
         return;
       }
       if (verb === "forget") {
         const closing = ledger.forget(value ?? "");
         if (closing.length === 0) {
-          ctx.ui.notify("Usage: /t3-agent forget <id|all>. Nothing open matched.", "warning");
+          notify("Usage: /t3-agent forget <id|all>. Nothing open matched.", "warning");
           return;
         }
         for (const close of closing) pi.appendEntry(ENTRY_TYPE, close);
         applyLoadout(ctx);
         refreshStatus(ctx);
-        ctx.ui.notify(`Forgot ${closing.length} T3 handle${closing.length === 1 ? "" : "s"}. This closes nothing in T3.`, "info");
+        notify(`Forgot ${closing.length} T3 handle${closing.length === 1 ? "" : "s"}. This closes nothing in T3.`, "info");
         return;
       }
       if (verb === "ledger") {
         const pages = ledger.pages();
-        for (const page of pages.length ? pages : ["No open T3 handles in this session."]) ctx.ui.notify(page, "info");
+        for (const page of pages.length ? pages : ["No open T3 handles in this session."]) notify(page, "info");
         return;
       }
       if (verb !== "status") {
-        ctx.ui.notify("Usage: /t3-agent [status | ledger | loadout lean|standard|full | forget <id|all>]", "warning");
+        notify("Usage: /t3-agent [status | ledger | loadout lean|standard|full | forget <id|all>]", "warning");
         return;
       }
-      ctx.ui.notify(statusReport(), "info");
+      notify(statusReport(), "info");
     },
   });
 

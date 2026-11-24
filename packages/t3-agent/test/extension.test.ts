@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -23,6 +23,7 @@ function fixture(env: Record<string, string | undefined>, options: { branch?: un
   const branch = options.branch ?? [];
   const direct = options.direct ?? new Set(T3_TOOLS.slice(0, 3));
   const statuses: unknown[][] = [];
+  const messages: { content: string }[] = [];
   const notices: unknown[][] = [];
   let active = options.active ?? ["read", "bash", "edit", "write", "mcp__t3-code__orchestrator_capabilities", "mcp__t3-code__delegate_task", "mcp__t3-code__task_status"];
   const calls: string[] = [];
@@ -39,6 +40,7 @@ function fixture(env: Record<string, string | undefined>, options: { branch?: un
       appended.push([customType, data]);
       branch.push({ type: "custom", customType, data });
     },
+    sendMessage: (message: { content: string }) => messages.push(message),
     exec: async () => ({ stdout: "", stderr: "", code: 128, killed: false, truncated: false }),
   }, {
     get(target, key: string) {
@@ -48,6 +50,7 @@ function fixture(env: Record<string, string | undefined>, options: { branch?: un
   }) as unknown as ExtensionAPI;
   const ctx = {
     cwd: "/tmp/project",
+    hasUI: true,
     isProjectTrusted: () => false,
     model: { api: "openai-responses" },
     sessionManager: { getBranch: () => branch },
@@ -59,7 +62,7 @@ function fixture(env: Record<string, string | undefined>, options: { branch?: un
     for (const handler of handlers.get(name) ?? []) result = await handler({ type: name, ...event }, ctx);
     return result as any;
   };
-  return { handlers, commands, appended, statuses, notices, calls, ctx, emit, active: () => active, reset: (names: string[]) => { active = [...names]; } };
+  return { handlers, commands, appended, statuses, notices, messages, calls, ctx, emit, active: () => active, reset: (names: string[]) => { active = [...names]; } };
 }
 
 const startTurn = async (f: ReturnType<typeof fixture>) => {
@@ -139,6 +142,45 @@ test("under T3 it contributes its skill and prompts and declares the standard lo
   const sections = await startTurn(f);
   assert.match(sections.t3_agent!, /Permission mode: full access/);
   assert.match(sections.t3_agent!, /Declared T3 tools: 10\b/);
+});
+
+test("headless T3 sessions never call ctx.ui, including for command feedback or config warnings", async t => {
+  const f = fixture(T3);
+  f.ctx.hasUI = false;
+  f.ctx.cwd = mkdtempSync(join(tmpdir(), "t3-agent-headless-"));
+  t.after(() => rmSync(f.ctx.cwd, { recursive: true, force: true }));
+  f.ctx.isProjectTrusted = () => true;
+  mkdirSync(join(f.ctx.cwd, ".pi"));
+  writeFileSync(join(f.ctx.cwd, ".pi", "t3-agent.json"), '{"loadout":"invalid"}');
+  await f.emit("session_start");
+  await startTurn(f);
+  await toolResult(f, "schedule_task", {}, { scheduledTaskId: "s" });
+  for (const command of ["status", "ledger", "loadout lean", "loadout bogus", "forget s", "forget missing", "unknown"]) {
+    await f.commands.get("t3-agent").handler(command, f.ctx);
+  }
+  await f.emit("agent_settled");
+  assert.deepEqual([f.statuses, f.notices], [[], []]);
+  assert.match(f.messages[0]!.content, /Configuration problems:/);
+  f.ctx.hasUI = true;
+  await startTurn(f);
+  assert.equal(f.notices.length, 1, "an unsent config warning was not marked delivered");
+});
+
+test("composer status updates only when its displayed text changes", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  await f.emit("session_tree");
+  await toolResult(f, "t3_thread_launch", {}, { threadId: "t" });
+  await f.emit("agent_settled");
+  await toolResult(f, "delegate_task", {}, { taskId: "d", status: "running" });
+  await toolResult(f, "task_status", { taskId: "d" }, { status: "running", workState: "working" });
+  await toolResult(f, "task_cancel", { taskId: "d" }, { status: "cancelled" });
+  await f.emit("agent_settled");
+  assert.deepEqual(f.statuses, [
+    [STATUS_KEY, "t3-agent: full access · standard loadout"],
+    [STATUS_KEY, "t3-agent: full access · standard loadout · 1 delegate"],
+    [STATUS_KEY, "t3-agent: full access · standard loadout"],
+  ]);
 });
 
 test("supervised threads get Pi's read-only search tools", async () => {
