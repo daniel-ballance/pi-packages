@@ -1,6 +1,6 @@
 # Host capabilities
 
-Use `Host: terminal` or `Host: t3` from the p3stack system prompt. Without it, choose T3 Code if tools named `mcp__t3-code__*` exist; otherwise choose terminal. Read the capability here and follow **only your host's link**. Check availability before use.
+Use `Host: terminal` or `Host: t3` from the p3stack system prompt. Without it, run `test -n "${T3_MCP_URL:-}"` in the shell: exit 0 selects T3 Code; otherwise select terminal. Read the capability here and follow **only your host's link**. Check availability before use.
 
 Resolve skill links from the poteto-mode skill directory. `<agent-dir>` is Pi's agent directory: `PI_CODING_AGENT_DIR` when set, otherwise `~/.pi/agent`.
 

@@ -142,10 +142,18 @@ for (const name of ["swarm", "arena"]) {
     const fanOut = skill(name).split("## Phase B: Fan out")[1].split("## Phase C")[0];
     assert.match(fanOut, /every (?:slice|candidate)/i);
     assert.match(fanOut, /waves[^\n]*live-child limit/i);
-    assert.match(fanOut, /close[^\n]*before[^\n]*next/i);
+    assert.match(fanOut, /collect each wave and free its capacity as the host requires/i);
+    assert.doesNotMatch(fanOut, /close each wave/i);
     assert.doesNotMatch(fanOut, /all N .* at once/);
   });
 }
+
+test("playbooks and standalone skills resolve roles through the same Subagents section", () => {
+  for (const doc of [playbook("feature"), playbook("bug-fix"), skill("how"), skill("swarm")]) {
+    assert.match(doc, /resolve each subagent's role per the Subagents section/i);
+    assert.doesNotMatch(doc, /pick each subagent's reasoning level/i);
+  }
+});
 
 test("recall gives each child scoped history IDs, not a second discovery algorithm", () => {
   const recall = skill("recall");
