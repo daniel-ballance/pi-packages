@@ -66,7 +66,7 @@ test("the review and design instructions resolve delegation through the host map
   }
 });
 
-test("host lint catches terminal and T3 calls in agents and skill resources, but not the map or shared tools", t => {
+test("host lint catches terminal and T3 calls in agents and skill resources, including the entry map, but not shared tools", t => {
   const root = mkdtempSync(join(tmpdir(), "p3stack-host-tools-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const map = "skills/poteto-mode/references/host-capabilities.md";
@@ -83,6 +83,7 @@ test("host lint catches terminal and T3 calls in agents and skill resources, but
   assert.deepEqual(lintHosts(root), [
     agent + ":1: subagent_spawn", agent + ":1: subagent_wait", agent + ":2: task_cancel",
     resource + ":1: subagent_workflow_inspect", resource + ":2: mcp__t3_code__delegate_task",
+    map + ":1: subagent_read", map + ":1: mcp__t3-code__delegate_task",
   ]);
 });
 

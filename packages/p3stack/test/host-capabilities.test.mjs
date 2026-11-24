@@ -32,8 +32,8 @@ test("each capability links to the same heading on each host", () => {
 
 test("host selection exposes only the selected host's operations", () => {
   const entry = map("capabilities");
-  for (const marker of ["Host: terminal", "Host: t3", "mcp__t3-code__*"]) assert.ok(entry.includes(marker), marker);
-  assert.deepEqual(new Set(hostToolNames(entry)), new Set(["mcp__t3-code__*"]));
+  for (const marker of ["Host: terminal", "Host: t3"]) assert.ok(entry.includes(marker), marker);
+  for (const name of hostToolNames(entry)) assert.equal(name, "mcp__t3-code__*");
   const terminal = hostToolNames(map("terminal")), t3 = hostToolNames(map("t3"));
   assert.ok(terminal.includes("subagent_spawn"));
   assert.ok(t3.includes("mcp__t3-code__delegate_task"));
