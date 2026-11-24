@@ -39,10 +39,6 @@ export function registerBrief(pi: ExtensionAPI, isOn: (() => boolean) & { grant(
       const { task, role } = event.input;
       if (typeof task !== "string") return;
       if (task.length > 120_000) return tooLong(task.length - 120_000);
-      // The supervised T3 bridge confirms at most 4,000 characters of pretty-printed JSON.
-      if (["approval-required", "auto", "auto-accept-edits"].includes(process.env.T3_PI_RUNTIME_MODE?.trim() ?? "") && JSON.stringify(event.input, null, 2).length > 4000) {
-        return { block: true, reason: "Shorten the delegation arguments to fit T3's 4,000-character approval preview. Cite the commit and checkout-relative files for longer context." };
-      }
       const kind = role === "research" || role === "review" ? "report" : "work";
       const override = /^<p3stack-brief>\n(Task grant: (?:default|full-autonomy))\n/.exec(task)?.[1];
       const prefix = t3Header(override ?? authority(), T3_STANCE[kind]) + "\n\n";

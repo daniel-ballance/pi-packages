@@ -637,21 +637,23 @@ test("T3 dispatch never changes the task after supervised approval, including in
   } finally { h.dispose(); }
 });
 
-test("a supervised T3 brief fits the bridge's actual approval preview, including JSON escaping", async t => {
+test("a supervised T3 brief longer than the bridge's approval preview is sent whole, with its grant in view", async t => {
   const prev = process.env.T3_PI_RUNTIME_MODE;
   t.after(() => { if (prev === undefined) delete process.env.T3_PI_RUNTIME_MODE; else process.env.T3_PI_RUNTIME_MODE = prev; });
   const h = hostHarness("t3", { t3: { providers: [] } });
   try {
     await h.command("p3stack", "on");
     const { work } = (await h.call("p3stack_roles", {})).structuredContent.briefHeaders;
-    const event = { toolName: delegation.t3, input: { task: work + "\n\n" + '"'.repeat(2000) + "STOP HERE", role: "implementation" } };
-    assert.ok(!JSON.stringify(event.input, null, 2).slice(0, 4000).includes("STOP HERE"));
-    for (const mode of ["auto", "approval-required", "auto-accept-edits"]) {
+    const event = { toolName: delegation.t3, input: { task: work + "\n\n" + "Inspect the importer. ".repeat(400), role: "implementation" } };
+    const preview = JSON.stringify(event.input, null, 2).slice(0, 4000); // what the bridge shows the human
+    assert.ok(JSON.stringify(event.input, null, 2).length > 4000);
+    assert.ok(preview.includes("Grant: default."), "the grant is inside the previewed prefix");
+    for (const mode of ["auto", "approval-required", "auto-accept-edits", "full-access"]) {
       process.env.T3_PI_RUNTIME_MODE = mode;
-      assert.equal((await h.results("tool_call", event))[0]?.block, true, mode);
+      const sent = structuredClone(event.input);
+      assert.deepEqual(await h.results("tool_call", event), [], mode);
+      assert.deepEqual(event.input, sent, mode);
     }
-    process.env.T3_PI_RUNTIME_MODE = "full-access";
-    assert.deepEqual(await h.results("tool_call", event), []);
   } finally { h.dispose(); }
 });
 

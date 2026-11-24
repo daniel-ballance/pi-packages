@@ -6,7 +6,7 @@ Use the live tool descriptions for arguments and results. Tools can load late; s
 
 Pi delegates with `mcp__t3-code__delegate_task`. The child gets only the task. T3 has no fixed live-child limit; start large fan-outs a few at a time. Reuse a `clientRequestId` only to retry the same lost call. For a report-only review or research brief, set the corresponding `role` and say not to edit; there is no per-task tool subset. Use `mode: "wait"` when this turn needs the result; otherwise dispatch asynchronously. Follow the response's `next`; a timeout is not completion. While work is running, do other authorized work or end your turn. Never poll; read `mcp__t3-code__task_status` on completion wake. Stop unwanted tasks with `mcp__t3-code__task_cancel`.
 
-With p3stack on, start `task` with the resolver's `briefHeaders.report` for review or research, `briefHeaders.work` otherwise. Add a blank line, then the assignment. For a task-specific grant, replace the header's `Grant:` line with `Task grant: default` or `Task grant: full-autonomy`. Send the complete text for approval. If it exceeds the supervised preview, shorten the task and cite longer material by commit and checkout-relative path.
+With p3stack on, start `task` with the resolver's `briefHeaders.report` for review or research, `briefHeaders.work` otherwise. Add a blank line, then the assignment. For a task-specific grant, replace the header's `Grant:` line with `Task grant: default` or `Task grant: full-autonomy`. Send the complete text for approval. The approval dialog shows the first 4,000 characters of the call, so state the scope and anything the human must agree to first.
 
 ## Models and role defaults
 

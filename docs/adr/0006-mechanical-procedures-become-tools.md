@@ -2,7 +2,7 @@
 
 Use code for steps the model might otherwise skip. While the mode is on, terminal spawns, including proxied spawns and workflow workers, get a writer or report-only header at initial dispatch. Follow-ups and peer messages are not new briefs. A coordinator passes its own grant or a narrower one. A report-only brief keeps a reviewer on the assigned question instead of starting a playbook.
 
-Under T3, `p3stack_roles` returns self-contained `briefHeaders` with the saved grant. The parent selects the stance, substitutes a task grant when needed, and sends the complete brief to `delegate_task`. The hook checks the header and blocks an incomplete or stale brief instead of rewriting approved text. Supervised calls must fit the bridge's 4,000-character input preview. No extra tool call or second approval is required to prepare a brief.
+Under T3, `p3stack_roles` returns self-contained `briefHeaders` with the saved grant. The parent selects the stance, substitutes a task grant when needed, and sends the complete brief to `delegate_task`. The hook checks the header and blocks an incomplete or stale brief instead of rewriting approved text. The bridge's approval dialog shows the first 4,000 characters of the call; the header comes first, so the grant is always in view, and a longer brief is sent whole. No extra tool call or second approval is required to prepare a brief.
 
 `floor-check.mjs` flags recognized quality-floor violations in the diff. Exit 0 does not certify the change. `p3stack_roles` with `distinctFrom` prefers a different model family when the catalog offers one. Workflow templates let the subagents engine run interrogate, arena, hillclimb, and skill evals. The offline description lint checks vocabulary, not the model's choices.
 
