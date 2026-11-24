@@ -637,23 +637,31 @@ test("T3 dispatch never changes the task after supervised approval, including in
   } finally { h.dispose(); }
 });
 
-test("a supervised T3 brief longer than the bridge's approval preview is sent whole, with its grant in view", async t => {
+test("supervised T3 calls beyond the approval preview put task last and send the brief whole", async t => {
   const prev = process.env.T3_PI_RUNTIME_MODE;
   t.after(() => { if (prev === undefined) delete process.env.T3_PI_RUNTIME_MODE; else process.env.T3_PI_RUNTIME_MODE = prev; });
   const h = hostHarness("t3", { t3: { providers: [] } });
   try {
     await h.command("p3stack", "on");
     const { work } = (await h.call("p3stack_roles", {})).structuredContent.briefHeaders;
-    const event = { toolName: delegation.t3, input: { task: work + "\n\n" + "Inspect the importer. ".repeat(400), role: "implementation" } };
-    const preview = JSON.stringify(event.input, null, 2).slice(0, 4000); // what the bridge shows the human
-    assert.ok(JSON.stringify(event.input, null, 2).length > 4000);
-    assert.ok(preview.includes("Grant: default."), "the grant is inside the previewed prefix");
-    for (const mode of ["auto", "approval-required", "auto-accept-edits", "full-access"]) {
+    const dispatch = (input: object) => h.results("tool_call", { toolName: delegation.t3, input });
+    const args = { role: "implementation", isolation: "worktree", target: { model: "example" } };
+    const base = work + "\n\nInspect the importer.";
+    const fits = { task: base + "x".repeat(4000 - JSON.stringify({ task: base, ...args }, null, 2).length), ...args };
+    const task = fits.task + "x";
+    for (const mode of ["auto", "approval-required", "auto-accept-edits"]) {
       process.env.T3_PI_RUNTIME_MODE = mode;
-      const sent = structuredClone(event.input);
-      assert.deepEqual(await h.results("tool_call", event), [], mode);
-      assert.deepEqual(event.input, sent, mode);
+      assert.deepEqual(await dispatch(fits), [], "at 4,000 characters the whole call is visible");
+      const [blocked] = await dispatch({ task, ...args });
+      assert.equal(blocked?.block, true, mode);
+      assert.match(blocked.reason, /put task last/i);
+      const ordered = { ...args, task: task + "y".repeat(5000) };
+      const sent = structuredClone(ordered);
+      assert.deepEqual(await dispatch(ordered), [], mode);
+      assert.deepEqual(ordered, sent);
     }
+    process.env.T3_PI_RUNTIME_MODE = "full-access";
+    assert.deepEqual(await dispatch({ task, ...args }), []);
   } finally { h.dispose(); }
 });
 
