@@ -50,7 +50,16 @@ export function registerMode(pi: ExtensionAPI, potetoSkill: string) {
     pi.on("model_select", refresh);
     pi.on("thinking_level_select", refresh);
   }
+  let userRequest = false;
+  pi.on("context", ({ messages }) => {
+    // Pi projects hidden custom messages as user messages. Keep our note beside its
+    // own user request only, not a later steer, custom wake or resumed conversation.
+    const user = modeOn && userRequest ? messages.findLastIndex(m => m.role === "user") : -1;
+    const keep = messages.filter((m, i) => m.role !== "custom" || m.customType !== "p3stack-turn" || (user >= 0 && i > user));
+    if (keep.length !== messages.length) return { messages: keep };
+  });
   pi.on("before_agent_start", event => {
+    userRequest = event.messageType === "user";
     footer?.refresh(true); // No settings-change event: refresh compaction settings at the next request.
     const options = event?.systemPromptOptions;
     if (!modeOn) {
@@ -61,7 +70,7 @@ export function registerMode(pi: ExtensionAPI, potetoSkill: string) {
     if (options?.forceSystemPrompt !== undefined) options.forceSystemPrompt += "\n\n" + line;
     else if (options?.sections) options.sections[MODE] = line;
     if (event?.messageType !== "user") return;
-    return { message: { customType: "p3stack-turn", display: false, content: `Automated note from the p3stack extension, not from the user. p3stack-mode is on. Before anything else, route this request: read ${modeSkill} unless its text is already in your context, select its matching row, then do what that row says, in its order, before anything else. If the user's message answers, approves or corrects the task already in progress, continue that task instead. A question about the mode itself needs no route. Call p3stack_roles before delegating.` } };
+    return { message: { customType: "p3stack-turn", display: false, content: `Automated note from the p3stack extension, not from the user. p3stack-mode is on. Before anything else, route this request: read ${modeSkill} unless its text is already in your context, then follow the matching row within the user's requested scope and stopping point. If the user's message answers, approves or corrects the task already in progress, continue that task instead. A question about the mode itself needs no route. Call p3stack_roles before delegating.` } };
   });
   pi.registerCommand("p3stack", {
     description: `Control p3stack-mode and its grant. ${usage}`,

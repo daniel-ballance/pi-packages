@@ -43,6 +43,38 @@ function rpc(t: TestContext, env: NodeJS.ProcessEnv = {}) {
   return { send, wait, root, requests: () => readFileSync(requests, "utf8").trim().split("\n").map(line => JSON.parse(line) as Packet) };
 }
 
+for (const host of ["terminal", "t3"]) test(`${host}: provider requests scope routing to this request and preserve the user's grant and correction`, async t => {
+  const pi = rpc(t, host === "t3" ? { T3_MCP_URL: "http://t3.invalid/mcp" } : {});
+  const prompt = async (message: string) => {
+    const from = pi.send({ type: "prompt", message });
+    await pi.wait(from, e => message.startsWith("/") ? e.type === "response" && e.success : e.type === "agent_settled");
+  };
+  const design = "Discuss the design only. Do not implement it.";
+  const oneTask = "For this task only, use full autonomy to recommend one design. Stop at the recommendation.";
+  const correction = "Correction: leave the design unchanged. Explain the current interface.";
+  await prompt("/p3stack on default");
+  await prompt(design);
+  await prompt(oneTask);
+  await prompt("/p3stack off");
+  await prompt(correction);
+  const requests = pi.requests();
+  assert.equal(requests.length, 3);
+  for (const [i, request] of requests.entries()) {
+    const users = request.messages.filter((m: Packet) => m.role === "user").map((m: Packet) =>
+      typeof m.content === "string" ? m.content : m.content.map((p: Packet) => p.text).join("\n"));
+    const notes = users.filter((s: string) => s.includes("p3stack-mode is on"));
+    assert.deepEqual(users.filter((s: string) => !notes.includes(s)), [design, oneTask, correction].slice(0, i + 1));
+    if (i < 2) {
+      assert.match(request.system, new RegExp(`Grant: default\\. Host: ${host}`), "the user's one-task raise does not change the saved grant");
+      assert.equal(notes.length, 1, "exactly one current route reminder beside the request");
+      assert.equal(users.at(-1), notes[0]);
+    } else {
+      assert.doesNotMatch(request.system, /<p3stack>/);
+      assert.deepEqual(notes, [], "no replay of an old mode-on instruction after off");
+    }
+  }
+});
+
 test("an unanswered RPC dialog reaches its deadline; an explicit dismissal does not", async t => {
   const pi = rpc(t, { P3STACK_ASK_TIMEOUT_MS: "400" });
   for (const action of ["dismiss", "timeout", "other-timeout"]) {
