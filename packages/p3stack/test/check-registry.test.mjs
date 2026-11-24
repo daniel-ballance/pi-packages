@@ -105,6 +105,35 @@ for (const heading of ["# Leaf", ""]) {
   });
 }
 
+test("directory links follow the entry or resource directory; line citations keep the line", t => {
+  const f = referenceFixture(t);
+  f.write("vendor/demo/skills/leaf/notes/example.md", "Example.\n");
+  f.write("vendor/demo/skills/first/citations.md", "[entry](../leaf/) [notes](../leaf/notes) [line](../leaf/notes/example.md:12)\nSee `../leaf/notes/example.md:12` and ../leaf/notes/example.md:13.\n");
+  f.build();
+  const base = "../first/references/leaf";
+  assert.equal(readFileSync(join(f.outDir, "skills/first/citations.md"), "utf8"), `[entry](${base}.md) [notes](${base}/notes) [line](${base}/notes/example.md#L12)\nSee \`${base}/notes/example.md:12\` and ${base}/notes/example.md:13.\n`);
+});
+
+test("rooted paths and URLs are not moved resources", t => {
+  const f = referenceFixture(t), text = "[/notes](/notes/example.md) and [upstream](https://example.test/skills/leaf/notes/example.md)\n";
+  f.write("vendor/demo/skills/leaf/notes/example.md", text);
+  f.build();
+  assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf/notes/example.md"), "utf8"), text);
+});
+
+for (const [form, example, line] of [
+  ["fence", "```md\n[run](scripts/check)\n```", 3],
+  ["HTML attribute", '<a href="./scripts/check">run</a>', 2],
+  ["untranslated flag", "Run --file=scripts/check.", 2],
+]) {
+  test(`a moved file reports an unrebased resource (${form})`, t => {
+    const f = referenceFixture(t);
+    f.write("vendor/demo/skills/leaf/scripts/check", "#!/bin/sh\n");
+    f.write("vendor/demo/skills/leaf/usage.md", "Usage:\n" + example + "\n");
+    assert.throws(f.build, new RegExp(`skills/first/references/leaf/usage.md:${line}: unrebased resource path .*scripts/check`));
+  });
+}
+
 test("prose names link from the skill root, including both spellings of a principle", t => {
   const f = referenceFixture(t), name = "principle-test-first", path = `skills/${name}/SKILL.md`;
   f.write(`vendor/demo/${path}`, f.skill(name));
@@ -118,11 +147,13 @@ test("prose names link from the skill root, including both spellings of a princi
   assert.equal(read("local.md"), "Owned: the **leaf** skill.\n");
 });
 
-for (const command of ["/leaf", "/skill:leaf", "/leaf?"]) {
-  test(`a leftover ${command} command fails generation by file and line`, t => {
-    const f = referenceFixture(t);
-    f.write("extra/agents/read.md", `Review.\nRun ${command}.\n`);
-    assert.throws(f.build, new RegExp(`agents/read.md:2:.*${command}`));
+for (const [name, example, command] of [["sharpen", "/sharpen", "/sharpen"], ["unslop", "`/skill:unslop`", "/skill:unslop"], ["teach", "(/teach)", "/teach"], ["leaf", "/leaf?", "/leaf"]]) {
+  test(`a leftover ${example} fails generation by file and line`, t => {
+    const f = referenceFixture(t), path = `skills/${name}/SKILL.md`;
+    f.write(`vendor/demo/${path}`, f.skill(name));
+    f.write("registry/skills.json", [...f.skills, ...(name === "leaf" ? [] : [f.ref]), { ...f.ref, path, name }]);
+    f.write("extra/agents/read.md", `Review.\nRun ${example}.\n`);
+    assert.throws(f.build, { message: new RegExp(`agents/read.md:2: removed skill command ${command}`) });
   });
 }
 

@@ -329,9 +329,77 @@ function linkReferenceMentions(text, references, linkTo, output) {
 
 const linkBase = path => path.startsWith("skills/") ? path.split("/").slice(0, 2).join("/") : posix.dirname(path);
 
+// A link to the retired skill directory now opens the reference, even when
+// there are no companion files. Links to subdirectories keep browsing them.
+function resourceTargets(moves) {
+  const targets = new Map(moves);
+  for (const [old, dest] of moves) {
+    const root = linkBase(old);
+    if (old === `${root}/SKILL.md`) targets.set(root, dest);
+    for (let dir = posix.dirname(old), to = posix.dirname(dest); dir !== root; dir = posix.dirname(dir), to = posix.dirname(to)) {
+      targets.set(dir, to);
+    }
+  }
+  return targets;
+}
+
+function rebaseResources(text, path, output, moves, targets, linkTo) {
+  const before = linkBase(path), aliases = new Map(), own = [];
+  for (const [old, dest] of moves) {
+    const operand = posix.relative(before, old), replacement = linkTo(dest);
+    aliases.set(operand, replacement);
+    if (old.startsWith(before + "/")) {
+      const qualified = "../" + old.slice("skills/".length);
+      aliases.set("./" + operand, replacement);
+      aliases.set(qualified, replacement);
+      own.push("./" + operand, qualified, old);
+      if (operand !== "SKILL.md") own.push(operand); // the bare name also denotes Pi's convention
+    }
+  }
+  const alternatives = keys => [...keys].map(escapeRegex).join("|");
+  const operands = new RegExp("(?<![^\\s`(<'\"])" + `(${alternatives(aliases.keys())})(:\\d+)?` + "(?=$|[\\s`)>#?'\",;]|[.!](?!\\w))", "g");
+  const stale = own.length && new RegExp(`(?<![\\w./-])(?:${alternatives(own)})(?![\\w/-]|\\.\\w)`);
+  const edits = [];
+  function guard(span, start) {
+    const bad = stale && stale.exec(span);
+    if (bad) {
+      const line = text.slice(0, start).split("\n").length + span.slice(0, bad.index).split("\n").length - 1;
+      throw new Error(`${output}:${line}: unrebased resource path ${bad[0]}`);
+    }
+  }
+  function visit(node) {
+    const { start, end } = node.position, span = text.slice(start.offset, end.offset);
+    if (typeof node.url === "string") {
+      if (/^(?:[a-z][a-z\d+.-]*:\/\/|[/?#])/i.test(node.url)) return;
+      const [, operand, line, fragment = ""] = /^([^?#]+?)(?::(\d+))?([?#].*)?$/.exec(node.url) ?? [];
+      const target = operand && targets.get(posix.join(before, operand).replace(/\/$/, ""));
+      if (target) {
+        // Start after the label: it can contain the same filename as the URL.
+        const labelEnd = node.children?.at(-1)?.position.end.offset ?? start.offset;
+        const delimiter = /\](?:\(\s*|:\s*)<?/.exec(text.slice(labelEnd, end.offset));
+        const at = delimiter && labelEnd + delimiter.index + delimiter[0].length;
+        if (at && text.startsWith(node.url, at)) edits.push([at, at + node.url.length, linkTo(target) + (line ? `#L${line}` : fragment)]);
+        else guard(span, start.offset);
+      } else guard(node.url, start.offset);
+      return; // link labels and titles are not operands
+    }
+    if (node.type === "linkReference" || node.type === "imageReference") return;
+    if (node.children) return node.children.forEach(visit);
+    const rewritten = node.type === "inlineCode" || node.type === "text" ? span.replace(operands, (match, operand, line) =>
+      (line || node.type === "inlineCode" && operand !== "SKILL.md") ? aliases.get(operand) + (line ?? "") : match) : span;
+    guard(rewritten, start.offset); // includes fences, raw HTML and unhandled shell syntax
+    if (rewritten !== span) edits.push([start.offset, end.offset, rewritten]);
+  }
+  if (path.endsWith(".md")) visit(fromMarkdown(text));
+  else guard(text, 0);
+  for (const [start, end, replacement] of edits.reverse()) text = text.slice(0, start) + replacement + text.slice(end);
+  return text;
+}
+
 function relocateReferences(outDir, skills, owners) {
   const paths = walk(outDir).map(path => path.split(sep).join("/")), moves = referenceMoves(paths, skills);
   if (!moves.size) return;
+  const targets = resourceTargets(moves);
   const references = new Map(skills.filter(row => row.action === "reference").flatMap(row =>
     row.name.startsWith("principle-") ? [[row.name, row], [row.name.slice("principle-".length), row]] : [[row.name, row]]));
   for (const path of paths) {
@@ -351,25 +419,7 @@ function relocateReferences(outDir, skills, owners) {
     if (path !== output && path.endsWith("/SKILL.md")) {
       text = referenceBody(text, path, posix.basename(before), posix.basename(after));
     }
-    // Match only staged resources. A similarly named example, URL or consumer-repo
-    // path isn't part of this move. Both link destinations and code spans (including
-    // commands with arguments) use the enclosing skill root as their working directory.
-    const aliases = new Map();
-    for (const [old, dest] of moves) {
-      const operand = posix.relative(before, old), replacement = linkTo(dest);
-      aliases.set(operand, replacement);
-      if (!operand.startsWith("../")) {
-        aliases.set("./" + operand, replacement);
-        aliases.set("../" + old.slice("skills/".length), replacement);
-      }
-    }
-    const pathsInSpan = new RegExp("(?<![^\\s`(<'\"])" + `(?:${[...aliases.keys()].map(escapeRegex).join("|")})` + "(?=$|[\\s`)>#?'\"])", "g");
-    text = text.replace(/`[^`\n]+`|\]\([^\n)]*\)|^\s*\[[^\]\n]+\]:\s*.*$/gm, span => span.replace(pathsInSpan, operand => {
-      // In prose `SKILL.md` can name the convention (e.g. a transcript read of
-      // any skill). A link destination or explicit `./SKILL.md` names this file.
-      if (operand === "SKILL.md" && span.startsWith("`")) return operand;
-      return aliases.get(operand);
-    }));
+    text = rebaseResources(text, path, output, moves, targets, linkTo);
     if (owners.has(path) && !["extra", "authored", "registry"].includes(owners.get(path)) && path.endsWith(".md")) {
       text = linkReferenceMentions(text, references, linkTo, output);
     }
