@@ -176,6 +176,7 @@ export class SubagentManager {
         if (record.status === "stopped" && record.error) {
           record.lastError = record.error; delete record.error;
         }
+        if (record.uncertainSubmission) record.unconfirmedStop ??= "Unconfirmed stop after uncertain prompt acceptance. Inspect for orphaned work.";
         if (record.unconfirmedStop) record.status = "stopping";
         else delete record.pid;
         if (record.queuedAssignments?.length) discardedQueuedAssignments = true;

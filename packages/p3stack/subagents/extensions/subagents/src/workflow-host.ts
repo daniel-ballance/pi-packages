@@ -92,7 +92,9 @@ export function managerWorkflowHost(manager: SubagentManager, policy: () => Suba
         // Human intervention transfers supervision to the parent. In particular,
         // halt must retain the live Pi process and its conversation for discussion.
         // Kill is held too: preserve its stopped record and intervention notices.
-        await Promise.all([...ids.values()].filter(id => !preserved.has(id) && !manager.get(id).hold).map(id => manager.close(id)));
+        const closed = await Promise.all([...ids.values()].filter(id => !preserved.has(id) && !manager.get(id).hold).map(id => manager.close(id)));
+        const failures = closed.filter(child => child.outcome === "unconfirmed");
+        if (failures.length) throw new Error(`Worker cleanup unconfirmed: ${failures.map(child => [child.id, child.targetDetail, ...child.subtreeFailures].filter(Boolean).join(": ")).join("; ")}`);
       }
     },
     async command(command, cwd, env, logDirectory, signal) {

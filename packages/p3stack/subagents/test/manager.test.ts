@@ -677,7 +677,8 @@ test("uncertain acceptance survives crash-style reload and cannot be dismissed b
     restored = new SubagentManager(s.dir);
     assert.equal(restored.get(a.id).hold?.outcome, "failed");
     assert.ok(restored.get(a.id).uncertainSubmission);
-    await restored.close(a.id);
+    assert.equal((await restored.close(a.id)).outcome, "unconfirmed");
+    assert.equal(restored.capacity().live, 1, "a detached unconfirmed process still occupies a slot");
     assert.throws(() => restored!.releaseHold(a.id), /uncertain prompt acceptance/);
     await assert.rejects(restored.resume(a.id), /human halt hold/);
   } finally { await restored?.shutdown(); await s.cleanup(); }
@@ -902,6 +903,20 @@ test("workflow response.md and validator inputs include the end of a long final 
     validator.inputs = { candidate: artifact };
     const [echo] = await host.agents([validator], [], signal);
     assert.ok(echo.includes("END-VERDICT"), "the validator's actual prompt includes the tail");
+  } finally { await s.cleanup(); }
+});
+
+test("a workflow job reports an unconfirmed worker close instead of claiming cleanup", async () => {
+  const s = await setup();
+  try {
+    const [job] = workflowJobs(s.dir);
+    job.onChild = id => {
+      const child = (s.manager as any).children.get(id) as RpcChild;
+      child.stop = async () => { delete (child as any).stop; throw new Error("exit not observed"); };
+    };
+    const host = managerWorkflowHost(s.manager, workflowPolicy);
+    await assert.rejects(host.agents([job], [], new AbortController().signal), /exit not observed/);
+    assert.equal(s.manager.capacity().live, 1);
   } finally { await s.cleanup(); }
 });
 
