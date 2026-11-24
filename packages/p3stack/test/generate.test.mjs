@@ -122,6 +122,12 @@ test("source names must be nonempty and unique", () => {
   }
 });
 
+test("a malformed source exclusion names its manifest rule", t => {
+  const f = fixture({ "rules/manifest.json": manifest({ exclude: ["("] }) });
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /rules\/manifest\.json.*cursor-plugins.*exclude.*Invalid regular expression/i);
+});
+
 test("a token rule with an unknown source fails even without a minimum", () => {
   const { root, out, dispose } = twoSources({
     "rules/tokens.json": JSON.stringify([{ id: "typo", source: "missing", find: "Use", replace: "Run" }]),
