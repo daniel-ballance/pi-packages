@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
-import { createAgentSession, DefaultResourceLoader, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import p3stack from "../extensions/p3stack/index.ts";
 import type { Context } from "../extensions/p3stack/src/mode.ts";
@@ -427,7 +427,9 @@ test("the TUI sets a footer while on and restores the stock footer while off or 
   const h = harness({ mode: "tui", branch });
   try {
     await h.emit("session_start");
-    assert.equal(h.footers.at(-1), undefined);
+    await h.emit("session_tree");
+    await h.command("p3stack", "off");
+    assert.deepEqual(h.footers, [], "do not clear another extension's footer");
     await h.command("p3stack", "on");
     assert.equal(typeof h.footers.at(-1), "function");
     await h.command("p3stack", "off");
@@ -466,17 +468,15 @@ test("non-TUI mode status follows toggles and the active branch, including under
 
 test("the on footer prefixes the directory and matches Pi's stock rendering byte for byte", async () => {
   const restore = asTerminal(), h = harness({ mode: "tui" });
-  const settingsManager = SettingsManager.inMemory();
   const sessionManager = SessionManager.inMemory(h.cwd);
-  const resourceLoader = new DefaultResourceLoader({ cwd: h.cwd, agentDir: h.agentDir, settingsManager, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true });
   const model: NonNullable<ExtensionContext["model"]> = { provider: "footer-fixture", id: "model-🅿️", name: "Footer fixture", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 272000, maxTokens: 1000 };
-  const { session } = await createAgentSession({ cwd: h.cwd, agentDir: h.agentDir, model, thinkingLevel: "low", sessionManager, settingsManager, resourceLoader });
+  const state = { model, thinkingLevel: "low" };
   try {
     initTheme("dark", false);
     const { theme } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
     const contextUsage = { tokens: 23000, contextWindow: 272000, percent: 8.5 };
-    mock.method(session, "getContextUsage", () => contextUsage);
-    Object.assign(h.ctx, { model, thinkingLevel: session.thinkingLevel, sessionManager, getContextUsage: () => contextUsage });
+    const session = { model, state, sessionManager, getContextUsage: () => contextUsage, modelRuntime: { isUsingSubscription: () => false } };
+    Object.assign(h.ctx, { model, thinkingLevel: state.thinkingLevel, sessionManager, getContextUsage: () => contextUsage });
     let branch: string | null = "p3stack/pr-04-mode-extension", renders = 0;
     let changed = () => {};
     const footerData = { getGitBranch: () => branch, getExtensionStatuses: () => new Map<string, string>(), getAvailableProviderCount: () => 2, onBranchChange: (callback: () => void) => { changed = callback; return () => { changed = () => {}; }; } };
@@ -486,13 +486,18 @@ test("the on footer prefixes the directory and matches Pi's stock rendering byte
     const tui = new TuiMainScreen(new ProcessTerminal());
     mock.method(tui, "requestRender", () => { renders++; });
     const footer = factory!(tui, theme, footerData);
-    const stock = new FooterComponent(session, footerData);
+    const reads = [mock.method(SettingsManager, "create"), mock.method(sessionManager, "getEntries"), mock.method(h.ctx, "getContextUsage"), mock.method(footerData, "getGitBranch")];
+    for (let i = 0; i < 10; i++) { footer.invalidate(); footer.render(200); }
+    assert.deepEqual(reads.map(read => read.mock.callCount()), [0, 0, 0, 0], "render does not load settings, scan the session or query git");
+    // Stock consumes only the session data above; no agent or provider needs to run.
+    const stock = new FooterComponent(session as unknown as ConstructorParameters<typeof FooterComponent>[0], footerData);
     const prefix = "🅿️ ";
     assert.equal(footer.render(200)[0], prefix + stock.render(200)[0]);
     for (const percent of [0, 75, 95, null]) {
       Object.assign(contextUsage, { percent });
       for (const enabled of [true, false]) {
         writeFileSync(join(h.agentDir, "settings.json"), JSON.stringify({ compaction: { enabled } }));
+        await h.emit("before_agent_start");
         stock.setAutoCompactEnabled(enabled);
         for (const width of [200, 100, 40, 10, 3, 1]) {
           footer.invalidate();
@@ -506,25 +511,34 @@ test("the on footer prefixes the directory and matches Pi's stock rendering byte
       }
     }
     sessionManager.appendSessionInfo("named session");
+    await h.emit("session_info_changed");
     branch = null;
+    const beforeBranch = renders;
     changed();
-    assert.equal(renders, 1);
+    assert.equal(renders, beforeBranch + 1);
     assert.equal(footer.render(200)[0], prefix + stock.render(200)[0]);
     sessionManager.appendMessage({ role: "assistant", api: model.api, provider: model.provider, model: model.id, content: [], usage: { input: 1234, output: 56, cacheRead: 3000, cacheWrite: 400, totalTokens: 4690, cost: { input: 0.1, output: 0.02, cacheRead: 0.03, cacheWrite: 0.04, total: 0.19 } }, stopReason: "stop", timestamp: Date.now() });
+    await h.emit("turn_end");
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
     model.provider = "kimi-coding";
+    await h.emit("model_select");
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
     assert.match(stripTerminalSequences(footer.render(200)[1]!), /\$0\.190 \(sub\)/);
     model.reasoning = false;
+    await h.emit("model_select");
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
     Object.assign(h.ctx, { thinkingLevel: "off" });
-    session.setThinkingLevel("off");
+    state.thinkingLevel = "off";
     model.reasoning = true;
+    await h.emit("thinking_level_select");
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
-    footer.dispose?.();
+    footer.dispose?.(); // Another extension took over the footer.
+    const afterDispose = renders;
     changed();
-    assert.equal(renders, 1);
-  } finally { session.dispose(); h.dispose(); restore(); mock.restoreAll(); }
+    assert.equal(renders, afterDispose);
+    await h.command("p3stack", "off");
+    assert.deepEqual(h.footers, [factory], "a disposed footer is no longer ours to clear");
+  } finally { h.dispose(); restore(); mock.restoreAll(); }
 });
 
 test("terminal briefs keep the local writer contract or report-only review stance", async () => {
