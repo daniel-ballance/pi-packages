@@ -270,6 +270,15 @@ for (const name of reviews) {
   });
 }
 
+test("the correctness pass uses the parent's PR discussion only after its independent audit", () => {
+  const rubric = read("skills/dyl-review/references/thermo-nuclear-review.md");
+  const recipe = read("agents/thermo-nuclear-review-subagent.md");
+  assert.doesNotMatch(rubric, /\b(?:gh|glab)\b/);
+  assert.match(rubric, /\]\(\.\.\/\.\.\/agents\/thermo-nuclear-review-subagent\.md#work\)/);
+  assert.match(recipe, /After the audit[^\n]*medium-or-higher[^\n]*discussion supplied by the parent/i);
+  assert.match(recipe, /unavailable[^\n]*return the independent findings/i);
+});
+
 test("deep review fetches the PR head even when the base repository has a branch of the same name", t => {
   const { repo, wt, git } = auditFixture(t);
   const base = git("-C", repo, "rev-parse", "HEAD");
