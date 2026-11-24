@@ -10,4 +10,4 @@ Without that reminder:
 
 1. Split by file ownership and independent checks. If the work cannot be split safely, do it in this thread.
 2. Commit any prerequisites. Use `orchestrator_capabilities`, then one async `delegate_task` per part with `isolation:"worktree"`, its own `clientRequestId`, goal, files and checks. Ask for a commit and branch name.
-3. End the turn. On each wake, review and merge the part locally. Cancel unneeded parts with `task_cancel`. Run the combined checks and report the result.
+3. Finish dispatching the wave, keep each `taskId` and follow its `next`. Yield while waiting. On a completion wake, read `task_status`, verify the part and merge it locally. Cancel unneeded parts with `task_cancel`. Run the combined checks and report the result.
