@@ -255,10 +255,11 @@ const hintParts = (hint: string) => {
   return { name: match?.[1] ?? hint, level: match?.[2] };
 };
 
-const KNOWN_FAMILY = /(?<![a-z])(?:claude|grok|composer|gpt|gemini|deepseek|llama|mistral|qwen|kimi|glm|minimax)(?![a-z])/i;
+const KNOWN_FAMILY = /(?<![a-z])(?:claude|grok|composer|chatgpt|gpt|gemini|deepseek|codellama|llama|mistral|qwen|kimi|glm|minimax)(?![a-z])/i;
+const FAMILY_ALIAS: Record<string, string> = { composer: "grok", chatgpt: "gpt", codellama: "llama" };
 function modelFamily(id: string): string {
   const known = id.match(KNOWN_FAMILY)?.[0].toLowerCase();
-  return known === "composer" ? "grok" : known ?? id;
+  return known ? FAMILY_ALIAS[known] ?? known : id;
 }
 
 export function family(model: string): string {
@@ -280,13 +281,20 @@ function fileChoice(value: string, policy: FilePolicy, catalog: LiveCatalog, aut
   // Try the literal model id before interpreting any part of it as effort.
   const literal = choices.some(s => (policy !== "foreign" && nameOf(s) === value) || (policy !== "pin" && foreignModel(s, value)));
   const { name, level } = literal ? { name: value, level: undefined } : policy === "legacy" ? hintParts(value) : pinParts(value);
-  const eligible = choices.filter(s => !level || s.level === level);
+  // An unavailable level falls to the closest offered level below it, reported as a substitution.
+  const eligible = choices.filter(s => !level || (s.level !== undefined && rank(s.level) <= rank(level)));
   const exact = eligible.filter(s => nameOf(s) === name);
   const best = (matches: Selection[]) => matches.sort((a, b) => rank(b.level) - rank(a.level))[0];
-  if (policy === "pin" || (policy === "legacy" && exact.length)) return { found: best(exact), substituted: false, avoid: author };
+  if (policy === "pin" || (policy === "legacy" && exact.length)) {
+    const found = best(exact);
+    return { found, substituted: Boolean(found && level && found.level !== level), avoid: author };
+  }
 
+  // A value from a file with no host field that names a listed T3 instance stays on that account.
+  const instance = name.slice(0, Math.max(0, name.indexOf("/")));
+  const pool = policy === "legacy" && catalog.instances?.has(instance) ? eligible.filter(s => s.provider === instance) : eligible;
   const family = modelFamily(modelPart(name));
-  const matches = eligible.filter(s => foreignModel(s, name) || modelFamily(s.model) === family);
+  const matches = pool.filter(s => foreignModel(s, name) || modelFamily(s.model) === family);
   const preferred = prefer(matches, s => foreignModel(s, name));
   // A foreign spelling doesn't identify a provider account on this host.
   const ambiguous = catalog.instances && new Set(preferred.map(s => s.provider)).size > 1;

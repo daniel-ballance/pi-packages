@@ -102,14 +102,15 @@ test("a literal model ending in -max wins over the shorter model, including when
 });
 
 for (const fileHost of ["terminal", "t3"] as const) {
-  test(`${fileHost} pins cannot switch provider, model or explicit level on their own host`, async t => {
+  test(`${fileHost} pins keep their provider and model on their own host; an unavailable level is a reported downgrade`, async t => {
     const h = lookup(t, fileHost === "terminal" ? "cli" : "t3", { fileHost,
       pins: { "bug-fix": "work/gpt-demo:high", hillclimb: "work/gpt-demo2:high", "perf-issue": "work/gpt-demo:medium" },
       models: ["work/gpt-demo:medium", "other/gpt-demo:high"],
       t3: { providers: [provider("work", t3Model("gpt-demo", "medium")), provider("other", t3Model("gpt-demo", "high"))] },
     });
     const { roles, problems } = await h.resolve();
-    assert.equal(roles["bug-fix"], undefined);
+    assert.deepEqual(roles["bug-fix"], fileHost === "terminal" ? "work/gpt-demo:medium" : target("work", "gpt-demo", "medium"), "never other/gpt-demo:high");
+    assert.ok(problems.some(p => p.includes("work/gpt-demo:high") && p.includes("work/gpt-demo:medium")), "the downgrade is reported");
     assert.equal(roles.hillclimb, undefined);
     assert.ok(problems.some(p => p.includes("work/gpt-demo2:high")));
     assert.deepEqual(roles["perf-issue"], fileHost === "terminal" ? "work/gpt-demo:medium" : target("work", "gpt-demo", "medium"));
@@ -195,21 +196,21 @@ test("default hints use the offered family, then another usable model, and name 
   assert.ok(problems.some(p => p.includes("api/gpt-6:xhigh") && p.includes("grok-4.7-xhigh-fast")));
 });
 
-test("exact legacy identities stay pinned and missing ones become family and level hints, even under distinctFrom", async t => {
+test("legacy values that name a listed instance stay on that account, even under distinctFrom", async t => {
   const h = lookup(t, "t3", { t3: { providers: [provider("other", t3Model("claude-opus", "xhigh")), provider("account", t3Model("claude-sonnet", "high"), t3Model("gpt-6", "xhigh"))] },
     pins: { "bug-fix": "account/claude-opus:xhigh", "perf-issue": "account/claude-sonnet:high", hillclimb: "account/grok-4:high" } });
   const { roles, problems } = await h.resolve("claude");
-  assert.deepEqual(roles["bug-fix"], target("other", "claude-opus", "xhigh"));
+  assert.deepEqual(roles["bug-fix"], target("account", "claude-sonnet", "high"), "same account and family, never other/claude-opus");
   assert.deepEqual(roles["perf-issue"], target("account", "claude-sonnet", "high"));
   assert.equal(roles.hillclimb, undefined);
-  assert.ok(problems.some(p => p.includes("account/claude-opus:xhigh") && p.includes("other/claude-opus:xhigh")));
+  assert.ok(problems.some(p => p.includes("account/claude-opus:xhigh") && p.includes("account/claude-sonnet:high")));
   assert.ok(problems.some(p => p.includes("account/grok-4:high")));
 });
 
 test("other-host pins are hints; an ambiguous Pi identity cannot select a T3 account", async t => {
   const cli = lookup(t, "cli", { fileHost: "t3", pins: { "bug-fix": "pi-main/xai/grok-4.6:medium", hillclimb: "pi-main/xai/grok-4.6:low" }, models: ["xai/grok-4.7:low"] });
   const { roles } = await cli.resolve();
-  assert.equal(roles["bug-fix"], undefined, "no model in the family at the requested level");
+  assert.equal(roles["bug-fix"], "xai/grok-4.7:low", "the closest offered level below the hint");
   assert.equal(roles.hillclimb, "xai/grok-4.7:low");
   const models = [t3Model("xai/grok-4.7", "high")];
   const t3 = lookup(t, "t3", { pins: { "bug-fix": "xai/grok-4.6:high", hillclimb: "xai/grok-4.7:high" },
@@ -257,6 +258,8 @@ test("ollama is not the llama family when T3 offers ollama/gpt-oss-120b", async 
   assert.equal(family("api/notllama"), "notllama");
   assert.equal(family("api/gptish"), "gptish");
   assert.equal(family("api/qwen2.5"), "qwen");
+  assert.equal(family("openai/chatgpt-4o-latest"), "gpt");
+  assert.equal(family("meta/codellama-70b"), "llama");
 });
 
 test("family checks recognise prefixed ids but never claim independence for unknown aliases", async t => {

@@ -57,6 +57,8 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 - Keep private worktree ownership details with the saved child, not just in its spawn receipt. A lost reply should not lose the branch and base needed for recovery. (subagents.md §10)
 - Give the app-driver and formal verification generators distinct project-local skill names when the app and area coincide; both currently write `verify-<name>`. (catalog.md, “Reachability, merges and upstream admissions”)
 
+- Replay pull request handles that older t3-agent sessions stored as `owner/repo#number` or as a self-hosted forge URL. They are dropped on replay now, so the ledger and prompt lose a watch T3 still holds. (final re-check, runtime R3)
+
 ## A Pi crash seen during this work
 
 Two delegated sessions exited the moment a codemode script's `Promise.all` rejected on a missing file while its other reads were still in flight. An offline reproduction against Pi 1.5.2's codemode executor with a stand-in session did not crash. The cause is not isolated.
