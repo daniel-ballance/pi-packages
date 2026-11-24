@@ -20,6 +20,6 @@
     { "id": "investigation", "prompt": "Explain how the CLI works without changing it.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/investigation.md"] },
     { "id": "refactoring", "prompt": "Refactor the CLI without changing its behavior.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/refactoring.md"] },
     { "id": "perf", "prompt": "Investigate why the CLI takes 8 seconds to export 10 records. It used to take 1 second.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/perf-issue.md"] },
-    { "id": "my-review", "prompt": "Review my change before I commit it.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "no-comments/SKILL.md"] }
+    { "id": "my-review", "prompt": "Review my change before I commit it.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "p3stack-mode/playbooks/review-local.md"] }
   ]
 }

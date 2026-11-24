@@ -141,7 +141,7 @@
     "anchor": "Present alternatives, tradeoffs, and a recommendation.",
     "position": "after",
     "skill": "interactive-prototype",
-    "when": "A human judges it. Default grant: hand it over with ask_user and wait for the verdict. Full autonomy: report your recommendation and continue. Then capture it per its Capture rule: lift the validated module, keep the prototype branch, and link it from the issue or PR."
+    "when": "When a human judges the demo, hand it over with ask_user under the default grant and wait for the verdict. Under full autonomy, give your recommendation and mark any missing verdict pending. Return the checked demo, not a production change or a post."
   },
   {
     "id": "autonomous-ledger",

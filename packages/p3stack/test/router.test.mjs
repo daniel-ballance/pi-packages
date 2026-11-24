@@ -46,6 +46,40 @@ test("a missing reproduction changes the first target, not the owner of the fix"
   }
 });
 
+test("the first house policy caps every route at the requested deliverable", () => {
+  const policies = router.split("## House policies")[1].split("## Routes")[0];
+  const [first, ...rest] = policies.match(/^\d+\. .*$/gm);
+  assert.match(first, /\*\*Deliverable\b/);
+  for (const term of ["review", "explain", "design", "prototype", "plan", "report", "recommendation", "demo", "implement", "publish", "PR", "babysit", "land"]) {
+    assert.ok(first.toLowerCase().includes(term.toLowerCase()), term);
+  }
+  for (const policy of ["Authority", "Questions", "Validation", "Migration", "Testing", "Review independence", "Context", "Style"]) {
+    assert.ok(rest.some(line => line.includes(`**${policy}.**`)), policy);
+  }
+  const prototype = read("poteto-mode/playbooks/prototype.md");
+  assert.doesNotMatch(prototype, /lift the validated module|link it from the issue or PR/i);
+});
+
+test("local review checks the same artifact throughout and returns only findings", () => {
+  const path = "p3stack-mode/playbooks/review-local.md";
+  assert.equal(route(path)?.request, "Review my change");
+  assert.match(route("no-comments/SKILL.md").request, /clean.*comments/i);
+  const review = read(path);
+  assert.doesNotMatch(review, /no-comments/);
+  assert.match(review, /read.only/i);
+  assert.match(review, /no commit.*post nothing/i);
+  assert.match(review, /merge-base/);
+  assert.match(review, /staged.*unstaged.*untracked/i);
+  assert.match(review, /--base <base>/);
+  const floor = review.indexOf("floor-check"), reviewSkill = review.indexOf("](../code-review/SKILL.md)");
+  assert.ok(floor > review.indexOf("git status") && review.indexOf("git status") >= 0 && reviewSkill > floor);
+  assert.match(review, /\]\(references\/review-stance\.md\)/);
+  assert.match(review, /contract/i);
+  assert.match(review, /file:line|command output/i);
+  assert.match(review.slice(reviewSkill), /(?:repeat|compare).*baseline/i);
+  assert.match(review.slice(reviewSkill), /working tree.*unchanged/i);
+});
+
 test("a task-only grant raise reaches the delegate despite its session header", () => {
   const grants = router.split("## Grants")[1].split("## House policies")[0];
   assert.match(grants, /system prompt/i);
