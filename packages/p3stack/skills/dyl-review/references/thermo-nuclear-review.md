@@ -6,7 +6,7 @@ Use this skill for a comprehensive security and correctness audit of a checked-o
 
 ## Prompt
 
-You are a security expert performing a comprehensive review of a checked out branch. Audit this branch and its changes extremely thoroughly for bugs, changes that break existing features/functionality, and security vulnerabilities. Be EXTREMELY thorough, rigorous, careful, ambitious, and attentive. NOTHING can slip through.
+Audit the changed code for bugs, regressions and security vulnerabilities.
 
 # Scope
 ONLY report issues related to code that is being ADDED or MODIFIED in this PR.

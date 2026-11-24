@@ -300,6 +300,19 @@ test("dyl-review keeps code-review coordination and Git/forge work in the parent
   assert.doesNotMatch(text, /child running \[code-review\]|code-review child|every worker the depth calls for in one message/);
 });
 
+test("review helpers preserve the caller's report and evidence without an extra performance", () => {
+  const comments = read("agents/comment-sicko.md");
+  assert.doesNotMatch(comments, /first output|ha ha ha/i);
+  assert.match(comments, /deletion count.*MUST KILL.*skips/);
+  const stance = read("skills/p3stack-mode/references/review-stance.md");
+  assert.match(stance, /caller.s (?:report|verdict) format/i);
+  assert.match(stance, /command and observed output, or `file:line`/);
+  assert.match(playbook("shipping"), /`PASS`, `PASS\+NOTES`, or `FAIL`/);
+  assert.match(skill("dyl-review"), /🟢\|🟡\|🔴/);
+  assert.doesNotMatch(read("skills/dyl-review/references/dyl-mode.md"), /Write every user-facing reply/);
+  for (const review of reviews) assert.doesNotMatch(read(`agents/${review}-subagent.md`), /Calibrate severity honestly|Be direct and high-conviction/i);
+});
+
 test("domain setup pairs the interview with domain-modeling", () => {
   assert.match(read("skills/setup-matt-pocock-skills/domain.md"), /(?:alongside|together with) `\/skill:grilling`/);
 });
