@@ -103,7 +103,10 @@ test("coordinators record worker reports once, including iterative and autonomou
     assert.doesNotMatch(doc, /start a decision trail|a `decision\.tsv`|pasted in full/i);
   }
   assert.match(orchestration, /notes\.md[^\n]*(?:pointer|link) to the ledger/i);
-  assert.match(autopilot, /send[^\n]*coordinator[^\n]*ledger/i);
+  const report = autopilot.split("\n").find(line => /coordinator[^\n]*queue ledger/i.test(line));
+  assert.match(report, /host-terminal\.md#store[^\n]*report path[^\n]*run store/i);
+  assert.match(report, /host-t3\.md#[^\n]*final task result/i);
+  assert.match(report, /thread list[^\n]*including delegates[^\n]*host-t3\.md#session-history/i);
 });
 
 test("pause points into the ledger and pickup verifies the evidence before routing", () => {
