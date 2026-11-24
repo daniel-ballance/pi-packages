@@ -9,6 +9,7 @@ async function seedHash(root, artifact) {
   async function visit(relative) {
     const path = join(root, relative), stat = lstatSync(path);
     if (stat.isDirectory()) {
+      if (relative) tree.update(JSON.stringify([relative, "dir", stat.mode & 0o777]) + "\n");
       for (const name of readdirSync(path).sort()) {
         if (!relative && name === "response.md") {
           if (artifact) continue;
@@ -19,7 +20,7 @@ async function seedHash(root, artifact) {
     } else if (stat.isFile() && relative) {
       const file = createHash("sha256");
       for await (const bytes of createReadStream(path)) file.update(bytes);
-      tree.update(JSON.stringify([relative, stat.mode & 0o111, file.digest("hex")]) + "\n");
+      tree.update(JSON.stringify([relative, "file", stat.mode & 0o777, file.digest("hex")]) + "\n");
     } else throw new Error(`Expected a regular seed file or directory: ${path}`);
   }
   await visit("");

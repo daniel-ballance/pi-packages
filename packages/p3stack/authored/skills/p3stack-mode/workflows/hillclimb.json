@@ -8,7 +8,7 @@
       "worker": { "model": "{{workerModel}}", "tools": ["read", "bash", "write"], "contextFiles": false },
       "instructions": "Copy the contents of {{seedDir}} to the assigned output directory. Preserve relative paths, dotfiles, modes and bytes. Write nothing else." },
     { "id": "verifySeed", "kind": "check", "input": "baseline",
-      "validator": { "kind": "command", "command": "node {{hashTool}} --verify {{seedHash}}" } },
+      "validator": { "kind": "command", "command": "node {{hashTool:sh}} --verify {{seedHash:sh}}" } },
     { "id": "climb", "kind": "loop", "mode": "improve", "seed": "verifySeed", "direction": "{{direction}}",
       "minImprovement": "{{minImprovement:number}}", "maxIterations": "{{iterations:number}}",
       "worker": { "model": "{{workerModel}}", "tools": ["read", "write", "edit", "bash"], "contextFiles": false },

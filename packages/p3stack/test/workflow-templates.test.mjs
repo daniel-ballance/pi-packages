@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -105,9 +105,10 @@ test("the hillclimb loop depends on an independent equality check of the submitt
   const root = scratch(t), seed = join(root, "seed"), artifact = join(root, "artifact");
   for (const p of [seed, artifact]) { mkdirSync(p); writeFileSync(join(p, "a file"), "base\n"); }
   writeFileSync(join(artifact, "response.md"), "Worker reply added by the runtime\n");
-  const hashTool = join(scripts, "seed-hash.mjs");
+  const hashTool = join(root, "parent's hash tool.mjs");
+  copyFileSync(join(scripts, "seed-hash.mjs"), hashTool);
   const seedHash = execFileSync(process.execPath, [hashTool, seed], { encoding: "utf8" }).trim();
-  const { steps } = template("hillclimb", { seedHash, hashTool: `'${hashTool}'` });
+  const { steps } = template("hillclimb", { seedHash, hashTool });
   const loop = steps.find(s => s.kind === "loop"), gate = steps.find(s => s.id === loop.seed);
   assert.equal(gate.kind, "check");
   assert.equal(gate.input, steps[0].id);
@@ -115,6 +116,8 @@ test("the hillclimb loop depends on an independent equality check of the submitt
   assert.equal(run().status, 0);
   writeFileSync(join(artifact, "a file"), "edit\n"); assert.notEqual(run().status, 0);
   writeFileSync(join(artifact, "a file"), "base\n"); writeFileSync(join(artifact, "extra"), "surprise"); assert.notEqual(run().status, 0);
+  unlinkSync(join(artifact, "extra")); mkdirSync(join(artifact, "extra")); assert.notEqual(run().status, 0);
+  rmSync(join(artifact, "extra"), { recursive: true }); chmodSync(join(artifact, "a file"), 0o400); assert.notEqual(run().status, 0);
   assert.match(doc(), /WORKFLOW_CANDIDATE/);
   assert.match(doc(), /finite.*score|score.*finite/i);
 });
