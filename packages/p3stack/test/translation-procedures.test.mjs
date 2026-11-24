@@ -242,6 +242,13 @@ test("playbooks and standalone skills resolve roles through the same Subagents s
   }
 });
 
+test("bug diagnosis ends at a confirmed mechanism; only design risk calls for an architect", () => {
+  const bug = playbook("bug-fix"), diagnosis = bug.match(/^2\. (.*)$/m)[1], plan = bug.match(/^3\. (.*)$/m)[1];
+  assert.match(diagnosis, /confirm.*mechanism.*runtime evidence/i);
+  assert.doesNotMatch(diagnosis, /(?:architect|interrogate).*fan-out/i);
+  assert.match(plan, /if .*design risk.*`architect` first/i);
+});
+
 test("recall gives each child scoped history IDs, not a second discovery algorithm", () => {
   const recall = skill("recall");
   assert.match(recall, /Session history[^\n]*host-capabilities\.md/);
