@@ -85,7 +85,7 @@ test("each extension module registers its own job without loading unrelated feat
   const { registerAsk } = await import("../extensions/p3stack/src/ask.ts");
   const { registerSetup } = await import("../extensions/p3stack/src/setup.ts");
   const { registerRoles } = await import("../extensions/p3stack/src/roles.ts");
-  const mode = harness({ factory: pi => { const on = registerMode(pi, "router.md"); registerBrief(pi, on, "router.md", "agent.md"); } });
+  const mode = hostHarness("terminal", { factory: pi => { const on = registerMode(pi, "router.md"); registerBrief(pi, on, "router.md", "agent.md"); } });
   try {
     assert.equal(mode.tools.size, 0);
     await mode.command("p3stack", "on");
@@ -343,44 +343,74 @@ test("the grant is explicit mode state: set with on or grant, persisted, injecte
   }
 });
 
-test("delegated briefs carry the grant, the brief contract for writers, and the review stance for readers", async () => {
-  const h = harness();
-  try {
-    await h.command("p3stack", "on autonomous");
-    const writer: any = { toolName: "subagent_spawn", input: { task: "Build it.", tools: ["read", "edit"] } };
-    await h.emit("tool_call", writer);
-    assert.match(writer.input.task, /done predicate/);
-    assert.match(writer.input.task, /Do not spawn your own reviewer/);
-    assert.match(writer.input.task, /Grant: full-autonomy\.\n\nBuild it\.$/);
-    for (const event of [{ toolName: "subagent_spawn", input: { task: "Review it.", tools: ["read"] } }, { toolName: "mcp__t3-code__delegate_task", input: { role: "review", task: "Review it." } }] as any[]) {
-      await h.emit("tool_call", event);
-      assert.match(event.input.task, /author's conclusions are not evidence/);
-      assert.match(event.input.task, /measured, inferred, or guess/);
-      assert.match(event.input.task, /Grant: full-autonomy\.\n\nReview it\.$/);
-      assert.doesNotMatch(event.input.task, /done predicate/);
-    }
-  } finally { h.dispose(); }
-});
+const delegation = { terminal: "subagent_spawn", t3: "mcp__t3-code__delegate_task" } as const;
+for (const host of ["terminal", "t3"] as const) {
+  test(`${host} decorates only its native delegation tool, only while on`, async () => {
+    const h = hostHarness(host);
+    const task = "Inspect the importer.";
+    try {
+      const local = { toolName: delegation[host], input: { task } };
+      await h.emit("tool_call", local);
+      assert.equal(local.input.task, task);
+      await h.command("p3stack", "on");
+      const foreign = { toolName: delegation[host === "terminal" ? "t3" : "terminal"], input: { task } };
+      await h.emit("tool_call", foreign);
+      assert.equal(foreign.input.task, task);
+      await h.emit("tool_call", local);
+      assert.match(local.input.task, /Grant: default\./);
+    } finally { h.dispose(); }
+  });
 
-test("the parent is told when an implementation brief named no interfaces or done predicate", async () => {
-  const h = harness();
-  try {
-    await h.command("p3stack", "on");
-    const result = (id: string) => ({ toolCallId: id, content: [{ type: "text", text: "spawned" }], structuredContent: { id: "child-1" }, details: { d: 1 } });
-    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "thin", input: { task: "Fix the export.", tools: ["read", "edit"] } });
-    const [note] = await h.results("tool_result", result("thin"));
-    assert.equal(note.content[0].text, "spawned");
-    assert.match(note.content[1].text, /^p3stack: this brief named no interfaces and no done predicate\. .*check them in its report/);
-    assert.deepEqual(note.structuredContent, { id: "child-1" }, "structured content survives");
-    assert.deepEqual(await h.results("tool_result", result("thin")), [], "noted once");
-    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "full", input: { task: "Fix the export. Interfaces: exportCsv(rows). Done when `npm test` prints 0 failures.", tools: ["read", "edit"] } });
-    assert.deepEqual(await h.results("tool_result", result("full")), []);
-    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "reader", input: { task: "Audit it.", tools: ["read"] } });
-    assert.deepEqual(await h.results("tool_result", result("reader")), [], "read-only briefs are not held to the implementation contract");
-    await h.emit("tool_call", { toolName: "mcp__t3-code__delegate_task", toolCallId: "t3", input: { task: "Build the importer.", role: "implementation" } });
-    assert.match((await h.results("tool_result", result("t3")))[0].content[1].text, /named no interfaces and no done predicate/);
-  } finally { h.dispose(); }
-});
+  test(`${host} replaces only a leading brief header and uses the current grant`, async () => {
+    const h = hostHarness(host);
+    const task = `\nUpdate the example citing ${join(import.meta.dirname, "../agents/poteto-agent.md")}.\n\nKeep this spacing.\n`;
+    const event = { toolName: delegation[host], input: { task } };
+    try {
+      await h.command("p3stack", "on autonomous");
+      await h.emit("tool_call", event);
+      assert.match(event.input.task, /^<p3stack-brief>Grant: full-autonomy\./);
+      assert.ok(event.input.task.endsWith("</p3stack-brief>\n\n" + task));
+      const first = event.input.task;
+      await h.emit("tool_call", event);
+      assert.equal(event.input.task, first);
+      await h.command("p3stack", "grant default");
+      event.input.task = "\n" + first;
+      await h.emit("tool_call", event);
+      assert.equal(event.input.task, first.replace("Grant: full-autonomy.", "Grant: default."));
+      event.input.task = "Discuss this quoted brief:\n" + first;
+      await h.emit("tool_call", event);
+      assert.ok(event.input.task.endsWith("Discuss this quoted brief:\n" + first));
+    } finally { h.dispose(); }
+  });
+
+  test(`${host} never enlarges the task beyond its backend limit`, async () => {
+    const h = hostHarness(host);
+    const decorate = async (task: string) => (await h.emit("tool_call", { toolName: delegation[host], input: { task } })).input.task as string;
+    const limit = host === "terminal" ? 30_000 : 120_000;
+    try {
+      await h.command("p3stack", "on");
+      const near = "x".repeat(limit - 100);
+      const short = await decorate(near);
+      assert.ok(short.length <= limit && short.endsWith(near));
+      assert.equal(short.slice(0, -near.length), "<p3stack-brief>Grant: default.</p3stack-brief>\n\n");
+      await h.command("p3stack", "grant autonomous");
+      assert.ok((await decorate(short)) === short.replace("Grant: default.", "Grant: full-autonomy."));
+      const noRoom = "x".repeat(limit - 1);
+      assert.ok((await decorate(noRoom)) === noRoom);
+    } finally { h.dispose(); }
+  });
+
+  test(`${host} passes the tool result through without grading the brief by keywords`, async () => {
+    const h = hostHarness(host);
+    try {
+      await h.command("p3stack", "on");
+      for (const task of ["No interfaces yet. No acceptance criteria.", "Export parse(s: string): Row. Run npm test; 12 passed. Check the CLI output."]) {
+        await h.emit("tool_call", { toolName: delegation[host], toolCallId: "dispatch", input: { task, tools: ["edit"] } });
+        assert.deepEqual(await h.results("tool_result", { toolName: delegation[host], toolCallId: "dispatch", content: [{ type: "text", text: "spawned" }] }), []);
+      }
+    } finally { h.dispose(); }
+  });
+}
 
 test("the TUI sets a footer while on and restores the stock footer while off or switching branches", async () => {
   const restore = asTerminal(), branch: unknown[] = [];
@@ -482,61 +512,49 @@ test("the on footer prefixes the directory and matches Pi's stock rendering byte
   } finally { session.dispose(); h.dispose(); restore(); mock.restoreAll(); }
 });
 
-test("while the mode is on, delegated briefs start with the poteto-agent recipe, once", async () => {
-  const h = harness();
+test("terminal briefs keep the local writer contract or report-only review stance", async () => {
+  const h = hostHarness("terminal");
   try {
-    const spawn: any = { toolName: "subagent_spawn", input: { task: "Fix the bug." } };
-    await h.emit("tool_call", spawn);
-    assert.equal(spawn.input.task, "Fix the bug.", "mode off: untouched");
-    await h.command("p3stack", "on");
-    await h.emit("tool_call", spawn);
-    assert.match(spawn.input.task, /^Before any work, read .*agents\/poteto-agent\.md.*\n\nFix the bug\.$/s);
-    const again = spawn.input.task;
-    await h.emit("tool_call", spawn);
-    assert.equal(spawn.input.task, again, "not prefixed twice");
-    const t3: any = { toolName: "mcp__t3-code__delegate_task", input: { task: "Review it." } };
-    await h.emit("tool_call", t3);
-    assert.match(t3.input.task, /poteto-agent\.md/);
+    await h.command("p3stack", "on autonomous");
+    for (const tools of [["read", "bash"], ["read", "edit"], ["write"], ["subagent_spawn"]]) {
+      const task = (await h.emit("tool_call", { toolName: delegation.terminal, input: { tools, task: "Inspect it." } })).input.task;
+      assert.match(task, /Grant: full-autonomy\./);
+      if (tools.includes("bash")) {
+        assert.match(task, /report-only delegate/);
+        assert.match(task, /Do not read the poteto-mode skill, start a playbook, or delegate/);
+        assert.match(task, /author's conclusions are not evidence/);
+        assert.match(task, /measured, inferred, or guess/);
+        assert.match(task, /review-stance\.md/);
+        assert.doesNotMatch(task, /poteto-agent\.md|read-only delegate/);
+      } else {
+        assert.match(task, /read .*agents\/poteto-agent\.md/);
+        assert.match(task, /brief-contract\.md/);
+        assert.match(task, /done predicate/);
+        assert.match(task, /Do not spawn your own reviewer/);
+      }
+    }
   } finally { h.dispose(); }
 });
 
-test("a Child with neither edit, write nor subagent_spawn gets the short read-only recipe instead of the full skill", async () => {
-  const h = harness();
+test("T3 briefs are self-contained for every role", async () => {
+  const h = hostHarness("t3");
   try {
-    await h.command("p3stack", "on");
-    const reader: any = { toolName: "subagent_spawn", input: { task: "Audit stats.ts.", tools: ["read", "bash", "grep"] } };
-    await h.emit("tool_call", reader);
-    assert.match(reader.input.task, /^You are a read-only delegate in a poteto-mode run\. .*Do not read the poteto-mode skill.*\n\nAudit stats\.ts\.$/s);
-    assert.doesNotMatch(reader.input.task, /poteto-agent\.md/);
-    const again = reader.input.task;
-    await h.emit("tool_call", reader);
-    assert.equal(reader.input.task, again, "not prefixed twice");
-    const writer: any = { toolName: "subagent_spawn", input: { task: "Fix it.", tools: ["read", "edit"] } };
-    await h.emit("tool_call", writer);
-    assert.match(writer.input.task, /^Before any work, read .*poteto-agent\.md/s, "an editing Child keeps the full recipe");
-    const coordinator: any = { toolName: "subagent_spawn", input: { task: "Coordinate the audit.", tools: ["read", "subagent_spawn", "subagent_wait"] } };
-    await h.emit("tool_call", coordinator);
-    assert.match(coordinator.input.task, /poteto-agent\.md/, "a coordinator delegates, so it keeps the full recipe");
-    const t3: any = { toolName: "mcp__t3-code__delegate_task", input: { task: "Audit it.", tools: ["read"] } };
-    await h.emit("tool_call", t3);
-    assert.match(t3.input.task, /poteto-agent\.md/, "T3 tasks have no tool list, so they keep the full recipe");
-  } finally { h.dispose(); }
-});
-
-test("T3 research and review roles get a short recipe while writing and unspecified roles keep the full recipe", async () => {
-  const h = harness();
-  try {
-    await h.command("p3stack", "on");
-    for (const role of ["research", "review", "implement", undefined]) {
-      const event = { toolName: "mcp__t3-code__delegate_task", input: { role, task: "Inspect the change." } };
-      await h.emit("tool_call", event);
+    await h.command("p3stack", "on autonomous");
+    for (const role of ["research", "review", "implementation", "design", "test", "general", undefined]) {
+      const task = (await h.emit("tool_call", { toolName: delegation.t3, input: { role, task: "Inspect the change." } })).input.task;
+      assert.match(task, /Grant: full-autonomy\./);
+      assert.doesNotMatch(task, /poteto|SKILL\.md|\.md\b|read-only|\/[^< ]+\//);
       if (role === "research" || role === "review") {
-        assert.match(event.input.task, /^You are a read-only delegate/);
-        assert.doesNotMatch(event.input.task, /poteto-agent\.md/);
-      } else assert.match(event.input.task, /^Before any work, read .*poteto-agent\.md/);
-      const once = event.input.task;
-      await h.emit("tool_call", event);
-      assert.equal(event.input.task, once);
+        assert.match(task, /report-only/i);
+        assert.match(task, /contract.*author's summary/i);
+        assert.match(task, /measured, inferred, or guess/);
+        assert.match(task, /file:line/);
+      } else {
+        assert.match(task, /only the assigned unit/i);
+        assert.match(task, /not start a playbook or a reviewer/i);
+        assert.match(task, /assumptions.*brief is silent/i);
+        assert.match(task, /evidence for each claim/i);
+      }
     }
   } finally { h.dispose(); }
 });

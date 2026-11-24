@@ -1,49 +1,43 @@
-import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { detectHost, type Host } from "./host.ts";
 import { grantToken, type Grant, type Pi } from "./mode.ts";
 
-const READER = "You are a read-only delegate in a poteto-mode run.";
-
-/** Parts of the brief contract a parent can name in a brief, and how to recognize them. */
-const CONTRACT_PARTS: [string, RegExp][] = [
-  ["interfaces", /\b(?:interfaces?|signatures?|consumes|produces)\b/i],
-  ["done predicate", /\b(?:done (?:when|predicate|condition)|expected output|acceptance|passes when|success criteria|verify (?:with|by))\b/i],
-];
-export const missingContractParts = (brief: string) => CONTRACT_PARTS.filter(([, pattern]) => !pattern.test(brief)).map(([name]) => name);
+const OPEN = "<p3stack-brief>", CLOSE = "</p3stack-brief>\n\n";
+// subagent_spawn's task schema and T3's OrchestratorMcpPrompt, respectively.
+const LIMIT = { cli: 30_000, t3: 120_000 };
 
 const REVIEW_STANCE = "Judge the work against its contract (the spec, ticket, or brief), not against the author's summary: the author's conclusions are not evidence. Name the evidence for every finding (a command and its output, or file:line) and label each claim measured, inferred, or guess. A spec's silence is not permission for ordinary inputs to break the program.";
-
 const BRIEF_CONTRACT = "Your brief should give the goal, the interfaces you use and produce, global constraints quoted verbatim, the review focus, a done predicate (command, expected output, and the surface to check), and where to write your report. If any is missing, state the assumption you made in your report. Do not spawn your own reviewer: your parent reviews your work.";
 
-export function registerBrief(pi: Pi, isOn: (() => boolean) & { grant?: () => Grant }, modeSkill: string, agentRecipe: string) {
-  const references = join(dirname(modeSkill), "..", "p3stack-mode", "references");
-  const pointer = (file: string, what: string) => {
-    const path = join(references, file);
-    return existsSync(path) ? ` The full ${what} is at ${path}.` : "";
-  };
-  const missing = new Map<string, string[]>();
-  pi.on("tool_result", event => {
-    const parts = missing.get(event?.toolCallId);
-    if (!parts) return;
-    missing.delete(event.toolCallId);
-    const note = `p3stack: this brief named no ${parts.join(" and no ")}. The child was told to state its assumptions, so check them in its report, and write the next brief per the brief contract.${pointer("brief-contract.md", "brief contract")}`;
-    return { content: [...(event.content ?? []), { type: "text", text: note }], structuredContent: event.structuredContent, details: event.details };
-  });
-  pi.on("tool_call", event => {
-    if (!isOn() || !["subagent_spawn", "mcp__t3-code__delegate_task"].includes(event?.toolName)) return;
-    const input = event.input as { task?: unknown; tools?: unknown; role?: unknown };
-    if (typeof input?.task !== "string" || input.task.includes(agentRecipe) || input.task.startsWith(READER)) return;
+function withBriefHeader(input: { task: string; tools?: unknown; role?: unknown }, host: Host, grant: Grant, modeSkill: string, agentRecipe: string) {
+  const leading = input.task.trimStart();
+  const end = leading.startsWith(OPEN) ? leading.indexOf(CLOSE, OPEN.length) : -1;
+  const body = end < 0 ? input.task : leading.slice(end + CLOSE.length);
+  let stance: string;
+  if (host === "t3") {
+    stance = input.role === "review" || input.role === "research"
+      ? "Act as a report-only delegate; answer only this brief without starting a playbook or delegating. Judge the work against its contract, not the author's summary; cite a command and its output or file:line for each claim and label it measured, inferred, or guess."
+      : "Do only the assigned unit; do not start a playbook or a reviewer of your own. State the assumptions you made where the brief is silent and report evidence for each claim.";
+  } else {
+    const references = join(dirname(modeSkill), "..", "p3stack-mode", "references");
     const tools = input.tools;
-    const readOnly = event.toolName === "subagent_spawn"
-      ? Array.isArray(tools) && !["edit", "write", "subagent_spawn"].some(tool => tools.includes(tool))
-      : input.role === "research" || input.role === "review";
-    const grant = `Grant: ${grantToken(isOn.grant?.() ?? "default")}.`;
-    if (!readOnly && typeof event.toolCallId === "string") {
-      const parts = missingContractParts(input.task);
-      if (parts.length) missing.set(event.toolCallId, parts);
-    }
-    input.task = readOnly
-      ? `${READER} Answer only this brief. Do not read the poteto-mode skill, start a playbook, or delegate. Prove each claim with read-only commands where they settle it and cite file:line evidence. ${REVIEW_STANCE}${pointer("review-stance.md", "review stance")} Report in the shape the brief asks, plainly and briefly. Your report is input to your parent's decision. ${grant}\n\n${input.task}`
-      : `Before any work, read ${agentRecipe} and follow it. The poteto-mode skill is at ${modeSkill}. ${BRIEF_CONTRACT}${pointer("brief-contract.md", "brief contract")} ${grant}\n\n${input.task}`;
+    const reportOnly = Array.isArray(tools) && !["edit", "write", "subagent_spawn"].some(tool => tools.includes(tool));
+    stance = reportOnly
+      ? `You are a report-only delegate in a poteto-mode run. Answer only this brief. Do not read the poteto-mode skill, start a playbook, or delegate. Prove each claim with non-mutating commands where they settle it and cite file:line evidence. ${REVIEW_STANCE} The full review stance is at ${join(references, "review-stance.md")}. Report in the shape the brief asks, plainly and briefly. Your report is input to your parent's decision.`
+      : `Before any work, read ${agentRecipe} and follow it. The poteto-mode skill is at ${modeSkill}. ${BRIEF_CONTRACT} The full brief contract is at ${join(references, "brief-contract.md")}.`;
+  }
+  const grantLine = `${OPEN}Grant: ${grantToken(grant)}.`;
+  for (const header of [`${grantLine}\n${stance}\n${CLOSE}`, `${grantLine}${CLOSE}`]) {
+    if (header.length + body.length <= LIMIT[host]) return header + body;
+  }
+  return body;
+}
+
+export function registerBrief(pi: Pi, isOn: (() => boolean) & { grant(): Grant }, modeSkill: string, agentRecipe: string) {
+  const host = detectHost();
+  const tool = host === "cli" ? "subagent_spawn" : "mcp__t3-code__delegate_task";
+  pi.on("tool_call", event => {
+    if (!isOn() || event?.toolName !== tool || typeof event.input?.task !== "string") return;
+    event.input.task = withBriefHeader(event.input, host, isOn.grant(), modeSkill, agentRecipe);
   });
 }
