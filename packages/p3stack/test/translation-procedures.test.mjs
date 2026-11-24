@@ -314,15 +314,24 @@ test("a reflection reviewer still recognizes reads of any skill in the transcrip
   }
 });
 
-test("the help table offers exactly the emitted commands and names their references", () => {
-  const registry = JSON.parse(read("registry/skills.json"));
-  const rows = skill("poteto-help").split("## Pick a skill")[1].split("\n## ")[0].split("\n").filter(line => line.startsWith("| [`/skill:"));
-  const commands = rows.map(line => line.match(/\[`\/skill:([\w-]+)`\]/)[1]);
-  assert.equal(commands.length, 46);
-  assert.deepEqual(commands.sort(), registry.filter(row => row.action === "emit").map(row => row.name).sort());
+test("help leads with routed requests, then covers the other emitted skills and every reference owner", () => {
+  const help = skill("poteto-help"), routes = JSON.parse(read("registry/routes.json")), registry = JSON.parse(read("registry/skills.json"));
+  assert.equal(help.match(/^## .+$/m)[0], "## Find a job");
+  const [jobs, rest] = help.split("### Other standalone jobs"), [direct, owners] = rest.split("### References by owner");
+  for (const { request, grant, target } of routes) {
+    const row = jobs.split("\n").find(line => line.startsWith(`| ${request} |`));
+    assert.ok(row, request);
+    if (target?.includes("playbooks/")) assert.ok(row.includes(`Use the ${target.split("/").pop().replace(/\.md$/, "")} playbook`), row);
+    else if (target) assert.ok(row.includes(target.includes("/") ? target : `/skill:${target}`), row);
+    if (grant !== "any") assert.ok(row.includes(grant === "default" ? "default" : "autonomous"), row);
+  }
+  const targets = new Set(routes.map(row => row.target));
+  const names = [...direct.matchAll(/\]\(\.\.\/([\w-]+)\/SKILL\.md\)/g)].map(match => match[1]);
+  assert.deepEqual(names.sort(), registry.filter(row => row.action === "emit" && !targets.has(row.name)).map(row => row.name).sort());
+  assert.match(direct, /\[`\/p3stack on`\]\(\.\.\/p3stack-mode\/SKILL\.md\)/);
   for (const { name, owner } of registry.filter(row => row.action === "reference")) {
-    const row = rows.find(line => line.startsWith(`| [\`/skill:${owner}\`]`));
-    assert.ok(row?.includes(name.startsWith("principle-") ? "principle-*" : name + ".md"), name);
+    const row = owners.split("\n").find(line => line.startsWith(`- [${owner}]`));
+    assert.ok(row?.includes(name.startsWith("principle-") ? "principle-*" : `../${owner}/references/${name}.md`), name);
   }
 });
 

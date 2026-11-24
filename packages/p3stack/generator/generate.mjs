@@ -203,6 +203,8 @@ function addExtras(dir, put) {
   }
 }
 
+const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
+
 function renderRegistry(files, { routes, chains }, put) {
   for (const [playbook, rows] of Map.groupBy(chains, row => row.playbook)) {
     const path = `skills/poteto-mode/${playbook}`, text = files.get(path)?.toString() ?? "";
@@ -222,7 +224,6 @@ function renderRegistry(files, { routes, chains }, put) {
   }
   const template = "skills/p3stack-mode/SKILL.md.tmpl";
   if (!files.has(template)) return;
-  const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
   // Each row names both reads. A live eval showed a model going straight from the table to
   // the target when the poteto-mode read was stated only above the table.
   const table = ["| Request | Grant | Read in this order, or do |", "| --- | --- | --- |", ...routes.map(({ request, grant, target, action }) =>
@@ -232,7 +233,7 @@ function renderRegistry(files, { routes, chains }, put) {
 }
 
 // Keep both user-facing indexes in step with the registry, not a second catalog.
-function renderCatalog(files, skills) {
+function renderCatalog(files, { skills, routes }, helpJobs) {
   const help = "skills/poteto-help/SKILL.md", mode = "skills/poteto-mode/SKILL.md";
   const grouped = Map.groupBy(skills.filter(row => row.action === "reference").sort(byName), row => row.owner);
   const labels = (owner, link) => [...new Set((grouped.get(owner) ?? []).map(row => {
@@ -246,12 +247,28 @@ function renderCatalog(files, skills) {
   }
   const helpText = files.get(help)?.toString();
   if (helpText?.includes("{{skill-catalog}}")) {
-    const rows = skills.filter(row => row.action === "emit").sort(byName).map(({ name }) => {
+    const command = name => `[\`${name === "p3stack-mode" ? "/p3stack on" : `/skill:${name}`}\`](../${name}/SKILL.md)`;
+    const table = ["| Request | What to type or ask for |", "| --- | --- |"];
+    for (const { request, grant, target } of routes) {
+      const setting = grant === "any" ? "" : ` (router: ${grant === "full-autonomy" ? "autonomous" : "default"})`;
+      let next = "Ask directly; no skill needed.";
+      if (target && !target.includes("/")) next = command(target);
+      else if (target) {
+        const label = posix.basename(target, ".md"), link = `[${label}](../${targetPath(target)})`;
+        next = target.includes("/references/") ? `${command(target.split("/")[0])} using ${link}` : `\`Use the ${label} playbook\``;
+      }
+      table.push(`| ${cell(request)} | ${next}${setting} |`);
+    }
+    table.push("", "### Other standalone jobs", "");
+    const routed = new Set(routes.map(row => row.target));
+    for (const { name } of skills.filter(row => row.action === "emit" && !routed.has(row.name)).sort(byName)) {
       const path = `${name}/SKILL.md`, { description } = skillFrontmatter(files.get(`skills/${path}`).toString(), path);
-      const summary = description.split(/(?<=[.!?])\s+/)[0].replaceAll("|", "\\|");
-      return `| [\`/skill:${name}\`](../${path}) | ${summary} | ${labels(name, true)} |`;
-    });
-    files.set(help, helpText.replace("{{skill-catalog}}", () => rows.join("\n")));
+      const job = helpJobs[name] ?? description.split(/(?<=[.!?])\s+/)[0].replace(/\.$/, "");
+      table.push(`- ${job} — ${command(name)}`);
+    }
+    table.push("", "### References by owner", "", "Ask the owner for the named procedure. For a decision log, ask to read the reference itself.", "");
+    for (const owner of [...grouped.keys()].sort()) table.push(`- [${owner}](../${owner}/SKILL.md): ${labels(owner, true)}`);
+    files.set(help, helpText.replace("{{skill-catalog}}", () => table.join("\n")));
   }
 }
 
@@ -497,7 +514,7 @@ export function generate({ packageDir, outDir }) {
   for (const dir of ["extra", "authored"]) addExtras(join(packageDir, dir), put(dir));
   if (registry) renderRegistry(files, registry, put("registry"));
   if (problems.length) throw new Error(problems.join("\n"));
-  if (registry) renderCatalog(files, registry.skills);
+  if (registry) renderCatalog(files, registry, readJson(join(rules, "help-jobs.json"), {}));
   writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));

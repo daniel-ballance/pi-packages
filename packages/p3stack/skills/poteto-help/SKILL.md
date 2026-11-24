@@ -12,6 +12,107 @@ A message that asks for work, such as "use pstack to fix this bug", is not a hel
 
 Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed package, which the user may not be able to open, so give the user the file's public copy: `https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/` followed by its path.
 
+## Find a job
+
+Type `/p3stack on`, then say the [routed request](../p3stack-mode/SKILL.md#routes) and name your target. Set a marked grant with `/p3stack on default` or `/p3stack on autonomous`. With routing off, type the skill command.
+
+| Request | What to type or ask for |
+| --- | --- |
+| Small task: the exact edit in a named file, or one fact answered by reading one function | Ask directly; no skill needed. |
+| Understand one existing subsystem or code path | `Use the investigation playbook` |
+| Onboard to a repository, or map it as a whole | `Use the onboard-brownfield playbook` |
+| Find a fact outside the repository | [`/skill:research`](../research/SKILL.md) |
+| Align on a design with the human present | [`/skill:grilling`](../grilling/SKILL.md) (router: default) |
+| Design without an interview or explore design alternatives | [`/skill:architect`](../architect/SKILL.md) (router: autonomous) |
+| Map a large effort with unresolved decisions | [`/skill:wayfinder`](../wayfinder/SKILL.md) (router: default) |
+| Publish a tracker spec | [`/skill:to-spec`](../to-spec/SKILL.md) (router: default) |
+| Split a spec into tracker tickets | [`/skill:to-tickets`](../to-tickets/SKILL.md) (router: default) |
+| Plan a program of PRs | `Use the multi-phase-plan playbook` |
+| Execute an approved multi-PR plan with authority to merge | `Use the autopilot-full playbook` |
+| Execute an approved multi-PR plan through verification; the operator lands the PRs | `Use the autopilot-stack playbook` |
+| Prototype a design to compare, try, or show someone | `Use the prototype playbook` |
+| Match an existing UI pixel for pixel | `Use the visual-parity playbook` |
+| Build new or changed behavior | `Use the feature playbook` |
+| Fix a reported bug without a failing reproduction | [`/skill:diagnosing-bugs`](../diagnosing-bugs/SKILL.md) |
+| Fix a bug with a failing reproduction | `Use the bug-fix playbook` |
+| Diagnose a recorded trace, profile, or heap snapshot | `Use the trace-forensics playbook` |
+| Diagnose a running process by capturing a live profile or trace | `Use the runtime-forensics playbook` |
+| Investigate measured slowness when a timing or throughput number is given | `Use the perf-issue playbook` |
+| Improve one measured metric repeatedly | `Use the hillclimb playbook` |
+| Restructure code without changing behavior | `Use the refactoring playbook` |
+| Review my change | `Use the review-local playbook` |
+| Clean up comments in a change | [`/skill:code-review`](../code-review/SKILL.md) using [no-comments](../code-review/references/no-comments.md) |
+| Review someone else's PR | [`/skill:dyl-review`](../dyl-review/SKILL.md) |
+| Triage incoming issues or external PRs | [`/skill:triage`](../triage/SKILL.md) |
+| Open a PR | `Use the opening-a-pr playbook` |
+| Drive an existing PR to readiness | `Use the babysit playbook` |
+| Land a verified stack when authorized | `Use the shipping playbook` |
+| Set or audit the project's quality bar | [`/skill:constraints`](../constraints/SKILL.md) |
+| Harden or threat-model a change | [`/skill:security-hardening`](../security-hardening/SKILL.md) |
+| Add telemetry, metrics, or alerts | [`/skill:instrumentation`](../instrumentation/SKILL.md) |
+| Survey codebase health | [`/skill:improve-codebase-architecture`](../improve-codebase-architecture/SKILL.md) |
+| Implement a tracker ticket graph | [`/skill:implement-spec`](../implement-spec/SKILL.md) |
+| Run one job until a checkable condition holds | `Use the autonomous-run playbook` |
+| Run a standing program of PRs | `Use the orchestrate playbook` |
+| Hand work to another tool or person | [`/skill:handoff`](../handoff/SKILL.md) |
+| Pause the current session | `Use the pause-safely playbook` |
+| Resume an existing session | `Use the session-pickup playbook` |
+| Review the session's environment | [`/skill:retro`](../retro/SKILL.md) |
+| Write or change a skill | `Use the authoring-a-skill playbook` |
+| Prepare steps only a human can perform | [`/skill:wizard`](../wizard/SKILL.md) |
+| Audit and clean up stale worktrees or simulator data | `Use the worktree-cleanup playbook` |
+| Evaluate an agent or instruction change in a blinded experiment | `Use the eval playbook` |
+| Cut a release | [`/skill:release`](../release/SKILL.md) |
+| Audit p3stack pins, refresh its upstream sources, or revert a p3stack maintenance PR | [`/skill:maintain-p3stack`](../maintain-p3stack/SKILL.md) |
+| Handle a task with no matching playbook | [`/skill:figure-it-out`](../figure-it-out/SKILL.md) |
+
+### Other standalone jobs
+
+- Try the same task several ways and combine the best parts — [`/skill:arena`](../arena/SKILL.md)
+- Check whether a measured speedup is real — [`/skill:benchmark-checklist`](../benchmark-checklist/SKILL.md)
+- Check a diff against the spec and the repository's standards — [`/skill:code-review`](../code-review/SKILL.md)
+- Find the mistakes agents keep repeating in this repo and make each one impossible — [`/skill:correct`](../correct/SKILL.md)
+- Model-check a race or invariant, or audit the existing model — [`/skill:create-formal-verification-skill`](../create-formal-verification-skill/SKILL.md)
+- Give agents a way to drive the app, or audit its existing verification skill — [`/skill:create-verification-skill`](../create-verification-skill/SKILL.md)
+- Build and sharpen a project's domain model — [`/skill:domain-modeling`](../domain-modeling/SKILL.md)
+- Explain how a code path works or where new code belongs — [`/skill:how`](../how/SKILL.md)
+- Build something I can click to compare designs — [`/skill:interactive-prototype`](../interactive-prototype/SKILL.md)
+- Have independent reviewers challenge a diff or design — [`/skill:interrogate`](../interrogate/SKILL.md)
+- Catch me up on this chat and list what needs my decision — [`/skill:ketchup`](../ketchup/SKILL.md)
+- Map an existing repository without code changes — [`/skill:onboard-brownfield`](../onboard-brownfield/SKILL.md)
+- Turn on routing for this session — [`/p3stack on`](../p3stack-mode/SKILL.md)
+- Help with p3stack in Pi — [`/skill:poteto-help`](../poteto-help/SKILL.md)
+- Use poteto's workflow and response style for one task — [`/skill:poteto-mode`](../poteto-mode/SKILL.md)
+- Write the PR description — [`/skill:pr`](../pr/SKILL.md)
+- Reconstruct where I left off across recent chats — [`/skill:recall`](../recall/SKILL.md)
+- Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout — [`/skill:setup-matt-pocock-skills`](../setup-matt-pocock-skills/SKILL.md)
+- Configure which models pstack uses per role and at what reasoning budget — [`/skill:setup-pstack`](../setup-pstack/SKILL.md)
+- Check an implementation choice against the official docs — [`/skill:source-grounding`](../source-grounding/SKILL.md)
+- Check a state model and draw the paths that break its rules — [`/skill:statechart`](../statechart/SKILL.md)
+- Split checks across workers and give me one report — [`/skill:swarm`](../swarm/SKILL.md)
+- Fix a bug test-first with a cheap local reproduction — [`/skill:tdd`](../tdd/SKILL.md)
+- Write or revise a README, RFC or commit message — [`/skill:technical-writing`](../technical-writing/SKILL.md)
+- Trace why a design or threshold was chosen — [`/skill:why`](../why/SKILL.md)
+- Write or edit instructions an agent will follow — [`/skill:writing-for-agents`](../writing-for-agents/SKILL.md)
+
+### References by owner
+
+Ask the owner for the named procedure. For a decision log, ask to read the reference itself.
+
+- [architect](../architect/SKILL.md): [codebase-design](../architect/references/codebase-design.md), [sharpen](../architect/references/sharpen.md), [typescript-best-practices](../architect/references/typescript-best-practices.md)
+- [code-review](../code-review/SKILL.md): [blast-radius](../code-review/references/blast-radius.md), [no-comments](../code-review/references/no-comments.md)
+- [create-formal-verification-skill](../create-formal-verification-skill/SKILL.md): [maintain-formal-verification-skill](../create-formal-verification-skill/references/maintain-formal-verification-skill.md)
+- [create-verification-skill](../create-verification-skill/SKILL.md): [maintain-verification-skill](../create-verification-skill/references/maintain-verification-skill.md)
+- [dyl-review](../dyl-review/SKILL.md): [dyl-mode](../dyl-review/references/dyl-mode.md), [thermo-nuclear-code-quality-review](../dyl-review/references/thermo-nuclear-code-quality-review.md), [thermo-nuclear-review](../dyl-review/references/thermo-nuclear-review.md), [thermos](../dyl-review/references/thermos.md)
+- [grilling](../grilling/SKILL.md): [in-your-own-words](../grilling/references/in-your-own-words.md)
+- [how](../how/SKILL.md): [teach](../how/references/teach.md)
+- [implement-spec](../implement-spec/SKILL.md): [implement](../implement-spec/references/implement.md)
+- [p3stack-mode](../p3stack-mode/SKILL.md): [show-me-your-work](../p3stack-mode/references/show-me-your-work.md)
+- [poteto-mode](../poteto-mode/SKILL.md): [principle-*](../poteto-mode/SKILL.md#principles)
+- [retro](../retro/SKILL.md): [reflect](../retro/references/reflect.md)
+- [tdd](../tdd/SKILL.md): [regression-test](../tdd/references/regression-test.md)
+- [technical-writing](../technical-writing/SKILL.md): [bro](../technical-writing/references/bro.md), [unslop](../technical-writing/references/unslop.md)
+
 ## Find out what they need
 
 Infer the need from the message and the conversation. A named situation, such as "which skill reviews a PR?", goes straight to its section. If the need is still unclear, ask one multiple-choice question with these options, then answer only the section they pick:
@@ -35,13 +136,13 @@ When the role defaults file is missing and it matters, ask whether the user want
 
 ## Get set up
 
-1. The collection installs p3stack with `subagents` and `todo`. To install p3stack alone, run `pi install` with its path or git URL, then `/reload`.
+1. The collection installs p3stack with `subagents` and `todo`. To install p3stack alone from a pi-packages checkout, run `pi install ./packages/p3stack` at the repository root, then `/reload`.
 2. Run [`/skill:setup-pstack`](../setup-pstack/SKILL.md). It asks for a thinking budget and writes your choices to the [role defaults file](../poteto-mode/references/host-capabilities.md#models-and-role-defaults). Skills use them on their next delegation. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
 3. Type `/p3stack on`, then send a goal and a check that can pass or fail.
 
 Pi can select model-visible skills from the request even with the router off. Use `/skill:<name>` to request any installed skill explicitly. The [README](../../README.md) has the details, and upstream's [guide page 1](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/01-setup.md) explains the ideas (written for Cursor). Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).
 
-If cost is the worry, say where the tokens go and how to spend fewer. p3stack spends extra tokens on subagents and review panels. Rerun `/skill:setup-pstack` and pick a smaller budget or cheaper models. A role set to `auto` or `inherit-parent` runs on the chat's model, which saves tokens when the chat runs on a cheaper model. A shorter panel list runs fewer subagents, one for each entry. Save `/skill:poteto-mode` for work that needs rigor.
+If cost is the worry, say where the tokens go and how to spend fewer. p3stack spends extra tokens on subagents and review panels. Rerun `/skill:setup-pstack` and pick a smaller budget or cheaper models. A role set to `auto` or `inherit-parent` runs on the chat's model, which costs less if the chat model is cheaper than the role default. A shorter panel list runs fewer subagents, one for each entry. Save `/skill:poteto-mode` for work that needs rigor.
 
 p3stack runs in Pi, in a terminal or launched by T3 Code. Skills that delegate (`/skill:poteto-mode`, `/skill:how`, `/skill:why` and the routed skills) need a delegation backend: the `subagents` package in a terminal, T3's own tools under T3. The [host capabilities](../poteto-mode/references/host-capabilities.md) list what each host provides and what a skill does when a capability is missing.
 
@@ -51,60 +152,9 @@ Type `/p3stack on default` to enable the [router](../p3stack-mode/SKILL.md) with
 
 Type `/p3stack off` to turn the router off. For one skill with the mode off, use `/skill:<name>`, for example `/skill:how`. To help word the task, read [Word the prompt](references/prompting.md).
 
-## Pick a skill
+## Former names and close calls
 
-For a routed task, recommend `/p3stack on`. With routing off, invoke the command in the first column and ask for the job or reference by name. Name a skill directly when the user wants more or less of something than the playbook gives. Read the skill before you recommend it, and give one example prompt.
-
-| Command | Job | Reference to ask for |
-| --- | --- | --- |
-| [`/skill:architect`](../architect/SKILL.md) | Sketch types, signatures, and module structure before code, then stay in the loop while implementation fills in. | [codebase-design](../architect/references/codebase-design.md), [sharpen](../architect/references/sharpen.md), [typescript-best-practices](../architect/references/typescript-best-practices.md) |
-| [`/skill:arena`](../arena/SKILL.md) | Spawn N parallel candidates at the same task, pick a base, graft the strongest parts of the losers into it. |  |
-| [`/skill:benchmark-checklist`](../benchmark-checklist/SKILL.md) | Vet a perf measurement (limiter, tuning, limits, errors, repeatability, relevance, and whether the work happened) before you report or act on it. |  |
-| [`/skill:code-review`](../code-review/SKILL.md) | Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). | [blast-radius](../code-review/references/blast-radius.md), [no-comments](../code-review/references/no-comments.md) |
-| [`/skill:constraints`](../constraints/SKILL.md) | Establishes a project's quality bar as a written contract and stops agents quietly lowering it. |  |
-| [`/skill:correct`](../correct/SKILL.md) | Find the mistakes agents keep repeating in this repo and make each one impossible. |  |
-| [`/skill:create-formal-verification-skill`](../create-formal-verification-skill/SKILL.md) | Generate a project-local skill that formally verifies the code where a bug costs the most and tests reach the least, in any language, with whichever verification tool fits. | [maintain-formal-verification-skill](../create-formal-verification-skill/references/maintain-formal-verification-skill.md) |
-| [`/skill:create-verification-skill`](../create-verification-skill/SKILL.md) | Generate a project-local verification skill that drives your app the way a user does — any language, framework, or platform. | [maintain-verification-skill](../create-verification-skill/references/maintain-verification-skill.md) |
-| [`/skill:diagnosing-bugs`](../diagnosing-bugs/SKILL.md) | Diagnosis loop for hard bugs and performance regressions. |  |
-| [`/skill:domain-modeling`](../domain-modeling/SKILL.md) | Build and sharpen a project's domain model. |  |
-| [`/skill:dyl-review`](../dyl-review/SKILL.md) | Review one or more PRs in Dylan's style: up to 7 copy-pasteable asks and one 🟢/🟡/🔴 call. | [dyl-mode](../dyl-review/references/dyl-mode.md), [thermo-nuclear-code-quality-review](../dyl-review/references/thermo-nuclear-code-quality-review.md), [thermo-nuclear-review](../dyl-review/references/thermo-nuclear-review.md), [thermos](../dyl-review/references/thermos.md) |
-| [`/skill:figure-it-out`](../figure-it-out/SKILL.md) | Design an auditable playbook when no narrower one fits: a large migration, an ambitious multi-part change, or work a human reviews after stepping away. |  |
-| [`/skill:grilling`](../grilling/SKILL.md) | Grill the user relentlessly about a plan, decision, or idea. | [in-your-own-words](../grilling/references/in-your-own-words.md) |
-| [`/skill:handoff`](../handoff/SKILL.md) | Compact the current conversation into a handoff document for another agent to pick up. |  |
-| [`/skill:how`](../how/SKILL.md) | Use for "how does X work", code walkthroughs before changing something, and placement / ownership / layering questions ("where should this live", "which package owns this", "is this the right layer"). | [teach](../how/references/teach.md) |
-| [`/skill:implement-spec`](../implement-spec/SKILL.md) | Implement the result of /skill:to-spec and /skill:to-tickets in code. | [implement](../implement-spec/references/implement.md) |
-| [`/skill:improve-codebase-architecture`](../improve-codebase-architecture/SKILL.md) | Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick. |  |
-| [`/skill:instrumentation`](../instrumentation/SKILL.md) | Instruments code so production behavior is visible and diagnosable. |  |
-| [`/skill:interactive-prototype`](../interactive-prototype/SKILL.md) | Build a prototype a human clicks through to judge a design, either a single shareable HTML file that drives a state model or several UI variants on the real page. |  |
-| [`/skill:interrogate`](../interrogate/SKILL.md) | Use for "interrogate", "adversarial review", "multi-model review", "challenge this", "stress test this code", "find blind spots", or "tear this apart". |  |
-| [`/skill:ketchup`](../ketchup/SKILL.md) | Catch the user up on what changed in this chat since their last message, in plain words and small visuals. |  |
-| [`/skill:maintain-p3stack`](../maintain-p3stack/SKILL.md) | Audit p3stack's current pins, bump vendored sources, or revert a p3stack maintenance PR. |  |
-| [`/skill:onboard-brownfield`](../onboard-brownfield/SKILL.md) | Map an existing repository without code changes. |  |
-| [`/skill:p3stack-mode`](../p3stack-mode/SKILL.md) | Route requests through the p3stack registry and poteto-mode workflows. | [show-me-your-work](../p3stack-mode/references/show-me-your-work.md) |
-| [`/skill:poteto-help`](../poteto-help/SKILL.md) | Help with p3stack in Pi. |  |
-| [`/skill:poteto-mode`](../poteto-mode/SKILL.md) | poteto's agent style for concise, detailed responses, deliberate subagents, unslopped prose, simple code, and verified work. | [principle-*](../poteto-mode/SKILL.md#principles) |
-| [`/skill:pr`](../pr/SKILL.md) | Use when writing a PR body or a pull request description. |  |
-| [`/skill:recall`](../recall/SKILL.md) | Reconstruct your recent working context from your own chat history, live state, and the shared record (user reports, prior fixes, incidents), then hand back a tight current-state brief. |  |
-| [`/skill:release`](../release/SKILL.md) | Prepare release notes and a local version bump. |  |
-| [`/skill:research`](../research/SKILL.md) | Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. |  |
-| [`/skill:retro`](../retro/SKILL.md) | Conduct a retrospective on a coding session. | [reflect](../retro/references/reflect.md) |
-| [`/skill:security-hardening`](../security-hardening/SKILL.md) | Hardens code against vulnerabilities. |  |
-| [`/skill:setup-matt-pocock-skills`](../setup-matt-pocock-skills/SKILL.md) | Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. |  |
-| [`/skill:setup-pstack`](../setup-pstack/SKILL.md) | Configure which models pstack uses per role and at what reasoning budget. |  |
-| [`/skill:source-grounding`](../source-grounding/SKILL.md) | Grounds every implementation decision in official documentation. |  |
-| [`/skill:statechart`](../statechart/SKILL.md) | Check a TLA+ model of a system that moves between states, such as a product flow, a protocol, or a service, and draw it as a Mermaid statechart. |  |
-| [`/skill:swarm`](../swarm/SKILL.md) | Fan out N parallel workers, drain them, and return one report. |  |
-| [`/skill:tdd`](../tdd/SKILL.md) | Test-driven development. | [regression-test](../tdd/references/regression-test.md) |
-| [`/skill:technical-writing`](../technical-writing/SKILL.md) | Layered technical-writing standard: Diátaxis structure, Google developer style sentences, STE instruction rules, Global English syntax. | [bro](../technical-writing/references/bro.md), [unslop](../technical-writing/references/unslop.md) |
-| [`/skill:to-spec`](../to-spec/SKILL.md) | Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed. |  |
-| [`/skill:to-tickets`](../to-tickets/SKILL.md) | Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker). |  |
-| [`/skill:triage`](../triage/SKILL.md) | Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs. |  |
-| [`/skill:wayfinder`](../wayfinder/SKILL.md) | Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear. |  |
-| [`/skill:why`](../why/SKILL.md) | Use for 'why does X work this way', 'why we picked Y', design rationale, regressions, postmortems, or data-backed thresholds. |  |
-| [`/skill:wizard`](../wizard/SKILL.md) | Generate an interactive bash wizard that walks a human through steps only they can perform. |  |
-| [`/skill:writing-for-agents`](../writing-for-agents/SKILL.md) | Writing documents for agents. |  |
-
-Consult the [router](../p3stack-mode/SKILL.md#routes) for other requests, including reviewing someone else's PR. For the former grill-with-docs interview, use `/skill:grilling` and record decisions with `/skill:domain-modeling`. For ketchup-video, `/skill:ketchup` gives a text recap; it does not render video. For automate-me, use `/skill:writing-for-agents` to write a personal skill from a workflow you specify. For principles, see the [poteto-mode index](../poteto-mode/SKILL.md#principles).
+For the former grill-with-docs interview, use `/skill:grilling` and record decisions with `/skill:domain-modeling`. For ketchup-video, `/skill:ketchup` gives a text recap; it does not render video. For automate-me, use `/skill:writing-for-agents` to write a personal skill from a workflow you specify. For principles, see the [poteto-mode index](../poteto-mode/SKILL.md#principles).
 
 Close calls:
 
@@ -117,7 +167,7 @@ Close calls:
 
 Not in pstack:
 
-- Cursor's slop-stripping and app-control skills have no Pi port. Use a slop-strip pass and the project's own driver (**Drive the app** in the [host capabilities](../poteto-mode/references/host-capabilities.md)).
+- For AI writing tells, ask `/skill:technical-writing` to apply [unslop](../technical-writing/references/unslop.md). To drive the app, use the project's own driver (**Drive the app** in the [host capabilities](../poteto-mode/references/host-capabilities.md)).
 - Cursor's loop command maps to **Wake and loop**, and its skill-authoring built-in to `writing-for-agents` and the pi-packages repository's `lint-skill` (`scripts/lint-skill`).
 - pstack has no `/orchestrate` skill. Orchestrate is a `/skill:poteto-mode` playbook. If the slash menu shows `/orchestrate`, another package provides it.
 
@@ -129,7 +179,7 @@ Playbooks are procedures, not slash commands. With the router on, describe the t
 - "land the stack" runs Shipping.
 - "take over this branch" runs Session pickup.
 - "pause safely" runs Pause safely.
-- "full autopilot on this queue" runs Autopilot-full. "autopilot, don't merge" runs Autopilot-stack.
+- "run the approved plan and merge each verified PR" runs Autopilot-full. "autopilot, don't merge" runs Autopilot-stack.
 - "run the eval playbook" runs Eval.
 
 The [Pi router](../p3stack-mode/SKILL.md#routes) maps each routed request and grant to a first skill or playbook. [Guide page 6](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
