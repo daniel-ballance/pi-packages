@@ -23,7 +23,7 @@
 
 One box is one unit of work. Every box names the evidence that checks it. A nested box is a sub-step of the box above it. Check a box only when its evidence exists, a file, a log line, a screenshot, a test run, or a SHA. The body is a how-to. The appendices explain and record.
 
-The program runs `pstack/skills/poteto-mode/playbooks/<execution playbook>.md`. <Who merges, and which PR ids are the operator's items that stop at merge-ready.>
+The program runs `playbooks/<execution playbook>.md` at the path recorded under **Arm the program**. <Who merges, and which PR ids are the operator's items that stop at merge-ready.>
 
 Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -32,14 +32,14 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 ### Arm the program
 
 - [ ] State the protocol and this plan to the operator, then stop. Start execution only on the operator's explicit go.
-- [ ] Read these from trunk at program start. Re-read them at every tick.
-  - [ ] `git show origin/main:pstack/skills/poteto-mode/playbooks/<execution playbook>.md`
-  - [ ] `git show origin/main:pstack/skills/swarm/SKILL.md`
-  - [ ] `git show origin/main:<control skill path>`
-  - [ ] `git show origin/main:pstack/skills/poteto-mode/playbooks/opening-a-pr.md`
-  - [ ] `git show origin/main:pstack/skills/<each other leaf skill the program uses>`
+- [ ] Read the installed files below at program start and at every tick. Give each worker the relevant recorded paths in its brief to read directly.
+  - [ ] Installed file. `<absolute installed path to the execution playbook>`
+  - [ ] Installed file. `<absolute installed path to swarm/SKILL.md>`
+  - [ ] Installed file. `<absolute installed path to poteto-mode/playbooks/opening-a-pr.md>`
+  - [ ] Installed file. `<absolute installed path to each other required skill or reference, one box per file>`
+- [ ] For project-owned files only, read `git show <verified-ref>:<repo-relative-path>`. Use that form for a control skill tracked by the project; list an installed control skill with the installed files instead.
 - [ ] On the operator's go, arm the audit tick as a one-hour wake loop (**Wake and loop** in the host capabilities) with the tick prompt below. Never leave the cadence to memory.
-- [ ] Use this tick prompt, verbatim. "Re-read the execution playbook from trunk. Audit the operation against it and fix drift in this tick. Probe every active lane and judge progress by side effects only. Stand down a stuck lane and dispatch its replacement now. Then post a short status message to the operator in chat only when the audit found a tracked change that no earlier status message reported, such as a PR opened, a code-ready head, a round launched or closed, a verdict, a merge, a stuck agent and the action taken, a blocker added or cleared, or a decision only the operator can make. Name every such change and nothing else. Do not repeat a table, the merged list, or an unchanged blocker. If the audit found none, end the turn with no reply text. Either way, log this tick's row in your decision trail. The row names the items reported, or none."
+- [ ] Use this tick prompt, verbatim. "Re-read the execution playbook at the installed path in the plan. Audit the operation against it and fix drift in this tick. Probe every active lane and judge progress by side effects only. Stand down a stuck lane and dispatch its replacement now. Then post a short status message to the operator in chat only when the audit found a tracked change that no earlier status message reported, such as a PR opened, a code-ready head, a round launched or closed, a verdict, a merge, a stuck agent and the action taken, a blocker added or cleared, or a decision only the operator can make. Name every such change and nothing else. Do not repeat a table, the merged list, or an unchanged blocker. If the audit found none, end the turn with no reply text. Either way, log this tick's row in your decision trail. The row names the items reported, or none."
 - [ ] On the operator's hold or stand-down, send every owner a zero-writes order at once.
 
 ### Spawn owners
@@ -62,7 +62,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 ### Verdict and merge, for every PR
 
-- [ ] A full swarm runs once, at the code-ready head. Another full swarm runs only for new behavior, a redesign, or a large new diff. A rebase, a merge-conflict resolution, or a minor fix gets a single verifier at the new head, and a wording-only change gets none. Run each full swarm per `pstack/skills/swarm/SKILL.md`. One gates lane. The ten live lanes from the PR's **Verify, live** block. The perf lane from its **Verify, perf** block. Two or more audit lanes, each with its own focus, that read the diff and the receipts and distrust the PR body. The root audits the receipts in the merge-ready report before the verdict.
+- [ ] A full swarm runs once, at the code-ready head. Another full swarm runs only for new behavior, a redesign, or a large new diff. A rebase, a merge-conflict resolution, or a minor fix gets a single verifier at the new head, and a wording-only change gets none. Run each full swarm per the recorded **swarm** skill. One gates lane. The ten live lanes from the PR's **Verify, live** block. The perf lane from its **Verify, perf** block. Two or more audit lanes, each with its own focus, that read the diff and the receipts and distrust the PR body. The root audits the receipts in the merge-ready report before the verdict.
 - [ ] Judge every finding by the execution playbook's blocking rule. The verdict is clean when none blocks. A failure on trunk behavior in a lane marked `Regression lane against trunk.` is recorded against trunk and does not block the PR. A new head gets a fresh verdict, except for results that stay valid under the patch-id rule in `playbooks/shipping.md`.
 - [ ] <The merge or handoff rule from the execution playbook, with the patch-id rule from `playbooks/shipping.md`.>
 
@@ -149,7 +149,7 @@ Each live lane runs in its own checkout at the PR head. Drive it per **Drive the
 
 ## Appendix D. Links and reading list
 
-<Docs to read before editing. Which PRs get `pstack/skills/how/SKILL.md` and `pstack/skills/interrogate/SKILL.md`. The trail per `pstack/skills/show-me-your-work/SKILL.md`.>
+<Docs to read before editing. Which PRs get the recorded **how** skill and the recorded **interrogate** skill. The trail per the recorded **show-me-your-work** skill.>
 ````
 
 **Reply:** the plan path, the PR ids with their dependencies and the review-gated set, what the prototypes proved and what stays unproven, and the check script's output.
