@@ -22,7 +22,10 @@ test("tdd selects a public seam by grant before handing the loop to the writer",
   assert.match(seams, /full autonomy[^\n]*reversible[^\n]*record/i);
   assert.doesNotMatch(seams, /no test is written at an unconfirmed seam/i);
   assert.match(read("implement-spec/references/implement.md"), /\[tdd\][^\n]*select seams/i);
-  assert.match(playbook("feature"), /\[tdd\][^\n]*seams[^\n]*implementation brief/i);
+  const featureStep = playbook("feature").split("\n").find(line => line.includes("[tdd]"));
+  assert.match(featureStep, /seams[^\n]*implementation brief/i);
+  assert.match(featureStep, /default grant[^\n]*confirm[^\n]*human before dispatch/i);
+  assert.match(featureStep, /full autonomy[^\n]*record[^\n]*choice/i);
 });
 
 test("grilling returns a design without inventing an approval or starting a build", () => {

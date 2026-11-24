@@ -5,7 +5,7 @@
     "anchor": "2. `architect` for parallel design exploration",
     "position": "after",
     "skill": "tdd",
-    "when": "Select test seams from the sketch or the existing interface. Put the seams in the implementation brief; its owner runs the red-green loop."
+    "when": "Select test seams from the sketch or the existing interface. Under the default grant, confirm them with the human before dispatch; under full autonomy, record the choice. Put the seams in the implementation brief; its owner runs the red-green loop."
   },
   {
     "id": "bug-teardown",
