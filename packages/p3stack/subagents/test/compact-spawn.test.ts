@@ -25,7 +25,7 @@ async function withSpawn(run: (spawn: (args: Record<string, unknown>) => Promise
   writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(root, "compact-spawn-pi.mjs"))} "$@"\n`, { mode: 0o700 });
   writeFileSync(join(root, "compact-spawn-pi.mjs"), readFileSync(new URL("./fixtures/compact-spawn-pi.mjs", import.meta.url)));
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({
-    version: 1, models: [{ id: "p/m:off" }], tools: ["subagent_spawn"], maxDepth: 2, workingDirectories: ["."],
+    version: 1, models: [{ id: "p/m:off" }], tools: ["subagent_spawn", "subagent_wait", "subagent_read"], maxDepth: 2, workingDirectories: ["."],
   }));
   const previousAgent = process.env.PI_CODING_AGENT_DIR;
   const previousPath = process.env.PATH;
@@ -108,7 +108,7 @@ test("a proxied spawn returns the same compact entry", { timeout: 20000, skip: p
     process.env.SPAWN_PROOF = proof;
     process.env.SPAWN_TASK_FILE = join(root, "task.txt");
     const direct = await spawn({ name: "size-probe", task, cwd: repo, model: "p/m:off", tools: [] });
-    const coordinator = await spawn({ name: "coordinator", task: "delegate", cwd: repo, model: "p/m:off", tools: ["subagent_spawn"] });
+    const coordinator = await spawn({ name: "coordinator", task: "delegate", cwd: repo, model: "p/m:off", tools: ["subagent_spawn", "subagent_wait", "subagent_read"] });
     const proxied = JSON.parse(readFileSync(proof, "utf8")) as Record<string, unknown>;
     const proxiedText = JSON.stringify(proxied, null, 2);
     assert.equal(proxiedText.includes(marker), false, proxiedText);

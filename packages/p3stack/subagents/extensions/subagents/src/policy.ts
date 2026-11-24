@@ -411,6 +411,10 @@ export class SubagentPolicy {
     const maxDepth = this.config!.maxDepth ?? 1;
     if (depth > maxDepth) throw new Error(`No Child may run at depth ${depth}: maxDepth is ${maxDepth}.`);
     if (selection.tools.some(isProxiedTool) && depth >= maxDepth) throw new Error(`A Child at depth ${depth} cannot delegate: maxDepth is ${maxDepth}.`);
+    if (selection.tools.includes("subagent_spawn")) {
+      const missing = ["subagent_wait", "subagent_read"].filter(tool => !selection.tools.includes(tool));
+      if (missing.length) throw new Error(`A child with subagent_spawn must also be granted: ${missing.join(", ")}`);
+    }
     const relativeToProject = relative(this.path(this.environment.cwd), directory);
     const withinProject = !isAbsolute(relativeToProject) && relativeToProject !== ".." && !relativeToProject.startsWith(`..${sep}`);
     const cliArgs = ["--no-skills", "--no-prompt-templates", "--no-themes", this.environment.projectTrusted && withinProject ? "--approve" : "--no-approve"];
