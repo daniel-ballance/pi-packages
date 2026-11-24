@@ -222,10 +222,8 @@ sentence. Regenerate a second time and confirm the diff is unchanged.
 Classify every new or renamed upstream skill in `registry/skills.json`.
 The checker names unclassified paths and stale rows. Keep a reason for each drop.
 Run `npm run check`, `npm test`, and the repository's `./scripts/check.sh`
-before committing `vendor/pstack` with the regenerated output and rule changes.
+before committing the affected checkout's gitlink, generated files, metadata, and rule changes.
 
-## Routing evals
+## Evals
 
-`test/static-routing/cases.json` holds realistic prompts for every model-invoked skill: positives must rank their skill in the top k, negatives must be outranked by their named owner, and no two descriptions may collide. A case naming a skill that is not emitted is skipped, so a case can land before its skill. When a realistic prompt fails, fix the description with a token rule; never weaken the case. Record a description, route, or chain change rejected on eval evidence in [`docs/evals/rejected.md`](../../docs/evals/rejected.md).
-
-`test/behavior-eval/cases.json` runs realistic tasks in fixture repositories with p3stack-mode on and off, and grades the trace and the resulting files: reads, commands and their order, tools and their arguments, files, and commands the grader runs afterwards. Pass a disposable `--agent-dir` holding `auth.json`, `models.json`, `settings.json` (packages: this p3stack and web-search), and `mcp.json` for MCP cases. Fixture text `{{SKIP}}` becomes `skip` when materialized, so the fixtures pass floor-check themselves.
+Read the [eval guide](../../docs/evals/README.md) before a paid run. Use the decision log there for accepted and rejected changes. When an example fails, check the label and rubric before changing a description. Edit an upstream description with a scoped token rule and a p3stack-owned description in `authored/`.

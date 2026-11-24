@@ -1,6 +1,6 @@
 # House policies win over vendored defaults
 
-p3stack routes work through skills from four upstreams that disagree on purpose: pstack proceeds without waiting, Matt Pocock's skills wait until every decision is settled, superpowers gates building on an approved design, and agent-skills stops on any confusion. Loaded together, the same ambiguity can require a question, forbid one, and require a logged ruling. We settle each such conflict once, in a short **House policies** section of the `p3stack-mode` router, and let it win over any routed skill. The Grant, now explicit session state, decides which side of the authority policy applies.
+Four upstreams influence the router, including the watch-only superpowers source. Their advice differs: pstack proceeds without waiting, Matt Pocock's skills wait until every decision is settled, superpowers gates building on an approved design, and agent-skills stops on any confusion. Loaded together, the same ambiguity can require a question, forbid one, and require a logged ruling. We settle each such conflict once, in a short **House policies** section of the `p3stack-mode` router, and let it win over any routed skill. The grant for the task determines who decides. The session supplies the default, and the operator can raise it explicitly for one task.
 
 The policies are authority, question sorting (look up facts, prototype what is observable or easier to show, ask only preferences), validation at trust boundaries, migration by consumer topology, testing at agreed seams with one prototype carve-out, review independence (artifact and contract, never the author's conclusion), fresh versus resumed children, and one house style. The comparison behind each is in the skills analysis that preceded this change.
 
@@ -12,4 +12,4 @@ The policies are authority, question sorting (look up facts, prototype what is o
 
 ## Consequences
 
-The router grows by about 350 words, read on every task, so each policy stays one or two sentences and its rationale lives here. Vendored text that a policy overrides keeps its upstream wording; the router states the precedence. A behavior change to a policy is measured with the routing eval and recorded in `docs/evals/rejected.md` when evidence rejects it.
+The model reads the router on each task, so keep each policy short. State precedence there rather than rewriting each upstream. Test route selection with a read trace. Test a change in behavior against the resulting work. Record accepted and rejected changes in the [eval decision log](../evals/README.md#decision-log).
