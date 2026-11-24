@@ -22,7 +22,7 @@ Skills ask for capabilities such as delegation. Read the [shared host map](../pa
 
 `p3stack_roles` reads the first valid role file: `.pi/p3stack.json` in a trusted project, then `p3stack.json` in Pi's agent directory. It resolves roles against the host's catalog and reports substitutions or missing choices. A failed T3 lookup does not fall back to terminal models. [Interactive setup](../packages/p3stack/README.md#install-choices-and-setup) writes the personal file on either host. Without a UI it writes nothing.
 
-The static T3 check uses [the recorded contract](../packages/p3stack/rules/t3-pin.json), not a running host. For inventory and live behavior checks, see [Verify host compatibility](../packages/p3stack/docs/landing/t3-settings.md#verify-host-compatibility).
+The [T3 contract](../packages/p3stack/rules/t3-contract.json) classifies the host map’s bare operation names: `directTools` must have direct exposure, `requiredTools` can have any non-hidden exposure, and `optionalTools` may be absent. This is what p3stack needs, not [t3-agent’s choice of which tools to activate](../packages/t3-agent/extensions/t3-agent/src/loadout.ts). The static check compares the contract with the map. For a thread’s inventory, live behavior checks, or an optional support fingerprint, see [Verify host compatibility](../packages/p3stack/docs/landing/t3-settings.md#verify-host-compatibility).
 
 ## How to verify a change
 

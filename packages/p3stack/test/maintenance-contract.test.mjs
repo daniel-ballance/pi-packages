@@ -21,13 +21,13 @@ test("audit and host repair reach the installed live check; the landing guide li
   const ref = "references/verify-host.md";
   for (const caller of ["audit", "host-repair"]) assert.ok(read(`references/${caller}.md`).includes(`(${ref})`));
   const live = read(ref);
-  for (const gate of [/PI_CODING_AGENT_DIR.*(?:throwaway|disposable)/, /p3stack doctor/, /check-t3-pin\.mjs --doctor <dump>/, /--installed/, /behavior/]) assert.match(live, gate);
+  for (const gate of [/PI_CODING_AGENT_DIR.*(?:throwaway|disposable)/, /p3stack doctor/, /check-t3-contract\.mjs --doctor <dump>/, /--installed/, /behavior/]) assert.match(live, gate);
   const guide = read("../../docs/landing/t3-settings.md");
   assert.ok(guide.includes(`(../../authored/skills/maintain-p3stack/${ref})`));
   assert.doesNotMatch(guide, /--doctor <dump>/);
   const fixes = read("references/failure-classes.md");
   assert.match(fixes, /Host lint[^\n]*host-terminal\.md[^\n]*host-t3\.md/);
-  assert.match(fixes, /host map missing a required direct tool[^\n]*host-t3\.md/);
+  assert.match(fixes, /unclassified host map operation[^\n]*t3-contract\.json[^\n]*host-t3\.md/);
 });
 
 test("reference failures have repairs and all three classifications have examples", () => {
