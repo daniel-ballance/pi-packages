@@ -70,8 +70,8 @@ function main(args) {
     console.error(`\nGeneration failed at ${to.slice(0, 7)}. Resolve the diagnostic above, then rerun node generator/generate.mjs. See AGENTS.md, "Updating upstream".`);
     return 1;
   }
-  console.log("\nRegenerated. Review the semantic delta with git diff -- skills agents, then run npm run check and npm test,");
-  console.log(`and commit ${upstream.checkout} together with the regenerated output.`);
+  console.log(`\nRegenerated. Review git diff -- skills agents and stage ${upstream.checkout} with the intended changes.`);
+  console.log("Follow skills/maintain-p3stack/references/bump.md for the candidate commit's root check receipt.");
   return 0;
 }
 

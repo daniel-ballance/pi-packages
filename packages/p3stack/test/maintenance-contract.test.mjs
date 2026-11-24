@@ -47,6 +47,16 @@ test("a shared checkout moves once, to the checked SHA even on a tip run", () =>
   assert.doesNotMatch(bump, /bump for each source/);
 });
 
+test("audit and candidate consume the root check, not a second set of its component commands", () => {
+  for (const phase of ["audit", "bump", "verify-host"]) {
+    const guide = read(`references/${phase}.md`);
+    assert.doesNotMatch(guide, /`(?:npm (?:run check|test)|node generator\/(?:generate\.mjs --check|check-registry\.mjs|check-t3-[\w-]+\.mjs))`/, phase);
+  }
+  assert.match(read("references/bump.md"), /pre-push/);
+  const landing = read("references/land.md");
+  assert.match(landing, /merge commit[^\n]*\.\/scripts\/check\.sh/);
+});
+
 test("revert verifies repository, main, merge ancestry, changed paths and bump receipt first", () => {
   const doc = read("references/revert.md"), revert = doc.indexOf("git revert --no-edit");
   assert.ok(revert > 0);
