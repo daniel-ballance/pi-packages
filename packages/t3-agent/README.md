@@ -6,7 +6,7 @@ Tunes Pi for [T3 Code](https://github.com/pingdotgg/t3code). With this package, 
 
 ## How it relates to T3's bridge
 
-T3 injects its own extension into every Pi it launches. The bridge owns the MCP connection, registers the T3 tools as `mcp__t3-code__<name>`, declares three of them (`orchestrator_capabilities`, `delegate_task`, `task_status`), defers the rest to `tool_search`, applies the permission mode through Pi's `tool_call` hook, and appends its orchestration guidance. t3-agent builds on that. It never opens its own connection or reads the bearer token, and it adds no tool of its own.
+T3 injects its own extension into every Pi it launches. The bridge owns the MCP connection, registers the T3 tools as `mcp__t3-code__<name>`, normally declares three of them (`orchestrator_capabilities`, `delegate_task`, `task_status`) and defers the rest, activates more when its discovery or provider requires it, applies the permission mode through Pi's `tool_call` hook, and appends its orchestration guidance. t3-agent builds on that. It never opens its own connection or reads the bearer token, and it adds no tool of its own.
 
 ## What it adds under T3
 
@@ -21,15 +21,15 @@ T3 injects its own extension into every Pi it launches. The bridge owns the MCP 
 
 The section is rebuilt before each prompt. Pi resends only changed sections, so the stable parts stay in the prompt cache.
 
-**A T3 tool loadout.** Every T3 tool the bridge defers costs the model a `tool_search` call before first use. A loadout declares a chosen set up front:
+**A T3 tool loadout.** The model can discover deferred tools with `tool_search` or call known ones in codemode. A loadout declares a chosen set up front:
 
 | Loadout | Declares |
 | --- | --- |
-| `lean` | Only the bridge's three tools |
+| `lean` | No preset additions to the bridge's tools |
 | `standard` (default) | Also `task_cancel`, `t3_thread_read`, `request_secret`, `html_preview`, `html_render`, `watch_pull_request`, `schedule_task`: the tools T3's guidance tells the model to call |
 | `full` | Every T3 tool |
 
-Open handles add the tools that act on them: `t3_preview_close` while a preview tab is open, `unwatch_pull_request` while a PR is watched, `delete_scheduled_task` while a schedule exists, and `device_close` and `device_screenshot` while a device is open. These tools are withdrawn when the handle closes. In supervised and auto-accept-edits threads the loadout also activates Pi's built-in `grep`, `find` and `ls`. The bridge never asks before those, while every bash call needs approval. The package removes only tools it activated itself.
+Open handles add the tools that act on them: `t3_preview_close` while a preview tab is open, `unwatch_pull_request` while a PR is watched, `delete_scheduled_task` while a schedule exists, and `device_close` and `device_screenshot` while a device is open. These tools are withdrawn when the handle closes. In supervised and auto-accept-edits threads the loadout also activates Pi's built-in `grep`, `find` and `ls`. The bridge never asks before those, while every bash call needs approval. The package records its own additions on the current session branch. It never withdraws pre-existing or bridge-required tools, including the eager loadout for completion gateways.
 
 **A ledger of T3 handles.** It reads the results of T3 tools, including calls made from codemode scripts, and records:
 

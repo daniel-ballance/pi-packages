@@ -205,21 +205,21 @@ test("the prompt section states mode, workspace, loadout and open handles", () =
   const supervised = buildSection({
     mode: "approval-required",
     workspace: { root: "/home/u/.t3/worktrees/p/t3-1", branch: "feat/x", linked: true, mainCheckout: "/home/u/Code/p", t3Managed: true, defaultBranch: "origin/main" },
-    declared: ["mcp__t3-code__html_render"],
+    declared: 1,
     ledger: "- watching PR o/r#1",
   });
   assert.match(supervised, /Permission mode: supervised\. T3 asks the user before every bash call/);
   assert.match(supervised, /branch `feat\/x` \(not pushed\), a worktree T3 created for this thread from `\/home\/u\/Code\/p`; default branch `origin\/main`/);
-  assert.match(supervised, /Declared T3 tools beyond the bridge's: `html_render`/);
+  assert.match(supervised, /Declared T3 tools: 1\b/);
   assert.match(supervised, /use `delegate_task`: it is your subagent tool/);
   assert.match(supervised, /### Open T3 handles[\s\S]*watching PR o\/r#1/);
 
-  const full = buildSection({ mode: "full-access", declared: [], allDeclared: true });
+  const full = buildSection({ mode: "full-access", declared: 31 });
   assert.match(full, /Permission mode: full access/);
-  assert.match(full, /Every T3 tool is declared/);
+  assert.match(full, /Declared T3 tools: 31\b/);
   assert.doesNotMatch(full, /Workspace:|Open T3 handles/);
-  assert.match(buildSection({ mode: "auto-accept-edits", declared: [] }), /auto-accept edits\. Edit and write run without asking/);
-  assert.match(buildSection({ mode: "full-access", declared: [], workspace: { root: "/r", branch: "main", upstream: "origin/main", linked: false, t3Managed: false } }),
+  assert.match(buildSection({ mode: "auto-accept-edits", declared: 0 }), /auto-accept edits\. Edit and write run without asking/);
+  assert.match(buildSection({ mode: "full-access", declared: 0, workspace: { root: "/r", branch: "main", upstream: "origin/main", linked: false, t3Managed: false } }),
     /the repository's main checkout\. Other T3 threads may share it/);
 });
 

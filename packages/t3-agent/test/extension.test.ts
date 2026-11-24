@@ -16,10 +16,12 @@ const T3_TOOLS = ["orchestrator_capabilities", "delegate_task", "task_status", "
 
 type Handler = (event: any, ctx: any) => any;
 
-function fixture(env: Record<string, string | undefined>, options: { branch?: unknown[]; active?: string[] } = {}) {
+function fixture(env: Record<string, string | undefined>, options: { branch?: unknown[]; active?: string[]; t3Tools?: string[]; direct?: Set<string>; excluded?: Set<string> } = {}) {
   const handlers = new Map<string, Handler[]>();
   const commands = new Map<string, any>();
   const appended: unknown[][] = [];
+  const branch = options.branch ?? [];
+  const direct = options.direct ?? new Set(T3_TOOLS.slice(0, 3));
   const statuses: unknown[][] = [];
   const notices: unknown[][] = [];
   let active = options.active ?? ["read", "bash", "edit", "write", "mcp__t3-code__orchestrator_capabilities", "mcp__t3-code__delegate_task", "mcp__t3-code__task_status"];
@@ -28,12 +30,15 @@ function fixture(env: Record<string, string | undefined>, options: { branch?: un
     on: (name: string, handler: Handler) => { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
     registerCommand: (name: string, command: unknown) => commands.set(name, command),
     getAllTools: () => [
-      ...T3_TOOLS.map(name => ({ name: `mcp__t3-code__${name}`, exposure: ["orchestrator_capabilities", "delegate_task", "task_status"].includes(name) ? "direct" : "deferred" })),
+      ...(options.t3Tools ?? T3_TOOLS).map(name => ({ name: `mcp__t3-code__${name}`, exposure: direct.has(name) ? "direct" : "deferred" })),
       ...["read", "bash", "edit", "write", "grep", "find", "ls"].map(name => ({ name, exposure: "direct", sourceInfo: { source: "builtin", path: `builtin:${name}` } })),
     ],
     getActiveTools: () => [...active],
-    setActiveTools: (names: string[]) => { active = [...names]; },
-    appendEntry: (...args: unknown[]) => appended.push(args),
+    setActiveTools: (names: string[]) => { active = names.filter(name => !options.excluded?.has(name)); },
+    appendEntry: (customType: string, data: unknown) => {
+      appended.push([customType, data]);
+      branch.push({ type: "custom", customType, data });
+    },
     exec: async () => ({ stdout: "", stderr: "", code: 128, killed: false, truncated: false }),
   }, {
     get(target, key: string) {
@@ -44,7 +49,8 @@ function fixture(env: Record<string, string | undefined>, options: { branch?: un
   const ctx = {
     cwd: "/tmp/project",
     isProjectTrusted: () => false,
-    sessionManager: { getBranch: () => options.branch ?? [] },
+    model: { api: "openai-responses" },
+    sessionManager: { getBranch: () => branch },
     ui: { setStatus: (...args: unknown[]) => statuses.push(args), notify: (...args: unknown[]) => notices.push(args) },
   };
   t3Agent(pi, env);
@@ -132,7 +138,7 @@ test("under T3 it contributes its skill and prompts and declares the standard lo
   assert.deepEqual(f.statuses.at(-1), [STATUS_KEY, "t3-agent: full access · standard loadout"]);
   const sections = await startTurn(f);
   assert.match(sections.t3_agent!, /Permission mode: full access/);
-  assert.match(sections.t3_agent!, /Declared T3 tools beyond the bridge's: `task_cancel`, `t3_thread_read`/);
+  assert.match(sections.t3_agent!, /Declared T3 tools: 10\b/);
 });
 
 test("supervised threads get Pi's read-only search tools", async () => {
@@ -256,7 +262,7 @@ test("/t3-agent loadout changes this session's tools and survives a restart", as
   const command = f.commands.get("t3-agent");
   await command.handler("loadout lean", f.ctx);
   assert.deepEqual(f.active(), ["read", "bash", "edit", "write", "mcp__t3-code__orchestrator_capabilities", "mcp__t3-code__delegate_task", "mcp__t3-code__task_status"]);
-  assert.deepEqual(f.appended.at(-1), [LOADOUT_ENTRY, { loadout: "lean" }]);
+  assert.deepEqual(f.appended.findLast(([type]) => type === LOADOUT_ENTRY), [LOADOUT_ENTRY, { loadout: "lean" }]);
   await command.handler("loadout huge", f.ctx);
   assert.match(String(f.notices.at(-1)![0]), /Usage: \/t3-agent loadout lean\|standard\|full/);
   await command.handler("", f.ctx);
@@ -265,7 +271,7 @@ test("/t3-agent loadout changes this session's tools and survives a restart", as
   const restarted = fixture(T3, { branch: [{ type: "custom", customType: LOADOUT_ENTRY, data: { loadout: "full" } }] });
   await restarted.emit("session_start", { reason: "resume" });
   assert.equal(restarted.active().filter(name => name.startsWith("mcp__t3-code__")).length, T3_TOOLS.length);
-  assert.match((await startTurn(restarted)).t3_agent!, /Declared T3 tools beyond the bridge's: `task_cancel`/);
+  assert.match((await startTurn(restarted)).t3_agent!, /Declared T3 tools: 12\b/);
 });
 
 test("/t3-agent forget closes ledger entries without touching T3", async () => {
@@ -292,6 +298,71 @@ test("forget can address a device by host/id and its close survives replay", asy
   const prompt = (await startTurn(restart)).t3_agent!;
   assert.match(prompt, /deviceId=sim.*hostId=two/);
   assert.doesNotMatch(prompt, /hostId=one/);
+});
+
+test("a restarted loadout withdraws exactly this branch’s recorded additions", async () => {
+  const prefix = "mcp__t3-code__";
+  const baseline = ["read", "bash", ...T3_TOOLS.slice(0, 3).map(name => prefix + name), prefix + "html_render"];
+  const first = fixture(T3, { active: baseline });
+  await first.emit("session_start");
+  await toolResult(first, "preview_open", { reuseExistingTab: false }, { tabId: "new", control: { ownedByCaller: true } });
+  const branch = [...first.ctx.sessionManager.getBranch(), ...(await first.emit("turn_end", { entries: [] })).entries];
+  const restart = fixture(T3, { branch, active: first.active() });
+  await restart.emit("session_start");
+  await restart.commands.get("t3-agent").handler("loadout lean", restart.ctx);
+  await toolResult(restart, "t3_preview_close", { tabId: "new" }, {});
+  assert.deepEqual(restart.active(), baseline);
+});
+
+test("an addition Pi refused does not confer ownership if another extension later activates it", async () => {
+  const tool = "mcp__t3-code__html_preview";
+  const excluded = new Set([tool]);
+  const f = fixture(T3, { excluded });
+  await f.emit("session_start");
+  excluded.clear();
+  f.reset([...f.active(), tool]);
+  await f.commands.get("t3-agent").handler("loadout lean", f.ctx);
+  assert.ok(f.active().includes(tool));
+});
+
+test("tree navigation does not use ownership from the branch just left", async () => {
+  const branch: unknown[] = [];
+  const f = fixture(T3, { branch });
+  await f.emit("session_start");
+  const restoredActive = ["read", "mcp__t3-code__html_preview"];
+  f.reset(restoredActive);
+  branch.splice(0, branch.length, { type: "custom", customType: LOADOUT_ENTRY, data: { loadout: "lean" } });
+  await f.emit("session_tree");
+  assert.deepEqual(f.active(), restoredActive);
+});
+
+test("switching to lean cannot withdraw tools now required by the bridge", async () => {
+  const required = T3_TOOLS.map(name => "mcp__t3-code__" + name);
+  for (const api of ["openai-completions", "openai-responses"]) {
+    const direct = new Set(T3_TOOLS.slice(0, 3));
+    const f = fixture(T3, { direct });
+    await f.emit("session_start");
+    f.ctx.model.api = api;
+    // With no built-in search the bridge re-registers its optional tools direct.
+    if (api === "openai-responses") for (const name of T3_TOOLS) direct.add(name);
+    f.reset(["read", ...required]);
+    await f.emit("model_select");
+    await f.commands.get("t3-agent").handler("loadout lean", f.ctx);
+    assert.deepEqual(f.active(), ["read", ...required], api);
+  }
+});
+
+test("the prompt and status report actual declared T3 counts for a partial or empty catalog", async () => {
+  for (const count of [20, 0]) {
+    const t3Tools = count ? Array.from({ length: 31 }, (_, i) => "tool_" + i) : [];
+    const f = fixture(T3, { t3Tools, active: ["read", ...t3Tools.slice(0, count).map(name => "mcp__t3-code__" + name)] });
+    await f.emit("session_start");
+    await f.commands.get("t3-agent").handler("status", f.ctx);
+    for (const report of [(await startTurn(f)).t3_agent!, String(f.notices.at(-1)![0])]) {
+      assert.match(report, new RegExp(`Declared T3 tools: ${count}\\b`));
+      assert.doesNotMatch(report, /every T3 tool is declared|bridge's three/i);
+    }
+  }
 });
 
 test("the loadout is restored after another extension resets the active tools", async () => {

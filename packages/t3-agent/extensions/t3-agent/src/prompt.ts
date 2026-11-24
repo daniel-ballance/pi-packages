@@ -5,17 +5,15 @@
 // costs a prompt patch.
 
 import type { Workspace } from "./workspace.ts";
-import { asksForBash, asksForEdits, T3_PREFIX, type RuntimeMode } from "./runtime.ts";
+import { asksForBash, asksForEdits, type RuntimeMode } from "./runtime.ts";
 
 export const SECTION = "t3_agent";
 
 export interface PromptState {
   mode: RuntimeMode;
   workspace?: Workspace;
-  /** Full names of the active T3 tools beyond the bridge's three. */
-  declared: readonly string[];
-  /** Every T3 tool is declared; too many to list. */
-  allDeclared?: boolean;
+  /** Public T3 tool names in Pi’s active loadout, including bridge declarations. */
+  declared: number;
   ledger?: string;
 }
 
@@ -41,7 +39,6 @@ function workspaceLine(workspace: Workspace | undefined): string | undefined {
 }
 
 export function buildSection(state: PromptState): string {
-  const declared = state.declared.filter(name => name.startsWith(T3_PREFIX)).map(name => `\`${name.slice(T3_PREFIX.length)}\``);
   const lines = [
     "## Pi under T3 Code",
     "",
@@ -51,11 +48,7 @@ export function buildSection(state: PromptState): string {
     permissionLine(state.mode),
     workspaceLine(state.workspace),
     "- After you open a pull request, call `link_pull_request` so T3 tracks it with this thread, or `watch_pull_request` when you will handle its checks and reviews.",
-    state.allDeclared
-      ? "- Every T3 tool is declared; the `t3-code` skill maps each T3 capability to its tool."
-      : declared.length > 0
-      ? `- Declared T3 tools beyond the bridge's: ${declared.join(", ")}. Load any other T3 tool with \`tool_search\`; the \`t3-code\` skill maps every T3 capability to its tool.`
-      : "- Load T3 tools beyond the bridge's three with `tool_search`; the `t3-code` skill maps every T3 capability to its tool.",
+    `- Declared T3 tools: ${state.declared} in Pi's active loadout. Use \`tool_search\` to discover available tools; the \`t3-code\` skill maps jobs to T3 tools.`,
     "- Pi has no native subagent tool here. Wherever T3's guidance says to use your native tool, use `delegate_task`: it is your subagent tool for every child, your own provider included. Pass `mode:\"wait\"` only when this turn needs the result; otherwise use `mode:\"async\"`, end the turn, and let completion wake you.",
   ].filter((line): line is string => line !== undefined);
   if (state.ledger) {
