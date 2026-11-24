@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tier A routing check: ranks realistic prompts against the descriptions of
+// Tier A description lint: ranks realistic prompts against the descriptions of
 // p3stack's model-invoked skills with TF-IDF and cosine similarity. Free,
 // deterministic, and run by `npm run check`. Semantic routing is the routing
 // eval's job (test/routing-eval); this catches missing vocabulary and
@@ -63,7 +63,7 @@ export function modelInvokedSkills(packageDir) {
   }
   return paths.flatMap(path => {
     const { frontmatter } = parseFrontmatter(readFileSync(path, "utf8"));
-    if (frontmatter["disable-model-invocation"]) return [];
+    if (frontmatter["disable-model-invocation"] === true) return [];
     const { name, description } = frontmatter;
     if (!name || typeof description !== "string" || !description.trim()) throw new Error(`Missing name or description in ${path}`);
     return [{ name, text: description.trim() }];

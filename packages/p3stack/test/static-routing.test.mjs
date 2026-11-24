@@ -56,7 +56,9 @@ test("the index uses frontmatter from the registry and the nested skill director
   put("registry/skills.json", JSON.stringify([{ action: "emit", invocation: "model", name: "pr" }]));
   put("skills/pr/SKILL.md", '---\nname: pr\ndescription: "Write a PR: description" # comment\n---\n');
   put("subagents/skills/workflows/SKILL.md", '---\nname: workflows\ndescription: >-\n  Supervise bounded\n  workflows.\n---\ndescription: not me\n');
-  put("subagents/skills/subagents/SKILL.md", '---\nname: subagents\ndescription: Manage children.\n---\n');
+  // Pi hides a skill only for YAML boolean true, not for a quoted scalar.
+  put("subagents/skills/subagents/SKILL.md", '---\nname: subagents\ndescription: Manage children.\ndisable-model-invocation: "false"\n---\n');
+  put("subagents/skills/manual/SKILL.md", '---\nname: manual\ndescription: Manual only.\ndisable-model-invocation: true\n---\n');
   assert.deepEqual(modelInvokedSkills(root).sort((a,b) => a.name.localeCompare(b.name)), [
     { name: "pr", text: "Write a PR: description" },
     { name: "subagents", text: "Manage children." },
