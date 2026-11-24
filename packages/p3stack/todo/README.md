@@ -41,7 +41,8 @@ labelled as the extension's, says the user does not see it, and asks for no repl
 
 - **During a run:** after four turns with tool calls but no `todo` call while
   items are open, one short reminder of the count and the next open item. It
-  repeats only after the next `todo` call.
+  repeats only after the next `todo` call or in a new request. Calls to
+  `tools.todo` inside codemode scripts count as todo calls.
 - **At the end of a request:** if the request used the list, then used other
   tools after its last `todo` call, and items are still open, one more turn to
   mark them done or skipped. Items left open on purpose, for example waiting on

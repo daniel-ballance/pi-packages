@@ -41,7 +41,7 @@ export default function todo(pi: ExtensionAPI) {
   // Models set the list and then forget it while they work (seen with GPT and Claude
   // alike): nothing in their context mentions it again. So the extension does, once
   // after a few turns without a todo call, and once more before a run settles.
-  let turnsSinceTodo = 0, reminded = false, usedThisRun = false, settleNudged = false;
+  let turnsSinceTodo = 0, reminded = false, usedThisTurn = false, usedThisRun = false, settleNudged = false;
   // Whether the model used other tools after its last todo call: only then can the
   // list have fallen behind the work.
   let workSinceTodo = false;
@@ -68,7 +68,7 @@ export default function todo(pi: ExtensionAPI) {
     parameters,
     outputSchema,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      turnsSinceTodo = 0; reminded = false; usedThisRun = true;
+      turnsSinceTodo = 0; reminded = false; usedThisTurn = true; usedThisRun = true;
       const operation = parseOperation(params);
       if ("error" in operation) return result("", operation.error);
       const outcome = apply(list, operation);
@@ -141,19 +141,25 @@ export default function todo(pi: ExtensionAPI) {
     content: `<todo-extension-note>\nAutomated note from the todo tool's extension, not from the user, who does not see it. Do not mention it or reply to it.\n${content}\n</todo-extension-note>`,
   });
 
-  // A new request from the user (or a T3 wake) starts a fresh check. The continuation this
-  // extension asks for does not, so one request gets at most one nudge.
-  pi.on("before_agent_start", event => { if ((event as { messageType?: string }).messageType !== "custom") { usedThisRun = false; settleNudged = false; workSinceTodo = false; } });
+  // Both user requests and idle custom wakes start here. Pi's settle continuation
+  // calls agent.continue() inside the same run, without another before_agent_start.
+  pi.on("before_agent_start", () => {
+    turnsSinceTodo = 0; reminded = false; usedThisTurn = false; usedThisRun = false; settleNudged = false; workSinceTodo = false;
+  });
 
   pi.on("turn_end", event => {
-    // Results come in call order, so work after a todo call in the same turn counts.
-    const names = event.toolResults.map(result => result.toolName);
+    // Pi records a script's calls on the outer tool result, in call order.
+    const names = event.toolResults.flatMap(result => result.toolName === "codemode" && result.nestedCalls?.calls.length
+      ? result.nestedCalls.calls.map(call => call.name) : [result.toolName]);
+    const ranTodo = usedThisTurn;
+    usedThisTurn = false;
+    if (!names.length) return;
     const last = names.lastIndexOf(tool.name);
-    if (last >= 0) workSinceTodo = last < names.length - 1;
-    else if (names.length) workSinceTodo = true;
+    // A bounded nested-call record can omit a todo that execute() saw. Don't infer later work then.
+    workSinceTodo = last >= 0 ? last < names.length - 1 : !ranTodo;
+    if (ranTodo || last >= 0) return; // Work after todo matters at settle, but this is still a todo turn.
     turnsSinceTodo++;
-    // A turn without tool calls ends the run; the end-of-run check covers that.
-    if (!names.length || reminded || turnsSinceTodo < REMIND_AFTER_TURNS || !list.items.some(isOpen)) return;
+    if (reminded || turnsSinceTodo < REMIND_AFTER_TURNS || !list.items.some(isOpen)) return;
     reminded = true;
     return { entries: [...event.entries, note("todo-reminder", `${openSummary().line}. Mark items done or skipped as you finish them (ids for several at once), and carry on with the task.`)] };
   });
