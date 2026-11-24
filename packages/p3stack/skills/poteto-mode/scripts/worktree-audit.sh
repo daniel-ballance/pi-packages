@@ -100,22 +100,28 @@ while IFS= read -r -d '' field; do
 	fi
 
 	# Porcelain v1 quotes embedded newlines. Count records, never split a path.
-	dirty=unknown; ignored="?"
+	dirty=unknown; ignored_dirs="?"
 	if top=$(git -C "$wt" rev-parse --show-toplevel) && [ "$top" -ef "$wt" ] \
 		&& flags=$(git -C "$wt" ls-files -v) \
-		&& porcelain=$(git -C "$wt" status --porcelain=v1 --untracked-files=all --ignored --ignore-submodules=none); then
-		wip=0; untracked=0; ignored=0
+		&& porcelain=$(git -C "$wt" status --porcelain=v1 --untracked-files=all --ignored=matching --ignore-submodules=none); then
+		wip=0; untracked=0; ignored_files=0; ignored_dirs=0
 		while IFS= read -r entry; do
 			case "$entry" in [a-zS]' '*) ((wip++)) ;; esac
 		done <<< "$flags"
 		while IFS= read -r entry; do
-			case "$entry" in '') ;; '?? '*) ((untracked++)) ;; '!! '*) ((ignored++)) ;; *) ((wip++)) ;; esac
+			case "$entry" in
+			'') ;;
+			'?? '*) ((untracked++)) ;;
+			'!! '*/|'!! '*'/"') ((ignored_dirs++)) ;; # Git may quote the directory name.
+			'!! '*) ((ignored_files++)) ;;
+			*) ((wip++)) ;;
+			esac
 		done <<< "$porcelain"
-		dirty=clean
-		if [ "$untracked" -gt 0 ]; then
-			dirty="untracked:$untracked"
-			[ "$wip" -eq 0 ] || dirty="$dirty,wip:$wip"
-		elif [ "$wip" -gt 0 ]; then dirty="wip:$wip"; fi
+		dirty=""
+		[ "$wip" -eq 0 ] || dirty="wip:$wip"
+		[ "$untracked" -eq 0 ] || dirty="untracked:$untracked${dirty:+,$dirty}"
+		[ "$ignored_files" -eq 0 ] || dirty="ignored-files:$ignored_files${dirty:+,$dirty}"
+		dirty=${dirty:-clean}
 	fi
 
 	branch=$(git -C "$wt" symbolic-ref --quiet --short HEAD 2>/dev/null)
@@ -147,6 +153,7 @@ while IFS= read -r -d '' field; do
 
 	case "$dirty" in
 	unknown) bucket=unknown ;;
+	ignored-files:*) bucket=hold-ignored ;;
 	untracked:*) bucket=hold-untracked ;;
 	wip:*) bucket=hold-wip ;;
 	*)  case "$pr" in */open|*/draft) bucket=hold-open-pr ;; *)
@@ -162,5 +169,5 @@ while IFS= read -r -d '' field; do
 	# Preserve a single display row even for names containing control characters.
 	[[ "$wt" != *[[:cntrl:]]* ]] || printf -v wt '%q' "$wt"
 	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-		"$size" "$age" "$merged" "$dirty,ignored:$ignored" "$remote" "$pr" "$last" "$bucket" "$wt"
+		"$size" "$age" "$merged" "$dirty,ignored-dirs:$ignored_dirs" "$remote" "$pr" "$last" "$bucket" "$wt"
 done < "$tmp/worktrees" | sort -t$'\t' -k1,1 -rh
