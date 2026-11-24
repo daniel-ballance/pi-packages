@@ -18,6 +18,7 @@ type Tool = (args: Record<string, unknown>) => Promise<{ content: { text: string
 
 async function withWaitTool(run: (tools: {
   manager: SubagentManager;
+  confirmStop: (id: string, yes: boolean) => Promise<void>;
   wait: Tool;
   read: Tool;
   worker: string;
@@ -48,7 +49,7 @@ async function withWaitTool(run: (tools: {
   process.env.PI_CODING_AGENT_DIR = agentDir;
   process.env.PATH = `${bin}:${process.env.PATH}`;
   const tools = new Map<string, any>(), handlers = new Map<string, Function[]>();
-  let pending = false;
+  let subagentsCommand!: Function, pending = false;
   const ctx = {
     cwd: root, mode: "rpc", hasUI: false, isIdle: () => false, isProjectTrusted: () => false, hasPendingMessages: () => pending,
     modelRegistry: { getAvailable: () => [{ provider: "test", id: "fake", input: ["text"], contextWindow: 1000, maxTokens: 100, cost: {}, reasoning: true }] },
@@ -65,7 +66,7 @@ async function withWaitTool(run: (tools: {
       subagents({
         registerFlag() {}, getFlag() { return false; },
         on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
-        registerTool(tool: any) { tools.set(tool.name, tool); }, registerCommand() {}, sendMessage() {},
+        registerTool(tool: any) { tools.set(tool.name, tool); }, registerCommand(name: string, def: any) { if (name === "subagents") subagentsCommand = def.handler; }, sendMessage() {},
         getAllTools: () => [], getCommands: () => [], events: { on: () => () => {} },
       } as unknown as ExtensionAPI);
       for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
@@ -74,6 +75,7 @@ async function withWaitTool(run: (tools: {
     assert.equal(manager!.get(worker.id).status, "working");
     await run({
       manager: manager!,
+      confirmStop: (id, yes) => subagentsCommand(`confirm-stopped ${id}`, {...ctx, ui: {...ctx.ui, confirm: async () => yes}}),
       wait: args => tools.get("subagent_wait").execute("c", args, undefined, undefined, ctx),
       read: args => tools.get("subagent_read").execute("c", args, undefined, undefined, ctx),
       worker: worker.id,
@@ -201,6 +203,31 @@ test("a preview is not a review; delegation-only reads can replay each complete 
   });
 });
 
+test("only the human's confirmation clears a detached live-PID slot", async () => {
+  await withWaitTool(async ({ manager, confirmStop, worker }) => {
+    const live = manager.capacity().live;
+    assert.equal((await manager.close("detached")).outcome, "unconfirmed");
+    await confirmStop("detached", false);
+    assert.equal(manager.capacity().live, live);
+    await assert.rejects(confirmStop(worker, true), /detached/);
+    await confirmStop("detached", true);
+    assert.equal(manager.capacity().live, live - 1);
+    assert.equal(manager.get("detached").status, "stopped");
+    assert.ok(manager.get("detached").hold, "manual stop confirmation never releases a hold");
+  }, [{ id: "detached", pid: process.pid, unconfirmedStop: "pending", hold: {kind: "kill", at: "now", outcome: "failed"} }]);
+});
+
+test("a fully paged result is no longer advertised as a pending full read", async () => {
+  await withWaitTool(async ({read, manager, spawn}) => {
+    const id = await spawn("文".repeat(13000)); await manager.wait([id], "all", 2000);
+    let args = manager.get(id).updates.at(-1)!.readFull as any;
+    assert.ok(args);
+    do { const page = (await read(args)).details as any; args = page.nextRead; } while (args);
+    const after = (await read({id})).details as any;
+    assert.equal(after.resultReview.status, "reviewed"); assert.equal(after.readFull, undefined);
+  });
+});
+
 test("overflow keeps supervision and every omitted report handle without skipping any result", async () => {
   await withWaitTool(async ({ read, manager, worker: id }) => {
     await read({ id });
@@ -224,6 +251,20 @@ test("overflow keeps supervision and every omitted report handle without skippin
     assert.equal(manager.summary(id).unread, 0);
     const replay = (await read({id, since: reports[1].cursor - 1})).details as any;
     assert.ok(replay.omittedReports.some((u: any) => u.cursor === reports[1].cursor));
+  });
+});
+
+test("an oversized pending dialog keeps its id and complete details even after the update cursor passed it", async () => {
+  await withWaitTool(async ({read, manager, worker: id}) => {
+    const r = manager.get(id), options = ["文".repeat(14000), "second"];
+    (manager as any).event(r, {type: "extension_ui_request", id: "select", method: "select", title: "Choose", options}, {});
+    const replay = (await read({id, since:r.cursor})).details as any;
+    const [dialog] = replay.uiRequests;
+    assert.equal(dialog.id, "select");
+    let text = "", args = dialog.readFull;
+    assert.ok(args);
+    do { const p = (await read(args)).details as any; text += p.text; args = p.nextRead; } while (args);
+    assert.deepEqual(JSON.parse(text).options, options);
   });
 });
 

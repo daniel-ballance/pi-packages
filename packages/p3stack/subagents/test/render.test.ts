@@ -88,6 +88,9 @@ test("read page and unconfirmed stop cards show position and failed process IDs"
   for (const action of ["abort", "close"] as const) {
     const card = render(action, { ...child, status: "stopped", outcome: "unconfirmed", targetOutcome: "unconfirmed", subtreeFailures: ["desc: no exit"] });
     assert.ok(card.includes("unconfirmed") && card.includes("desc") && card.includes(child.id), card);
+    const ids = ["subagent-11111111","subagent-22222222","subagent-33333333"];
+    const narrow = render(action, { ...child, outcome:"unconfirmed", subtreeFailures:ids.map(id => id + ": uncertain") }, false, 32);
+    assert.ok(ids.every(id => narrow.includes(id)), narrow);
   }
 });
 

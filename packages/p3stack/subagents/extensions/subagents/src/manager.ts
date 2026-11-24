@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
 import { isProxiedTool } from "./nesting.js";
@@ -206,7 +206,7 @@ export class SubagentManager {
         enforcePrivatePathIfPresent(record.logFile, 0o600, false);
         enforcePrivatePathIfPresent(record.stderrFile, 0o600, false);
         for (const u of record.updates) if (u.readFull) u.readFull = reportPage(record.id, u.cursor); // pre-page registries
-        this.trimReports(record);
+        if (this.trimReports(record)) recoveredChanges = true;
         this.records.set(record.id, record);
       }
       // Old registries have no pending queue: never reconstruct already-sent reports.
@@ -247,8 +247,9 @@ export class SubagentManager {
     const saved = record.savedReports;
     if (!saved || saved.length <= SAVED_REPORTS) return;
     for (const {file} of saved.splice(0, saved.length - SAVED_REPORTS)) {
-      if (file && resolve(file) === resolve(this.directory, file.split(/[\\/]/).pop()!) && /[\da-f-]{36}\.report$/.test(file) && existsSync(file)) unlinkSync(file);
+      if (file && dirname(resolve(file)) === resolve(this.directory) && /^[\da-f-]{36}\.report$/.test(basename(file)) && existsSync(file)) unlinkSync(file);
     }
+    return true;
   }
   private appendUpdate(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
     record.updatedAt = new Date().toISOString();
@@ -283,6 +284,10 @@ export class SubagentManager {
   }
   private report(record: AgentRecord, kind: string, text: string, noticeKind = kind, requestId?: string) {
     const update = this.appendUpdate(record, kind, text);
+    if (requestId !== undefined) {
+      const request = record.uiRequests.find(r => r.id === requestId);
+      if (request) request.readFull = reportPage(record.id, update.cursor);
+    }
     if (!this.announce(record, noticeKind, text, update.cursor, requestId)) this.persist();
   }
   private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
@@ -467,14 +472,14 @@ export class SubagentManager {
     const boundary = (n: number) => /[\uD800-\uDBFF]/.test(window.charAt(n - 1)) && /[\uDC00-\uDFFF]/.test(window.charAt(n)) ? n + 1 : n;
     const start = boundary(offset - from), text = window.slice(start, boundary(offset - from + PAGE_CHARS));
     const data = { id, assignmentId: saved?.assignmentId ?? update?.assignmentId, text, offset: from + start, fullLength, truncated: text.length < fullLength,
-      resultReview: record.resultReview, nextRead: offset + PAGE_CHARS < fullLength ? reportPage(id, cursor, offset + PAGE_CHARS) : undefined };
+      resultReview: record.resultReview && structuredClone(record.resultReview), nextRead: from + start + text.length < fullLength ? reportPage(id, cursor, offset + PAGE_CHARS) : undefined };
     return { data, acknowledge: (byRoot = true) => {
       if (data.nextRead) return;
       this.observe(record, [cursor], !byRoot);
       if (saved) saved.reviewed = true;
       if (update) update.consumed = true;
       if (record.assignment?.resultCursor === cursor) this.review(record);
-      data.resultReview = record.resultReview;
+      data.resultReview = record.resultReview && structuredClone(record.resultReview);
       this.advanceConsumed(record);
       this.persist();
     } };
@@ -501,7 +506,7 @@ export class SubagentManager {
       id, name: record.name, status: record.status, activity: record.activity,
       model: record.model, thinking: record.thinking,
       updates, nextCursor, hasMore: record.cursor > nextCursor,
-      ...(saved?.file && saved.fullLength > DISPLAY_CHARS ? { readFull: reportPage(id, saved.updateCursor), fullLength: saved.fullLength } : {}),
+      ...(saved?.file && !saved.reviewed && saved.fullLength > DISPLAY_CHARS ? { readFull: reportPage(id, saved.updateCursor), fullLength: saved.fullLength } : {}),
       gap: record.updates.length > 0 && cursor < record.updates[0].cursor - 1,
       uiRequests: record.uiRequests, sessionFile: record.sessionFile,
       logFile: record.logFile, stderrFile: record.stderrFile, error: record.error,
@@ -1079,6 +1084,7 @@ export class SubagentManager {
     if (!this.supersedes(record, kind)) throw new Error(`${id} is already under human ${record.hold!.kind} hold`);
     const hold: HumanHold = { kind, at: new Date().toISOString(), outcome: "pending" };
     record.hold = hold;
+    if (kind === "kill" && this.children.has(id)) record.unconfirmedStop = "Awaiting process kill confirmation";
     record.queuedAssignments = [];
     this.report(record, "human_intervention", `Human ${kind} requested for ${record.name} (${id}); cancellation pending.`);
     let hookError: unknown;
@@ -1090,8 +1096,6 @@ export class SubagentManager {
       if (kind === "kill") {
         this.peers.interrupt(id);
         if (!child) throw new Error("No managed process attached; force termination cannot be confirmed. Inspect for orphaned work.");
-        record.unconfirmedStop = "Awaiting process kill confirmation";
-        this.persist();
         try { await child.kill(); }
         catch (error) { if (this.children.get(id) === child) record.unconfirmedStop = String(error); throw error; }
       } else if (child) await this.abortOne(record);

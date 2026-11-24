@@ -204,6 +204,7 @@ test("command without a close event cannot block workflow shutdown", async t => 
     assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
     assert.ok(done, "manager shutdown must be able to proceed");
     const attempt = h.engine.get(id).steps.check.attempts.at(-1)!;
+    assert.equal(attempt.status, "unconfirmed");
     assert.match(attempt.error!, /unconfirmed/i);
   } finally {
     child.emit("close", null); spawn.mock.restore(); syncBuiltinESMExports(); await h.close();

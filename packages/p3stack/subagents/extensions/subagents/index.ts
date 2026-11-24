@@ -516,7 +516,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       if (page) page.acknowledge(byRoot);
       else if ("updates" in data) {
         manager.acknowledgeRead(data, args.since === undefined, byRoot);
-        data.resultReview = manager.get(args.id).resultReview;
+        data.resultReview = structuredClone(manager.get(args.id).resultReview);
       }
       return { content: [{ type: "text", text: JSON.stringify(data) }], details: data };
     },

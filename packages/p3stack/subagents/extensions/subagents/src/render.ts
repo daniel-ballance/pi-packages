@@ -367,7 +367,7 @@ export function subagentRenderers(action: Action, names?: NameLookup): Required<
           lines = [...card ? cardLines(card, width).map(line => paint(theme, line.spans)) : preview(raw, width, theme), ...overlapLines(data, theme)];
           if ((action === "close" || action === "abort") && data.outcome === "unconfirmed") {
             const ids = [...(data.targetOutcome === "unconfirmed" ? [inline(data.id)] : []), ...array(data.subtreeFailures).map(f => inline(f).split(":")[0])];
-            lines.unshift(theme.fg("warning", `subtree unconfirmed: ${ids.join(", ")}`));
+            lines.unshift(theme.fg("warning", "subtree unconfirmed:"), ...ids.map(id => theme.fg("warning", `  ${id}`)));
           }
           if (action === "spawn") {
             const task = clip(inline(object(context?.args)?.task));

@@ -2,7 +2,7 @@ import { reportPage, REPORT_KINDS, type SubagentManager } from "./manager.js";
 
 type Read = ReturnType<SubagentManager["read"]>;
 // A compact one-line reply has no line-budget overhead. Leave room for the acknowledgement timestamp.
-export const fitsRead = (value: unknown) => Buffer.byteLength(JSON.stringify(value)) <= 29_800;
+const fitsRead = (value: unknown) => Buffer.byteLength(JSON.stringify(value)) <= 29_800;
 
 export function fitUpdateRead(data: Read, from: number) {
   if (fitsRead(data)) return data;
@@ -14,7 +14,7 @@ export function fitUpdateRead(data: Read, from: number) {
   if (!fitsRead(page)) {
     if (page.assignment) page.assignment = { ...page.assignment, task: page.assignment.task?.slice(0, 256) };
     delete page.coordination;
-    if (!fitsRead(page)) page.uiRequests = page.uiRequests.map(({id, method, title}) => ({id, method, title: title?.slice(0, 256)}));
+    if (!fitsRead(page)) page.uiRequests = page.uiRequests.map(({id, method, title, readFull}) => ({id, method, title: title?.slice(0, 256), readFull}));
     if (!fitsRead(page)) {
       page.error = page.error?.slice(0, 2000);
       if (page.hold) page.hold = { ...page.hold, detail: page.hold.detail?.slice(0, 2000) };
