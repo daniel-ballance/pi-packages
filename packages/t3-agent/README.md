@@ -44,7 +44,7 @@ Open handles add the tools that act on them: `t3_preview_close` while a preview 
 
 The ledger keeps bounded identifiers, titles, states and checked thread or pull request links. It does not copy task briefs, preview URLs, webhook URLs or free-form result details. Replay applies the same checks to older entries; it does not erase old transcripts. Use T3's schedule settings for webhook details.
 
-**A preview-tab reminder.** T3's guidance says to close a preview tab you opened before replying. If a run opened a tab and is about to reply with it still open, t3-agent adds one hidden reminder and asks Pi for one more model request.
+**A preview-tab reminder.** T3's guidance says to close a preview tab you opened before replying. Only a confirmed new, caller-owned tab still open at settlement triggers one automated reminder and an extra model request. A reused tab or one with uncertain ownership does not.
 
 **Composer status.** T3 shows extension status near the composer. t3-agent publishes the mode, the loadout, and the counts of open delegates, schedules, watched PRs and tabs, for example `t3-agent: supervised · standard loadout · 2 delegates`.
 

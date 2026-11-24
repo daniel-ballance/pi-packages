@@ -59,7 +59,7 @@ export function buildSection(state: PromptState): string {
     "- Pi has no native subagent tool here. Wherever T3's guidance says to use your native tool, use `delegate_task`: it is your subagent tool for every child, your own provider included. Pass `mode:\"wait\"` only when this turn needs the result; otherwise use `mode:\"async\"`, end the turn, and let completion wake you.",
   ].filter((line): line is string => line !== undefined);
   if (state.ledger) {
-    lines.push("", "### Open T3 handles", "", "Recorded from this session's T3 tool results, so they survive compaction. Close what you no longer need.", "", state.ledger);
+    lines.push("", "### Open T3 handles", "", "Last observed in this session’s T3 tool results. A listed tab is not proof of ownership.", "", state.ledger);
   }
   return lines.join("\n");
 }

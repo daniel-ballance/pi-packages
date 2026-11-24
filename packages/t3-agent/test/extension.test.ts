@@ -165,16 +165,41 @@ test("T3 results feed the ledger, persist at the turn boundary and reach the pro
   assert.match((await startTurn(f)).t3_agent!, /### Open T3 handles[\s\S]*delegate "Review the branch" taskId=node:task-1, status working/);
 });
 
-test("a preview tab left open gets one reminder before the reply", async () => {
+test("reused, human-owned, ambiguous and unavailable preview tabs do not trigger a close reminder", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  const owned = { owner: "agent", ownedByCaller: true };
+  const human = { owner: "human", ownedByCaller: false };
+  for (const [input, result] of [
+    [{ tabId: "existing" }, { tabId: "existing", control: owned }],
+    [{}, { tabId: "ambiguous", control: owned }],
+    [{ reuseExistingTab: false }, { tabId: "reused", reused: true, control: owned }],
+    [{ reuseExistingTab: false }, { tabId: "human", control: human }],
+    [{ reuseExistingTab: false }, { tabId: "unknown" }],
+    [{ tabId: "missing" }, { available: false, tabId: null }],
+  ] as const) await toolResult(f, "preview_open", input, result);
+  const settled = await f.emit("agent_before_settle", { entries: [], continue: false, outcome: "completed" });
+  assert.ok(!settled?.continue);
+  assert.ok(!settled?.entries.some((entry: any) => entry.customType === REMINDER_TYPE));
+  assert.doesNotMatch((await startTurn(f)).t3_agent!, /tabId=missing|opened by you/);
+
+  // A later observation that the user took over revokes an earlier ownership observation.
+  await toolResult(f, "preview_open", { reuseExistingTab: false }, { tabId: "new", control: owned });
+  await toolResult(f, "preview_status", {}, { tabId: "new", control: human });
+  assert.ok(!(await f.emit("agent_before_settle", { entries: [], outcome: "completed" }))?.continue);
+});
+
+test("a new caller-owned preview tab left open gets one automated reminder before the reply", async () => {
   const f = fixture(T3);
   await f.emit("session_start", { reason: "startup" });
   await startTurn(f);
-  await f.emit("tool_result", { toolName: "mcp__t3-code__preview_open", toolCallId: "c1", isError: false, input: { url: "http://localhost:5173" }, content: [{ type: "text", text: "{\"tabId\":\"tab-9\"}" }] });
+  await toolResult(f, "preview_open", { reuseExistingTab: false }, { tabId: "tab-9", control: { owner: "agent", ownedByCaller: true } });
   assert.ok(f.active().includes("mcp__t3-code__t3_preview_close"), "the close tool is declared while a tab is open");
   const first = await f.emit("agent_before_settle", { entries: [], continue: false, outcome: "completed" });
   assert.equal(first.continue, true);
   assert.equal(first.entries[0].customType, ENTRY_TYPE);
   assert.equal(first.entries[1].customType, REMINDER_TYPE);
+  assert.match(first.entries[1].content, /automated note from the t3-agent extension, not from the user/i);
   assert.match(first.entries[1].content, /tab `tab-9`/);
   assert.equal(await f.emit("agent_before_settle", { entries: [], continue: false, outcome: "completed" }), undefined);
 

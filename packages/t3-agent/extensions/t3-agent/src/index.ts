@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_CONFIG, LOADOUTS, readConfig, type Config, type Loadout } from "./config.ts";
 import { detectHost } from "./host.ts";
-import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, type Handle } from "./ledger.ts";
+import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, trackRunTab, type Handle } from "./ledger.ts";
 import { desiredTools, nextActive } from "./loadout.ts";
 import { buildSection, SECTION } from "./prompt.ts";
 import { modeLabel, runtimeMode, t3ToolName, T3_PREFIX, type Environment } from "./runtime.ts";
@@ -124,15 +124,13 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
   pi.on("tool_result", (event, ctx) => {
     const tool = t3ToolName(event.toolName);
     if (tool === undefined || event.isError) return undefined;
-    const updates = observe(tool, event.input, resultPayload(event.content, event.structuredContent));
+    const result = resultPayload(event.content, event.structuredContent);
+    trackRunTab(openedThisRun, tool, event.input, result);
+    const updates = observe(tool, event.input, result);
     if (updates.length === 0) return undefined;
     for (const update of updates) {
       ledger.apply(update);
       pending.push(update);
-      if (update.kind === "preview") {
-        if (update.open) openedThisRun.add(update.id);
-        else openedThisRun.delete(update.id);
-      }
     }
     applyLoadout();
     refreshStatus(ctx);
@@ -164,7 +162,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
       entries: [...entries, {
         type: "custom_message",
         customType: REMINDER_TYPE,
-        content: `You opened T3 preview tab ${tabs} during this turn and it is still open. Close it with \`t3_preview_close\` before you reply, unless the user asked to keep it open or is using it; in that case reply without closing it.`,
+        content: `Automated note from the t3-agent extension, not from the user: you opened T3 preview tab ${tabs} during this turn and it is still open. Close it with \`t3_preview_close\` before you reply, unless the user asked to keep it open or is using it; in that case reply without closing it.`,
         display: false,
       }],
       continue: true,

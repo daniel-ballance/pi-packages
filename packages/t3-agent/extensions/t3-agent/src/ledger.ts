@@ -93,6 +93,32 @@ export function resultPayload(content: ReadonlyArray<{ type: string; text?: stri
   return undefined;
 }
 
+function previewId(result?: Json): string | undefined {
+  const tab = record(result?.tab);
+  return safeId(result?.tabId ?? tab?.tabId ?? tab?.id);
+}
+
+/** Run-local provenance, never inferred from a replayed handle or a tab URL. */
+export function trackRunTab(opened: Set<string>, tool: string, input: Json, result?: Json): void {
+  if (tool === "t3_preview_close") {
+    if (typeof input.tabId === "string") opened.delete(input.tabId);
+    return;
+  }
+  if (!tool.startsWith("preview_")) return;
+  const id = previewId(result);
+  if (!id) return;
+  const control = record(result?.control);
+  const owned = control?.ownedByCaller === true && (control.owner === undefined || control.owner === "agent");
+  if (tool === "preview_open") {
+    // Current bridges reuse by default and do not always return a reused flag.
+    const fresh = !input.tabId && (result?.reused === false || (result?.reused === undefined && input.reuseExistingTab === false));
+    if (result?.available !== false && owned && fresh) opened.add(id);
+    else opened.delete(id);
+  } else if (control && !owned) {
+    opened.delete(id);
+  }
+}
+
 function prKey(input: Json, result?: Json) {
   const url = text(result?.url) ?? text(input.url);
   if (url) return url;
@@ -163,8 +189,7 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       });
     }
     case "preview_open": {
-      const tab = record(result?.tab);
-      const id = text(result?.tabId) ?? text(tab?.tabId) ?? text(tab?.id) ?? text(input.tabId);
+      const id = result?.available !== false ? previewId(result) : undefined;
       return id ? [{ kind: "preview", id, open: true }] : [];
     }
     case "t3_preview_close": {
