@@ -4,23 +4,10 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import { detectHost } from "./host.ts";
 import type { Context, Pi } from "./mode.ts";
+import { BUDGETS, JUDGMENT_ROLES, PANEL_ROLES, rolesFor, type Budget, type RoleValue } from "./role-definitions.ts";
+export { BUDGETS, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, type Budget, type RoleValue } from "./role-definitions.ts";
 
-export type RoleValue = string | string[];
-const CODE = "grok-4.7-xhigh-fast", JUDGMENT = "claude-opus-5-5-xhigh";
-export const CODE_ROLES = ["feature, refactoring", "bug-fix", "perf-issue", "hillclimb", "how explorer", "why investigators", "reflect tooling", "swarm workers"];
-export const JUDGMENT_ROLES = ["judgment and prose", "hardest tasks", "how explainer", "why synthesizer", "reflect judgment, divergent, synthesizer"];
-export const PANEL_ROLES = ["arena runners", "arena cross-judge pool", "architect runners", "interrogate reviewers"];
-export const DEFAULT_ROLES: Record<string, RoleValue> = Object.fromEntries([
-  ...CODE_ROLES.map(role => [role, CODE]), ...JUDGMENT_ROLES.map(role => [role, JUDGMENT]), ...PANEL_ROLES.map(role => [role, [JUDGMENT, CODE]]),
-]);
-
-export const BUDGETS = [
-  { label: "unlimited, max thinking", name: "unlimited", level: "max" },
-  { label: "large, xhigh thinking", name: "large", level: "xhigh" },
-  { label: "medium, high thinking", name: "medium", level: "high" },
-  { label: "small, medium thinking", name: "small", level: "medium" },
-] as const;
-export type Budget = typeof BUDGETS[number]["name"];
+export const DEFAULT_ROLES = rolesFor("grok-4.7-xhigh-fast", "claude-opus-5-5-xhigh");
 
 export interface ModelInfo { provider: string; id: string; reasoning?: boolean; thinkingLevelMap?: Record<string, string | null | undefined> }
 const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];

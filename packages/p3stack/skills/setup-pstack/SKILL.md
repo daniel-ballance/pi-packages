@@ -9,15 +9,15 @@ Write personal role defaults to `<agent-dir>/p3stack.json`, where `<agent-dir>` 
 
 ## Steps
 
-In a terminal with p3stack's extension loaded, `/p3stack-setup` does steps 1 to 5 for the common case: one code model, one judgment model, panels of both. Offer it when the user wants nothing finer; follow the steps below otherwise, and always under T3.
+For personal defaults in interactive Pi, offer `/p3stack-setup`: one code model, one judgment model, panels of both. Under T3, if setup requests a catalog, call `p3stack_roles` once and rerun setup. After a successful write, continue at step 6. For per-role choices or a trusted project file, use steps 1 to 5.
 
 ### 1. Detect available models
 
-List the models you can delegate to from the model catalog (**Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md)). That list is the dependable source. Record each model's exact identity and the thinking levels it offers. Use only this host's catalog. If the short list omits a requested model, look it up there by its full id. If the catalog cannot confirm a usable selection, stop without writing. Under T3 a successful unfiltered lookup also supplies `/p3stack-setup` in this session for the two-model wizard. The aliases `inherit-parent` and `auto` mean the parent chat's model; they are valid when that model is in the detected set (a terminal allowlist may exclude it).
+List the models you can delegate to from the model catalog (**Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md)). That list is the dependable source. Record each model's exact identity and the thinking levels it offers. Use only this host's catalog. If the short list omits a requested model, look it up there by its full id. If the catalog cannot confirm a usable selection, stop without writing. The aliases `inherit-parent` and `auto` mean the parent chat's model; they are valid when that model is in the detected set (a terminal allowlist may exclude it).
 
 ### 2. Load current state
 
-The default role-to-model mapping is the file shape shown in step 5 below. Use the first valid role file: `.pi/p3stack.json` in a trusted project, then `p3stack.json` in Pi's agent directory (`PI_CODING_AGENT_DIR` when nonempty, otherwise `~/.pi/agent`; expand a leading `~`). Report any malformed file you skip. Use that file's budget and roles, with skill defaults for missing roles. With no valid file, use the defaults. A role not in step 5, such as `how critics`, is retired. Drop it.
+Call `p3stack_roles` for the active file, budget, resolved choices and problems. It uses the first valid file: `.pi/p3stack.json` in a trusted project, then `p3stack.json` in Pi's agent directory. Read that file for the user's original pins, lists and aliases. Report skipped files. With no valid file, start from the resolved skill hints.
 
 ### 3. Budget, map, and confirm
 
@@ -32,7 +32,7 @@ The default role-to-model mapping is the file shape shown in step 5 below. Use t
 
 For code, offer each model's highest advertised thinking level at or below the budget. For judgment, use the same ceiling except that `small` allows `high`. Offer only judgment choices of `high` or above if any fit that ceiling. Otherwise say no offered model reaches the judgment floor within budget; let the user choose an advertised lower level or cancel. A model with no level within the ceiling is not a choice. In a standard panel, the judgment seat gets the judgment level and the code seat gets the code level. Parent aliases keep the parent's settings.
 
-**(c) Show the roles and confirm.** Show every role with its model, marking any model not in the detected set as needing a choice. Also list each role step 2 dropped. Ask whether to accept as-is or change specific roles, offering the detected models plus `inherit-parent` and `auto` (both mean: this role runs on the parent chat's model) as the options. Prefer `ask_user` over free text. For panel roles (arena runners, architect runners, interrogate reviewers) the value is a list, and one subagent runs per entry, alias entries included, so the list length sets the count. `arena cross-judge pool` is also a list, but Arena runs one judge. It tries only values from a family other than the parent's, in list order, so order it by preference. An `inherit-parent` or `auto` value never judges. `swarm workers` is the default model for every worker unless a race or comparison assigns another model per arm.
+**(c) Show the roles and confirm.** Group unchanged roles by selection. Show overrides, unavailable choices and any retired roles (absent from step 5) to drop. Confirm changes with the user. Offer detected models or a parent alias (`inherit-parent` or `auto`). For a panel, each list entry runs one child, alias entries included. `arena cross-judge pool` is also a list, but Arena runs one judge. It tries only values from a family other than the parent's, in list order, so order it by preference. An `inherit-parent` or `auto` value never judges. `swarm workers` is the default model for every worker unless a race or comparison assigns another model per arm.
 
 ### 4. Validate
 
@@ -40,40 +40,52 @@ Every real model written must be in the detected set, with a thinking level it o
 
 ### 5. Write the file
 
-Write `p3stack.json` in Pi's agent directory (step 2), or `.pi/p3stack.json` for a trusted project-only choice. Ask before replacing an existing file. Without confirmation, leave it unchanged. Set `host` to `terminal` or `t3` for the host writing the file. Record the budget and exact selections:
+Write `p3stack.json` in Pi's agent directory (step 2), or `.pi/p3stack.json` for a trusted project-only choice. Ask before replacing an existing file. Without confirmation, leave it unchanged. Set `host` to `terminal` or `t3` for the host writing the file. Use the confirmed catalog identities, including the thinking level:
 
 - Terminal: `<provider>/<model id>:<thinking>`.
-- T3: `<provider instance>/<model id>:<thinking>`. Keep the whole model id, including any slashes. For instance `pi` offering model `xai/grok-4.7` at `xhigh`, write `pi/xai/grok-4.7:xhigh`.
+- T3: `<provider instance>/<model id>:<thinking>`. Keep the whole model id, including any slashes.
 
-Example terminal file:
+Example shape for two terminal selections (not model defaults):
 
 ```json
 {
   "host": "terminal",
   "budget": "large (xhigh)",
   "roles": {
-    "feature, refactoring": "xai/grok-4.7:xhigh",
-    "bug-fix": "xai/grok-4.7:xhigh",
-    "perf-issue": "xai/grok-4.7:xhigh",
-    "hillclimb": "xai/grok-4.7:xhigh",
-    "judgment and prose": "claude/claude-opus-5-5:xhigh",
-    "hardest tasks": "claude/claude-opus-5-5:xhigh",
-    "how explorer": "xai/grok-4.7:xhigh",
-    "how explainer": "claude/claude-opus-5-5:xhigh",
-    "why investigators": "xai/grok-4.7:xhigh",
-    "why synthesizer": "claude/claude-opus-5-5:xhigh",
-    "reflect tooling": "xai/grok-4.7:xhigh",
-    "reflect judgment, divergent, synthesizer": "claude/claude-opus-5-5:xhigh",
-    "arena runners": ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
-    "arena cross-judge pool": ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
-    "swarm workers": "xai/grok-4.7:xhigh",
-    "architect runners": ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"],
-    "interrogate reviewers": ["claude/claude-opus-5-5:xhigh", "xai/grok-4.7:xhigh"]
+    "feature, refactoring": "example/code:xhigh",
+    "bug-fix": "example/code:xhigh",
+    "perf-issue": "example/code:xhigh",
+    "hillclimb": "example/code:xhigh",
+    "how explorer": "example/code:xhigh",
+    "why investigators": "example/code:xhigh",
+    "reflect tooling": "example/code:xhigh",
+    "swarm workers": "example/code:xhigh",
+    "judgment and prose": "example/judge:xhigh",
+    "hardest tasks": "example/judge:xhigh",
+    "how explainer": "example/judge:xhigh",
+    "why synthesizer": "example/judge:xhigh",
+    "reflect judgment, divergent, synthesizer": "example/judge:xhigh",
+    "arena runners": [
+      "example/judge:xhigh",
+      "example/code:xhigh"
+    ],
+    "arena cross-judge pool": [
+      "example/judge:xhigh",
+      "example/code:xhigh"
+    ],
+    "architect runners": [
+      "example/judge:xhigh",
+      "example/code:xhigh"
+    ],
+    "interrogate reviewers": [
+      "example/judge:xhigh",
+      "example/code:xhigh"
+    ]
   }
 }
 ```
 
-Report the destination, budget and role selections actually written, including any lower judgment level. Use the providers step 1 detected. Delete a role to fall back to the skill default. `inherit-parent` or `auto` as a value runs the role on the parent chat's model. Alias entries in a panel list still count toward its fan-out.
+Omit a role to use its skill default.
 
 ### 6. Confirm
 

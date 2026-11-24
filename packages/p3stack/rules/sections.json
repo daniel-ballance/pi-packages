@@ -71,5 +71,11 @@
     "heading": "### 1. Pin the fixed point",
     "overlay": "code-review/capture-input.md",
     "upstream": "f4a615d42acf"
+  },
+  {
+    "file": "skills/poteto-help/SKILL.md",
+    "heading": "## Get set up",
+    "overlay": "poteto-help/get-set-up.md",
+    "upstream": "2aa90cd5f117"
   }
 ]

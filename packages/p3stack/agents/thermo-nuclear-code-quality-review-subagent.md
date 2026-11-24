@@ -15,7 +15,6 @@ You are a **delegated child**. The parent agent already collected git output and
 ## Work
 
 - Apply the rubric **only** to what the diff and contents show. Trace cross-file impact when the change touches module boundaries.
-- Output in the **priority order** the rubric specifies. Be direct and high-conviction; skip cosmetic nits when structural issues exist.
 - Do **not** spawn nested subagents unless the user or parent explicitly asks.
 
 ## Parent orchestration

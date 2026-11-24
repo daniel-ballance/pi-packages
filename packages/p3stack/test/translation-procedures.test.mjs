@@ -270,6 +270,27 @@ for (const name of reviews) {
   });
 }
 
+test("deep review fetches the PR head even when the base repository has a branch of the same name", t => {
+  const { repo, wt, git } = auditFixture(t);
+  const base = git("-C", repo, "rev-parse", "HEAD");
+  git("-C", repo, "branch", "topic", base);
+  git("-C", wt, "-c", "user.name=Fixture", "-c", "user.email=test@example.org", "commit", "--allow-empty", "-qm", "fork topic");
+  const head = git("-C", wt, "rev-parse", "HEAD");
+  git("-C", repo, "update-ref", "refs/pull/17/head", head);
+  const checkout = join(dirname(repo), "reviewer");
+  git("clone", "--no-local", "-q", repo, checkout);
+  assert.notEqual(git("-C", checkout, "rev-parse", "origin/topic"), head);
+
+  const parent = skill("dyl-review").split("## Main-thread rules")[1].split("## Dylan-lens worker")[0];
+  const args = parent.match(/`git fetch ([^`]+)`/)[1].replaceAll("<base-remote>", "origin").replaceAll("<base>", "main")
+    .replaceAll("<branch>", "topic").replaceAll("<n>", "17").split(" ");
+  git("-C", checkout, "fetch", ...args);
+  assert.equal(git("-C", checkout, "rev-parse", "FETCH_HEAD"), head, "documented fetch must select the fork's commit");
+  assert.match(parent, /headRefOid/);
+  assert.match(parent, /FETCH_HEAD[^\n]*stop/i);
+  assert.match(parent, /git diff <base-oid>\.\.\.<head-oid>/);
+});
+
 test("dyl-review keeps code-review coordination and Git/forge work in the parent", () => {
   const text = skill("dyl-review");
   assert.match(text, /parent[^\n]*Standards[^\n]*Spec/i);
@@ -277,6 +298,29 @@ test("dyl-review keeps code-review coordination and Git/forge work in the parent
   assert.doesNotMatch(worker, /`(?:gh|git|origin) /);
   assert.match(worker, /title and body[^\n]*(?:parent|main thread)/i);
   assert.doesNotMatch(text, /child running \[code-review\]|code-review child|every worker the depth calls for in one message/);
+});
+
+test("review helpers preserve the caller's report and evidence without an extra performance", () => {
+  const comments = read("agents/comment-sicko.md");
+  assert.doesNotMatch(comments, /first output|ha ha ha/i);
+  assert.match(comments, /deletion count.*MUST KILL.*skips/);
+  const stance = read("skills/p3stack-mode/references/review-stance.md");
+  assert.match(stance, /caller.s (?:report|verdict) format/i);
+  assert.match(stance, /command and observed output, or `file:line`/);
+  assert.match(playbook("shipping"), /`PASS`, `PASS\+NOTES`, or `FAIL`/);
+  assert.match(skill("dyl-review"), /🟢\|🟡\|🔴/);
+  assert.doesNotMatch(read("skills/dyl-review/references/dyl-mode.md"), /Write every user-facing reply/);
+  for (const review of reviews) assert.doesNotMatch(read(`agents/${review}-subagent.md`), /Calibrate severity honestly|Be direct and high-conviction/i);
+});
+
+test("app and formal verification register distinct skills for the same project name", () => {
+  const outputs = ["create-verification-skill", "create-formal-verification-skill"].map(name => {
+    const instructions = skill(name).replaceAll(/<(?:app|area)>/g, "checkout");
+    const directory = instructions.match(/`\.pi\/skills\/([^/`]+)\/SKILL\.md`/)[1];
+    return { instructions, directory };
+  });
+  assert.notEqual(outputs[0].directory, outputs[1].directory);
+  for (const { instructions, directory } of outputs) assert.ok(instructions.includes(`\`name: ${directory}\``), directory);
 });
 
 test("domain setup pairs the interview with domain-modeling", () => {

@@ -1432,7 +1432,7 @@
     "source": "agent-skills",
     "path": "skills/deprecation-and-migration/SKILL.md",
     "action": "drop",
-    "reason": "The migration house policy carries its advisory and expand-contract framing."
+    "reason": "The house policy covers expand-contract for external consumers. The advisory and rollout procedure is not emitted."
   },
   {
     "source": "agent-skills",
@@ -1647,7 +1647,7 @@
     "source": "superpowers",
     "path": "skills/writing-skills/SKILL.md",
     "action": "drop",
-    "reason": "Watch only. Its baseline-failure method feeds the authoring and Eval playbooks."
+    "reason": "Watch only. registry/chains.json#skill-baseline asks for the failing baseline before a skill behavior change."
   },
   {
     "source": "p3stack",

@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Pi } from "./mode.ts";
-import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, roleHost, setupCatalog } from "./roles.ts";
+import { BUDGETS, rolesFor } from "./role-definitions.ts";
+import { agentDir, candidates, roleHost, setupCatalog } from "./roles.ts";
 
 export function registerSetup(pi: Pi & Partial<Pick<ExtensionAPI, "sendMessage">>) {
   pi.registerCommand("p3stack-setup", {
@@ -30,10 +31,7 @@ export function registerSetup(pi: Pi & Partial<Pick<ExtensionAPI, "sendMessage">
       const choices = atFloor.length ? atFloor : judgment;
       const judge = await ctx.ui.select(`Model for judgment, review and prose roles. ${gap ? `${gap} Choose a lower level or cancel.` : "A different family suits review panels."}`, choices);
       if (!judge || !choices.includes(judge)) { ctx.ui.notify("Setup cancelled. Nothing written.", "info"); return; }
-      const roles = Object.fromEntries([
-        ...CODE_ROLES.map(role => [role, code]), ...JUDGMENT_ROLES.map(role => [role, judge]),
-        ...PANEL_ROLES.map(role => [role, [judge, code]]),
-      ]);
+      const roles = rolesFor(code, judge);
       const label = `${budget.name} (${budget.level})`;
       if (existsSync(path) && !await ctx.ui.confirm("Replace the role defaults?", `${path} exists. Setup rewrites it whole.`)) { ctx.ui.notify("Kept the existing file.", "info"); return; }
       mkdirSync(dirname(path), { recursive: true });
