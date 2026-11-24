@@ -14,7 +14,7 @@ The scope is what the user names. Otherwise it is the branch diff from its merge
 
 ## Fan out
 
-In a terminal with workflow tools, run the fan-out and the verification from the interrogate workflow template instead: its check reruns every repro, so only proven findings survive. See **Run a workflow** in the [host capabilities](../poteto-mode/references/host-capabilities.md).
+In a terminal with workflow tools, run the fan-out from the interrogate workflow template instead. It collects each finding with its proposed reproduction and runs none of them: verify each one yourself as below, in a disposable checkout. See **Run a workflow** in the [host capabilities](../poteto-mode/references/host-capabilities.md).
 
 Run Phase A steps 3 and 4 and Phase B of the **arena** skill, with four changes. Read the `interrogate reviewers` line in place of `arena runners`. Copy the scope's uncommitted changes into each worktree. Delegate each adversary per **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md), with the tools needed for its isolated repro. In place of the arena task and rationale, give each adversary the scope, the intent, and this brief:
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -98,6 +98,69 @@ test("deleted tests and weakened constraints are reported", t => {
     "weakened-threshold tsconfig.json:1", "weakened-threshold vitest.config.ts:1",
   ]);
   assert.match(result.findings[0].text, /80% \| -> .*60%/);
+});
+
+test("rule off, a lost coverage threshold and a lost case are hits; a higher minimum isn't", t => {
+  const { root } = repo(t, {
+    "CONSTRAINTS.md": "Minimum line coverage 80%\n",
+    "eslint.config.js": 'export default {rules:{\n  "no-undef": "error",\n}};\n',
+    "math.test.js": "test('a', () => assert(a()));\ntest('b', () => assert(b()));\n",
+    "vitest.config.js": "export default { coverage: { thresholds: {\n  branches: 80,\n}}};\n",
+  });
+  write(root, {
+    "CONSTRAINTS.md": "Minimum line coverage 90%\n",
+    "eslint.config.js": 'export default {rules:{\n  "no-undef": "off",\n}};\n',
+    "math.test.js": "test('a', () => assert(a(42)));\n",
+    "vitest.config.js": "export default { coverage: { thresholds: {\n}}};\n",
+  });
+  assert.deepEqual(categories(floorCheck({ cwd: root })), [
+    "weakened-threshold eslint.config.js:2", "deleted-test-case math.test.js:2", "weakened-threshold vitest.config.js:2",
+  ]);
+});
+
+test("a maximum has the opposite direction; unknown policy changes need review", t => {
+  const { root } = repo(t, { "CONSTRAINTS.md": "Maximum latency 100 ms\nMinimum coverage 85%\nWindow 30 days\n" });
+  write(root, { "CONSTRAINTS.md": "Maximum latency 80 ms\nMinimum coverage 84%\nWindow 31 days\n" });
+  assert.deepEqual(categories(floorCheck({ cwd: root })), ["weakened-threshold CONSTRAINTS.md:2", "changed-constraint CONSTRAINTS.md:3"]);
+  write(root, { "CONSTRAINTS.md": "Maximum latency 110 ms\nMinimum coverage 90%\nWindow 30 days\n" });
+  assert.deepEqual(categories(floorCheck({ cwd: root })), ["weakened-threshold CONSTRAINTS.md:1"]);
+});
+
+test("an external reason explains only the named finding on this run", t => {
+  const { root } = repo(t, { "old suite.test.js": "ok\n", "other.test.js": "ok\n" });
+  unlinkSync(join(root, "old suite.test.js"));
+  unlinkSync(join(root, "other.test.js"));
+  const id = "deleted-test old suite.test.js:0";
+  const run = (...args) => spawnSync(process.execPath, [script, "--cwd", root, ...args], { env, encoding: "utf8" });
+  const disposition = `${id}=superseded by the integration suite`;
+  const partial = run("--explain", disposition);
+  assert.equal(partial.status, 1);
+  assert.match(partial.stdout, /explained deleted-test old suite\.test\.js:0 .*superseded by the integration suite/);
+  const both = run("--json", "--explain", disposition, "--explain", "deleted-test other.test.js:0=duplicate");
+  assert.equal(both.status, 0);
+  assert.deepEqual(JSON.parse(both.stdout).explained.map(f => f.reason), ["superseded by the integration suite", "duplicate"]);
+  for (const invalid of [`${id}=  `, "deleted-test old suite.test.js:1=stale"]) assert.equal(run("--explain", invalid).status, 2);
+  assert.equal(run().status, 1);
+});
+
+for (const kind of ["untracked symlink", "tracked symlink", "large untracked file", "large tracked file", "large base blob"]) {
+  test(`an unchecked ${kind} cannot produce a clean result`, t => {
+    const large = "x".repeat(1024 * 1024 + 1);
+    const { root } = repo(t, { original: kind === "large base blob" ? large : "base" });
+    if (kind === "untracked symlink") symlinkSync("original", join(root, "link"));
+    if (kind === "tracked symlink") { unlinkSync(join(root, "original")); symlinkSync("missing", join(root, "original")); }
+    if (kind.startsWith("large")) write(root, { [kind === "large untracked file" ? "new" : "original"]: kind === "large base blob" ? "small" : large });
+    const run = spawnSync(process.execPath, [script, "--cwd", root], { env, encoding: "utf8", timeout: 5000 });
+    assert.equal(run.status, 2, run.stdout);
+    assert.match(run.stderr, /original|link|new/);
+  });
+}
+
+test("the shipped floor runs after the last edit and distinguishes no hits from proof", () => {
+  const doc = readFileSync(new URL("../skills/p3stack-mode/references/floor.md", import.meta.url), "utf8");
+  assert.match(doc, /(?:after|following) the last edit/i);
+  assert.match(doc, /not (?:a )?proof/i);
+  assert.match(doc, /origin\/HEAD.*main.*master.*HEAD~1/s);
 });
 
 test("raising a threshold is not a finding", t => {

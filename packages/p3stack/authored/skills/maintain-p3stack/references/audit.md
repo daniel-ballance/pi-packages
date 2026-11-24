@@ -1,0 +1,9 @@
+# Audit the current pins
+
+Run in order; on any failed precondition, stop without repairing the checkout. Record receipts outside it.
+
+1. **Root:** `git status --porcelain=v1 --untracked-files=all` must be empty. In `git submodule status --recursive` every line must start with a space (not `-`, `+` or `U`). **Package:** group the sources in `rules/manifest.json` by `upstream.checkout`. For each unique checkout, require empty `git -C <checkout> status --porcelain=v1 --untracked-files=all` and record `git -C <checkout> rev-parse HEAD`.
+2. If given a source and ref, resolve the ref read-only in that checkout, or with `git ls-remote` against its manifest upstream. Report its relationship to the current pin where known. If the ref or comparison is unavailable, report that gap. Do not fetch into or move the checkout for an audit.
+3. **Root:** run `./scripts/check.sh`; require exit 0 and final line `Root check passed.` **Package:** run `node generator/generate.mjs --check`, `node generator/check-registry.mjs` and `node generator/check-t3-pin.mjs`. Require current generated output, `0 unclassified` (including authored rows), and a matching static host contract. The generation check compares vendor HEADs to staged gitlinks. Use [failure classes](references/failure-classes.md) to identify the owner of a failure, not to change audit inputs.
+4. **Under T3 Code only**, check live capabilities and behavior per **Verify host compatibility** in the [host map](../poteto-mode/references/host-capabilities.md); static success does not certify the live host. On either host run the [loader and fresh-process smoke](references/smoke.md). Recheck root and checkout status.
+5. Report each source, full SHA and status, plus the authored registry result. Clean current pins do not imply currency upstream. An audit stops here: no writes to the source tree, branch, note, commit, PR or routing eval. Only an explicit bump proceeds to source updates.
