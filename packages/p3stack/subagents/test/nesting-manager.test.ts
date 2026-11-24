@@ -155,6 +155,43 @@ test("a subtree abort or close reports descendants it could not confirm", async 
   } finally { delete manager.abortOne; delete manager.closeOne; await t.cleanup(); }
 });
 
+test("a halt reports the target separately from every unconfirmed descendant, including an existing failed hold", async () => {
+  const t = await settledTree();
+  const manager = t.manager as any;
+  try {
+    const abortOne = manager.abortOne.bind(manager);
+    manager.abortOne = async (record: AgentRecord) => {
+      if (record.id !== t.a) throw new Error("no acknowledgement");
+      return abortOne(record);
+    };
+    await manager.intervene(t.c, "halt");
+    const result = await manager.intervene(t.a, "halt");
+    assert.equal(result.hold.outcome, "failed", "inspector and command use this outcome");
+    assert.equal(result.targetOutcome, "confirmed");
+    assert.equal(result.outcome, "unconfirmed");
+    for (const id of [t.b, t.c]) {
+      assert.ok(result.subtreeFailures.some((detail: string) => detail.includes(id)));
+      assert.ok(result.hold.detail.includes(id), "shown by both operator interfaces");
+      assert.ok(manager.pendingNotices().at(-1).text.includes(id), "aggregate notice");
+    }
+  } finally { delete manager.abortOne; await t.cleanup(); }
+});
+
+for (const op of ["abort", "close"] as const) {
+  test(op + " reports descendant failures even if the target fails too", async () => {
+    const t = await settledTree();
+    const manager = t.manager as any, method = op + "One";
+    try {
+      manager[method] = async () => { throw new Error("not confirmed"); };
+      const result = await manager[op](t.a);
+      assert.equal(result.outcome, "unconfirmed");
+      assert.equal(result.targetOutcome, "unconfirmed");
+      assert.match(result.targetDetail, /not confirmed/);
+      assert.deepEqual(result.subtreeFailures.map((line: string) => line.split(":")[0]).sort(), [t.b, t.c].sort());
+    } finally { delete manager[method]; await t.cleanup(); }
+  });
+}
+
 test("a delegated reply always fits one pipe frame", () => {
   const small = { agents: [{ id: "a" }] };
   assert.equal(fitDelegatedReply(small), small);

@@ -52,7 +52,7 @@ export class RpcChild {
     const fail = (error: Error) => {
       this.failure = error;
       this.rejectAll(error);
-      void this.stop();
+      void this.stop().catch(() => { /* Remains attached until observed close. */ });
     };
     const decoder = new JsonlDecoder(packet => {
       if (packet.type === "response" && typeof packet.id === "string") {
@@ -152,9 +152,13 @@ export class RpcChild {
     this.stopping = (async () => {
       // Pi's SIGTERM handler runs session_shutdown; bound that grace period.
       this.signal("SIGTERM");
-      const killer = setTimeout(() => this.signal("SIGKILL"), 2000);
-      try { await this.closed; } finally { clearTimeout(killer); }
-    })();
+      let timer: NodeJS.Timeout;
+      try {
+        await Promise.race([this.closed, new Promise<void>((resolve, reject) => {
+          timer = setTimeout(() => this.kill().then(resolve, reject), 2000);
+        })]);
+      } finally { clearTimeout(timer!); }
+    })().finally(() => { this.stopping = undefined; });
     return this.stopping;
   }
 }

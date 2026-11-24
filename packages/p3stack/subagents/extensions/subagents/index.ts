@@ -306,7 +306,10 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     stopCatalogEvents = undefined;
     stopFooterEvents?.();
     stopFooterEvents = undefined;
-    try { await workflows?.shutdown(); await manager?.shutdown(); }
+    try {
+      try { await workflows?.shutdown(); }
+      finally { await manager?.shutdown(); }
+    }
     finally {
       await herdrCleared;
       restoreFooter?.();

@@ -76,6 +76,36 @@ test("human SIGKILL rejects signal failure and unconfirmed close, then permits r
   }
 });
 
+test("close bounds the wait after SIGKILL without freeing an unconfirmed slot, even on reopen", async () => {
+  const s = await setup(parseChildLimit(1));
+  const { id } = await s.spawn("until-abort");
+  const child = (s.manager as any).children.get(id) as RpcChild;
+  const signals: string[] = [];
+  const intercept = child as any, signal = intercept.signal.bind(child);
+  intercept.signal = (sig: string) => { signals.push(sig); };
+  let watchdog: NodeJS.Timeout | undefined;
+  try {
+    const result = await Promise.race([
+      s.manager.close(id),
+      new Promise<never>((_, reject) => { watchdog = setTimeout(() => reject(new Error("unbounded close")), 6500); }),
+    ]);
+    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    assert.equal(result.outcome, "unconfirmed");
+    assert.equal(s.manager.capacity().available, 0);
+    const recovered = new SubagentManager(s.dir, undefined, undefined, parseChildLimit(1));
+    assert.equal(recovered.capacity().available, 0);
+    assert.equal((await recovered.close(id)).outcome, "unconfirmed");
+    await assert.rejects(recovered.resume(id), /unconfirmed/);
+    await assert.rejects(recovered.spawn({ name: "another", task: "no", cwd: s.dir }), /limit/);
+  } finally {
+    clearTimeout(watchdog);
+    intercept.signal = signal;
+    await child.kill();
+    assert.equal(s.manager.capacity().available, 1);
+    await s.cleanup();
+  }
+});
+
 test("parallel children, incremental read, follow-up and usage", async () => {
   const s = await setup();
   try {
