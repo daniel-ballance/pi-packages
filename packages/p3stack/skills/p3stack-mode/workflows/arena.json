@@ -10,12 +10,15 @@
     { "id": "runnerB", "kind": "task",
       "worker": { "model": "{{runnerModelB}}", "tools": ["read", "write"], "contextFiles": false },
       "instructions": "{{task}} Read the grounding in {{grounding}}. Write your proposal to proposal.md in your candidate directory: the caller's usage first, then types and signatures with unimplemented bodies, then a rationale. Produce a whole-shape design, not a point fix. Change nothing outside your candidate directory." },
-    { "id": "synthesize", "kind": "task", "dependsOn": ["runnerA", "runnerB"],
+    { "id": "pick", "kind": "task", "dependsOn": ["runnerA", "runnerB"],
       "worker": { "model": "{{judgeModel}}", "tools": ["read", "write"], "contextFiles": false },
-      "instructions": "The inputs are anonymous proposals for: {{task}}. Pick one as the base, by interface depth and fit with the grounding in {{grounding}}. Graft at most two improvements from the other. If they diverge so far that no base fits, say so and propose how to reframe the task instead of averaging them. Write design.md (the synthesized sketch) and decision.md (the base, each graft, and why) to your candidate directory." },
+      "instructions": "Score each proposal against {{rubric}} for {{task}}. Write decision.md naming the base, up to two grafts, and the evidence for each. If neither fits, identify which requirement needs reframing." },
+    { "id": "synthesize", "kind": "task", "dependsOn": ["runnerA", "runnerB", "pick"],
+      "worker": { "model": "{{judgeModel}}", "tools": ["read", "write"], "contextFiles": false },
+      "instructions": "Use the pick and proposals to write only design.md: the resulting design, or the requirement that needs reframing. Omit the scores, source labels and selection rationale. Reply only with the filename; the reviewer receives your files and reply." },
     { "id": "review", "kind": "check", "input": "synthesize",
       "validator": { "kind": "agent",
         "worker": { "model": "{{reviewerModel}}", "tools": ["read"], "contextFiles": false },
-        "instructions": "Judge design.md against this contract only: {{contract}}. Ignore decision.md's reasoning when deciding. Every finding names its evidence. Return verdict pass when the design meets the contract, fail otherwise, with findings." } }
+        "instructions": "Judge design.md against this contract only: {{contract}}. Every finding names its evidence. Return verdict pass when the design meets the contract, fail otherwise, with findings." } }
   ]
 }

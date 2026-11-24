@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "name": "Skill eval: {{name}}",
+  "name": "{{name}}",
   "cwd": "{{cwd}}",
   "limits": { "concurrency": 2, "maxAttempts": 6, "timeoutSeconds": "{{timeoutSeconds:number}}" },
   "steps": [
-    { "id": "candidateA", "kind": "task",
+    { "id": "cedar", "kind": "task",
       "worker": { "model": "{{candidateModel}}", "tools": ["read", "bash", "write", "edit"], "skills": ["{{skillA}}"], "contextFiles": false },
-      "instructions": "{{prompt}} Work in {{workdirA}}. When you finish, save the output of `git diff` in your work directory as changes.diff in your candidate directory, and add a short notes.md on your design." },
-    { "id": "candidateB", "kind": "task",
+      "instructions": "Inside the assigned output directory, make a disposable clone of {{cwd}} named work and check out {{base}} there. Work only in that clone. {{prompt}} When finished, from the root of work run `git add -A -- . && git diff --cached --binary --full-index --no-ext-diff --no-textconv {{base}} -- . > ../changes.diff`. Force-add any intended ignored deliverable before this step. After the patch succeeds, remove only the disposable clone. Reply with the patch filename." },
+    { "id": "maple", "kind": "task",
       "worker": { "model": "{{candidateModel}}", "tools": ["read", "bash", "write", "edit"], "skills": ["{{skillB}}"], "contextFiles": false },
-      "instructions": "{{prompt}} Work in {{workdirB}}. When you finish, save the output of `git diff` in your work directory as changes.diff in your candidate directory, and add a short notes.md on your design." },
-    { "id": "grade", "kind": "task", "dependsOn": ["candidateA", "candidateB"],
+      "instructions": "Inside the assigned output directory, make a disposable clone of {{cwd}} named work and check out {{base}} there. Work only in that clone. {{prompt}} When finished, from the root of work run `git add -A -- . && git diff --cached --binary --full-index --no-ext-diff --no-textconv {{base}} -- . > ../changes.diff`. Force-add any intended ignored deliverable before this step. After the patch succeeds, remove only the disposable clone. Reply with the patch filename." },
+    { "id": "grade", "kind": "task", "dependsOn": ["cedar", "maple"],
       "worker": { "model": "{{graderModel}}", "tools": ["read", "write"], "contextFiles": false },
-      "instructions": "The inputs are two anonymous outputs for the same request. Grade both in one pass, on one scale, against this rubric: {{rubric}}. Judge from changes.diff and the files, not the notes' claims. When a criterion needs runtime evidence the files cannot show, score it null with the reason instead of 0; the parent grades that from the transcripts. Write grades.json to your candidate directory: for each input, its path, a score per criterion, and one line of evidence per score." }
+      "instructions": "Score both patches in one pass against {{rubric}}. Cite a hunk or file for each result in grades.json, keyed by input label. A behavioral criterion needs the worker transcript: without it score null and tell the parent what to check. A final reply is not a transcript." }
   ]
 }

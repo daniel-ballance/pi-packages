@@ -2,8 +2,8 @@
 // Fills a p3stack workflow template. Placeholders are {{name}} inside JSON
 // strings, and "{{name:number}}" for a whole numeric value. A placeholder left
 // unfilled is an error. Starting the workflow validates the result in full.
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
@@ -40,7 +40,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       return [pair.slice(0, at), pair.slice(at + 1)];
     }));
     const text = JSON.stringify(instantiate(template, settings), null, 2) + "\n";
-    if (values.out) writeFileSync(values.out, text); else process.stdout.write(text);
+    if (values.out) {
+      mkdirSync(dirname(values.out), { recursive: true, mode: 0o700 });
+      writeFileSync(values.out, text, { mode: 0o600 });
+    } else process.stdout.write(text);
   } catch (error) {
     process.stderr.write(`workflow-template: ${error.message}\n`);
     process.exit(2);
