@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { grade, materialize, trace } from "./behavior-eval/run.mjs";
+import { assess, grade, materialize, trace } from "./behavior-eval/run.mjs";
 
 const { cases } = JSON.parse(readFileSync(new URL("./behavior-eval/cases.json", import.meta.url)));
 const seen = (calls = [], final = "") => ({ calls, final });
@@ -11,9 +11,9 @@ function fixture(t, id) {
   const project = mkdtempSync(join(tmpdir(), "grade-behavior-"));
   t.after(() => rmSync(project, { recursive: true, force: true }));
   const before = materialize(id, project), row = cases.find(row => row.id === id);
-  const checks = [...row.outcome, ...row.process];
-  const check = (id, trace = seen()) => grade(checks.find(check => check.id === id), trace, project, before);
-  return { check, put: (path, text) => writeFileSync(join(project, path), text), project };
+  const check = (id, trace = seen()) => grade(row.outcome.find(check => check.id === id), trace, project, before);
+  const passes = (trace = seen()) => assess(row, trace, project, before).passed;
+  return { check, passes, put: (path, text) => writeFileSync(join(project, path), text), project };
 }
 
 const goodSplit = `export function splitCents(n,p) {
@@ -23,13 +23,15 @@ const goodSplit = `export function splitCents(n,p) {
 const exampleOnly = `export function splitCents(n,p) { return n===1000 && p===3 ? [333,333,334] : Array(p).fill(Math.floor(n/p)) }`;
 
 test("the shipped split oracle accepts a valid remainder order, not an example-only patch or the original loss", t => {
-  const { check, put, project } = fixture(t, "bug-red-first");
+  const { passes, put, project } = fixture(t, "bug-red-first");
   const original = readFileSync(join(project, "src/split.js"));
+  // The example-only patch passes the submitted regression and makes it red on the base.
+  appendFileSync(join(project, "test/split.test.js"), '\ntest("keeps all cents", () => assert.equal(splitCents(1000,3).reduce((a,b)=>a+b,0),1000));');
   put("src/split.js", goodSplit);
-  assert.equal(check("bug-fixed"), true);
+  assert.equal(passes(), true);
   for (const broken of [exampleOnly, original, "export const splitCents = (n,p) => Array(p).fill(n/p)", "export const splitCents = n => [n]"]) {
     put("src/split.js", broken);
-    assert.equal(check("bug-fixed"), false);
+    assert.equal(passes(), false);
   }
 });
 
@@ -73,12 +75,12 @@ test("the review must identify the skipped empty-list test and preserve an alrea
 });
 
 const html = `<output id="state">requested</output>
-  <button onclick="state.value='approved'">Approve partial refund</button>
-  <button onclick="state.value='rejected'">Reject</button>
-  <button onclick="state.value='refunded'">Complete refund</button>`;
+  <button id="approve">Approve another 25 cents</button><button id="reject">Reject</button>
+  <script>let remaining = 100;
+  approve.onclick = () => { if (remaining > 0) state.value = (remaining -= 25) ? 'approved' : 'refunded'; };
+  reject.onclick = () => { if (remaining > 0) { remaining = 0; state.value = 'rejected'; } };</script>`;
 test("prototype checks apply to one usable HTML document, not scattered markers or external assets", t => {
-  const { check, put, project } = fixture(t, "prototype-logic");
-  const passes = () => check("single-self-contained-prototype");
+  const { passes, put, project } = fixture(t, "prototype-logic");
   put("a.html", html);
   assert.equal(passes(), true);
   for (const broken of ["<button>Inert</button><!-- refunded -->", "<button>requested approved rejected refunded</button>",
@@ -99,9 +101,9 @@ test("prototype checks apply to one usable HTML document, not scattered markers 
   assert.equal(passes(), false, "a link to a document outside the submission is not self-contained");
 });
 
+const call = { tool: "mcp__context7__query_docs", args: { libraryId: "/vitest-dev/vitest/v3_2_4" }, result: "coverage.thresholds.lines configures line coverage", ok: true };
 test("source grounding requires retrieved Vitest docs, not an error, unrelated search or mere citation", t => {
   const { check } = fixture(t, "source-grounding");
-  const call = { tool: "mcp__context7__query_docs", args: { libraryId: "/vitest-dev/vitest/v3_2_4" }, result: "coverage.thresholds.lines configures line coverage", ok: true };
   const fetch = calls => check("fetched-docs", seen(calls, "3.2 https://vitest.invalid"));
   assert.equal(fetch([call]), true);
   assert.equal(fetch([{ ...call, ok: false }]), false);
@@ -126,14 +128,15 @@ test("a codemode fetch needs a successful nested query receipt, not just matchin
 });
 
 test("the effective Vitest line threshold must be numeric 80 in the exported config", t => {
-  const { check, put } = fixture(t, "source-grounding");
+  const { passes, put } = fixture(t, "source-grounding");
+  const grounded = seen([call], "Vitest 3.2: https://v3.vitest.dev/config/coverage");
   const config = expr => `import { defineConfig } from 'vitest/config';\nconst target: number = 8 * 10;\nexport default defineConfig(${expr});`;
   for (const expr of ["{test:{coverage:{thresholds:{lines:target}}}}", "() => ({test:{coverage:{thresholds:{lines:target}}}})"]) {
     put("vitest.config.ts", config(expr));
-    assert.equal(check("configured"), true);
+    assert.equal(passes(grounded), true);
   }
   for (const bad of [config("{test:{coverage:{provider:'v8'}}}") + "\n// thresholds 80", config("{test:{coverage:{thresholds:{branches:80}}}}"), config("{test:{coverage:{thresholds:{lines:70}}}}")]) {
     put("vitest.config.ts", bad);
-    assert.equal(check("configured"), false);
+    assert.equal(passes(grounded), false);
   }
 });
