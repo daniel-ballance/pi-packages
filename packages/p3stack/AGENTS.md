@@ -30,7 +30,7 @@ Install the workspace first. From this package:
 npm run generate            # build and validate in staging, then replace the owned roots
 npm run generate -- --check # compare fresh output and pins without installing
 npm run check               # drift, lints, static T3 contract, description lint, types
-npm test                    # offline suites, including compiler, playbook helpers and packlist
+npm test                    # offline suites, including compiler, playbook helpers and installed links, operands and indexes
 ```
 
 [`rules/lint.json`](rules/lint.json) sets forbidden strings and required dependency links. With `resources: true`, every generated skill must pass `lint-skill` in staging before installation or drift comparison. `npm test` runs the host-neutral tests once. Only `test/extension.test.ts` and `test/roles.test.ts` run both with `T3_MCP_URL` unset and with a test URL. The [root gate](../../README.md#develop-and-verify) also runs the nested packages' suites. For live host verification, follow [Verify host compatibility](docs/landing/t3-settings.md#verify-host-compatibility).

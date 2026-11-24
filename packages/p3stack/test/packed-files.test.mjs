@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join, posix } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { walk } from "../generator/source-paths.mjs";
 
 // Use the skill linter's Markdown parser under both npm and pnpm.
 const { fromMarkdown } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("mdast-util-from-markdown");
 const cwd = dirname(import.meta.dirname);
-const [pack] = Object.values(JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--offline", "--ignore-scripts", "--workspaces=false"], { cwd, encoding: "utf8" })));
+const consumer = mkdtempSync(join(tmpdir(), "p3stack-consumer-")), installed = join(consumer, "node_modules/p3stack");
+after(() => rmSync(consumer, { recursive: true, force: true }));
+const [pack] = JSON.parse(execFileSync("npm", ["pack", "--pack-destination", consumer, "--json", "--offline", "--ignore-scripts", "--workspaces=false"], { cwd, encoding: "utf8" }));
+mkdirSync(installed, { recursive: true });
+execFileSync("tar", ["-xf", join(consumer, pack.filename), "--strip-components=1", "-C", installed]);
+const readInstalled = file => readFileSync(join(installed, file), "utf8");
 const files = new Set(pack.files.map(file => file.path));
 
 function* destinations(node) {
@@ -37,7 +43,7 @@ test("relative Markdown links resolve inside the packed p3stack", () => {
   const missing = [];
   for (const file of files) {
     if (!/\.(?:md|markdown)$/i.test(file)) continue;
-    const tree = fromMarkdown(readFileSync(join(cwd, file), "utf8"));
+    const tree = fromMarkdown(readInstalled(file));
     for (const { url, position } of destinations(tree)) {
       if (/^(?:[a-z][a-z\d+.-]*:|[/?#]|$)/i.test(url)) continue;
       const path = decodeURIComponent(url.split(/[?#]/, 1)[0]);
@@ -51,13 +57,91 @@ test("relative Markdown links resolve inside the packed p3stack", () => {
 
 const registry = JSON.parse(readFileSync(join(cwd, "registry/skills.json"), "utf8"));
 
+// These operands refer to the maintainer checkout or report a diagnostic, not an installed resource.
+const external = new Map([
+  ["skills/maintain-p3stack/references/failure-classes.md", ["references/missing", "packages/p3stack/generator/check-registry.mjs"]],
+  ["skills/poteto-help/SKILL.md", ["scripts/lint-skill", "./packages/p3stack"]],
+  ["skills/poteto-mode/references/host-terminal.md", ["scripts/lint-skill/lint-skill.mjs"]],
+]);
+
+function* codeNodes(node) {
+  // A link label is not another operand; its destination is checked above.
+  if (["link", "linkReference"].includes(node.type)) return;
+  if (["inlineCode", "code"].includes(node.type)) yield node;
+  for (const child of node.children ?? []) yield* codeNodes(child);
+}
+
+function missingOperands(file, text) {
+  const [base] = linkBases(file), missing = [];
+  const check = (path, line) => {
+    const target = posix.join(base, path);
+    if (!files.has(target) || !statSync(join(installed, target), { throwIfNoEntry: false })?.isFile()) missing.push(`${file}:${line}: ${path}`);
+  };
+  for (const node of codeNodes(fromMarkdown(text))) {
+    if (node.type === "code" && ![undefined, "sh", "shell", "bash", "md", "text"].includes(node.lang)) continue;
+    for (const [i, line] of node.value.split("\n").entries()) {
+      const at = node.position.start.line + i + (node.type === "code" ? 1 : 0);
+      // The generated help index spells out a playbook invocation, not a file link.
+      const play = /^\/skill:([\w-]+) use the ([\w-]+) playbook$/.exec(line);
+      if (play) check(`../${play[1]}/playbooks/${play[2]}.md`, at);
+      if (/\bgit show \S+:(?:pstack\/|packages\/p3stack\/)skills\/[\w-]+\//.test(line)) missing.push(`${file}:${at}: bundled skill read from consumer Git`);
+      const normalized = line.replaceAll("<skill dir>/", "./").replace(/<([\w-]+)(?:-dir| directory)>\/(?=(?:\.\.\/|scripts\/))/g, "../$1/");
+      let previous;
+      for (const word of normalized.match(/"[^"]*"|'[^']*'|\S+/g) ?? []) {
+        const path = word.replace(/^["']|["']$/g, "").replace(/[.,;]$/, "").split(/#|:\d+$/)[0];
+        const script = /^(?:node|bash|sh|python3?)$/.test(previous) && /\.(?:[cm]?js|ts|sh|py)$/.test(path);
+        previous = word;
+        if (!/^[\w./ -]+$/.test(path) || path.endsWith("/") || external.get(file)?.includes(path)) continue;
+        // Maintenance explicitly runs these commands in a pi-packages checkout.
+        if (file.startsWith("skills/maintain-p3stack/") && /^(?:\.\/scripts\/|generator\/)/.test(path)) {
+          const root = path.startsWith("generator/") ? cwd : join(cwd, "../..");
+          assert.ok(statSync(join(root, path), { throwIfNoEntry: false })?.isFile(), `${file}:${at}: ${path}`);
+          continue;
+        }
+        if (line.includes(path + " in the installed skills")) { check("../" + path, at); continue; }
+        // Consumer inputs (e.g. GLOSSARY.md or src/app.ts) aren't bundled. A file beside a
+        // nested reference, however, must still be addressed from the skill root, not that reference.
+        const sibling = node.type === "inlineCode" && path.endsWith(".md") && files.has(posix.join(posix.dirname(file), path));
+        if (script || sibling || /^(?:\.\.?\/|(?:[\w-]+\/)?(?:references|playbooks|scripts|workflows)\/)/.test(path)) check(path, at);
+      }
+    }
+  }
+  return missing;
+}
+
+test("concrete read and script operands resolve from the installed skill, not the producer checkout", () => {
+  const pages = [...files].filter(file => /^(?:skills|agents)\/.*\.md$/.test(file));
+  assert.deepEqual(pages.flatMap(file => missingOperands(file, readInstalled(file))), []);
+});
+
+test("missing operands fail even in command examples and generated playbook rows", () => {
+  const file = "skills/poteto-mode/playbooks/babysit.md";
+  const sample = 'Run `node "<poteto-mode-dir>/scripts/gone.mjs"` and read `../why/references/missing.md`.\n```sh\nbash scripts/missing.sh --test\n```\n| Review | `/skill:poteto-mode use the absent playbook` |';
+  assert.deepEqual(missingOperands(file, sample), [":1: ../poteto-mode/scripts/gone.mjs", ":1: ../why/references/missing.md", ":3: scripts/missing.sh", ":5: ../poteto-mode/playbooks/absent.md"].map(s => file + s));
+});
+
+test("the installed reference index expands to the registered owner paths", () => {
+  const file = "skills/poteto-mode/SKILL.md", refs = registry.filter(row => row.action === "reference");
+  const [, template, groups] = /For a reference, read `([^`]+)`: (.+)\.$/m.exec(readInstalled(file));
+  const targets = [];
+  for (const [, owner, list] of groups.matchAll(/([\w-]+) \(([^)]+)\)/g)) {
+    const names = list.split(", ").flatMap(name => name === "principle-*" ? refs.filter(row => row.owner === owner && row.name.startsWith("principle-")).map(row => row.name) : name);
+    for (const name of names) {
+      const path = posix.join(linkBases(file)[0], template.replace("<owner>", owner).replace("<name>", name));
+      assert.ok(files.has(path), path);
+      targets.push(path);
+    }
+  }
+  assert.deepEqual(targets.sort(), refs.map(({ owner, name }) => `skills/${owner}/references/${name}.md`).sort());
+});
+
 test("every reference is packed under its owner's skill, not discoverable as a command", () => {
   const refs = registry.filter(row => row.action === "reference");
   assert.equal(refs.length, 43);
   for (const { name, owner } of refs) {
     assert.ok(!files.has(`skills/${name}/SKILL.md`), name);
     assert.ok(files.has(`skills/${owner}/references/${name}.md`), name);
-    const skill = readFileSync(join(cwd, `skills/${owner}/SKILL.md`), "utf8");
+    const skill = readInstalled(`skills/${owner}/SKILL.md`);
     assert.ok(skill.includes(name.startsWith("principle-") ? "references/principle-<title>.md" : `references/${name}.md`), `${owner}: ${name}`);
   }
 });
