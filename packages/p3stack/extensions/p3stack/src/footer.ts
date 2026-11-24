@@ -52,6 +52,8 @@ function sessionStats(ctx: ExtensionContext) {
   return { totals, latestCacheHitRate, model, right, pwd, subscription, usage: ctx.getContextUsage(), name: ctx.sessionManager.getSessionName() };
 }
 
+// Pi 1.5.2 (extensions.md, tui.md and ExtensionUIContext): setFooter replaces stock;
+// setStatus adds a separate row. Neither decorates the stock directory row.
 export function modeFooter(ctx: ExtensionContext, events: ExtensionAPI["events"], grant: () => Grant, disposed: () => void) {
   const compactionIndicator = () => SettingsManager.create(ctx.cwd, agentDir(), { projectTrusted: ctx.isProjectTrusted() }).getCompactionEnabled() ? " (auto)" : "";
   let auto = compactionIndicator(), stats = sessionStats(ctx);
