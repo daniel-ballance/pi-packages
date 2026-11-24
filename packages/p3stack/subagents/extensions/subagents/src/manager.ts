@@ -204,10 +204,13 @@ export class SubagentManager {
     enforcePrivatePath(this.registry, 0o600, false);
     this.changed();
   }
-  private update(record: AgentRecord, kind: string, text: string) {
+  private appendUpdate(record: AgentRecord, kind: string, text: string) {
     record.updatedAt = new Date().toISOString();
     record.updates.push({ cursor: ++record.cursor, kind, text: text.slice(0, 12000), time: record.updatedAt });
     record.updates = record.updates.slice(-100);
+  }
+  private update(record: AgentRecord, kind: string, text: string) {
+    this.appendUpdate(record, kind, text);
     this.persist();
   }
   private log(path: string, text: string) {
@@ -227,6 +230,7 @@ export class SubagentManager {
     // Notification scheduling must not prevent a human cancellation; the queue is durable.
     if (kind === "human_intervention") { try { this.notice(notice); } catch { /* retry from persisted queue */ } }
     else if (!this.routedToParent(notice)) this.notice(notice); // Wake the delivery scheduler; don't inject into the parent here.
+    return notice;
   }
   /**
    * A nested Child's routine report waits for its own parent, which drains it with its
@@ -667,16 +671,15 @@ export class SubagentManager {
         if (record.assignment?.status === "running") record.assignment.status = record.error ? "failed" : record.aborted ? "cancelled" : "completed";
         const last = record.updates.findLast(u => u.kind === (record.error ? "error" : record.aborted ? "aborted" : "assistant") && u.cursor > (record.runStartCursor ?? 0));
         const text = record.error || last?.text || "Run settled without a text response.";
-        if (!last) this.update(record, kind, text);
+        if (!last) this.appendUpdate(record, kind, text);
         if (record.assignment && !record.assignment.finishedAt) {
           record.assignment.finishedAt = new Date().toISOString();
           record.assignment.resultCursor = last?.cursor ?? record.cursor;
           record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) ? "reviewed" : "unreviewed" };
         }
-        this.persist();
-        // The human hold has its own durable requested/outcome notices. Do not
-        // also report its routine cancellation; a genuine failure still reports.
-        if (!(humanCancellation && kind === "aborted")) this.announce(record, kind, text, last?.cursor ?? record.cursor);
+        // announce commits the result and its wake notice together, before calling
+        // the scheduler. A suppressed notice still needs the settlement committed.
+        if ((humanCancellation && kind === "aborted") || !this.announce(record, kind, text, last?.cursor ?? record.cursor)) this.persist();
         void this.refreshUsage(record);
         break;
       }
