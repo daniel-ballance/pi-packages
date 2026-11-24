@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { enforcesThreshold } from "./behavior-eval/oracles/coverage.mjs";
 import { assess, grade, materialize, trace } from "./behavior-eval/run.mjs";
 
 const { cases } = JSON.parse(readFileSync(new URL("./behavior-eval/cases.json", import.meta.url)));
@@ -298,6 +300,27 @@ test("a codemode fetch needs a successful nested query receipt, not just matchin
   assert.equal(didFetch([query]), true);
   assert.equal(didFetch([{ ...query, status: "error" }]), false);
   assert.equal(didFetch([]), false);
+});
+
+test("offline coverage controls exercise 81 then 79 arms and recognize the Vitest 3.2.4 line diagnostic", t => {
+  const { project } = fixture(t, "source-grounding");
+  const recorded = readFileSync(new URL("./fixtures/vitest-3.2.4-below.txt", import.meta.url), "utf8");
+  const range = n => Array.from({ length: n }, (_, i) => i);
+  for (const [stderr, expected] of [[recorded, true], [recorded.replace("for lines", "for branches"), false],
+    [recorded.replace("(80%)", "(70%)"), false]]) {
+    const samples = [];
+    const enforced = enforcesThreshold(project, project, copy => {
+      const source = readFileSync(join(copy, "src/mean.ts"), "utf8");
+      assert.deepEqual([...source.matchAll(/^case (\d+): return \1;$/gm)].map(m => Number(m[1])), range(100));
+      const sample = readFileSync(join(copy, "test/mean.test.ts"), "utf8").replace(/^import .*$/gm, "");
+      const calls = [];
+      runInNewContext(sample, { test: (_, run) => run(), expect: n => ({ toBe: m => assert.equal(n, m) }), mean: n => (calls.push(n), n) });
+      samples.push(calls);
+      return { status: samples.length === 1 ? 0 : 1, stdout: "", stderr: samples.length === 1 ? "" : stderr };
+    });
+    assert.deepEqual(samples, [range(81), range(79)]);
+    assert.equal(enforced, expected);
+  }
 });
 
 test("the project's test command enforces 80% line coverage on passing tests", { skip: !process.env.P3STACK_EVAL_VITEST_DIR && "provision the pinned Vitest to run the coverage controls" }, t => {

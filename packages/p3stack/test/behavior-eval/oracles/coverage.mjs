@@ -16,7 +16,13 @@ export function coverageModules(dir = process.env.P3STACK_EVAL_VITEST_DIR) {
   return modules;
 }
 
-function enforcesThreshold(project, modules) {
+function runTests(copy) {
+  const result = spawnSync("npm", ["test"], { cwd: copy, env: { ...process.env, CI: "1", NO_COLOR: "1", npm_config_offline: "true" }, encoding: "utf8", timeout: 45000 });
+  if (result.error) throw result.error;
+  return result;
+}
+
+export function enforcesThreshold(project, modules, run = runTests) {
   return onGraderCopy(project, copy => {
     symlinkSync(modules, join(copy, "node_modules"), "dir");
     // Same config, npm script and source/test paths in both runs. Only the number of exercised lines changes.
@@ -24,9 +30,7 @@ function enforcesThreshold(project, modules) {
     writeFileSync(join(copy, "src/mean.ts"), `export function mean(n: number) {\n switch (n) {\n${branches.join("\n")}\n }\n}\n`);
     const sample = count => {
       writeFileSync(join(copy, "test/mean.test.ts"), `import { test, expect } from 'vitest';\nimport { mean } from '../src/mean';\ntest('coverage sample', () => { for (let i = 0; i < ${count}; i++) expect(mean(i)).toBe(i); });\n`);
-      const result = spawnSync("npm", ["test"], { cwd: copy, env: { ...process.env, CI: "1", NO_COLOR: "1", npm_config_offline: "true" }, encoding: "utf8", timeout: 45000 });
-      if (result.error) throw result.error;
-      return result;
+      return run(copy);
     };
     if (sample(81).status !== 0) return false;
     const low = sample(79);
