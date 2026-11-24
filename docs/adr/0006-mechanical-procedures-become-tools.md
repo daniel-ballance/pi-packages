@@ -1,8 +1,8 @@
 # Mechanical procedures become tools
 
-Use code for steps the model might otherwise skip. While the mode is on, the brief hook intercepts a parent's `subagent_spawn` or `mcp__t3-code__delegate_task` call with a text task. It skips briefs it already prefixed. It adds the saved grant and either the writer contract or the read-only review stance. The shorter read-only brief keeps a reviewer on the assigned question instead of starting a playbook. The hook does not cover workflow workers or children of children.
+Use code for steps the model might otherwise skip. While the mode is on, the brief hook handles a parent's text task on `subagent_spawn` in a terminal or `mcp__t3-code__delegate_task` under T3. It replaces a leading `<p3stack-brief>` header rather than stacking instructions. The header carries the saved grant and, when space permits, instructions for the assignment. The T3 header stands alone without paths on the parent's machine. A report-only brief keeps a reviewer on the assigned question instead of starting a playbook. The hook does not cover workflow workers or children of children.
 
-`floor-check.mjs` checks the diff for quality-floor violations. `p3stack_roles` with `distinctFrom` prefers a different model family when the catalog offers one. Workflow templates let the subagents engine run interrogate, arena, hillclimb, and skill evals. The offline description lint checks vocabulary, not the model's choices.
+`floor-check.mjs` flags recognized quality-floor violations in the diff. Exit 0 does not certify the change. `p3stack_roles` with `distinctFrom` prefers a different model family when the catalog offers one. Workflow templates let the subagents engine run interrogate, arena, hillclimb, and skill evals. The offline description lint checks vocabulary, not the model's choices.
 
 Prose stays for judgment: the house policies, the references, and the playbooks.
 
