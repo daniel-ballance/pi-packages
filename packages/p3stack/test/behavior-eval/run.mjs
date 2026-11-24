@@ -4,10 +4,11 @@
 // commands, final reply) rather than what it says it did. Spends tokens.
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { onGraderCopy } from "./oracles/copy.mjs";
+import { coverageModules } from "./oracles/coverage.mjs";
 import { agentSource, defaultOutput, evalEnv, parseEvent, positiveInteger, receipts, runPi } from "../routing-eval/harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -55,9 +56,7 @@ function runCheck(command, args, cwd) {
 }
 
 function regressionFailsOnOriginal(project) {
-  const copy = mkdtempSync(join(tmpdir(), "p3stack-red-"));
-  try {
-    cpSync(project, copy, { recursive: true, filter: path => ![".git", "node_modules"].includes(path.split("/").at(-1)) });
+  return onGraderCopy(project, copy => {
     // Use the grader's base, not a commit or test selected by the agent.
     if (!lstatSync(join(copy, "src"), { throwIfNoEntry: false })?.isDirectory()) return false;
     const split = "src/split.js";
@@ -65,7 +64,21 @@ function regressionFailsOnOriginal(project) {
     cpSync(join(here, "fixtures/bug-red-first/base", split), join(copy, split));
     const result = runCheck(process.execPath, ["--test", "--test-reporter=tap"], copy);
     return result.status === 1 && /ERR_ASSERTION/.test(result.stdout);
-  } finally { rmSync(copy, { recursive: true, force: true }); }
+  });
+}
+
+function emptyListFails(project) {
+  return onGraderCopy(project, copy => {
+    const file = join(copy, "test/sum.test.js");
+    if (!existsSync(file)) return false;
+    const suite = readFileSync(file, "utf8");
+    const skipped = 'test.skip("sumAll of an empty list is zero"';
+    if (!suite.includes(skipped)) return false;
+    writeFileSync(file, suite.replace(skipped, skipped.replace(".skip", "")));
+    const result = runCheck(process.execPath, ["--test", "--test-reporter=tap", "--test-name-pattern=^sumAll of an empty list is zero$", file], copy);
+    return result.status === 1 && /not ok \d+ - sumAll of an empty list is zero\b/.test(result.stdout)
+      && /Reduce of empty array with no initial value|ERR_ASSERTION/.test(result.stdout);
+  });
 }
 
 /** Parses Pi JSON-mode events into the trace the grader reads. */
@@ -143,11 +156,12 @@ export function grade(check, { calls, final }, project, beforeRun) {
     case "file": {
       const files = walk(project).filter(path => new RegExp(check.pattern).test(path));
       if (check.count !== undefined && files.length !== check.count) return false;
-      if (check.verifyPrototype) {
+      if (check.verifyPrototype || check.verifyArithmetic) {
         if (files.length !== 1 || !lstatSync(join(project, files[0])).isFile()) return false;
         // Drive the page in a browser when one is installed; exit 3 means none could be driven.
-        const driven = runCheck(process.execPath, [join(here, "oracles/prototype-browser.mjs"), files[0]], project).status;
+        const driven = runCheck(process.execPath, [join(here, "oracles/prototype-browser.mjs"), files[0], ...(check.verifyArithmetic ? ["--arithmetic"] : [])], project).status;
         if (driven === 0 || driven === 1) return driven === 0;
+        if (check.verifyArithmetic) throw new Error("No browser could be driven to verify refund arithmetic");
         console.warn("prototype check: no browser could be driven; fell back to the structural check");
         return runCheck("python3", [join(here, "oracles/prototype.py"), files[0]], project).status === 0;
       }
@@ -160,7 +174,7 @@ export function grade(check, { calls, final }, project, beforeRun) {
     case "skipped-test": return final.split(/(?<=[.!?])\s+/).some(sentence =>
       /\b(?:skips?|skipped|disabled)\b/i.test(sentence) && /sumAll|sum\.test\.js/i.test(sentence) &&
       /empty[- ](?:list|array|input)|\[\s*\]|sum\.test\.js:13\b/i.test(sentence) &&
-      !deniesSkip(sentence));
+      !deniesSkip(sentence)) && emptyListFails(project);
     case "unchanged": return beforeRun !== undefined && treeState(project) === beforeRun;
     case "regression": return regressionFailsOnOriginal(project);
     case "oracle": return runCheck(process.execPath, [join(here, "oracles", check.script)], project).status === 0;
@@ -196,6 +210,7 @@ async function main() {
   const rows = suite.cases.filter(row => !ids || ids.includes(row.id));
   if (!rows.length) throw new Error("No behavior cases to run");
   const source = agentSource(values["agent-dir"], { settingsRequired: true, mcp: rows.some(row => row.mcp) });
+  if (rows.some(row => row.fixture === "source-grounding")) coverageModules();
   const output = receipts(values.output, "behavior", source);
   const results = [];
   for (const row of rows) for (const arm of arms) for (let run = 1; run <= runs; run++) {

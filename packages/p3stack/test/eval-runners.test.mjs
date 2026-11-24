@@ -184,7 +184,17 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 test("behavior: copy mcp.json only for the selected MCP case; fail without it", t => {
   const f = setup(t, "behavior");
-  const result = f.run(["--only", "source-grounding"]);
+  const args = ["--only", "source-grounding"];
+  invalid(f.run(args), /P3STACK_EVAL_VITEST_DIR/);
+  // Exercise MCP import without installing software. Only the separate coverage controls run Vitest.
+  const runtime = join(f.root, "grader");
+  const { devDependencies } = JSON.parse(readFileSync(join(pkg, "test/behavior-eval/fixtures/source-grounding/base/package.json")));
+  for (const [name, version] of Object.entries(devDependencies)) {
+    const dir = join(runtime, "node_modules", name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version }));
+  }
+  const result = f.run(args, { P3STACK_EVAL_VITEST_DIR: runtime });
   assert.equal(result.status, 1, "stub produced no configured artifact");
   assert.ok(f.calls()[0].files.includes("mcp.json"));
   rmSync(join(f.source, "mcp.json"));
