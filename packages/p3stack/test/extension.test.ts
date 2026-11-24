@@ -272,25 +272,24 @@ test("inherit-parent resolves to an exact permitted identity and disabled catalo
   }
 });
 
-test("the mode toggle persists, adds a prompt section while on, and shows only in the terminal", async () => {
-  const h = harness();
+test("the mode toggle persists, adds only the router section and reminds the model beside user requests", async () => {
+  const h = hostHarness("terminal");
   try {
     await h.command("p3stack", "on");
     assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "default" } });
-    assert.deepEqual(h.statuses, [], "no status row is added");
     assert.deepEqual(h.footers, [], "no footer is set outside the terminal");
     assert.deepEqual(h.notices.at(-1), ["p3stack is on (default grant).", "info"]);
     const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
     const section = event.systemPromptOptions.sections["p3stack"];
-    assert.match(section, /^Read .*skills\/p3stack-mode\/SKILL\.md and follow it\. Grant: default\.$/);
+    assert.match(section, /^Read .*skills\/p3stack-mode\/SKILL\.md and follow it\. Grant: default\. Host: terminal\.$/);
     assert.doesNotMatch(section, /Role models|bug-fix|grok|claude/);
     assert.equal(section.split("\n").length, 1, "only the router belongs in the section");
     const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
     assert.equal(reminders.length, 1, "each user turn gets a reminder beside the request");
     assert.equal(reminders[0].display, false);
-    assert.match(reminders[0].content, /^\[p3stack-mode is on, grant: default\] Before anything else, route this request\. Read .*p3stack-mode\/SKILL\.md/);
-    assert.match(reminders[0].content, /call `p3stack_roles` for the role models/);
-    assert.doesNotMatch(reminders[0].content, /role models above/);
+    assert.match(reminders[0].content, /automated note from the p3stack extension, not the user/i);
+    assert.match(reminders[0].content, /this request only.*read .*p3stack-mode\/SKILL\.md/i);
+    assert.match(reminders[0].content, /p3stack_roles/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
     await h.command("p3stack", "off");
     assert.deepEqual(h.notices.at(-1), ["p3stack is off.", "info"]);
@@ -306,20 +305,31 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
   } finally { resumed.dispose(); }
 });
 
-test("the grant is explicit mode state: set with on or grant, persisted, injected, and rejected when malformed", async () => {
+test("grant while off cannot arm the next run", async () => {
   const h = harness();
+  try {
+    for (const args of ["grant autonomous", "grant"]) {
+      await h.command("p3stack", args);
+      assert.deepEqual(h.entries, []);
+      assert.match(h.notices.at(-1)![0], /p3stack is off.*\/p3stack on autonomous/i);
+    }
+    await h.command("p3stack", "on");
+    assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "default" } });
+  } finally { h.dispose(); }
+});
+
+test("the grant is explicit mode state: set with on or grant, persisted, injected, and rejected when malformed", async () => {
+  const h = hostHarness("t3");
   try {
     await h.command("p3stack", "on autonomous");
     assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "autonomous" } });
     assert.deepEqual(h.notices.at(-1), ["p3stack is on (full-autonomy grant).", "info"]);
     let event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
-    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: full-autonomy\.$/);
-    const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
-    assert.match(reminders[0].content, /^\[p3stack-mode is on, grant: full-autonomy\]/);
+    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: full-autonomy\. Host: t3\.$/);
     await h.command("p3stack", "grant default");
     assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "default" } });
     event = await h.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
-    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: default\.$/);
+    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: default\. Host: t3\.$/);
     await h.command("p3stack", "grant autonomous");
     await h.command("p3stack", "off");
     await h.command("p3stack", "on");
@@ -338,7 +348,7 @@ test("the grant is explicit mode state: set with on or grant, persisted, injecte
     try {
       await resumed.emit("session_start");
       const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
-      assert.match(event.systemPromptOptions.sections["p3stack"], new RegExp(`Grant: ${expected}\\.$`), JSON.stringify(data));
+      assert.match(event.systemPromptOptions.sections["p3stack"], new RegExp(`Grant: ${expected}\\. Host:`), JSON.stringify(data));
     } finally { resumed.dispose(); }
   }
 });
@@ -432,21 +442,26 @@ test("the TUI sets a footer while on and restores the stock footer while off or 
   } finally { h.dispose(); restore(); }
 });
 
-test("T3 never sets a terminal footer or status row", async () => {
-  const previous = process.env.T3_MCP_URL;
-  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
-  try {
-    for (const mode of ["rpc", "tui"]) {
-      const h = harness({ mode });
-      try {
-        await h.emit("session_start");
-        await h.command("p3stack", "on");
-        await h.command("p3stack", "off");
-        assert.deepEqual(h.footers, []);
-        assert.deepEqual(h.statuses, []);
-      } finally { h.dispose(); }
-    }
-  } finally { if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
+test("non-TUI mode status follows toggles and the active branch, including under T3", async () => {
+  for (const [host, mode] of [["terminal", "rpc"], ["t3", "rpc"], ["t3", "tui"]] as const) {
+    const entry = { type: "custom", customType: "p3stack", data: { on: true, grant: "autonomous" } };
+    const branch = [entry];
+    const h = hostHarness(host, { mode, branch });
+    try {
+      await h.emit("session_start");
+      await h.command("p3stack", "grant default");
+      await h.command("p3stack", "off");
+      await h.emit("session_tree");
+      branch.length = 0;
+      await h.emit("session_tree");
+      await h.emit("session_start");
+      assert.deepEqual(h.statuses, [
+        ["p3stack", "p3stack · full-autonomy"], ["p3stack", "p3stack · default"], ["p3stack", undefined],
+        ["p3stack", "p3stack · full-autonomy"], ["p3stack", undefined], ["p3stack", undefined],
+      ]);
+      assert.deepEqual(h.footers, []);
+    } finally { h.dispose(); }
+  }
 });
 
 test("the on footer prefixes the directory and matches Pi's stock rendering byte for byte", async () => {

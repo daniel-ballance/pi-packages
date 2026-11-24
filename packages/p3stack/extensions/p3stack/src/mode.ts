@@ -10,6 +10,7 @@ interface Ui {
   confirm(title: string, message: string): Promise<boolean>;
   notify(message: string, type?: "info" | "warning" | "error"): void;
   setFooter: ExtensionUIContext["setFooter"];
+  setStatus: ExtensionUIContext["setStatus"];
 }
 export interface Context {
   cwd: string;
@@ -50,7 +51,9 @@ export function registerMode(pi: Pi, potetoSkill: string) {
   const modeSkill = resolve(dirname(potetoSkill), "../p3stack-mode/SKILL.md");
   let modeOn = false, grant: Grant = "default";
   const showMode = (ctx: Context) => {
-    if (ctx.hasUI && ctx.mode === "tui" && host === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx, pi.events, () => grant) : undefined);
+    if (!ctx.hasUI) return;
+    if (ctx.mode === "tui" && host === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx, pi.events, () => grant) : undefined);
+    else ctx.ui.setStatus(MODE, modeOn ? `p3stack · ${grantToken(grant)}` : undefined);
   };
   const rebuild = (_event: unknown, ctx: Context) => {
     modeOn = false;
@@ -69,11 +72,11 @@ export function registerMode(pi: Pi, potetoSkill: string) {
   pi.on("before_agent_start", event => {
     const sections = event?.systemPromptOptions?.sections as Record<string, string> | undefined;
     if (sections) {
-      if (modeOn) sections[MODE] = `Read ${modeSkill} and follow it. Grant: ${grantToken(grant)}.`;
+      if (modeOn) sections[MODE] = `Read ${modeSkill} and follow it. Grant: ${grantToken(grant)}. Host: ${host === "cli" ? "terminal" : "t3"}.`;
       else delete sections[MODE];
     }
     if (!modeOn || event?.messageType !== "user") return;
-    return { message: { customType: "p3stack-turn", display: false, content: `[p3stack-mode is on, grant: ${grantToken(grant)}] Before anything else, route this request. Read ${modeSkill} if you have not read it in this session, select its matching route, read that target, and follow it. Before delegating, call \`p3stack_roles\` for the role models. Only a question about the mode itself skips this.` } };
+    return { message: { customType: "p3stack-turn", display: false, content: `Automated note from the p3stack extension, not the user. For this request only: read ${modeSkill}, then read and follow its matching target. Skip routing for mode questions. Use p3stack_roles before delegating.` } };
   });
   pi.registerCommand("p3stack", {
     description: `Control p3stack-mode and its grant. ${usage}`,
@@ -86,6 +89,10 @@ export function registerMode(pi: Pi, potetoSkill: string) {
         }
         const file = doctor(pi);
         if (ctx.hasUI) ctx.ui.notify(`Wrote ${file}`, "info");
+        return;
+      }
+      if (want === "grant" && !modeOn) {
+        if (ctx.hasUI) ctx.ui.notify("p3stack is off. Use /p3stack on default or /p3stack on autonomous to turn it on with a grant.", "info");
         return;
       }
       const requested = value as Grant | undefined;
