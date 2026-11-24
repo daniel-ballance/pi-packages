@@ -19,10 +19,10 @@ function harness(policy: Record<string, unknown>, hasUI = true, deliveryError?: 
   const entries: { type: string; data: any }[] = [];
   const sent: { message: any; options: any }[] = [], notices: string[] = [], statuses: [string, string | undefined][] = [];
   const ctx = {
-    cwd: agentDir, mode: "print", hasUI, isIdle: () => true, isProjectTrusted: () => false,
-    modelRegistry: { getAvailable: () => [] },
+    cwd: agentDir, mode: "rpc", hasUI, isIdle: () => true, isProjectTrusted: () => false,
+    modelRegistry: { getAvailable: () => [{ provider: "p", id: "m", input: ["text"], reasoning: false }] },
     ui: { notify: (text: string) => notices.push(text), setStatus: (key: string, text?: string) => statuses.push([key, text]) },
-    sessionManager: { getEntries: () => [] },
+    sessionManager: { getEntries: () => [], getSessionId: () => "s" },
   };
   asHost("cli", () => {
     subagents({
@@ -119,6 +119,27 @@ test("/loop starts, reports and stops a loop, and stays silent on UI without one
     await headless.call({ op: "start", task: "check CI", intervalSeconds: 30 });
     assert.deepEqual(headless.statuses, []);
   } finally { await headless.dispose(); }
+});
+
+test("parent features distinguish workflow availability, loop policy and full peer opt-in", async () => {
+  for (const [policy, workflows, canLoop, peers] of [
+    [{}, true, false, false],
+    [{ peerMessageLimit: 2 }, true, false, false],
+    [{ tools: ["peer_send"] }, true, false, false],
+    [{ tools: ["peer_send"], peerMessageLimit: 2, loops }, true, true, true],
+    [{ models: [], loops }, false, true, false],
+    [{ tools: null }, false, false, false],
+  ] as const) {
+    const h = harness(policy);
+    try {
+      const catalog = JSON.parse(text(await h.tools.get("subagent_catalog").execute("c", {}, undefined, undefined, h.ctx)));
+      for (const tool of ["connect", "disconnect", "renew", "peers"]) {
+        assert.equal(h.tools.has(`subagent_${tool}`), peers, tool);
+      }
+      assert.deepEqual(catalog.features, { workflows, loops: canLoop, peers });
+      assert.equal(catalog.tools.includes("subagent_workflow_start"), false, "not a worker tool");
+    } finally { await h.dispose(); }
+  }
 });
 
 test("the catalog states the loop ceilings, or that loops are off", async () => {

@@ -21,12 +21,13 @@ async function withWaitTool(run: (tools: {
   read: Tool;
   worker: string;
   spawn: (task: string) => Promise<string>;
+  delegated: (op: ManagementRequest["op"], args: Record<string, unknown>) => Promise<unknown>;
   delegatedWait: (args: Record<string, unknown>) => Promise<unknown>;
   queue: (pending: boolean) => void;
 }) => Promise<void>, extraRecords: Record<string, unknown>[] = []) {
   const root = tempRoot("wait-tool-"), agentDir = join(root, "agent");
   mkdirSync(join(agentDir, "subagents", "s"), { recursive: true });
-  writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "test/fake:medium" }], tools: [], maxDepth: 2 }));
+  writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "test/fake:medium" }], tools: ["subagent_wait", "subagent_catalog", "subagent_list"], maxDepth: 2 }));
   const bin = join(root, "bin");
   mkdirSync(bin);
   writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fixture)} "$@"\n`, { mode: 0o700 });
@@ -36,7 +37,7 @@ async function withWaitTool(run: (tools: {
     updates: [], cursor: 0, readCursor: 0, uiRequests: [], hadEnvOverrides: false, ...extra,
   });
   writeFileSync(join(agentDir, "subagents", "s", "registry.json"), JSON.stringify({ version: 1, agents: [
-    record("coordinator"),
+    record("coordinator", { config: { cwd: root, selection: { model: "test/fake:medium", tools: ["subagent_wait", "subagent_catalog"] } } }),
     ...extraRecords.map(extra => record(extra.id as string, extra)),
   ] }));
   const previous = { agentDir: process.env.PI_CODING_AGENT_DIR, path: process.env.PATH };
@@ -72,6 +73,7 @@ async function withWaitTool(run: (tools: {
       read: args => tools.get("subagent_read").execute("c", args, undefined, undefined, ctx),
       worker: worker.id,
       spawn: async task => (await manager!.spawn({ name: task, task, cwd: root, selection: { model: "test/fake:medium", tools: [] } })).id,
+      delegated: (op, args) => manage!("coordinator", { op, args }, new AbortController().signal),
       delegatedWait: args => manage!("coordinator", { op: "wait", args }, new AbortController().signal),
       queue: value => { pending = value; },
     });
@@ -85,6 +87,15 @@ async function withWaitTool(run: (tools: {
 }
 
 const wake = (data: unknown) => (data as { wake?: unknown }).wake;
+
+test("the root dispatches only proxies granted to the caller", async () => {
+  await withWaitTool(async ({ delegated }) => {
+    await assert.rejects(delegated("list", {}), /subagent_list.*not granted/i);
+    const catalog = await delegated("catalog", {}) as { features: unknown; tools: string[] };
+    assert.deepEqual(catalog.features, { workflows: false, loops: false, peers: false });
+    assert.equal(catalog.tools.includes("subagent_wait"), false, "the coordinator can only compose leaves");
+  });
+});
 
 test("a queued message ends the root's wait once per batch, and never a coordinator's delegated wait", async () => {
   await withWaitTool(async ({ wait, delegatedWait, queue, worker }) => {

@@ -88,8 +88,8 @@ test("management extension registers nothing inside a marked child", () => {
   finally { if (old === undefined) delete process.env.PI_SUBAGENT; else process.env.PI_SUBAGENT = old; }
 });
 
-test("agent-facing spawn schema has no raw argument, executable or environment escape hatch", () => {
-  const tools: any[] = nativeTools();
+test("agent-facing spawn schema has no raw argument, executable or environment escape hatch", async () => {
+  const tools: any[] = await nativeTools();
   const schema = tools.find(t => t.name === "subagent_spawn").parameters;
   for (const key of ["cliArgs", "executable", "executableArgs", "env", "inheritExtensions", "thinking"]) assert.equal(schema.properties[key], undefined);
   assert.ok(schema.required.includes("model"));

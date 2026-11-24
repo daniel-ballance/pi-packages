@@ -223,12 +223,15 @@ export class SubagentPolicy {
     if (!extensions.includes(file)) throw new Error(`Tool ${tool} requires selecting provider extension ${file}`);
     return { source: file, extension: file };
   }
-  catalog() {
+  get peersEnabled(): boolean {
+    return !!this.config && this.config.peerMessageLimit > 0 && this.config.tools.includes("peer_send");
+  }
+  catalog(childDepth = 1) {
     this.diagnostics = this.ignoredProject ? [this.ignoredProject] : [];
     const toolExtensions: Record<string, string> = Object.create(null);
     if (!this.config) {
       this.diagnostics.push(`${this.source}: ${this.error}`);
-      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], toolExtensions, extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: reportedLimit(this.childLimit), peerMessageLimit: 0, parentMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
+      return { source: this.source, spawnEnabled: false, features: { workflows: false, loops: false, peers: false }, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], toolExtensions, extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: reportedLimit(this.childLimit), peerMessageLimit: 0, parentMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
     }
     const config = this.config;
     const available = this.environment.models();
@@ -281,7 +284,8 @@ export class SubagentPolicy {
         this.diagnostics.push("parent_send requires a positive parentMessageLimit (ignored)"); return false;
       }
       if (tool.startsWith("subagent_")) {
-        if (isProxiedTool(tool) && (config.maxDepth ?? 1) > 1) return true;
+        if (isProxiedTool(tool) && (config.maxDepth ?? 1) > childDepth) return true;
+        if (isProxiedTool(tool) && childDepth > 1) return false;
         this.diagnostics.push(isProxiedTool(tool) ? `Forbidden recursive tool (ignored; delegation needs maxDepth above 1): ${tool}` : `Forbidden recursive tool (ignored): ${tool}`);
         return false;
       }
@@ -312,8 +316,10 @@ export class SubagentPolicy {
         return [path];
       } catch (error) { this.diagnostics.push(`workingDirectories: ${value}: ${error}`); return []; }
     });
+    const spawnEnabled = allows(this.childLimit, 1) && !!models.length && !!workingDirectories.length && !alwaysUnavailable;
     return {
-      source: this.source, spawnEnabled: allows(this.childLimit, 1) && !!models.length && !!workingDirectories.length && !alwaysUnavailable,
+      source: this.source, spawnEnabled,
+      features: { workflows: childDepth === 1 && spawnEnabled, loops: childDepth === 1 && !!config.loops?.enabled, peers: childDepth === 1 && this.peersEnabled },
       models, tools, toolExtensions, ...resources, alwaysExtensions, alwaysTools, workingDirectories,
       systemPrompt: config.systemPrompt, appendSystemPrompt: config.appendSystemPrompt,
       contextFiles: config.contextFiles, maxChildren: reportedLimit(this.childLimit), peerMessageLimit: config.peerMessageLimit,

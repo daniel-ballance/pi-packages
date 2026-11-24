@@ -21,8 +21,8 @@ function render(action: Action, details: unknown, expanded = false, width = 120,
   return subagentRenderers(action).renderResult(result(details), { expanded, isPartial: false }, theme, { ...context(), ...(args ? { args } : {}) }).render(width).join("\n");
 }
 
-test("all subagent tools register call/result renderers without changing execution schemas", () => {
-  const tools = nativeTools();
+test("all subagent tools register call/result renderers without changing execution schemas", async () => {
+  const tools = await nativeTools();
   assert.equal(tools.length, 19);
   for (const tool of tools) {
     assert.equal(typeof tool.renderCall, "function", tool.name);
