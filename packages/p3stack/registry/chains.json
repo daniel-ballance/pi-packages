@@ -5,7 +5,7 @@
     "anchor": "2. `architect` for parallel design exploration",
     "position": "after",
     "skill": "tdd",
-    "when": "Use the seams architect named, or name them yourself when step 2 skipped architect. Confirm them with the human under the default grant."
+    "when": "Select test seams from the sketch or the existing interface. Put the seams in the implementation brief; its owner runs the red-green loop."
   },
   {
     "id": "bug-teardown",

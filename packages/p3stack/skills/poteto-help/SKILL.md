@@ -160,7 +160,7 @@ Close calls:
 
 - `/skill:how` explains what the code does. `/skill:why` explains the reasons. Ask `/skill:how` for its teach walkthrough to combine the findings in plain language.
 - `/skill:arena` gives every worker the same brief and merges the best parts. `/skill:swarm` splits work into slices or a race and returns one report.
-- `/skill:architect` stops at synthesis for an autonomous design request; on implementation work it proceeds after design. Add "with checkpoint" to review the design before it writes code.
+- `/skill:architect` returns a design unless you assign it implementation. Add "with checkpoint" to review the design before it writes code.
 - `/skill:interrogate` reviews the diff. Ask `/skill:code-review` for blast-radius to check what could break outside the diff.
 - `/skill:recall` rebuilds context across recent chats. `/skill:ketchup` covers only this chat since the user's last message. Resuming one specific chat or branch is the Session pickup playbook.
 - `/skill:figure-it-out` designs one rigorous run. The Orchestrate playbook runs a program that spans days and many PRs. The Autonomous run playbook drives one task to a finish condition.
