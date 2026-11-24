@@ -23,7 +23,6 @@ What is left from the November 2026 review of p3stack and t3-agent. The review's
 
 Each measurement used a scripted stand-in model. It shows what one reminder costs, not how often a real model triggers it.
 
-- Todo settle reminders: 3 extra provider calls in 13 across three runs. Two reconciled a finished file write and one was redundant. The safeguard stays.
 - The preview-tab reminder: 3 extra provider calls across four cases. One corrected a missed close and one was redundant. The safeguard stays.
 Real sessions, counted on 2026-11-24 across the 469 Pi session files on the owner's machine (1–24 November, terminal and T3, parents and delegates, 1,155 user messages):
 
@@ -31,7 +30,7 @@ Real sessions, counted on 2026-11-24 across the 469 Pi session files on the owne
 - **Todo settle reminder:** 21 in the same period, costing 35 extra provider calls. Two marked an item done. Fourteen wrote a visible reply despite the instruction to end silently, most often restating that delegated work was still running. The rest re-marked items pending or in progress with a note.
 - **Preview-tab reminder:** never fired. No session opened a T3 preview tab; the only preview calls were six `html_preview` renders.
 
-The settle reminder costs more than it returns when the open items wait on delegates or the user. Changing either todo reminder is the owner's call.
+The settle reminder cost more than it returned when the open items waited on delegates or the user. The owner dropped it on 2026-11-24; the mid-run reminder stays.
 
 - The stock footer: Pi 1.5.2 has no supported way to decorate it, so the copied renderer stays. `src/footer.ts` records what was checked.
 - Shorter descriptions (trial, 2026-11-24): with routing off, a real model opened the intended skill as often with nine one-sentence descriptions as with the current ones (85 against 84 of 99 runs). Not adopted; the [decision log](evals/README.md#decision-log) has the numbers. No skill becomes explicit-only.

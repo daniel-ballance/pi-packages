@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Drop the end-of-run check. Counted across real sessions, it mostly cost an extra visible reply about items left open on purpose. The mid-run reminder stays.
 - Add `add` (append items), `remove` (delete pending items added by mistake) and, on `update`, `text` (reword one item) and note-only changes. Numbers are never reused; snapshots record the next one.
 - Label the hidden reminder and end-of-run check as the extension's, check at the end only when the run worked past its last `todo` call, and drop the end-of-run warning.
 - Order the widget by focus (in progress, pending, resolved), summarize what doesn't fit instead of letting Pi truncate it, and style it and expanded calls with the theme.
