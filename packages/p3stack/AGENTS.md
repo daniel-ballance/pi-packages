@@ -1,8 +1,6 @@
 # p3stack
 
-The Pi edition of Cursor's pstack, **generated** from the vendored upstream.
-`skills/`, `LICENSE`, and the `LICENSE-*` files are generated output. Never edit them by hand: change a
-rule and regenerate. The package check fails on drift.
+The generator owns `skills/`, `agents/`, `LICENSE`, and `LICENSE-*`, plus the README pins and `package.json#p3stack.upstream`. Never edit generated output by hand. Change its input and regenerate.
 
 Current architecture is in [`docs/p3stack.md`](../../docs/p3stack.md).
 The generator contract below defines source and output ownership.
@@ -26,19 +24,18 @@ The generator contract below defines source and output ownership.
 | `authored/` | p3stack-owned skills and playbooks copied after `extra/` | hand-written |
 | `generator/` | the generator, the upstream updater and the lint wrapper | hand-written |
 | `extensions/p3stack/` | mode toggle, `ask_user`, `p3stack_roles`, `/p3stack-setup` | hand-written |
-| `skills/`, `LICENSE`, `LICENSE-*` | generated | `generator/generate.mjs` |
+| `skills/`, `agents/`, `LICENSE`, `LICENSE-*` | generated files | `generator/generate.mjs` |
+| README upstream markers, `package.json#p3stack.upstream` | generated pin metadata | `generator/generate.mjs` |
 
 ## Commands
 
 ```sh
-npm run generate                      # regenerate skills/ and LICENSE
-npm run generate -- --check            # fail on drift; writes nothing
-npm run bump -- <source> [ref]         # move one source pin and regenerate
-npm run check                         # drift check, lint-skill on every skill, static routing check
-node test/static-routing/run.mjs      # tier A: model-invoked descriptions vs realistic prompts
-npm run eval:routing                  # tier B: live routing eval, 3 runs per prompt, pass at 2 of 3 (spends tokens)
-npm run eval:behavior -- --agent-dir <dir>  # tier C: behavior eval, mode on vs off (spends tokens)
-npm test                              # generator tests on fixtures
+npm run sync                       # initialize the recorded vendor checkouts and regenerate
+npm run generate                   # write the generated trees, licenses, and pin metadata
+npm run generate -- --check        # generate in a temporary directory and compare
+npm run bump -- <source> [ref]     # move the source's checkout and regenerate
+npm run check                      # drift, host and skill lints, static T3 contract, description lint, typechecks
+npm test                           # extension, generator, compiler, packlist, and playbook helper tests
 ```
 
 `npm run check` runs the repository's `lint-skill` from `../../scripts/lint-skill`,
@@ -49,8 +46,7 @@ so install the workspace first.
 `rules/manifest.json` contains a `sources` array. Each source has a unique `name`,
 a `vendor` root, a `map` of input prefixes to output prefixes, an optional
 `exclude` list of regular expressions, and optional `upstream` checkout details.
-The sources are `cursor-plugins`, `matt-pocock`, `owner-plugins`, and `agent-skills`. `agent-skills` emits four skills (`constraints`, `source-grounding`, `security-hardening`, `instrumentation`) and maps two shared checklists into the skills that use them; every other agent-skills skill is dropped with a reason. `superpowers` is watch only: it emits only its license, and every skill row is a drop naming the p3stack file that restates its idea. `rules/borrowed.json` lists each borrowed upstream path and the p3stack files that restate it; a bump's scope report marks a changed borrowed path so the restatement gets reviewed. The owner
-source reads dyl-stack and thermos from the same Cursor checkout, with no new pin.
+Five upstream source rows share four gitlinks. `cursor-plugins` and `owner-plugins` use the same Cursor checkout. `matt-pocock` and `agent-skills` also emit skills. `superpowers` emits only its license. `rules/borrowed.json` names borrowed paths so a bump flags their p3stack restatements for review. The registry source `p3stack` reads authored inputs, not another upstream checkout.
 A source's optional `required` list names output paths that it must supply.
 `registry/skills.json` classifies every upstream skill under each source's
 `skillRoots`, which defaults to `skills/`. Drop rows exclude the whole skill
@@ -103,7 +99,7 @@ corrected rule, never an edit to the output. `lint.json` also requires dependenc
 links through `require` entries with `file` and `contains` fields. `resources`
 names the sources whose staged skills must pass the repository's `lint-skill`
 before generation replaces committed output. A missing linter refuses replacement.
-The Pocock source keeps its former staged validation. `npm run check` lints every skill.
+`npm run check` runs `lint-skill` on every generated skill under `skills/`, not the nested subagents skills.
 
 ## Helper scripts
 
@@ -112,8 +108,7 @@ turn the surviving watch-pr launcher into a Node script: its shebang and depende
 bootstrap are translated, with `commander` supplied by the package. `import.meta.dir`
 and `bun:test` imports use Node equivalents and the hand-written test shims in
 `extra/skills/poteto-mode/scripts/`. Orchestrate no longer ships a CLI or store.
-`worktree-audit.sh` is the one patch: it reads Pi sessions instead of Cursor
-transcripts and runs on Linux as well as macOS. `npm test` runs upstream's
+A patch makes `worktree-audit.sh` read Pi sessions instead of Cursor transcripts on Linux and macOS. It tries `origin` and then `gh` for PR data. The worktree inventory also works without PR data. `npm test` runs upstream's
 script tests; `npm run check` typechecks `watch-pr`.
 
 Statechart ships a TypeScript compiler and a Node launcher. The manifest maps its
@@ -127,9 +122,10 @@ the emitted launcher against the recorded corpus.
 
 ## Writing rules
 
-- Skills name capabilities, never backend tools. Map a Cursor mechanism to a
-  capability in [`extra/skills/poteto-mode/references/host-capabilities.md`](extra/skills/poteto-mode/references/host-capabilities.md)
-  and link that file; keep tool names for both hosts in that one place.
+- Write skills in terms of capabilities. Put host-specific operations in the
+  [host map](extra/skills/poteto-mode/references/host-capabilities.md).
+  Host lint checks generated roots for listed T3 strings outside the map.
+  Authored lint checks `authored/` for known model and tool patterns. Neither checks runtime parity.
 - Prefer a sentence-level token rule scoped with `files` over a section
   replacement: untouched upstream sentences around it keep flowing in. A section
   rule names a leaf heading, never a parent that has children.
@@ -151,13 +147,11 @@ the emitted launcher against the recorded corpus.
 
 ## Maintain p3stack
 
-Use [`maintain-p3stack`](authored/skills/maintain-p3stack/SKILL.md) for current-pin audits and upstream refreshes. Its audit stops with one status per vendored source and creates no PR. An explicit bump request continues to source updates, generator repairs, and landed PRs: each green PR is admin-merged, `main` is verified at the merge commit, and a red check is reverted through a second PR. Keep shared-checkout sources in one PR and independent sources separate.
-
-Write changed-source notes in [`docs/bumps/`](docs/bumps/README.md). Keep dependency refreshes and T3 host-contract repairs separate. Use disposable Pi settings for loader checks and smoke tests. The skill does not change the live agent configuration or install tools.
+Use [`maintain-p3stack`](authored/skills/maintain-p3stack/SKILL.md) for current-pin audits and explicit upstream bumps. An audit leaves the source tree unchanged and opens no PR. Write [one bump note per PR](docs/bumps/README.md). Keep dependency refreshes and T3 host repairs separate. Use disposable Pi settings for loader checks and smoke tests.
 
 ## Updating upstream
 
-Generation and `--check` require clean inputs under `vendor/pstack/pstack`,
+Generation and `--check` require each source's vendor subtree to be clean,
 including ignored files, executable-bit changes, and `plugin.json`. The status
 probe forces `core.fileMode=true` without changing the clone's configuration.
 They also reject `skip-worktree` and
@@ -178,7 +172,9 @@ npm run bump -- superpowers <ref>     # move the watch-only superpowers pin
 The command requires a source name. It fetches only that source's checkout,
 moves it to the ref, and classifies changed paths against that source's map and
 exclusions before it regenerates all sources. `cursor-plugins` uses `vendor/pstack`
-and the `pstack/` subtree. `owner-plugins` uses that same checkout's sibling trees. Unknown names and dirty checkouts fail before a fetch.
+and the `pstack/` subtree. `owner-plugins` reads sibling trees from that checkout.
+Before fetching, the updater rejects unknown names and changes visible to
+`git status --porcelain`. Generation applies the stricter input checks above.
 `npm run update-upstream -- <source> [ref]` remains an alias.
 The report distinguishes emitted paths, explicit exclusions, and paths not emitted. Review every path marked `review scope`: it may be a new
 capability the manifest does not yet include. `plugin.json` is not emitted but
@@ -186,23 +182,23 @@ supplies the plugin name and version. Inspect the full upstream commits too
 (`git -C vendor/pstack show --stat <sha>`); packaging can live outside
 `pstack/`. Use the canonical `pstack/` sources, not upstream's generated
 `harness/pstack/` copies for other hosts. If a failed update or a rerun already
-moved the checkout, recover its source delta with
-`git -C vendor/pstack diff --name-status <old-pin> HEAD -- pstack`.
-The old pin is in the base branch's package metadata.
+moved the checkout, recover its delta with
+`git -C <checkout> diff --name-status <old-pin> HEAD`. Get the old pin from the
+base commit's gitlink or package README. Only the Cursor pin also appears in package metadata.
 
 Generation records every source pin between the README markers. Sources with
 `plugin.json` also include the plugin name and version. The `cursor-plugins` pin
 stays in `package.json` as `p3stack.upstream`. `{{upstream.commit}}` expands to
 the source commit of the file a token rule or section overlay rewrites.
 
-`--check` compares every submodule checkout with its staged gitlink and checks
-all README pins. Standalone source clones have no gitlink to compare. The check
-also checks `p3stack.upstream` for `cursor-plugins` and reports the generated file
-and byte counts on success. It writes nothing.
+After a bump, stage the affected checkout's gitlink before running `--check`.
+The check compares each submodule HEAD with the index, verifies the mirrored
+pins, and compares temporary output with the working tree. It does not change
+the checkout. A standalone clone has no gitlink to compare.
 
-When it fails, each line names a token rule, section or patch upstream no
-longer fits, and the checkout stays at the new commit. Read the upstream commit
-that broke it (`git -C vendor/pstack show <sha>`), then fix the rule:
+Use the diagnostic to distinguish a pin mismatch, registry error, lint failure,
+or output drift from a rule that no longer fits. For a changed rule, inspect
+the upstream commit with `git -C <checkout> show <sha>`:
 
 - **Token rule, 0 matches**: upstream reworded the text, so update `find`; or
   upstream deleted it or now supplies the translated form, so delete the rule.
@@ -222,10 +218,8 @@ sentence. Regenerate a second time and confirm the diff is unchanged.
 Classify every new or renamed upstream skill in `registry/skills.json`.
 The checker names unclassified paths and stale rows. Keep a reason for each drop.
 Run `npm run check`, `npm test`, and the repository's `./scripts/check.sh`
-before committing `vendor/pstack` with the regenerated output and rule changes.
+before committing the affected checkout's gitlink, generated files, metadata, and rule changes.
 
-## Routing evals
+## Evals
 
-`test/static-routing/cases.json` holds realistic prompts for every model-invoked skill: positives must rank their skill in the top k, negatives must be outranked by their named owner, and no two descriptions may collide. A case naming a skill that is not emitted is skipped, so a case can land before its skill. When a realistic prompt fails, fix the description with a token rule; never weaken the case. Record a description, route, or chain change rejected on eval evidence in [`docs/evals/rejected.md`](../../docs/evals/rejected.md).
-
-`test/behavior-eval/cases.json` runs realistic tasks in fixture repositories with p3stack-mode on and off, and grades the trace and the resulting files: reads, commands and their order, tools and their arguments, files, and commands the grader runs afterwards. Pass a disposable `--agent-dir` holding `auth.json`, `models.json`, `settings.json` (packages: this p3stack and web-search), and `mcp.json` for MCP cases. Fixture text `{{SKIP}}` becomes `skip` when materialized, so the fixtures pass floor-check themselves.
+Read the [eval guide](../../docs/evals/README.md) before a paid run. Use the decision log there for accepted and rejected changes. When an example fails, check the label and rubric before changing a description. Edit an upstream description with a scoped token rule and a p3stack-owned description in `authored/`.

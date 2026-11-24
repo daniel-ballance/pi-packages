@@ -1,6 +1,8 @@
 # Mechanical procedures become tools
 
-Where a p3stack procedure is mechanical, the runtime or a script carries it rather than prose the model may skip. The extension's delegation hook injects the grant, the brief contract, and the review stance into every brief on both hosts. `floor-check.mjs` checks the quality floor from the diff. `p3stack_roles` takes `distinctFrom` so a reviewer resolves to another model family. Workflow templates let the subagents engine run interrogate (rerunning every claimed repro), arena, hillclimb, and skill evals. A static routing check runs in `npm run check`.
+Use code for steps the model might otherwise skip. While the mode is on, the brief hook intercepts a parent's `subagent_spawn` or `mcp__t3-code__delegate_task` call with a text task. It skips briefs it already prefixed. It adds the saved grant and either the writer contract or the read-only review stance. The shorter read-only brief keeps a reviewer on the assigned question instead of starting a playbook. The hook does not cover workflow workers or children of children.
+
+`floor-check.mjs` checks the diff for quality-floor violations. `p3stack_roles` with `distinctFrom` prefers a different model family when the catalog offers one. Workflow templates let the subagents engine run interrogate, arena, hillclimb, and skill evals. The offline description lint checks vocabulary, not the model's choices.
 
 Prose stays for judgment: the house policies, the references, and the playbooks.
 
