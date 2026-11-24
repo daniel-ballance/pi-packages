@@ -641,6 +641,7 @@ test("held prompt acceptance cannot revive state or create a post-halt assignmen
     assert.equal(s.manager.get(a.id).assignment?.task, "late work");
     assert.equal(s.manager.get(a.id).assignment?.status, "cancelled");
     assert.equal(s.manager.get(a.id).hold?.kind, "halt");
+    assert.equal(s.manager.get(a.id).hold?.outcome, "confirmed");
     child.request = request;
     const deadline = Date.now() + 2000;
     while (true) {

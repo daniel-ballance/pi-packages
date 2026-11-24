@@ -15,6 +15,7 @@ import { gitEnv } from "./worktree.js";
 
 /** The child's checkout may still be in use. */
 export class StopUnconfirmedError extends Error {}
+class SubmissionInFlight extends Error {}
 export type InputDisposition = "started" | "queued" | "handled" | "unknown";
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
 export interface SpawnOptions {
@@ -121,6 +122,7 @@ export class SubagentManager {
   private abortIntents = new Map<string, { revision: number; awaitingStart: boolean }>();
   private aborting = new Set<string>();
   private responding = new Set<string>();
+  private retryableHalts = new WeakSet<HumanHold>();
   private submitting = new Map<string, number>();
   private reservations = new Map<SlotReservation, number>();
   private reservedSlots = 0;
@@ -889,6 +891,7 @@ export class SubagentManager {
     this.persist();
     this.submitting.set(id, (this.submitting.get(id) ?? 0) + 1);
     let disposition: InputDisposition = "unknown";
+    let acceptedUnderHalt: HumanHold | undefined;
     try {
       try {
         const response = await child.request({ type: "prompt", message, ...(behavior ? { streamingBehavior: behavior } : {}) });
@@ -897,10 +900,7 @@ export class SubagentManager {
         // A human hold installed while prompt acceptance was pending owns all later state.
         if (record.hold) {
           // Acceptance after the first clear_queue/abort can enqueue a fresh run.
-          if (record.hold.kind === "halt" && this.children.get(id) === child) {
-            await this.abortRuns.get(id)?.catch(() => {});
-            await this.abort(id).catch(() => {});
-          }
+          if (record.hold.kind === "halt") acceptedUnderHalt = record.hold;
           throw new Error(`${id} was held while prompt acceptance was pending`);
         }
         // An input hook can consume ordinary text too: acceptance need not schedule work.
@@ -946,6 +946,15 @@ export class SubagentManager {
       const remaining = (this.submitting.get(id) ?? 1) - 1;
       if (remaining) this.submitting.set(id, remaining);
       else this.submitting.delete(id);
+      if (acceptedUnderHalt && record.hold === acceptedUnderHalt && this.children.get(id) === child) {
+        await this.abortRuns.get(id)?.catch(() => {});
+        const stopped = await this.abort(id);
+        if (record.hold === acceptedUnderHalt && this.retryableHalts.has(acceptedUnderHalt) && stopped.outcome === "confirmed") {
+          acceptedUnderHalt.outcome = "confirmed";
+          acceptedUnderHalt.detail = "Late prompt accepted; queues cleared and active work cancelled.";
+          this.report(record, "human_intervention", `Human halt for ${record.name} (${id}): confirmed. ${acceptedUnderHalt.detail}`);
+        }
+      }
     }
   }
   private markAbortIntent(record: AgentRecord) {
@@ -1011,7 +1020,7 @@ export class SubagentManager {
       await child.request({ type: "abort" });
       const state = await child.request({ type: "get_state" });
       if (state.isStreaming !== false) throw new Error("Abort acknowledged but child still reports streaming or unknown state; cancellation unconfirmed");
-      if (this.submitting.has(id)) throw new Error("Prompt submission is still in flight; a late run may still start. Cancellation unconfirmed.");
+      if (this.submitting.has(id)) throw new SubmissionInFlight("Prompt submission is still in flight; a late run may still start. Cancellation unconfirmed.");
       if (record.uncertainSubmission) throw new Error("Prompt acceptance remains unknown; cancellation unconfirmed. Kill or close the process before release.");
       return this.summary(id);
     } finally {
@@ -1037,7 +1046,7 @@ export class SubagentManager {
     let hookError: unknown;
     try { this.interventionHook?.(record, kind); beforeCancel?.(record, kind); }
     catch (error) { hookError = error; }
-    let targetDetail: string, targetOutcome: "confirmed" | "unconfirmed";
+    let targetDetail: string, targetOutcome: "confirmed" | "unconfirmed", pendingSubmission = false;
     try {
       const child = this.children.get(id);
       if (kind === "kill") {
@@ -1057,6 +1066,7 @@ export class SubagentManager {
     } catch (error) {
       targetOutcome = "unconfirmed";
       targetDetail = String(error);
+      pendingSubmission = error instanceof SubmissionInFlight;
     }
     if (record.hold === hold && record.assignment?.status === "running" && targetOutcome === "confirmed") {
       record.assignment.status = "cancelled";
@@ -1078,6 +1088,7 @@ export class SubagentManager {
       targetDetail = `Superseded by human ${record.hold?.kind ?? "intervention"}; prior ${kind} result cannot confirm current state.`;
     }
     const confirmed = targetOutcome === "confirmed" && !subtreeFailures.length;
+    if (pendingSubmission && !hookError && !subtreeFailures.length) this.retryableHalts.add(hold);
     hold.outcome = confirmed ? "confirmed" : "failed";
     hold.detail = subtreeFailures.length
       ? `Target ${id}: ${targetOutcome}. ${targetDetail} Unconfirmed descendants: ${subtreeFailures.join("; ")}` : targetDetail;
