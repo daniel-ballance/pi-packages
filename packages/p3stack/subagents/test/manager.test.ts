@@ -524,6 +524,7 @@ test("assistant errors are provisional until settlement or exit commits the resu
   const s = await setup(), incomplete: string[] = [];
   (s.manager as any).changed = () => {
     const { agents, pendingNotices } = requireRegistry(s.dir), a = agents[0];
+    if (a?.assignment?.status === "running" && (a.error || a.updates.some((u: {kind: string}) => u.kind === "error"))) incomplete.push("premature failure report");
     if (a?.assignment && a.assignment.status !== "running" && (!a.resultReview || !a.assignment.finishedAt ||
         !pendingNotices.some((n: Notice) => n.cursor === a.assignment.resultCursor))) incomplete.push(a.assignment.status);
   };

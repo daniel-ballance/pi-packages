@@ -76,6 +76,8 @@ interface InputDelivery {
   firstUser?: boolean;
   batch?: boolean;
   lastResult?: Update;
+  error?: string;
+  cancelled?: boolean;
 }
 export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string; assignmentId?: string; fullLength?: number; readFull?: ReadArgs }
 export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
@@ -723,16 +725,16 @@ export class SubagentManager {
   private finishAssignment(record: AgentRecord, last: Update | undefined, humanCancellation = false) {
     const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
     if (record.assignment?.status === "running") record.assignment.status = record.error ? "failed" : record.aborted ? "cancelled" : "completed";
-    const text = record.error || last?.text || "Run settled without a text response.";
-    if (!last) this.appendUpdate(record, kind, text);
+    const text = record.error || last?.text || (record.aborted ? "Work cancelled; child remains available for instructions." : "Run settled without a text response.");
+    if (!last) last = this.appendUpdate(record, record.error ? "error" : kind, text);
     if (record.assignment && !record.assignment.finishedAt) {
       record.assignment.finishedAt = new Date().toISOString();
-      record.assignment.resultCursor = last?.cursor ?? record.cursor;
-      record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last?.truncated || this.savedFinal(record)?.reviewed) ? "reviewed" : "unreviewed" };
+      record.assignment.resultCursor = last.cursor;
+      record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last.truncated || this.savedFinal(record)?.reviewed) ? "reviewed" : "unreviewed" };
     }
     // announce commits the result and its wake notice together, before calling
     // the scheduler. A suppressed notice still needs the settlement committed.
-    if ((humanCancellation && kind === "aborted") || !this.announce(record, kind, text, last?.cursor ?? record.cursor)) this.persist();
+    if ((humanCancellation && kind === "aborted") || !this.announce(record, kind, text, last.cursor)) this.persist();
   }
   private deliveredInput(record: AgentRecord, delivery: InputDelivery, text: string) {
     const removed = delivery.removed, first = delivery.firstUser;
@@ -751,8 +753,12 @@ export class SubagentManager {
         record.assignment.task += `\n\n${text}`;
         this.persist();
       } else {
-        if (record.assignment && !record.assignment.finishedAt) this.finishAssignment(record, delivery.lastResult);
-        delivery.lastResult = undefined; record.error = undefined; record.aborted = false;
+        if (record.assignment && !record.assignment.finishedAt) {
+          record.error = delivery.error; record.aborted = !!delivery.cancelled;
+          this.finishAssignment(record, delivery.lastResult);
+        }
+        delivery.lastResult = undefined; delivery.error = undefined; delivery.cancelled = false;
+        record.error = undefined; record.aborted = false;
         this.beginAssignment(record, text, next.id, next.at);
         delivery.batch = true;
       }
@@ -823,20 +829,16 @@ export class SubagentManager {
         delivery.firstUser = false; delivery.batch = false;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
         const terminal = !["toolUse", "error", "aborted"].includes(message.stopReason) && !message.content?.some((c: Packet) => c.type === "toolCall");
-        record.error = undefined; record.aborted = false;
-        const update = text ? this.update(record, "assistant", text, terminal) : undefined;
-        delivery.lastResult = terminal ? update : undefined;
         const intent = this.abortIntents.get(record.id);
         const requestedAbort = intent && !intent.awaitingStart && intent.revision === (record.runRevision ?? 0);
         const cancelled = message.stopReason === "aborted" ||
           (message.stopReason === "error" && requestedAbort && isCancellationError(message.errorMessage));
-        if (cancelled) {
-          record.aborted = true;
-          delivery.lastResult = this.update(record, "aborted", "Work cancelled; child remains available for instructions.");
-        } else if (message.stopReason === "error") {
-          record.error = message.errorMessage || "Assistant request failed";
-          delivery.lastResult = this.update(record, "error", record.error!);
-        }
+        // Pi can retry after agent_end. Keep a provisional error in the run
+        // (and raw event log), not in the reviewable reports or durable status.
+        delivery.cancelled = cancelled;
+        delivery.error = !cancelled && message.stopReason === "error" ? message.errorMessage || "Assistant request failed" : undefined;
+        const update = text && !cancelled && !delivery.error ? this.update(record, "assistant", text, terminal) : undefined;
+        delivery.lastResult = terminal ? update : undefined;
         break;
       }
       case "entry_appended": {
@@ -856,6 +858,8 @@ export class SubagentManager {
         const humanCancellation = !!record.hold && !!intent && !intent.awaitingStart && intent.revision === (record.runRevision ?? 0);
         this.activeRuns.delete(record.id);
         this.abortIntents.delete(record.id);
+        record.error = delivery.error; record.aborted = !!delivery.cancelled;
+        delivery.error = undefined; delivery.cancelled = false;
         if (record.status === "stopping") break;
         record.runRevision = (record.runRevision ?? 0) + 1;
         record.status = record.error ? "failed" : "idle";
