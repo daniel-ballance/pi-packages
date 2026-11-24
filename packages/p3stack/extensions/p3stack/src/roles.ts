@@ -123,9 +123,11 @@ interface RoleContext {
   executeTool(name: string, args: Record<string, unknown>, options?: { signal?: AbortSignal }): ReturnType<Context["executeTool"]>;
 }
 
-export function readCatalog(pi: CatalogApi): Catalog | undefined {
+function terminalCatalog(pi: CatalogApi): Catalog | undefined {
   let catalog: Catalog | undefined;
   pi.events.emit("subagents:catalog", { reply: (value: Catalog) => { catalog = value; } });
+  if (!catalog && pi.getAllTools().some(tool => tool.name === "subagent_catalog")) throw new Error("The subagents catalog did not reply. Run /skill:setup-pstack to read subagent_catalog.");
+  if (catalog && !catalog.spawnEnabled) throw new Error("Your subagents policy does not permit spawning. Check /subagents diagnostics.");
   return catalog;
 }
 
@@ -158,18 +160,37 @@ function t3Selections(data: unknown): LiveCatalog {
 
 const CAPABILITIES = "mcp__t3-code__orchestrator_capabilities";
 
+// The extension API belongs to one loaded extension. Both the command and the
+// tool use its last unfiltered, local T3 catalog; commands cannot execute tools.
+const t3Catalogs = new WeakMap<CatalogApi, LiveCatalog>();
+
+function rememberCatalog(pi: CatalogApi, result: { structuredContent?: unknown; content: unknown; isError?: boolean }) {
+  t3Catalogs.delete(pi);
+  const payload = record(result.structuredContent);
+  if (result.isError || payload.isError) throw new Error("capabilities call failed");
+  const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
+  const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
+  const catalog = t3Selections(data);
+  t3Catalogs.set(pi, catalog);
+  return catalog;
+}
+
+export function setupCatalog(pi: CatalogApi): string[] | undefined {
+  if (detectHost() === "cli") return terminalCatalog(pi)?.models;
+  const catalog = t3Catalogs.get(pi);
+  if (!catalog) throw new Error("No T3 catalog in this session. Ask for p3stack_roles once, then rerun /p3stack-setup. Nothing written.");
+  return catalog.choices.filter(s => s.level).map(identity);
+}
+
 async function selections(pi: CatalogApi, ctx: RoleContext, signal?: AbortSignal): Promise<LiveCatalog> {
   if (detectHost() === "t3") {
+    const cached = t3Catalogs.get(pi);
+    if (cached) return cached;
     const { result, isError } = await ctx.executeTool(CAPABILITIES, {}, { signal });
-    const payload = record(result.structuredContent);
-    if (isError || result.isError || payload.isError) throw new Error("capabilities call failed");
-    const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
-    const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
-    return t3Selections(data);
+    if (isError) throw new Error("capabilities call failed");
+    return rememberCatalog(pi, result);
   }
-  const catalog = readCatalog(pi);
-  if (!catalog && pi.getAllTools().some(tool => tool.name === "subagent_catalog")) throw new Error("subagents catalog did not reply");
-  if (catalog && !catalog.spawnEnabled) throw new Error("subagents policy does not permit spawning");
+  const catalog = terminalCatalog(pi);
   const identities = catalog?.models ?? ctx.modelRegistry.getAvailable().flatMap(model => supportedLevels(model).map(level => `${model.provider}/${model.id}:${level}`));
   const choices = identities.flatMap(value => {
     const at = value.lastIndexOf(":"), slash = value.indexOf("/");
@@ -289,6 +310,15 @@ const targetSchema = Type.Object({ providerInstanceId: Type.String(), model: Typ
 const selectionSchema = Type.Union([Type.String(), targetSchema, Type.Null()]);
 
 export function registerRoles(pi: Pi) {
+  if (detectHost() === "t3") {
+    const clear = () => { t3Catalogs.delete(pi); };
+    for (const event of ["session_start", "session_tree", "model_select"]) pi.on(event, clear);
+    pi.on("tool_result", event => {
+      if (event.toolName === CAPABILITIES && !Object.keys(record(event.input)).length) {
+        try { rememberCatalog(pi, event); } catch { clear(); }
+      } else if (event.toolName === "mcp__t3-code__delegate_task" && (event.isError || record(event.structuredContent).isError)) clear();
+    });
+  }
   pi.registerTool({
     name: "p3stack_roles", label: "p3stack roles",
     description: "Resolve every p3stack role against the live catalog. Return exact provider/model:thinking identities or ready T3 targets (null means omit target to inherit), and report unavailable roles. Pass distinctFrom with the author's model to get reviewers from another model family.",

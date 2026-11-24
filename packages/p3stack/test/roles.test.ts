@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { agentDir, DEFAULT_ROLES, family, liveRoles, resolveRoles, type RoleValue } from "../extensions/p3stack/src/roles.ts";
+import { agentDir, DEFAULT_ROLES, family, liveRoles, registerRoles, resolveRoles, type RoleValue } from "../extensions/p3stack/src/roles.ts";
+import { registerSetup } from "../extensions/p3stack/src/setup.ts";
 
 const capabilities = "mcp__t3-code__orchestrator_capabilities";
 
@@ -26,7 +27,7 @@ function directories(t: TestContext) {
 function lookup(t: TestContext, host: "cli" | "t3", { models = [] as string[], t3 = undefined as unknown, pins = {} as Record<string, RoleValue>, parent = undefined as { provider: string; id: string } | undefined } = {}) {
   env(t, "T3_MCP_URL", host === "t3" ? "http://127.0.0.1:1/mcp" : undefined);
   const { cwd, personal } = directories(t);
-  writeFileSync(personal, JSON.stringify({ roles: pins }));
+  if (Object.keys(pins).length) writeFileSync(personal, JSON.stringify({ roles: pins }));
   const calls: string[] = [];
   const pi = {
     getThinkingLevel: () => "high",
@@ -40,7 +41,7 @@ function lookup(t: TestContext, host: "cli" | "t3", { models = [] as string[], t
       return { toolCall: { type: "toolCall" as const, id: "1", name, arguments: {} }, result: { content: [], structuredContent: t3, details: {} }, isError: !t3 };
     },
   };
-  return { calls, resolve: (distinctFrom?: string) => liveRoles(pi, ctx, distinctFrom) };
+  return { pi, ctx, personal, calls, resolve: (distinctFrom?: string) => liveRoles(pi, ctx, distinctFrom) };
 }
 
 test("a T3-named tool in a terminal is never called", async t => {
@@ -171,6 +172,90 @@ test("a panel prefers two verifiable families over a private alias", async t => 
 test("diversity is not permission to exceed the thinking cap", async t => {
   const h = lookup(t, "cli", { models: ["api/claude-opus-5-5:high", "api/gpt-6:max"] });
   assert.equal((await h.resolve("claude")).roles["judgment and prose"], "api/claude-opus-5-5:high");
+});
+
+function wizard(h: ReturnType<typeof lookup>, selectModel = (options: string[]) => options[0]) {
+  const notices: string[] = [], questions: string[][] = [], messages: string[] = [];
+  const handlers = new Map<string, (event: unknown) => void>();
+  let command!: (args: string, ctx: unknown) => Promise<void>;
+  const pi = Object.assign(h.pi, {
+    registerCommand: (_: string, c: { handler: typeof command }) => { command = c.handler; }, registerTool() {},
+    on: (name: string, fn: (event: unknown) => void) => handlers.set(name, fn),
+    sendMessage: (m: { content: string }) => messages.push(m.content),
+  });
+  registerRoles(pi as never); registerSetup(pi as never);
+  const ui = {
+    select: async (title: string, options: string[]) => {
+      questions.push(options);
+      return title.startsWith("Thinking budget") ? "small, medium thinking" : selectModel(options);
+    },
+    confirm: async () => false, notify: (message: string) => notices.push(message),
+  };
+  const run = (hasUI = true) => command("", { cwd: h.ctx.cwd, modelRegistry: h.ctx.modelRegistry, hasUI, get ui() { assert.ok(hasUI); return ui; } });
+  return { run, notices, questions, messages, emit: (name: string, event: unknown = {}) => handlers.get(name)?.(event) };
+}
+
+test("setup states the budget, actual judgment level and panel it wrote when no model meets the floor", async t => {
+  const h = lookup(t, "cli", { models: ["api/coder:low"] });
+  h.pi.getAllTools = () => [{ name: "subagent_catalog" }];
+  const w = wizard(h);
+  await w.run();
+  const written = JSON.parse(readFileSync(h.personal, "utf8"));
+  assert.deepEqual(written.roles["arena runners"], ["api/coder:low", "api/coder:low"]);
+  const notice = w.notices.at(-1)!;
+  assert.match(notice, /no offered model.*high thinking/i);
+  assert.doesNotMatch(notice, /stay at high thinking/);
+  for (const value of [h.personal, written.budget, ...written.roles["arena runners"], "panel"]) assert.ok(notice.toLowerCase().includes(value.toLowerCase()));
+});
+
+test("setup offers a real judgment floor if any permitted model reaches it", async t => {
+  const h = lookup(t, "cli", { models: ["api/plain:low", "api/gpt-6:high"] });
+  h.pi.getAllTools = () => [{ name: "subagent_catalog" }];
+  const w = wizard(h);
+  await w.run();
+  assert.deepEqual(w.questions[2], ["api/gpt-6:high"]);
+  assert.deepEqual(JSON.parse(readFileSync(h.personal, "utf8")).roles["arena runners"], ["api/gpt-6:high", "api/plain:low"]);
+});
+
+test("T3 setup consumes this session's catalog; its choices round trip to ready targets", async t => {
+  const model = t3Model("xai/grok-4.7", "medium", "high");
+  const h = lookup(t, "t3", { t3: { providers: [provider("work", model), provider("personal", model)] } });
+  const w = wizard(h, options => options.find(s => s.startsWith("personal/"))!);
+  await h.resolve();
+  await w.run(); // command context has no executeTool
+  assert.ok(existsSync(h.personal), `setup did not write: ${w.notices}`);
+  const written = JSON.parse(readFileSync(h.personal, "utf8"));
+  assert.deepEqual(written.roles["arena runners"], ["personal/xai/grok-4.7:high", "personal/xai/grok-4.7:medium"]);
+  assert.ok(w.notices.at(-1)!.includes("personal/xai/grok-4.7:high"));
+  assert.deepEqual((await h.resolve()).roles["bug-fix"], target("personal", model.id, "medium"));
+  assert.deepEqual(h.calls, [capabilities], "one session lookup, including setup and the next role resolution");
+  w.emit("model_select");
+  await w.run();
+  assert.equal(w.questions.length, 3, "provider changes invalidate the catalog before another setup");
+});
+
+test("T3 setup uses a successful unfiltered local catalog result but not a foreign or failed one", async t => {
+  const h = lookup(t, "t3"), w = wizard(h);
+  const catalog = { providers: [provider("account", t3Model("gpt-6", "low", "high"))] };
+  const result = { toolName: capabilities, input: {}, content: [], structuredContent: { structuredContent: catalog } };
+  w.emit("tool_result", { ...result, input: { environmentId: "elsewhere" } });
+  await w.run();
+  assert.deepEqual(w.questions, []);
+  w.emit("tool_result", result);
+  await w.run();
+  assert.ok(existsSync(h.personal), `setup did not write: ${w.notices}`);
+  rmSync(h.personal);
+  w.emit("tool_result", { ...result, isError: true });
+  await w.run();
+  assert.equal(existsSync(h.personal), false);
+  assert.ok(w.notices.at(-1)!.includes("catalog"));
+});
+
+test("without UI, setup reports a dry run without touching the role file", async t => {
+  const h = lookup(t, "t3"), w = wizard(h);
+  await w.run(false);
+  assert.equal(existsSync(h.personal), false);
+  assert.match(w.messages.join("\n"), /no UI.*nothing written/i);
 });
 
 test("the agent directory follows Pi for empty, tilde and explicit overrides", t => {

@@ -652,19 +652,18 @@ test("/p3stack-setup keeps review and prose roles at high thinking or above on t
     assert.equal(written.roles["swarm workers"], "xai/grok-4.7:medium");
     assert.equal(written.roles["interrogate reviewers"][0], "claude/claude-opus-5-5:high");
     assert.match(h.asked.find(question => question.startsWith("Model for judgment"))!, /claude-opus-5-5:high/);
-    assert.match(h.notices.at(-1)![0], /Review and prose roles stay at high thinking or above/);
+    assert.match(h.notices.at(-1)![0], /Judgment roles: claude\/claude-opus-5-5:high/);
   } finally { h.dispose(); restore(); }
 });
 
-test("/p3stack-setup defers to the skill under T3 and does nothing without a UI", async () => {
-  const previous = process.env.T3_MCP_URL;
-  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+test("/p3stack-setup needs a T3 catalog receipt and never prompts without UI", async t => {
+  t.after(asHost("t3"));
   const h = harness();
   try {
     await h.command("p3stack-setup");
-    assert.match(h.notices.at(-1)![0], /\/skill:setup-pstack/);
+    assert.match(h.notices.at(-1)![0], /No T3 catalog.*p3stack_roles.*rerun \/p3stack-setup/s);
     assert.deepEqual(h.asked, []);
-  } finally { h.dispose(); if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
+  } finally { h.dispose(); }
   const headless = harness({ hasUI: false });
   try { await headless.command("p3stack-setup"); } finally { headless.dispose(); }
 });
