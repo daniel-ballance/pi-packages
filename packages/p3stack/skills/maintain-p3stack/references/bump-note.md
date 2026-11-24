@@ -1,11 +1,11 @@
 # Bump-note format
 
-Write the note at `packages/p3stack/docs/bumps/<YYYY-MM-DD>-<source>.md`. Use the run date and the manifest source name. Write no note for a clean audit or an unchanged bump. For a shared checkout, write a note for each affected source and link the same PR.
+Follow the repository rule in `packages/p3stack/docs/bumps/README.md`: **one note per PR** moving a checkout. From the package directory write `docs/bumps/<YYYY-MM-DD>-<checkout-name>-<new-sha7>.md`. List old/new pins once; cover every source in that checkout, even one with no subtree changes. Record shared checks once. Clean audits and unchanged checkouts have no note.
 
-Use these headings and replace the placeholders with observed facts. Mark a check as skipped with its reason instead of claiming a pass.
+Use observed facts. Evidence in the note or PR must link to a commit, pull request or CI run; never cite a `/tmp` path. Publish nonsecret check outcomes at the reviewed commit or in the PR; a local receipt path is not durable evidence. Mark skipped or blocked checks with reasons.
 
 ```markdown
-# <Source> bump on <YYYY-MM-DD>
+# <Checkout> bump on <YYYY-MM-DD>
 
 ## Pins
 
@@ -14,9 +14,9 @@ Use these headings and replace the placeholders with observed facts. Mark a chec
 - Old full SHA and new full SHA.
 - Upstream comparison link and maintenance PR link.
 
-## Upstream scope
+## Scope by source
 
-List upstream commits and changed mapped paths. Account for every path marked review scope, including packaging outside the source subtree.
+For each source list upstream commits and changed mapped paths. Account for every path marked review scope, including packaging outside the source subtree.
 
 ## Decisions
 
@@ -37,7 +37,7 @@ Name dependency-refresh or host-contract work kept separate. Record anything blo
 
 ## PR body evidence
 
-For every newly classified skill, include the exact source-relative path and its emit or drop verdict in the PR body. For a min-match repair, include the rule id and the literal old and new `find` values. The notes retain the full decision list. These body details let the reviewer identify the repair without opening another file.
+For every newly classified skill, include the exact source-relative path and its emit or drop verdict in the PR body. For a min-match repair, include the rule id and the literal old and new `find` values. The note retains the full decision list. These body details let the reviewer identify the repair without opening another file.
 
 ### Include a min-match repair
 
