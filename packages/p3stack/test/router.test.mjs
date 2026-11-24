@@ -67,18 +67,24 @@ test("local review checks the same artifact throughout and returns only findings
   assert.equal(route(path)?.request, "Review my change");
   assert.match(route("no-comments/SKILL.md").request, /clean.*comments/i);
   const review = read(path);
-  assert.doesNotMatch(review, /no-comments/);
+  const triggers = read("poteto-mode/SKILL.md").split("## Principles")[0];
+  for (const action of ["Before review", "Broken skill mid-task"]) {
+    assert.match(triggers.split("\n").find(line => line.includes(action)), /write-authorized route.*→/i);
+  }
+  assert.match(review, /skip[^\n]*cleanup[^\n]*pull request[^\n]*repair/i);
+  assert.match(review, /GIT_OPTIONAL_LOCKS=0|--no-optional-locks/);
   assert.match(review, /read.only/i);
-  assert.match(review, /no commit.*post nothing/i);
+  assert.match(review, /return the report in your reply/i);
   assert.match(review, /merge-base/);
   assert.match(review, /staged.*unstaged.*untracked/i);
   assert.match(review, /--base <base>/);
   const floor = review.indexOf("floor-check"), reviewSkill = review.indexOf("](../code-review/SKILL.md)");
-  assert.ok(floor > review.indexOf("git status") && review.indexOf("git status") >= 0 && reviewSkill > floor);
+  const baseline = review.indexOf("checkout-fingerprint.mjs");
+  assert.ok(baseline >= 0 && baseline < floor && floor < reviewSkill);
   assert.match(review, /\]\(references\/review-stance\.md\)/);
   assert.match(review, /contract/i);
   assert.match(review, /file:line|command output/i);
-  assert.match(review.slice(reviewSkill), /(?:repeat|compare).*baseline/i);
+  assert.match(review.slice(reviewSkill), /(?:repeat|compare|rerun).*fingerprint/i);
   assert.match(review.slice(reviewSkill), /working tree.*unchanged/i);
 });
 
