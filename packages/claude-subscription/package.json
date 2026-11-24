@@ -11,23 +11,11 @@
   ],
   "files": [
     "extensions",
-    "skills",
-    "prompts",
-    "themes",
     "README.md"
   ],
   "pi": {
     "extensions": [
       "./extensions/claude-subscription/index.ts"
-    ],
-    "skills": [
-      "./skills"
-    ],
-    "prompts": [
-      "./prompts/**/*.md"
-    ],
-    "themes": [
-      "./themes/**/*.json"
     ]
   },
   "engines": {
