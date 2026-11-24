@@ -8,7 +8,10 @@ const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const json = data => JSON.stringify(data, null, 2) + "\n";
 const git = (...args) => execFileSync("git", args, { cwd: pkg, env: evalEnv(), encoding: "utf8" });
 export const revision = () => ({ revision: git("rev-parse", "HEAD").trim(), dirty: !!git("status", "--porcelain") });
-export const skillPaths = () => new Set(git("ls-files", "-z", "skills").split("\0").filter(Boolean).map(p => p.slice(7)));
+// Paths relative to their skills root: p3stack's own skills and the nested subagents skills Pi also lists.
+export const skillRoots = ["skills", "subagents/skills"];
+export const skillPaths = () => new Set(skillRoots.flatMap(root =>
+  git("ls-files", "-z", root).split("\0").filter(Boolean).map(p => p.slice(root.length + 1))));
 
 // Copy identifiers, never arbitrary message fields, deltas, config, response IDs or tool arguments.
 // A missing model/effort/usage stays unknown; the command-line request is not an observation.

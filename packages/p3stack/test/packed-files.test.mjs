@@ -61,7 +61,7 @@ const registry = JSON.parse(readFileSync(join(cwd, "registry/skills.json"), "utf
 // These operands refer to the maintainer checkout or report a diagnostic, not an installed resource.
 const external = new Map([
   ["skills/maintain-p3stack/references/failure-classes.md", ["references/missing", "packages/p3stack/generator/check-registry.mjs"]],
-  ["skills/poteto-help/SKILL.md", ["scripts/lint-skill", "./packages/p3stack"]],
+  ["skills/poteto-help/SKILL.md", ["scripts/lint-skill"]],
   ["skills/poteto-mode/references/host-terminal.md", ["scripts/lint-skill/lint-skill.mjs"]],
 ]);
 

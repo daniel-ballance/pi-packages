@@ -41,3 +41,28 @@ test("a small-task prompt fails when a read it should skip happens", () => {
   assert.equal(replay(recording).matches(expected.slice(0, 1), ["poteto-mode/SKILL.md"]), false);
   assert.equal(replay(recording.filter(e => e.toolCallId === recording.find(first => first.type === "tool_execution_start").toolCallId)).matches(expected.slice(0, 1), ["poteto-mode/SKILL.md"]), true);
 });
+
+test("discovery grades skill opens under every skills root, and a no-skill row fails on any skill open", () => {
+  const read = (id, path) => [
+    { type: "tool_execution_start", toolName: "read", toolCallId: id, args: { path } },
+    { type: "tool_execution_end", toolName: "read", toolCallId: id, isError: false, result: {} }];
+  const probe = (...events) => { const p = readSequence("/project", ["/pkg/skills", "/pkg/subagents/skills"], 3); for (const e of events.flat()) p.record(e); return p; };
+  assert.equal(probe(read("a", "cli.mjs"), read("b", "/pkg/subagents/skills/workflows/SKILL.md")).matches(["workflows/SKILL.md"]), true);
+  assert.equal(probe(read("a", "cli.mjs")).matches([], [], true), true);
+  assert.equal(probe(read("a", "/pkg/skills/tdd/SKILL.md")).matches([], [], true), false);
+  assert.equal(probe(read("a", "cli.mjs")).matches([]), false, "an empty expectation passes only as a no-skill row");
+});
+
+test("the discovery suite names only real skills, one example and one held-out paraphrase per advertised skill", async () => {
+  const { skillPaths } = await import("./routing-eval/receipt.mjs");
+  const suite = JSON.parse(readFileSync(new URL("./routing-eval/discovery.json", import.meta.url), "utf8"));
+  const cases = JSON.parse(readFileSync(new URL("./static-routing/cases.json", import.meta.url), "utf8")).cases;
+  const paths = skillPaths();
+  assert.equal(suite.arm, "off");
+  for (const row of suite.prompts) for (const path of row.expected) assert.ok(paths.has(path), path);
+  for (const { skill } of cases.filter(({ skill }) => !(skill in suite.notListed))) {
+    assert.ok(suite.prompts.some(row => row.id === `${skill}-example`), skill);
+    assert.ok(suite.prompts.some(row => row.id === `${skill}-held-out`), skill);
+  }
+  assert.ok(suite.prompts.filter(row => row.none).length >= 2);
+});

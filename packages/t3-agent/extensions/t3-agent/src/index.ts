@@ -6,7 +6,7 @@ import { detectHost } from "./host.ts";
 import { ENTRY_TYPE, Ledger, observe, observationTarget, observeScope, rebuild, resultPayload, trackRunTab, type Handle, type ReceiptScope } from "./ledger.ts";
 import { desiredTools, manageableTool, nextActive } from "./loadout.ts";
 import { buildSection, SECTION } from "./prompt.ts";
-import { modeLabel, runtimeMode, t3ToolName, T3_PREFIX, type Environment } from "./runtime.ts";
+import { isT3CommandDiscovery, modeLabel, runtimeMode, t3ToolName, T3_PREFIX, type Environment } from "./runtime.ts";
 import { workspaceReader, type Workspace } from "./workspace.ts";
 
 export const STATUS_KEY = "t3-agent";
@@ -18,9 +18,20 @@ const resources = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".."
 
 type Entry = { type: string; customType?: string; data?: unknown };
 
-export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env): void {
-  // Outside T3 the package does nothing at all: no tools, commands, prompt text or resources.
-  if (detectHost(env) !== "t3") return;
+const COMMAND_DESCRIPTION = "T3 agent status, or set this session's T3 tool loadout (lean, standard, full)";
+const discoverResources = () => ({ skillPaths: [join(resources, "skills")], promptPaths: [join(resources, "prompts")] });
+
+export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env, argv: readonly string[] = process.argv): void {
+  if (detectHost(env) !== "t3") {
+    // T3 lists composer commands from a Pi it starts without T3_MCP_URL. Name the
+    // shortcuts there so the `/` menu offers them; the thread's own Pi runs them.
+    if (isT3CommandDiscovery(env, argv)) {
+      pi.on("resources_discover", discoverResources);
+      pi.registerCommand("t3-agent", { description: COMMAND_DESCRIPTION, handler: async () => {} });
+    }
+    // Otherwise the package does nothing at all: no tools, commands, prompt text or resources.
+    return;
+  }
 
   const mode = runtimeMode(env);
   const ledger = new Ledger();
@@ -40,10 +51,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
 
   const loadout = () => sessionLoadout ?? config.loadout;
 
-  pi.on("resources_discover", () => ({
-    skillPaths: [join(resources, "skills")],
-    promptPaths: [join(resources, "prompts")],
-  }));
+  pi.on("resources_discover", discoverResources);
 
   const activeT3Tools = () => pi.getActiveTools().filter(name => name.startsWith(T3_PREFIX));
   const activeToolsReport = () => {
@@ -204,7 +212,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
   pi.on("agent_settled", (_event, ctx) => refreshStatus(ctx));
 
   pi.registerCommand("t3-agent", {
-    description: "T3 agent status, or set this session's T3 tool loadout (lean, standard, full)",
+    description: COMMAND_DESCRIPTION,
     getArgumentCompletions: prefix => ["status", "ledger", ...LOADOUTS.map(name => `loadout ${name}`), "forget all"]
       .filter(value => value.startsWith(prefix)).map(value => ({ value, label: value })),
     handler: async (args, ctx) => {

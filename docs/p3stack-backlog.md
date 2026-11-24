@@ -17,6 +17,7 @@ What is left from the November 2026 review of p3stack and t3-agent. The review's
 - T3's `standard` loadout stays the default until someone counts the searches it saves in real sessions (2026-11-24).
 - No routed migration procedure is added for externally consumed or persisted data (2026-11-24).
 - The Pi crash below is not reported upstream (2026-11-24).
+- T3 Code 0.1.9 builds the composer's `/` menu from `pi --mode rpc --no-session --offline`, started without `T3_MCP_URL`. Without help, that menu had none of the six `/t3-*` shortcuts. t3-agent now recognises that launch by its arguments and T3's `T3CODE_*` environment and names only its skill, its prompts and `/t3-agent` there (2026-11-24).
 
 ## Measured and left
 
@@ -24,19 +25,22 @@ Each measurement used a scripted stand-in model. It shows what one reminder cost
 
 - Todo settle reminders: 3 extra provider calls in 13 across three runs. Two reconciled a finished file write and one was redundant. The safeguard stays.
 - The preview-tab reminder: 3 extra provider calls across four cases. One corrected a missed close and one was redundant. The safeguard stays.
+Real sessions, counted on 2026-11-24 across the 469 Pi session files on the owner's machine (1–24 November, terminal and T3, parents and delegates, 1,155 user messages):
+
+- **Todo mid-run reminder** (after four turns without `todo` while items are open): 1,148 reminders in 261 sessions, at most one per run. It adds no provider call; it rides on the turn. The next `todo` call came within one turn after 100 of them (9%), within five turns after 342 (30%), and six or more turns later after 755. In 51 runs the list was never touched again. By the end of the run, 627 had items marked done or skipped. The reminder rarely changes what the model does next.
+- **Todo settle reminder:** 21 in the same period, costing 35 extra provider calls. Two marked an item done. Fourteen wrote a visible reply despite the instruction to end silently, most often restating that delegated work was still running. The rest re-marked items pending or in progress with a note.
+- **Preview-tab reminder:** never fired. No session opened a T3 preview tab; the only preview calls were six `html_preview` renders.
+
+The settle reminder costs more than it returns when the open items wait on delegates or the user. Changing either todo reminder is the owner's call.
+
 - The stock footer: Pi 1.5.2 has no supported way to decorate it, so the copied renderer stays. `src/footer.ts` records what was checked.
+- Shorter descriptions (trial, 2026-11-24): with routing off, a real model opened the intended skill as often with nine one-sentence descriptions as with the current ones (85 against 84 of 99 runs). Not adopted; the [decision log](evals/README.md#decision-log) has the numbers. No skill becomes explicit-only.
 - Held-out paraphrases select the intended skill at rank 1 in 7 of 17 cases, against 49 of 51 on the examples the descriptions were written against. The number is reported by `npm run check` and fails nothing.
 
 ## Open
 
-- Trial shorter descriptions for the model-invoked skills, and check discovery with routing off before making any skill explicit-only. The owner agreed to the trial on 2026-11-24.
 - Make nightly maintenance report the sources whose upstream moved and open a pull request only when asked. The owner agreed on 2026-11-24. The T3 schedule and `maintain-p3stack`'s nightly reference still bump and land every changed tip.
-- Type `/t3-` in the live T3 composer and check that the six shortcuts appear and can be selected. T3 Code 0.1.9 lists composer commands from a Pi it starts without `T3_MCP_URL`, and t3-agent contributes its shortcuts only when that variable is set. Not confirmed as a bug: nobody has looked at the composer.
-- Count how often real models trigger the todo and preview-tab reminders before changing either.
 - Report to Pi that 1.5.2 does not activate a deferred tool first registered at `session_start` when it is named with `--tools +name`. The subagents catalog does not depend on it.
-- The nested subagents suite no longer runs a second time as a T3 host. It passes there today; nothing reruns it.
-- The T3 brief check reads a grant line only at the start of a line and in its exact case. An indented or lowercase `task grant:` in the body passes. The grant is advice to the child; T3's permission mode is the boundary.
-- `packed-files.test.mjs` still allows `./packages/p3stack` in the help skill, where no such operand remains. The setup text says "these four options" beside a generated list of budgets.
 
 ## A Pi crash found during this work
 

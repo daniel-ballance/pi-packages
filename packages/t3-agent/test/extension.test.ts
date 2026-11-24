@@ -266,6 +266,24 @@ test("outside T3 the package registers nothing", () => {
   assert.equal(f.commands.size, 0);
 });
 
+test("T3's command-discovery launch gets only the shortcuts, the skill and the status command name", async () => {
+  const handlers = new Map<string, Function>(), commands = new Map<string, unknown>(), calls: string[] = [];
+  const pi = new Proxy({ on: (name: string, h: Function) => handlers.set(name, h), registerCommand: (name: string, c: unknown) => commands.set(name, c) },
+    { get(target, key: string) { calls.push(key); return (target as Record<string, unknown>)[key] ?? (() => { throw new Error(`unexpected pi.${key}`); }); } });
+  const probe = ["pi", "--mode", "rpc", "--no-session", "--offline"];
+  t3Agent(pi as never, { T3CODE_HOME: "/home/u/.t3" }, probe);
+  assert.deepEqual([...handlers.keys()], ["resources_discover"]);
+  assert.deepEqual([...commands.keys()], ["t3-agent"]);
+  const discovered = handlers.get("resources_discover")!();
+  assert.match(discovered.promptPaths[0], /packages\/t3-agent\/resources\/prompts$/);
+  assert.match(discovered.skillPaths[0], /packages\/t3-agent\/resources\/skills$/);
+  for (const [env, argv] of [[{}, probe], [{ T3CODE_HOME: "" }, probe], [{ T3CODE_HOME: "/x" }, ["pi", "--mode", "rpc", "--no-session"]], [{ T3CODE_HOME: "/x" }, ["pi", "--no-session", "--offline"]]] as const) {
+    handlers.clear(); commands.clear();
+    t3Agent(pi as never, env, argv);
+    assert.equal(handlers.size + commands.size, 0, JSON.stringify([env, argv]));
+  }
+});
+
 test("the default environment follows the process host", () => {
   const f = fixture(process.env);
   assert.equal(f.commands.has("t3-agent"), Boolean(process.env.T3_MCP_URL));

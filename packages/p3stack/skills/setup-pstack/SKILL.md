@@ -21,7 +21,7 @@ Call `p3stack_roles` for the active file, budget, resolved choices and problems.
 
 ### 3. Budget, map, and confirm
 
-**(a) Ask for a budget.** Prefer `ask_user` (**Ask the human**) over free text. Offer these four options with these exact labels, and name the current budget when the file records one. With no file, say that `large` matches the skill defaults.
+**(a) Ask for a budget.** Prefer `ask_user` (**Ask the human**) over free text. Offer the options below with their exact labels, and name the current budget when the file records one. With no file, say that `large` matches the skill defaults.
 
 - `unlimited, max thinking`
 - `large, xhigh thinking`
