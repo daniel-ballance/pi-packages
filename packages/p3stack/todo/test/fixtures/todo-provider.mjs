@@ -1,5 +1,6 @@
-// Deterministic provider for real-Pi tests: "CALL <json>" becomes one todo call. No network.
-import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+// Deterministic provider for real-Pi tests. No network.
+import { appendFileSync } from "node:fs";
+import { createAssistantMessageEventStream, getCurrentSystemPrompt } from "@earendil-works/pi-ai";
 
 export default function (pi) {
   pi.registerProvider("todo-test", {
@@ -8,11 +9,15 @@ export default function (pi) {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 1000 }],
     streamSimple(model, context) {
       const stream = createAssistantMessageEventStream();
+      if (process.env.PI_TEST_REQUESTS) appendFileSync(process.env.PI_TEST_REQUESTS, JSON.stringify({
+        system: getCurrentSystemPrompt(context.messages), messages: context.messages,
+      }) + "\n");
       const last = context.messages.at(-1);
       const text = typeof last.content === "string" ? last.content : last.content?.find(c => c.type === "text")?.text ?? "";
       let content = [{ type: "text", text: "ok" }], stopReason = "stop";
       if (last.role === "user" && text.startsWith("CALL ")) {
-        content = [{ type: "toolCall", id: `todo-${context.messages.length}`, name: "todo", arguments: JSON.parse(text.slice(5)) }];
+        const args = JSON.parse(text.slice(5));
+        content = [{ type: "toolCall", id: `call-${context.messages.length}`, name: args.name ?? "todo", arguments: args.arguments ?? args }];
         stopReason = "toolUse";
       }
       const output = { role: "assistant", api: model.api, provider: model.provider, model: model.id, content, stopReason, timestamp: Date.now(),

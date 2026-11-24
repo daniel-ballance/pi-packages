@@ -1,6 +1,11 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+function rpcDeadline() {
+  const ms = Number(process.env.P3STACK_ASK_TIMEOUT_MS);
+  return AbortSignal.timeout(Number.isSafeInteger(ms) && ms > 0 && ms <= 2_147_483_647 ? ms : 5 * 60_000);
+}
+
 const OTHER = "Other (type an answer)";
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: {} });
 
@@ -22,17 +27,19 @@ export function registerAsk(pi: ExtensionAPI) {
         ? `Apply your default (${args.default}) and say so in your reply.`
         : "Do not treat silence as approval. Take the option that changes least, or stop and say what is needed.";
       if (!ctx.hasUI) return text(`No one can be asked because this session has no interactive UI. ${fallback}`);
-      const dismissed = `The human dismissed the question. ${fallback}`;
+      const deadline = ctx.mode === "rpc" ? rpcDeadline() : undefined;
+      const dialog = { signal: deadline && signal ? AbortSignal.any([deadline, signal]) : deadline ?? signal };
+      const noAnswer = () => text(`${deadline?.aborted ? "No RPC answer arrived before the deadline." : "The human dismissed the question."} ${fallback}`);
       if (args.options) {
         const options = args.allowOther && !args.options.includes(OTHER) ? [...args.options, OTHER] : args.options;
-        const choice = await ctx.ui.select(args.question, options, { signal });
+        const choice = await ctx.ui.select(args.question, options, dialog);
         signal?.throwIfAborted();
-        if (choice === undefined) return text(dismissed);
+        if (choice === undefined) return noAnswer();
         if (!args.allowOther || choice !== OTHER) return text(`The human chose: ${choice}`);
       }
-      const answer = await ctx.ui.input(args.question, undefined, { signal });
+      const answer = await ctx.ui.input(args.question, undefined, dialog);
       signal?.throwIfAborted();
-      return text(answer?.trim() ? `The human answered: ${answer}` : dismissed);
+      return answer?.trim() ? text(`The human answered: ${answer}`) : noAnswer();
     },
   });
 }
