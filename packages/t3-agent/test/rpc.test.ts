@@ -15,13 +15,24 @@ import { Type } from "typebox";
 const DIRECT = ["orchestrator_capabilities", "delegate_task", "task_status"];
 const TOOLS = [...DIRECT, "task_cancel", "t3_thread_read", "request_secret", "html_preview", "html_render", "watch_pull_request", "schedule_task", "preview_open", "t3_preview_close"];
 export default function(pi) {
+  const tabs = new Set(["reused"]); // Already open before the measured request.
+  let scenario, calls;
+  pi.on("before_agent_start", event => {
+    scenario = event.prompt.startsWith("preview: ") ? event.prompt.slice(9) : undefined;
+    calls = 0;
+  });
   for (const name of TOOLS) {
     pi.registerTool({
       name: "mcp__t3-code__" + name, label: name, description: "T3 " + name,
       parameters: Type.Object({}, { additionalProperties: true }),
       exposure: DIRECT.includes(name) ? "direct" : "deferred",
-      async execute() {
-        const result = name === "delegate_task" ? { taskId: "node:task-1", status: "running", workState: "working", link: "<t3-thread://v2/e/t1>" } : {};
+      async execute(_id, args) {
+        let result = name === "delegate_task" ? { taskId: "node:task-1", status: "running", workState: "working", link: "<t3-thread://v2/e/t1>" } : {};
+        if (name === "preview_open") {
+          tabs.add(scenario);
+          result = { available: true, tabId: scenario, visible: true, url: null, title: null, loading: false,
+            control: { owner: "agent", ownedByCaller: true, generation: 1 } };
+        } else if (name === "t3_preview_close") tabs.delete(args.tabId);
         return { content: [{ type: "text", text: JSON.stringify(result) }], details: { server: "t3-code", tool: name } };
       },
     });
@@ -34,12 +45,19 @@ export default function(pi) {
       const stream = createAssistantMessageEventStream();
       const last = context.messages.at(-1);
       const delegate = last?.role === "user" && JSON.stringify(last.content).includes("delegate");
-      const content = delegate
-        ? [{ type: "toolCall", id: "call-1", name: "mcp__t3-code__delegate_task", arguments: { title: "Review the branch", task: "Check the patch" } }]
-        : [{ type: "text", text: JSON.stringify({ system: getCurrentSystemPrompt(context.messages), tools: getCurrentTools(context.messages).map(tool => tool.name) }) }];
+      calls++;
+      const call = (name, args) => ({ type: "toolCall", id: "call-" + calls, name: "mcp__t3-code__" + name, arguments: args });
+      const reminder = last?.role === "user" && JSON.stringify(last.content).includes("Automated note from the t3-agent extension");
+      let reply;
+      if (delegate) reply = call("delegate_task", { title: "Review the branch", task: "Check the patch" });
+      else if (scenario && calls === 1) reply = call("preview_open", scenario === "reused" ? { tabId: scenario } : { reuseExistingTab: false });
+      else if ((scenario === "closed" && calls === 2) || (scenario === "missed" && reminder)) reply = call("t3_preview_close", { tabId: scenario });
+      else reply = { type: "text", text: JSON.stringify(scenario ? { calls, tabOpen: tabs.has(scenario) } :
+        { system: getCurrentSystemPrompt(context.messages), tools: getCurrentTools(context.messages).map(tool => tool.name) }) };
+      const content = [reply];
       const message = {
         role: "assistant", api: model.api, provider: model.provider, model: model.id, content,
-        stopReason: delegate ? "toolUse" : "stop", timestamp: Date.now(),
+        stopReason: reply.type === "toolCall" ? "toolUse" : "stop", timestamp: Date.now(),
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
       };
       queueMicrotask(() => {
@@ -53,7 +71,7 @@ export default function(pi) {
 }
 `;
 
-test("under a real Pi RPC session the prompt section, loadout and ledger reach the model", { timeout: 60_000 }, async () => {
+test("under a real Pi RPC session the prompt section, loadout and ledger reach the model", { timeout: 60_000 }, async t => {
   const dir = await mkdtemp(join(tmpdir(), "t3-agent-rpc-"));
   const agentDir = join(dir, "agent");
   await mkdir(agentDir);
@@ -116,6 +134,24 @@ test("under a real Pi RPC session the prompt section, loadout and ledger reach t
     await report("delegate");
     const second = await report("status again");
     assert.match(second.system, /### Open T3 handles[\s\S]*delegate "Review the branch" taskId=node:task-1, status working/);
+
+    send({ id: "full", type: "prompt", message: "/t3-agent loadout full" });
+    await waitFor(e => e.type === "response" && e.id === "full" && e.success);
+    // Count actual streamSimple calls after the first answer, and check the stand-in
+    // bridge's tab state (not the extension's own ledger) before and after continuing.
+    for (const [scenario, expected] of [
+      ["closed", [{ calls: 3, tabOpen: false }]],
+      ["reused", [{ calls: 2, tabOpen: true }]],
+      ["missed", [{ calls: 2, tabOpen: true }, { calls: 4, tabOpen: false }]],
+      ["keep-open", [{ calls: 2, tabOpen: true }, { calls: 3, tabOpen: true }]],
+    ] as const) {
+      const start = events.length;
+      await report(`preview: ${scenario}`);
+      const answers = events.slice(start).filter(e => e.type === "message_end" && e.message.role === "assistant" && e.message.stopReason === "stop")
+        .map(e => JSON.parse(e.message.content[0].text));
+      assert.deepEqual(answers, expected, scenario);
+      t.diagnostic(`${scenario}: ${answers.at(-1).calls} provider requests, ${answers.at(-1).calls - answers[0].calls} after the first answer`);
+    }
   } finally {
     child.kill();
     await rm(dir, { recursive: true, force: true });
