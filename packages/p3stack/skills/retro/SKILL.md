@@ -8,6 +8,8 @@ The user has asked for a **retrospective**. You are suggesting improvements to t
 
 ## Steps
 
+When the requested outcome is a skill edit based on session evidence, follow [reflect](references/reflect.md).
+
 1. Read [writing-for-agents](../writing-for-agents/SKILL.md) for the writing style guide.
 
 2. Read the primary sources for the session the user specifies. This may mean searching through session logs on this machine. If the user doesn't specify a session, default to the current one.

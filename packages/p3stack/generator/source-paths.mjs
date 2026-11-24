@@ -1,3 +1,43 @@
+import { existsSync, lstatSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+export const byName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+
+export function walk(dir) {
+  if (!existsSync(dir) && !isLink(dir)) return [];
+  if (!lstatSync(dir).isDirectory()) return [""];
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort(byName)) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...walk(path).map(file => join(entry.name, file)));
+    else if (entry.isFile() || entry.isSymbolicLink()) files.push(entry.name);
+  }
+  return files;
+}
+
+export function isLink(path) {
+  try { return lstatSync(path).isSymbolicLink(); } catch { return false; }
+}
+
+export const referencePath = ({ owner, name }, file = "SKILL.md") =>
+  `${owner}/references/${name}${file === "SKILL.md" ? ".md" : "/" + file}`;
+
+// Plan all moves before writing any: an owner's own resources keep their paths.
+export function referenceMoves(paths, skills) {
+  const refs = new Map(skills.filter(row => row.action === "reference").map(row => [row.name, row]));
+  const occupied = new Set(paths), moves = new Map();
+  for (const path of new Set(paths)) {
+    const [, name, file] = /^skills\/([^/]+)\/(.+)$/.exec(path) ?? [];
+    if (!refs.has(name)) continue;
+    const dest = "skills/" + referencePath(refs.get(name), file);
+    if (occupied.has(dest)) throw new Error(`${path} and another file both land at ${dest}`);
+    if (dest.endsWith("/SKILL.md")) throw new Error(`${dest}: nested SKILL.md would register a reference as a skill`);
+    moves.set(path, dest);
+    occupied.add(dest);
+  }
+  return moves;
+}
+
 export function sourcesOf(manifest) {
   const names = new Set();
   if (!Array.isArray(manifest.sources) || manifest.sources.length === 0) throw new Error("manifest.sources must be a nonempty array");
@@ -24,6 +64,7 @@ export function sourcePathClassifier(source, skills) {
     if (!entry) return { kind: "not emitted" };
     const mapped = entry.to + path.slice(entry.from.length);
     const output = row ? mapped.replace(/^skills\/[^/]+\//, `skills/${row.name}/`) : mapped;
+    if (row?.action === "reference") return { kind: "reference", output, installed: "skills/" + referencePath(row, output.slice(`skills/${row.name}/`.length)) };
     return { kind: "emitted", output };
   };
 }

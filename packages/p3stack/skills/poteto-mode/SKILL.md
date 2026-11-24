@@ -7,10 +7,11 @@ disable-model-invocation: true
 # Poteto mode
 
 Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's absolute path in terminal `poteto-agent` prompts.
+For a reference, read `../<owner>/references/<name>.md`: architect (codebase-design, sharpen, typescript-best-practices); code-review (blast-radius, no-comments); create-formal-verification-skill (maintain-formal-verification-skill); create-verification-skill (maintain-verification-skill); dyl-review (dyl-mode, thermo-nuclear-code-quality-review, thermo-nuclear-review, thermos); grilling (in-your-own-words); how (teach); implement-spec (implement); p3stack-mode (show-me-your-work); poteto-mode (principle-*); retro (reflect); tdd (regression-test); technical-writing (bro, unslop).
 
 ## Non-negotiables
 
-The Principles section below grounds every trigger. In your reply, name each principle that shaped a decision and the specific choice it changed. Cite only principles whose leaf SKILL.md you read this session.
+The Principles section below grounds every trigger. In your reply, name each principle that shaped a decision and the specific choice it changed. Cite only principles whose reference you read this session.
 
 Remaining triggers:
 
@@ -25,7 +26,7 @@ Remaining triggers:
 - Any prose surface, your reply to the user included → the **unslop** skill. Write the reply per **Writing the reply**. Agent-facing prose also follows the skill-authoring procedure (**Author a skill** in the host capabilities).
 - Docs, RFCs, readmes, PR descriptions, or commit messages → the **technical-writing** skill (`/skill:technical-writing`).
 - Before commit → a slop-strip pass over the diff (remove AI-generated noise).
-- Before review on a write-authorized route → the **no-comments** skill (`/skill:no-comments`).
+- Before review on a write-authorized route → the [no-comments pass](../code-review/references/no-comments.md).
 - Shipping UI / IDE / CLI → the matching control skill. See **Drive the app** in the host capabilities. For bug fixes, reproduce first on the same surface yourself. Hand to the user only under the narrow Bug fix step 1 exception.
 - Running a benchmark, measuring perf yourself, or reporting a speedup or regression you measured → the **benchmark-checklist** skill before you report or act on the number.
 - Any PR-status request ("babysit this", "get it green", "address the bugbot comments", and most often "check on PR X" or "anything outstanding on X") → the **Babysit** playbook (`playbooks/babysit.md`). Never triggered by merely opening a PR. Declare its mode before polling. The playbook's step 1 owns the request-to-mode mapping. Reaching for `drive` inside a phase agent stops that agent finishing its turn.
@@ -36,7 +37,7 @@ Remaining triggers:
 
 ## Principles
 
-Read the leaf skill in full for any principle you apply. Each entry names when it applies. Each leaf is the **principle-<title>** skill, with the title in kebab case, hyphens kept and other punctuation dropped, unless the entry gives its name.
+Before applying a principle, read `references/principle-<title>.md` in full: use the title in kebab case, keep hyphens and drop other punctuation, or use the explicit name in the entry.
 
 **Core**
 

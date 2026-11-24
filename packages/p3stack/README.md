@@ -19,7 +19,7 @@ Review my uncommitted change before I open a PR. Show me the evidence for each f
 
 Look for a review of your diff, including any skipped tests or weakened checks, not just a review plan. No changes yet? Try “Explain where requests enter this repo and trace one to storage. Don't change any files.”
 
-`/p3stack off` stops automatic routing. You can still use individual skills, such as `/skill:tdd`. Run `pi list` in your shell to check the install. In Pi, `/p3stack status` reports whether routing is on. When on, the mode and grant appear in the terminal footer marker or as a status near the composer in T3 Code.
+`/p3stack off` stops automatic routing. You can still invoke any of the 46 skills, such as `/skill:tdd`. For a former command, `/skill:poteto-help` lists its owner and reference. Run `pi list` in your shell to check the install. In Pi, `/p3stack status` reports whether routing is on. When on, the mode and grant appear in the terminal footer marker or as a status near the composer in T3 Code.
 
 ## Choose who decides
 

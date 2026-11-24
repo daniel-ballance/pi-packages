@@ -172,7 +172,7 @@ test("the coordinator records installed paths; T3 briefs travel without that ins
   const plan = playbook("multi-phase-plan");
   assert.doesNotMatch(plan, /pstack\/skills\/|execution playbook from trunk/);
   assert.match(plan, /absolute installed path/i);
-  for (const doc of [plan, playbook("autopilot-full"), skill("thermos"), skill("dyl-review")]) {
+  for (const doc of [plan, playbook("autopilot-full"), read("skills/dyl-review/references/thermos.md"), skill("dyl-review")]) {
     assert.match(doc, /T3[^\n]*inline[^\n]*commit/i);
     assert.doesNotMatch(doc, /Give each worker (?:its paths|the relevant recorded paths)/);
   }
@@ -252,10 +252,10 @@ test("recall gives each child scoped history IDs, not a second discovery algorit
 const reviews = ["thermo-nuclear-review", "thermo-nuclear-code-quality-review"];
 for (const name of ["thermos", "dyl-review"]) {
   test(`${name} briefs both read-only thermo passes with the installed recipes and rubrics`, () => {
-    const text = skill(name);
+    const text = name === "dyl-review" ? skill(name) : read("skills/dyl-review/references/thermos.md");
     for (const review of reviews) {
       assert.ok(text.includes(`(../../agents/${review}-subagent.md)`), review + " recipe");
-      assert.ok(text.includes(`(../${review}/SKILL.md)`), review + " rubric");
+      assert.ok(text.includes(`(${name === "thermos" ? "../dyl-review/" : ""}references/${review}.md)`), review + " rubric");
     }
     assert.doesNotMatch(text, /Thermos plugin/);
   });
@@ -264,7 +264,7 @@ for (const name of ["thermos", "dyl-review"]) {
 for (const name of reviews) {
   test(`${name} recipe points to the rubric it uses without a plugin or child forge call`, () => {
     const text = read(`agents/${name}-subagent.md`);
-    assert.ok(text.includes(`(../skills/${name}/SKILL.md)`));
+    assert.ok(text.includes(`(../skills/dyl-review/references/${name}.md)`));
     assert.match(text, /child[^\n]*skip this section/i);
     assert.doesNotMatch(text, /Thermos plugin|Invoked delegated child|use `gh` or `glab`/);
   });
@@ -288,6 +288,24 @@ test("Pi help starts at the persistent router and distinguishes an explicit stan
   assert.match(help, /model-visible skills[^\n]*router (?:is )?off/i);
   assert.doesNotMatch(help, /references\/routes\.md/, "the router inlines its route table; no separate copy is emitted");
   assert.doesNotMatch(help, /start(?:ing)? each (?:new )?task with|Only `[^\n]*setup-pstack` loads|lists every playbook|default answer is `\/skill:poteto-mode/i);
+});
+
+test("a reflection reviewer still recognizes reads of any skill in the transcript", () => {
+  for (const reviewer of ["divergent", "judgment", "tooling"]) {
+    assert.match(read(`skills/retro/references/reflect/references/${reviewer}-reviewer.md`), /a \`Read\` of its \`SKILL\.md\`/);
+  }
+});
+
+test("the help table offers exactly the emitted commands and names their references", () => {
+  const registry = JSON.parse(read("registry/skills.json"));
+  const rows = skill("poteto-help").split("## Pick a skill")[1].split("\n## ")[0].split("\n").filter(line => line.startsWith("| [`/skill:"));
+  const commands = rows.map(line => line.match(/\[`\/skill:([\w-]+)`\]/)[1]);
+  assert.equal(commands.length, 46);
+  assert.deepEqual(commands.sort(), registry.filter(row => row.action === "emit").map(row => row.name).sort());
+  for (const { name, owner } of registry.filter(row => row.action === "reference")) {
+    const row = rows.find(line => line.startsWith(`| [\`/skill:${owner}\`]`));
+    assert.ok(row?.includes(name.startsWith("principle-") ? "principle-*" : name + ".md"), name);
+  }
 });
 
 test("copyable help recipes can be sent after enabling the Pi router", () => {

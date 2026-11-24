@@ -4,7 +4,6 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 
 ## Needs the owner's decision
 
-- Decide whether to reduce the 92 skills to about 46 entry points. A cheaper first step is to ship the 24 principle skills as poteto-mode references. Both changes affect public `/skill:` names and links. (catalog.md, Decision and §7)
 - Decide when a route actually needs poteto-mode. Only the small-task row skips its full read today; making the read conditional elsewhere would save context but change which rules an agent sees. (router.md §2)
 - Trial shorter descriptions for model-invoked skills, and decide which still need to be advertised. Check discovery with routing off before making a skill explicit-only. (catalog.md §8)
 - Authorize the model, cases, repetitions, and spend for live routing and behavior evals on this branch. Compare base and branch with the same parent and tools; a green offline suite is not a measured change in task success. Test T3 separately from the terminal runners. (evals.md §3)
@@ -14,6 +13,7 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 
 ## Decided
 
+- On 2026-11-24 the owner chose 46 invocable skills: move 43 procedures (including the 24 principles) under their owners as references and drop the three remaining entries.
 - Multi-PR plans keep their ten mandatory live verification lanes per PR. The owner chose to leave the template and `check-plan.mjs` as they are (2026-11-24).
 
 ## Larger changes worth doing

@@ -14,6 +14,9 @@ Both axes run as **parallel subagents** so they don't pollute each other's conte
 
 ## Process
 
+For a request to clean up comments rather than report findings, follow [no-comments](references/no-comments.md).
+If the review asks what could break outside the diff, read [blast-radius](references/blast-radius.md).
+
 ### 1. Pin the fixed point and capture the review input
 
 Reuse the caller's pinned base and captured input. If no base is pinned, use `git merge-base <fixed-point> HEAD` with the supplied ref; ask for a ref only if it is missing. Record base and head SHAs. Run capture commands from the repository root (`git rev-parse --show-toplevel`). For input not yet captured, pass the caller's paths relative to that root as separate arguments after `--` (`:/` for a whole-branch review). Set `GIT_OPTIONAL_LOCKS=0` for Git queries.

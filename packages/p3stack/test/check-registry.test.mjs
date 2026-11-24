@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -42,7 +42,7 @@ test("registry admissions match the shipped skills, including narrow and watch-o
   assert.deepEqual(from("superpowers"), new Set(), "superpowers is watch only");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
   for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
-  assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").invocation, "user");
+  assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").owner, "implement-spec");
   assert.equal(skills.find(row => row.name === "code-review").invocation, "model");
   assert.equal(skills.find(row => row.name === "interactive-prototype").invocation, "model");
 });
@@ -68,6 +68,86 @@ function fixture(t) {
   return { root, write, skills, skill, run };
 }
 
+function referenceFixture(t, owner = "first") {
+  const f = fixture(t), outDir = join(f.root, "out"), path = "skills/leaf/SKILL.md";
+  const ref = { source: "demo", path, name: "leaf", action: "reference", owner, reason: "Read during review." };
+  f.write(`vendor/demo/${path}`, f.skill("leaf"));
+  f.write("registry/skills.json", [...f.skills, ref]);
+  f.write("registry/chains.json", []);
+  return { ...f, ref, build: () => generate({ packageDir: f.root, outDir }), outDir };
+}
+
+for (const heading of ["# Leaf", ""]) {
+  test(`a reference ${heading ? "keeps" : "receives"} its heading, moves after patches, and resolves from the owner's directory`, t => {
+    const f = referenceFixture(t), root = "skills/leaf", target = "first/references/leaf.md";
+    f.write(`vendor/demo/${root}/SKILL.md`, f.skill("leaf").replace("# Fixture", heading) + "\nKeep [note](references/note.md#use), `scripts/check --all`, and [other](../first/SKILL.md).\n");
+    f.write(`vendor/demo/${root}/references/note.md`, "Use [leaf](./SKILL.md).\n");
+    f.write(`vendor/demo/${root}/scripts/check`, "#!/bin/sh\nexit 0\n");
+    chmodSync(join(f.root, `vendor/demo/${root}/scripts/check`), 0o755);
+    f.write("patches/late.patch", "--- a/skills/leaf/references/note.md\n+++ b/skills/leaf/references/note.md\n@@ -1 +1 @@\n-Use [leaf](./SKILL.md).\n+Read [leaf](./SKILL.md).\n");
+    f.write("extra/skills/first/more.md", "Read [leaf](../leaf/SKILL.md) and `../leaf/references/note.md`.\n");
+    f.write("extra/agents/reader.md", "Read `../skills/leaf/SKILL.md`.\n");
+    f.write("extra/skills/poteto-mode/playbooks/feature.md", "Do this.\n");
+    f.write("authored/skills/p3stack-mode/SKILL.md.tmpl", f.skill("p3stack-mode") + "{{routes}}\n");
+    f.write("registry/skills.json", [...f.skills, f.ref, { ...f.skills[0], source: "p3stack", name: "p3stack-mode", path: "skills/p3stack-mode/SKILL.md" }]);
+    f.write("registry/routes.json", [{ request: "Review", grant: "any", target }]);
+    f.write("registry/chains.json", [{ id: "review", playbook: "playbooks/feature.md", anchor: "Do this.", position: "after", skill: target, when: "At review." }]);
+    f.build();
+    const read = path => readFileSync(join(f.outDir, path), "utf8");
+    assert.equal(existsSync(join(f.outDir, root)), false);
+    assert.equal(read("skills/" + target), `${heading || "# leaf"}\n\nA fixture skill.\n\nKeep [note](../first/references/leaf/references/note.md#use), \`../first/references/leaf/scripts/check --all\`, and [other](../first/SKILL.md).\n`);
+    assert.equal(read("skills/first/references/leaf/references/note.md"), "Read [leaf](../first/references/leaf.md).\n");
+    assert.ok(statSync(join(f.outDir, "skills/first/references/leaf/scripts/check")).mode & 0o111);
+    assert.match(read("skills/first/more.md"), /\((?:\.\.\/first\/)?references\/leaf.md\).*`(?:\.\.\/first\/)?references\/leaf\/references\/note.md`/);
+    assert.equal(read("agents/reader.md"), `Read \`../skills/${target}\`.\n`);
+    assert.ok(read("skills/p3stack-mode/SKILL.md").includes(`\`../poteto-mode/SKILL.md\`, then \`../${target}\``));
+    assert.ok(read("skills/poteto-mode/playbooks/feature.md").includes(`[leaf](../${target})`));
+  });
+}
+
+for (const command of ["/leaf", "/skill:leaf", "/leaf?"]) {
+  test(`a leftover ${command} command fails generation by file and line`, t => {
+    const f = referenceFixture(t);
+    f.write("extra/agents/read.md", `Review.\nRun ${command}.\n`);
+    assert.throws(f.build, new RegExp(`agents/read.md:2:.*${command}`));
+  });
+}
+
+test("the command lint distinguishes dropped commands from resource paths and URLs", t => {
+  const f = referenceFixture(t), path = "skills/retired/SKILL.md";
+  f.write("vendor/demo/" + path, f.skill("retired"));
+  f.write("registry/skills.json", [...f.skills, f.ref, { source: "demo", path, action: "drop", reason: "Retired." }]);
+  f.write("extra/agents/read.md", "See https://example.test/retired and [app route](/leaf).\n");
+  f.build();
+  rmSync(f.outDir, { recursive: true }); // Each generation starts in fresh staging.
+  f.write("extra/agents/read.md", "Run /retired.\n");
+  assert.throws(f.build, /read.md:1: removed skill command \/retired/);
+});
+
+test("a reference cannot own another reference", t => {
+  const f = referenceFixture(t, "middle"), path = "skills/middle/SKILL.md";
+  f.write("vendor/demo/" + path, f.skill("middle"));
+  f.write("registry/skills.json", [...f.skills, f.ref, { ...f.ref, name: "middle", path, owner: "first" }]);
+  assert.match(f.run().stderr, /leaf.*owner middle must be an emitted skill/);
+});
+
+for (const owner of ["missing", "leaf"]) {
+  test(`registry rejects non-emitted reference owner ${owner}`, t => {
+    const result = referenceFixture(t, owner).run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, new RegExp(`leaf.*owner.*${owner}.*emitted`));
+  });
+}
+
+test("reference destinations cannot overwrite an owner's resource", t => {
+  const f = referenceFixture(t), path = "skills/first/references/leaf.md";
+  f.write(`vendor/demo/${path}`, "Owner's notes.\n");
+  const result = f.run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /both.*skills\/first\/references\/leaf\.md/);
+  assert.throws(f.build, /both.*skills\/first\/references\/leaf\.md/);
+});
+
 test("registry admits authored p3stack skills at their emitted paths", t => {
   const f = fixture(t);
   f.write("authored/skills/release/SKILL.md", f.skill("release"));
@@ -76,7 +156,7 @@ test("registry admits authored p3stack skills at their emitted paths", t => {
   f.write("registry/routes.json", [{ request: "release", grant: "any", target: "release" }]);
   const result = f.run();
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "2 emitted, 0 dropped, 0 unclassified");
+  assert.equal(result.stdout.trim(), "2 emitted, 0 references, 0 dropped, 0 unclassified");
 });
 
 test("registry discovers authored skill templates and requires their registry rows", t => {
@@ -257,8 +337,10 @@ test("scope reports distinguish registry drops and unclassified skills", () => {
   const classify = sourcePathClassifier({ name: "demo", map: [{ from: "skills/", to: "skills/" }] }, [
     { source: "demo", path: "skills/first/SKILL.md", action: "emit", name: "renamed" },
     { source: "demo", path: "skills/dropped/SKILL.md", action: "drop" },
+    { source: "demo", path: "skills/ref/SKILL.md", name: "ref", action: "reference", owner: "renamed" },
   ]);
   assert.deepEqual(classify("skills/first/resource.md"), { kind: "emitted", output: "skills/renamed/resource.md" });
+  assert.deepEqual(classify("skills/ref/doc.md"), { kind: "reference", output: "skills/ref/doc.md", installed: "skills/renamed/references/ref/doc.md" });
   assert.deepEqual(classify("skills/dropped/resource.md"), { kind: "dropped" });
   assert.deepEqual(classify("skills/new/SKILL.md"), { kind: "unclassified" });
 });
@@ -291,12 +373,12 @@ test("generation refuses an unclassified upstream skill before writing", t => {
 
 test("pstack regression-test and Pocock tdd keep their distinct procedures", () => {
   const read = path => readFileSync(new URL(`../skills/${path}`, import.meta.url), "utf8");
-  assert.match(read("regression-test/SKILL.md"), /^name: regression-test$/m);
-  assert.match(read("regression-test/SKILL.md"), /# TDD Bug Fix/);
+  assert.doesNotMatch(read("tdd/references/regression-test.md"), /^---/);
+  assert.match(read("tdd/references/regression-test.md"), /^# TDD Bug Fix/);
   assert.match(read("tdd/SKILL.md"), /confirm.*user|confirmed seam/i);
   for (const path of ["poteto-help/SKILL.md", "poteto-help/references/recipes.md", "poteto-mode/playbooks/bug-fix.md"]) {
     assert.match(read(path), /regression-test/);
-    assert.doesNotMatch(read(path), /(?:\/tdd|\/skill:tdd)\b/);
+    assert.doesNotMatch(read(path), /(?:\/skill:regression-test|\.\.\/regression-test\/SKILL\.md)/);
   }
 });
 
@@ -322,22 +404,34 @@ test("statechart stays user-invoked and its help link resolves", () => {
   assert.match(help, /\[`\/skill:statechart`\]\(\.\.\/statechart\/SKILL\.md\)/);
 });
 
-test("ketchup-video stays user-invoked and links to ketchup", () => {
-  const row = rows().find(row => row.source === "cursor-plugins" && row.path === "skills/ketchup-video/SKILL.md");
-  assert.equal(row.action, "emit");
-  assert.equal(row.invocation, "user");
-  const skill = readFileSync(new URL("../skills/ketchup-video/SKILL.md", import.meta.url), "utf8");
-  assert.match(skill, /^disable-model-invocation: true$/m);
-  assert.match(skill, /\[.*\/skill:ketchup.*\]\(\.\.\/ketchup\/SKILL\.md\)/);
+test("the catalog drops video recaps, personal modes and the redundant interview wrapper", () => {
   const help = readFileSync(new URL("../skills/poteto-help/SKILL.md", import.meta.url), "utf8");
-  assert.match(help, /\[.*\/skill:ketchup-video.*\]\(\.\.\/ketchup-video\/SKILL\.md\)/);
+  for (const name of ["ketchup-video", "automate-me", "grill-with-docs"]) {
+    const row = rows().find(row => row.path.endsWith(`/${name}/SKILL.md`));
+    assert.equal(row.action, "drop");
+    assert.ok(row.reason.trim());
+    assert.ok(!existsSync(new URL(`../skills/${name}/`, import.meta.url)));
+    assert.ok(!help.includes(`/skill:${name}`));
+  }
+  assert.match(help, /\]\(\.\.\/ketchup\/SKILL\.md\)/);
+});
+
+test("every principle in the index resolves by title or its explicit name", () => {
+  const dir = new URL("../skills/poteto-mode/", import.meta.url);
+  const index = readFileSync(new URL("SKILL.md", dir), "utf8").split("## Principles\n")[1].split("\n## ")[0];
+  assert.match(index, /references\/principle-<title>\.md/);
+  const names = [...index.matchAll(/^- \*\*(.+?)\*\*(?: \(\*\*(principle-[\w-]+)\*\*\))?/gm)]
+    .map(([, title, explicit]) => explicit ?? "principle-" + title.toLowerCase().replace(/[^a-z0-9 -]/g, "").replaceAll(" ", "-"));
+  assert.equal(names.length, 24);
+  assert.deepEqual(new Set(names), new Set(rows().filter(row => row.action === "reference" && row.owner === "poteto-mode").map(row => row.name)));
+  for (const name of names) assert.ok(existsSync(new URL(`references/${name}.md`, dir)), name);
 });
 
 test("registry check reports emitted, dropped, and zero unclassified skills", t => {
   const { run } = fixture(t);
   const result = run();
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "1 emitted, 0 dropped, 0 unclassified");
+  assert.equal(result.stdout.trim(), "1 emitted, 0 references, 0 dropped, 0 unclassified");
 });
 
 for (const [name, mutate, diagnostic] of [

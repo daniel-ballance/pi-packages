@@ -40,4 +40,4 @@ Follow the generated skill once, as the next agent would, on a scratch change th
 
 ## Hand off
 
-Tell the user what you verified, which tool you used and why, the bounds, what the check found in plain words, how to run it, and what it does not cover. Suggest a second target only if you found a close one. Point the user at `/skill:maintain-formal-verification-skill` for bringing the verification back in line after changes that did not recheck it.
+Tell the user what you verified, which tool you used and why, the bounds, what the check found in plain words, how to run it, and what it does not cover. Suggest a second target only if you found a close one. Point the user to [maintain-formal-verification-skill](references/maintain-formal-verification-skill.md) and read it when verified code changes without a model check.

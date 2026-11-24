@@ -13,16 +13,6 @@
         { "prompt": "Write the description for this pull request.", "owner": "pr" },
         { "prompt": "The export crashes when the file is empty, find out why.", "owner": "diagnosing-bugs" }
       ] },
-    { "skill": "codebase-design",
-      "positive": [
-        { "prompt": "This module's interface is too wide, help me make it deeper." },
-        { "prompt": "Where should the seam go so the payment code is testable?" },
-        { "prompt": "Find deepening opportunities in the sync package." }
-      ],
-      "negative": [
-        { "prompt": "What does 'settlement' mean in this codebase? Add it to the glossary.", "owner": "domain-modeling" },
-        { "prompt": "Write the failing test first, then implement the parser.", "owner": "tdd" }
-      ] },
     { "skill": "diagnosing-bugs",
       "positive": [
         { "prompt": "The nightly import keeps failing with a timeout, debug this." },
@@ -81,7 +71,7 @@
       ],
       "negative": [
         { "prompt": "Diagnose why the checkout is failing in production.", "owner": "diagnosing-bugs" },
-        { "prompt": "Design a deeper interface for the cache module.", "owner": "codebase-design" }
+        { "prompt": "Design a deeper interface for the cache module.", "owner": "grilling" }
       ] },
     { "skill": "wizard",
       "positive": [
@@ -131,7 +121,7 @@
       ],
       "negative": [
         { "prompt": "Research the history of this protocol from primary sources.", "owner": "research" },
-        { "prompt": "Find deepening opportunities in this module's interface.", "owner": "codebase-design" }
+        { "prompt": "Find deepening opportunities in this module's interface.", "owner": "grilling" }
       ] },
     { "skill": "maintain-p3stack",
       "positive": [

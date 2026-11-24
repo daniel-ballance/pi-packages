@@ -21,7 +21,7 @@ The required skills ship in p3stack. Read [host capabilities](../poteto-mode/ref
 ## Depth
 
 - **quick** (default): the Dylan-lens worker only.
-- **deep**: adds both thermos subagents and code-review, in parallel with the Dylan-lens worker. Roughly doubles wall-clock, bounded by the thermos bug/security pass.
+- **deep**: adds both thermos subagents and code-review, in parallel with the Dylan-lens worker. Roughly doubles wall-clock, bounded by the thermos bug/security pass. Read [thermos](references/thermos.md) to coordinate the two audit passes.
 
 Deep when the invoking skill or the human asks for it (deep / thorough / thermo). Otherwise quick.
 
@@ -30,7 +30,7 @@ Deep when the invoking skill or the human asks for it (deep / thorough / thermo)
 1. Resolve PR URLs/numbers. `<base>` below is the PR's base branch (`gh pr view <n> --json baseRefName`, or `origin pr view <n> --json baseRef`), not assumed `main`. For deep, the PR head must be checked out locally: the current branch, or a throwaway worktree (`git fetch origin <base> <branch>`, then `git worktree add /tmp/dyl-review-<pr> origin/<branch>`, removed when done). Thermos and code-review audit a checkout.
 2. Gather once, then fan out. The main thread writes the PR diff to a file (`git diff origin/<base>...HEAD` from the checkout when there is one, with `origin/<base>` freshly fetched, else `gh pr diff <n>` / `origin pr diff <n>`), then captures the PR title and body, commit list and changed-file context. Keep PR discussion separate until after the independent audit. Brief each pass with its scoped input, in waves within the live-child limit. For T3 children, inline the needed material or cite commit-relative files per **Store**:
    - One Dylan-lens worker (below). Always.
-   - Deep only: give one read-only child the [thermo-nuclear-review recipe](../../agents/thermo-nuclear-review-subagent.md) and [rubric](../thermo-nuclear-review/SKILL.md) and another the [thermo-nuclear-code-quality-review recipe](../../agents/thermo-nuclear-code-quality-review-subagent.md) and [rubric](../thermo-nuclear-code-quality-review/SKILL.md). Resolve these installed files in the parent.
+   - Deep only: give one read-only child the [thermo-nuclear-review recipe](../../agents/thermo-nuclear-review-subagent.md) and [rubric](references/thermo-nuclear-review.md) and another the [thermo-nuclear-code-quality-review recipe](../../agents/thermo-nuclear-code-quality-review-subagent.md) and [rubric](references/thermo-nuclear-code-quality-review.md). Resolve these installed files in the parent.
    - In deep review the parent reads [code-review](../code-review/SKILL.md) and starts its Standards and Spec passes as direct children. Give each its axis brief, scoped manifest and read-only access to the reviewed checkout. Include the standards and smell baseline for Standards, and the spec for Spec; record when there is no spec.
    If you cannot delegate, apply the assigned rubrics yourself in sequence and disclose that the passes were not independent.
 3. Every worker uses auto / inherit intelligence through **Parent model** under **Delegate** in the host capabilities. Do not pin a cheap/fast model for the review judgment pass.
@@ -47,7 +47,7 @@ Read the scoped diff supplied by the parent. Open surrounding files from the che
 
 ### 2. Lenses (apply in full when relevant)
 
-- **Dyl-mode.** Read the `dyl-mode` skill's Dylan gates and pstack `poteto-mode`'s Principles index. Ask whether applying them would shrink or clarify the change (The Algorithm, reuse, simplify, flag scope, prove-it, laziness, measure-before-code for UI).
+- **Dyl-mode.** Read [dyl-mode](references/dyl-mode.md) for the Dylan gates and pstack `poteto-mode`'s Principles index. Ask whether applying them would shrink or clarify the change (The Algorithm, reuse, simplify, flag scope, prove-it, laziness, measure-before-code for UI).
 - **Repo standards.** Read the repo's `AGENTS.md`, `.pi/skills/`, and any repo-local best-practices skill for the surface the PR touches. Apply them as a lens.
 - **Grug.** Complexity is the enemy. 80/20 over completeness. No factoring before the second real caller. Keep behavior near the code that triggers it. Chesterton's fence: understand why something exists before deleting it.
 - **Priorities, in order.** Correctness, then simplicity, types, concurrency and performance, boundaries, context and observability, naming, tests. A lower item never outranks a higher one.

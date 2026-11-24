@@ -44,7 +44,7 @@
     "playbook": "playbooks/feature.md",
     "anchor": "7. If the design is contested, `interrogate` before shipping.",
     "position": "before",
-    "skill": "no-comments",
+    "skill": "code-review/references/no-comments.md",
     "when": "When the code is complete, clean up comments before the floor scan."
   },
   {
@@ -76,7 +76,7 @@
     "playbook": "playbooks/bug-fix.md",
     "anchor": "6. Run **Opening a PR**.",
     "position": "before",
-    "skill": "no-comments",
+    "skill": "code-review/references/no-comments.md",
     "when": "When the code is complete, clean up comments before the floor scan."
   },
   {

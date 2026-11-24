@@ -12,6 +12,8 @@ Every spawn is a read-only child, delegated per **Delegate** in the [host capabi
 
 ## 1. Assess complexity
 
+For a plain-language walkthrough of a change or subsystem, read [teach](references/teach.md).
+
 If the scope is ambiguous, state your interpretation and explore. The user can redirect.
 
 - **Simple** (a single module, a small utility, a narrow question such as "how does function X work"): no explorers. Spawn one explainer that explores and explains in one pass, built from `references/explainer-prompt.md` without the explorer-findings section. Go to step 4.

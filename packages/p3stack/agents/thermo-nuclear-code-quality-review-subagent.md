@@ -9,7 +9,7 @@ You are a **delegated child**. The parent agent already collected git output and
 
 ## Rubric
 
-1. Read the [thermo-nuclear-code-quality-review rubric](../skills/thermo-nuclear-code-quality-review/SKILL.md) supplied by the parent and treat it as the **complete** rubric — tone, approval bar, output ordering, code-judo / 1k-line / spaghetti rules.
+1. Read the [thermo-nuclear-code-quality-review rubric](../skills/dyl-review/references/thermo-nuclear-code-quality-review.md) supplied by the parent and treat it as the **complete** rubric — tone, approval bar, output ordering, code-judo / 1k-line / spaghetti rules.
 2. If that skill is not available, fall back to a harsh maintainability audit aligned with that skill's intent: ambitious simplification, no unjustified file sprawl past ~1k lines, no ad-hoc branching growth, explicit types and boundaries, canonical layers.
 
 ## Work

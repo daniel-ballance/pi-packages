@@ -70,7 +70,7 @@ test("the index uses frontmatter from the registry and the nested skill director
     mkdirSync(join(root, dirname(path)), { recursive: true });
     writeFileSync(join(root, path), text);
   }
-  put("registry/skills.json", JSON.stringify([{ action: "emit", invocation: "model", name: "pr" }]));
+  put("registry/skills.json", JSON.stringify([{ action: "emit", invocation: "model", name: "pr" }, { action: "reference", invocation: "model", name: "codebase-design", owner: "architect" }]));
   put("skills/pr/SKILL.md", '---\nname: pr\ndescription: "Write a PR: description" # comment\n---\n');
   put("subagents/skills/workflows/SKILL.md", '---\nname: workflows\ndescription: >-\n  Supervise bounded\n  workflows.\n---\ndescription: not me\n');
   // Pi hides a skill only for YAML boolean true, not for a quoted scalar.
