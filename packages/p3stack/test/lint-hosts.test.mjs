@@ -30,15 +30,22 @@ for (const token of ["mcp__t3", "delegate_task", "task_status", "schedule_task",
   });
 }
 
-test("host lint permits tool names only in the exact host map", t => {
+test("host maps may name their own tools; the entry may name the host detector", t => {
   const f = fixture(t);
-  f.write("skills/poteto-mode/references/host-capabilities.md", "delegate_task\n");
-  f.write("skills/fixture/SKILL.md", "Read the host capabilities.\n");
-  assert.equal(f.run().status, 0);
-  f.write("skills/fixture/host-capabilities.md", "delegate_task\n");
-  const result = f.run();
-  assert.equal(result.status, 1, result.stdout);
-  assert.match(result.stderr, /skills\/fixture\/host-capabilities.md:1: delegate_task/);
+  const refs = "skills/poteto-mode/references";
+  f.write(`${refs}/host-capabilities.md`, "mcp__t3-code__*\n");
+  f.write(`${refs}/host-terminal.md`, "subagent_spawn\n");
+  f.write(`${refs}/host-t3.md`, "mcp__t3-code__delegate_task\n");
+  const valid = f.run();
+  assert.equal(valid.status, 0, valid.stderr);
+  f.write(`${refs}/host-terminal.md`, "delegate_task\n");
+  f.write(`${refs}/host-t3.md`, "subagent_read\n");
+  f.write("skills/fixture/host-t3.md", "delegate_task\n");
+  const invalid = f.run();
+  assert.equal(invalid.status, 1, invalid.stdout);
+  for (const violation of [`${refs}/host-terminal.md:1: delegate_task`, `${refs}/host-t3.md:1: subagent_read`, "skills/fixture/host-t3.md:1: delegate_task"]) {
+    assert.ok(invalid.stderr.includes(violation), invalid.stderr);
+  }
 });
 
 test("host lint also scans emitted agents and resources", t => {

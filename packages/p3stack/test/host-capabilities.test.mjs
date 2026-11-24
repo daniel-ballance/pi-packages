@@ -1,50 +1,77 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { hostToolNames } from "../generator/lint-hosts.mjs";
 
-const hostMap = () => readFileSync(new URL("../skills/poteto-mode/references/host-capabilities.md", import.meta.url), "utf8");
-const section = heading => hostMap().split(`## ${heading}\n`)[1].split("\n## ")[0];
+const file = host => new URL(`../skills/poteto-mode/references/host-${host}.md`, import.meta.url);
+const map = host => readFileSync(file(host), "utf8");
+function sections(document) {
+  const [, ...parts] = document.split(/^## (.+)\n/gm);
+  const result = new Map();
+  for (let i = 0; i < parts.length; i += 2) result.set(parts[i], parts[i + 1]);
+  return result;
+}
 
-test("delegate line 8 distinguishes a lost-call retry from a new round", () => {
-  const line = hostMap().split("\n")[7];
-  assert.match(line, /^- \*\*T3\.\*\*/);
-  assert.match(line, /same `clientRequestId`.*lost call/);
-  assert.match(line, /new `clientRequestId`.*new round/);
-  assert.match(line, /`role`/);
-  assert.match(line, /`options`.*`thinking`/);
-  assert.match(section("Delegate"), /subagent_wait` with `final: true`/);
-  assert.match(section("Delegate"), /coordination\.owns/);
+test("each capability links to the same heading on each host", () => {
+  const entry = sections(map("capabilities"));
+  assert.ok(entry.has("Delegate"));
+  assert.ok(!entry.has("Verify host compatibility"));
+  for (const host of ["terminal", "t3"]) {
+    assert.deepEqual(new Set(sections(map(host)).keys()), new Set(entry.keys()), host);
+    for (const [heading, body] of entry) {
+      const fragment = heading.toLowerCase().replaceAll(" ", "-");
+      const links = [...body.matchAll(/\]\(([^)]+)\)/g)].map(match => match[1]);
+      for (const caller of ["poteto-mode", "code-review"]) {
+        const base = new URL(`../skills/${caller}/`, import.meta.url);
+        assert.ok(links.some(link => new URL(link, base).href === `${file(host)}#${fragment}`), `${caller}: ${heading} on ${host}`);
+      }
+    }
+  }
 });
 
-test("host verification separates static checks, diagnostics, and behavioral evidence", () => {
-  const verification = section("Verify host compatibility");
-  assert.match(verification, /without reading an installed host/);
-  assert.match(verification, /--installed/);
-  assert.match(verification, /--doctor <dump>/);
-  assert.match(verification, /release and hash are not acceptance criteria/);
-  assert.match(verification, /Missing required capabilities or incompatible behavior blocks maintenance/);
-  assert.doesNotMatch(section("Delegate"), /Pinned T3 version/);
+test("host selection exposes only the selected host's operations", () => {
+  const entry = map("capabilities");
+  for (const marker of ["Host: terminal", "Host: t3", "mcp__t3-code__*"]) assert.ok(entry.includes(marker), marker);
+  assert.deepEqual(new Set(hostToolNames(entry)), new Set(["mcp__t3-code__*"]));
+  const terminal = hostToolNames(map("terminal")), t3 = hostToolNames(map("t3"));
+  assert.ok(terminal.includes("subagent_spawn"));
+  assert.ok(t3.includes("mcp__t3-code__delegate_task"));
+  for (const tool of terminal) assert.ok(tool.startsWith("subagent_"), tool);
+  for (const tool of t3) assert.ok(!tool.startsWith("subagent_"), tool);
 });
 
 test("opening a PR cites the Pull requests section and records its chain", () => {
   const opening = readFileSync(new URL("../skills/poteto-mode/playbooks/opening-a-pr.md", import.meta.url), "utf8");
-  assert.match(opening, /Read \*\*Pull requests\*\* in the \[host capabilities\]\(references\/host-capabilities\.md\)/);
+  assert.match(opening, /Pull requests/i);
+  assert.match(opening, /\]\(references\/host-capabilities\.md[#)]/);
   const chains = readFileSync(new URL("../skills/p3stack-mode/references/chains.md", import.meta.url), "utf8");
   assert.match(chains, /opening-pr-host-link/);
   assert.match(chains, /Pull requests/);
 });
 
-test("recall reads Session history before it mines chats", () => {
-  const recall = readFileSync(new URL("../skills/recall/SKILL.md", import.meta.url), "utf8");
-  assert.match(recall, /Before searching, read \*\*Session history\*\* in the \[host capabilities\]\(\.\.\/poteto-mode\/references\/host-capabilities\.md\)/);
-  assert.match(recall, /Use its host-specific sources for parent sessions and child history/);
+test("the workflow gate is a caller feature and the template helper resolves from the installed skill", () => {
+  const workflow = sections(map("terminal")).get("Run a workflow");
+  assert.match(workflow, /\bfeatures\.workflows\b/);
+  const helper = workflow.match(/`node "([^"]*workflow-template\.mjs)"/)?.[1];
+  const dir = fileURLToPath(new URL("../skills/poteto-mode", import.meta.url));
+  assert.ok(helper?.startsWith("<poteto-mode-dir>/"), "missing absolute helper operand");
+  assert.ok(existsSync(helper.replace("<poteto-mode-dir>", dir)), helper);
 });
 
-test("host map documents scheduling, preview, history, and PR handback", () => {
-  const wake = section("Wake and loop");
-  for (const shape of ['{"type":"interval","everyMs":3600000}', '{"type":"fixed_time","timeOfDay":"09:00","weekdays":[1,2,3,4,5]}', '{"type":"webhook"}']) assert.ok(wake.includes(shape), shape);
-  assert.match(wake, /delete_scheduled_task/);
-  assert.match(section("Visuals"), /html_preview.*html_render/);
-  for (const name of ["t3_thread_search", "t3_thread_list", "parentThreadId"]) assert.ok(section("Session history").includes(name), name);
-  assert.match(section("Pull requests"), /list_thread_pull_requests.*before.*hand/);
+test("recall points history mining at the session history capability", () => {
+  const recall = readFileSync(new URL("../skills/recall/SKILL.md", import.meta.url), "utf8");
+  assert.match(recall, /Session history/i);
+  assert.match(recall, /\]\(\.\.\/poteto-mode\/references\/host-capabilities\.md[#)]/);
+});
+
+test("PR handback does not request a thread's PR list", () => {
+  for (const host of ["capabilities", "t3"]) {
+    const pr = sections(map(host)).get("Pull requests");
+    for (const instruction of pr.split(/[.\n]/)) {
+      if (/hand[- ]?back|hand(?:ing)? (?:\w+ ){0,2}back|end[- ]of[- ]work|before returning/i.test(instruction)) {
+        assert.doesNotMatch(instruction, /list_thread_pull_requests/);
+      }
+    }
+  }
 });

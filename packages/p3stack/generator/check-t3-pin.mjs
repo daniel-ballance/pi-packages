@@ -78,7 +78,7 @@ function main(args) {
   try {
     const packageDir = resolve(process.env.P3STACK_PACKAGE_DIR ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
     const pin = json(join(packageDir, "rules/t3-pin.json"));
-    const hostMap = readFileSync(join(packageDir, "extra/skills/poteto-mode/references/host-capabilities.md"), "utf8");
+    const hostMap = readFileSync(join(packageDir, "extra/skills/poteto-mode/references/host-t3.md"), "utf8");
     checkContract(pin, hostMap);
     if (options.has("--doctor")) {
       const problems = doctorProblems(json(options.get("--doctor")), pin, hostMap);
