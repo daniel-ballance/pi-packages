@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
+import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +20,8 @@ const reads = paths.flatMap((path, i) => [
 ]);
 const stub = `#!${process.execPath}
 const fs = require('node:fs'), path = require('node:path');
+if (process.argv.includes('--version')) { console.log('1.5.2'); process.exit(0); }
+if (process.env.WRITE_NOTE) fs.writeFileSync('notes.txt', 'proposed patch');
 const dir = process.env.PI_CODING_AGENT_DIR;
 fs.appendFileSync(process.env.LOG, JSON.stringify({dir, mode:fs.statSync(dir).mode & 511, files:fs.readdirSync(dir), settings:JSON.parse(fs.readFileSync(path.join(dir,'settings.json'))), gitVars:Object.keys(process.env).filter(k=>k.startsWith("GIT_"))})+'\\n');
 if (process.env.TRAP_TERM) process.on('SIGTERM', () => process.exit(143)); // Pi print-mode disposal
@@ -84,6 +87,42 @@ for (const tier of ["behavior", "routing"]) {
     assert.deepEqual(JSON.parse(readFileSync(join(f.source, "settings.json"))), f.settings);
     const receipt = readdirSync(f.output, { recursive: true }).find(path => path.endsWith("results.json"));
     assert.equal(statSync(dirname(join(f.output, receipt))).mode & 0o077, 0, "raw transcript is private");
+  });
+
+  test(`${tier}: a per-attempt receipt identifies the revision and served model, not the requested alias or private transcript`, t => {
+    const f = setup(t, tier), routing = tier === "routing";
+    const recorded = readFileSync(join(pkg, "test/routing-eval/fixtures/assistant.jsonl"), "utf8").trimEnd().split("\n").map(JSON.parse);
+    if (routing) recorded.splice(-3, 0, ...reads);
+    const result = f.run(routing ? ["--max-reads", "5"] : [], { STREAM: jsonl(recorded), ...(!routing && { WRITE_NOTE: "1" }) });
+    assert.equal(result.status, routing ? 0 : 1, result.stderr + result.stdout);
+    const dir = join(f.output, readdirSync(f.output)[0]);
+    const file = readdirSync(dir).find(name => name.endsWith(".receipt.json"));
+    assert.ok(file, "no comparison receipt for the attempt");
+    const bytes = readFileSync(join(dir, file), "utf8"), receipt = JSON.parse(bytes);
+    const summary = readFileSync(join(dir, "results.json"), "utf8");
+    for (const secret of [f.root, pkg, "/home/eval", "fixture-credential", "private-session-8ba7", "private thinking"]) {
+      assert.ok(!(bytes + summary).includes(secret), "comparison evidence contains private data");
+    }
+    assert.equal(receipt.revision, execFileSync("git", ["rev-parse", "HEAD"], { cwd: pkg, encoding: "utf8" }).trim());
+    assert.deepEqual(receipt.models, [{ provider: "test-provider", model: "model-alias", responseModel: "served-snapshot", thinkingLevel: "medium", providerThinkingLevel: "low" }]);
+    assert.equal(receipt.piVersion, "1.5.2");
+    assert.equal(receipt.turns, 2);
+    assert.deepEqual(receipt.usage, { input: 22, output: 11, cacheRead: 7, cacheWrite: 2, totalTokens: 42 });
+    const rows = routing ? "prompts" : "cases";
+    const row = JSON.parse(readFileSync(join(pkg, `test/${tier}-eval/${rows}.json`)))[rows].find(row => row.id === receipt.id);
+    const hash = value => createHash("sha256").update(value).digest("hex");
+    assert.equal(receipt.promptSha256, hash(row.prompt));
+    assert.equal(receipt.passed, routing);
+    const artifact = readFileSync(join(dir, receipt.artifact.file));
+    assert.equal(receipt.artifact.sha256, hash(artifact));
+    const evidence = JSON.parse(artifact);
+    if (routing) {
+      assert.deepEqual(evidence.reads.slice(1).map(r => r.path), paths);
+      assert.equal(evidence.reads[0].path, "<other>");
+    } else {
+      assert.match(evidence.final, /empty list/);
+      assert.deepEqual(evidence.changes, [{ path: "notes.txt", before: null, after: "proposed patch" }]);
+    }
   });
 
   test(`${tier}: reject aliases of default and custom live sources and output below a live alias`, t => {
@@ -200,6 +239,22 @@ test("behavior: copy mcp.json only for the selected MCP case; fail without it", 
   rmSync(join(f.source, "mcp.json"));
   invalid(f.run(["--only", "source-grounding"]), /mcp\.json/);
   assert.equal(f.calls().length, 1);
+});
+
+test("routing: unknown usage stays unknown and a credential or session ID cannot masquerade as a model", t => {
+  const f = setup(t, "routing"), id = "private-session-72d1", key = "fixture-token-124";
+  writeFileSync(join(f.source, "auth.json"), JSON.stringify({ custom: { type: "api_key", key } }));
+  const message = { ...final.message, model: id, responseModel: key, provider: f.home };
+  const result = f.run(["--mode-off"], { STREAM: jsonl([{ type: "session", version: 3, id, cwd: f.home }, { type: "message_end", message }, ...finish.slice(1)]) });
+  assert.equal(result.status, 0, result.stderr);
+  const path = readdirSync(f.output, { recursive: true }).find(path => path.endsWith(".receipt.json"));
+  const text = readFileSync(join(f.output, path), "utf8");
+  for (const privateValue of [id, key, f.home]) assert.ok(!text.includes(privateValue));
+  const receipt = JSON.parse(text);
+  assert.equal(receipt.usage, null);
+  assert.equal(receipt.models[0].responseModel, null);
+  assert.equal(receipt.models[0].thinkingLevel, null);
+  assert.equal(receipt.status, "not graded");
 });
 
 test("routing: expected first reads on natural exit pass below the cap; mode off only observes", t => {

@@ -2,7 +2,8 @@ import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { agentSource, defaultOutput, pkg, positiveInteger, receipts, runPi, safePath } from "./harness.mjs";
+import { agentSource, defaultOutput, pkg, positiveInteger, receipts, safePath } from "./harness.mjs";
+import { recordAttempt, revision, skillPaths } from "./receipt.mjs";
 import { readSequence } from "./reads.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -28,15 +29,21 @@ async function main() {
   const output = receipts(values.output, "routing", source);
   console.log(`Model ${model}, ${runs} run(s) per prompt; ${modeOff ? "mode off (not graded)" : `pass at ${Math.round(minRate * 100)}% or more`}`);
 
-  const results = [];
+  const results = [], checkout = revision(), paths = skillPaths();
+  const publicPath = path => paths.has(path) ? path : "<other>";
   for (const row of prompts) {
     const attempts = [], expected = modeOff ? undefined : row.expected;
     const mode = modeOff ? "off" : row.grant ? `on ${row.grant}` : "on";
     const args = ["--mode", "json", "--no-session", "--model", model, "--tools", "read", "--no-mcp", "--no-context-files", "--offline", "--approve", `/p3stack ${mode}`, row.prompt];
     for (let run = 1; run <= runs; run++) {
       const probe = readSequence(fixture, join(pkg, "skills"), Math.max(maxReads, expected?.length ?? 0));
-      const { reason, code, signal } = await runPi({ source, cwd: fixture, args, timeoutSeconds, log: join(output, `${row.id}.${run}`), onEvent: probe.record });
-      attempts.push({ observed: probe.observed(), reads: probe.reads, passed: modeOff ? undefined : probe.matches(expected, row.absent), reason, code, signal });
+      const reads = () => probe.reads.map(({ path, start, end, ok, offset, limit }) => ({ path: publicPath(path), start, end, ok,
+        offset: Number.isSafeInteger(offset) ? offset : undefined, limit: Number.isSafeInteger(limit) ? limit : undefined }));
+      attempts.push(await recordAttempt({ checkout, tier: "routing", row, arm: modeOff ? "off" : "on", run,
+        pi: { source, cwd: fixture, args, timeoutSeconds, log: join(output, `${row.id}.${run}`), onEvent: probe.record },
+        grade: ({ reason, code, signal }) => ({ observed: probe.observed().map(publicPath), reads: reads(), passed: modeOff ? undefined : probe.matches(expected, row.absent), reason, code, signal }),
+        artifact: () => ({ reads: reads(), expected, absent: row.absent }),
+      }));
     }
     const result = { id: row.id, prompt: row.prompt, runs, expected, attempts };
     if (!modeOff) {

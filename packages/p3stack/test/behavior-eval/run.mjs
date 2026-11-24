@@ -3,13 +3,14 @@
 // p3stack-mode on and off, and grades what the agent did (tool calls, files,
 // commands, final reply) rather than what it says it did. Spends tokens.
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { onGraderCopy } from "./oracles/copy.mjs";
+import { recordAttempt, revision } from "../routing-eval/receipt.mjs";
 import { coverageModules } from "./oracles/coverage.mjs";
-import { agentSource, defaultOutput, evalEnv, parseEvent, positiveInteger, receipts, runPi } from "../routing-eval/harness.mjs";
+import { agentSource, defaultOutput, evalEnv, parseEvent, positiveInteger, receipts } from "../routing-eval/harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SUBSTITUTIONS = { "{{SKIP}}": "skip" };
@@ -21,6 +22,20 @@ function walk(dir, base = dir) {
     if (name === ".git" || name === "node_modules") return [];
     return lstatSync(path).isDirectory() ? walk(path, base) : [relative(base, path)];
   });
+}
+
+// Snapshot the small fixture as delivered, including untracked work. Never follow an artifact link.
+function snapshot(root) {
+  return new Map(walk(root).map(path => {
+    const file = join(root, path), stat = lstatSync(file);
+    if (stat.isSymbolicLink()) return [path, { link: readlinkSync(file) }];
+    if (!stat.isFile()) return [path, { omitted: "not a regular file" }];
+    return [path, readFileSync(file, "utf8")];
+  }));
+}
+function changedFiles(before, after) {
+  return [...new Set([...before.keys(), ...after.keys()])].sort().filter(path => before.get(path) !== after.get(path))
+    .map(path => ({ path, before: before.get(path) ?? null, after: after.get(path) ?? null }));
 }
 
 function copyTree(from, to) {
@@ -212,22 +227,27 @@ async function main() {
   const source = agentSource(values["agent-dir"], { settingsRequired: true, mcp: rows.some(row => row.mcp) });
   if (rows.some(row => row.fixture === "source-grounding")) coverageModules();
   const output = receipts(values.output, "behavior", source);
-  const results = [];
+  const results = [], checkout = revision();
   for (const row of rows) for (const arm of arms) for (let run = 1; run <= runs; run++) {
     const project = mkdtempSync(join(source.scratch, `p3stack-behavior-${row.id}-`));
     try {
-      const before = materialize(row.fixture, project);
+      const before = materialize(row.fixture, project), initial = snapshot(project);
       const started = Date.now();
       const mode = arm === "on" ? `/p3stack on ${row.grant ?? "default"}` : "/p3stack off";
       const args = ["--mode", "json", "--no-session", "--model", model, "--tools", row.tools, "--no-context-files", "--approve", ...(row.mcp ? [] : ["--no-mcp", "--offline"]), mode, row.prompt];
-      const outcome = await runPi({ source, cwd: project, args, timeoutSeconds, mcp: row.mcp, log: join(output, `${row.id}.${arm}.${run}`) });
-      const seen = trace(outcome.stdout);
-      const scores = assess(row, seen, project, before);
-      const result = { id: row.id, arm, run, seconds: Math.round((Date.now() - started) / 1000), project: values.keep ? project : undefined, exit: outcome.code, toolCalls: seen.calls.length, ...scores };
+      const result = await recordAttempt({ checkout, tier: "behavior", row, arm, run,
+        pi: { source, cwd: project, args, timeoutSeconds, mcp: row.mcp, log: join(output, `${row.id}.${arm}.${run}`) },
+        grade(outcome) {
+          const seen = trace(outcome.stdout);
+          return { id: row.id, arm, run, seconds: Math.round((Date.now() - started) / 1000), exit: outcome.code, toolCalls: seen.calls.length, ...assess(row, seen, project, before) };
+        },
+        artifact: final => ({ final, changes: changedFiles(initial, snapshot(project)) }),
+      });
       results.push(result);
-      for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${(scores[name].score * 100).toFixed(0)}%: ${scores[name].checks.map(c => `${c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
+      for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${(result[name].score * 100).toFixed(0)}%: ${result[name].checks.map(c => `${c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
     } finally {
-      if (!values.keep) rmSync(project, { recursive: true, force: true });
+      if (values.keep) console.log(`Kept project: ${project}`);
+      else rmSync(project, { recursive: true, force: true });
     }
   }
   if (!results.length) throw new Error("No completed behavior runs");
