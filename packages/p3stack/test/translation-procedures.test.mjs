@@ -270,6 +270,27 @@ for (const name of reviews) {
   });
 }
 
+test("deep review fetches the PR head even when the base repository has a branch of the same name", t => {
+  const { repo, wt, git } = auditFixture(t);
+  const base = git("-C", repo, "rev-parse", "HEAD");
+  git("-C", repo, "branch", "topic", base);
+  git("-C", wt, "-c", "user.name=Fixture", "-c", "user.email=test@example.org", "commit", "--allow-empty", "-qm", "fork topic");
+  const head = git("-C", wt, "rev-parse", "HEAD");
+  git("-C", repo, "update-ref", "refs/pull/17/head", head);
+  const checkout = join(dirname(repo), "reviewer");
+  git("clone", "--no-local", "-q", repo, checkout);
+  assert.notEqual(git("-C", checkout, "rev-parse", "origin/topic"), head);
+
+  const parent = skill("dyl-review").split("## Main-thread rules")[1].split("## Dylan-lens worker")[0];
+  const args = parent.match(/`git fetch ([^`]+)`/)[1].replaceAll("<base-remote>", "origin").replaceAll("<base>", "main")
+    .replaceAll("<branch>", "topic").replaceAll("<n>", "17").split(" ");
+  git("-C", checkout, "fetch", ...args);
+  assert.equal(git("-C", checkout, "rev-parse", "FETCH_HEAD"), head, "documented fetch must select the fork's commit");
+  assert.match(parent, /headRefOid/);
+  assert.match(parent, /FETCH_HEAD[^\n]*stop/i);
+  assert.match(parent, /git diff <base-oid>\.\.\.<head-oid>/);
+});
+
 test("dyl-review keeps code-review coordination and Git/forge work in the parent", () => {
   const text = skill("dyl-review");
   assert.match(text, /parent[^\n]*Standards[^\n]*Spec/i);
