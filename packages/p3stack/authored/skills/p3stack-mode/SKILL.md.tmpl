@@ -6,9 +6,9 @@ disable-model-invocation: true
 
 # p3stack mode
 
-First read poteto-mode in full at `<this file's directory>/../poteto-mode/SKILL.md`. Replace `<this file's directory>` with the absolute directory containing the p3stack-mode/SKILL.md you just read. For example, if this file is `<package>/skills/p3stack-mode/SKILL.md`, read poteto-mode at `<package>/skills/poteto-mode/SKILL.md`. Use that same directory substitution for every Read path below.
+Choose the route for the request and grant first. Then read `poteto-mode/SKILL.md` in full, then the selected target, before any other tool call. This router wins where their rules differ.
 
-Finish the poteto-mode read before any other tool call. Follow it, except this router wins where its rules differ. Then select the route and applicable chains before reading any supporting skill. Read only the selected first target next.
+Resolve Read paths from the skills directory (the one containing `p3stack-mode/`). For example, if this file is `<package>/skills/p3stack-mode/SKILL.md`, read poteto-mode at `<package>/skills/poteto-mode/SKILL.md`.
 
 ## Grants
 
@@ -29,15 +29,9 @@ These settle conflicts between the routed skills, and they win over any of them.
 
 ## Routes
 
-Match the request and grant below. After poteto-mode, read the target and follow it. A request to review someone else's PR uses the external review route. Review my change runs floor-check first, per `<this file's directory>/references/floor.md`, then no-comments.
+Playbooks carry p3stack's added steps inline; read each marked link when its condition holds. For a bug without a failing reproduction, the first target is `diagnosing-bugs/SKILL.md`; then continue Bug fix. Review my change runs floor-check per `p3stack-mode/references/floor.md` before no-comments.
 
 {{routes}}
-
-## Chains
-
-Apply each matching chain at its anchor in table order. For a reported bug without a failing reproduction, the first target is diagnosing-bugs, before even reading the Bug fix playbook. Continue Bug fix after diagnosis.
-
-{{chains}}
 
 ## Seams and context
 

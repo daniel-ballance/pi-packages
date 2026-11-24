@@ -26,12 +26,10 @@ test("host verification separates static checks, diagnostics, and behavioral evi
   assert.doesNotMatch(section("Delegate"), /Pinned T3 version/);
 });
 
-test("opening a PR cites the Pull requests section and records its chain", () => {
+test("opening a PR cites the Pull requests section once", () => {
   const opening = readFileSync(new URL("../skills/poteto-mode/playbooks/opening-a-pr.md", import.meta.url), "utf8");
   assert.match(opening, /Read \*\*Pull requests\*\* in the \[host capabilities\]\(references\/host-capabilities\.md\)/);
-  const chains = readFileSync(new URL("../skills/p3stack-mode/references/chains.md", import.meta.url), "utf8");
-  assert.match(chains, /opening-pr-host-link/);
-  assert.match(chains, /Pull requests/);
+  assert.equal(opening.match(/Pull requests/g).length, 1);
 });
 
 test("recall reads Session history before it mines chats", () => {

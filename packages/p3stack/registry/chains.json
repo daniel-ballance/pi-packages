@@ -21,7 +21,7 @@
     "anchor": "4. Delegate code-writing to a subagent",
     "position": "before",
     "skill": "source-grounding",
-    "when": "The code uses a framework or library API whose correct use depends on the installed version. Put the cited doc pages in the brief."
+    "when": "If correct use of a framework or library API depends on the installed version, put its cited doc pages in the brief."
   },
   {
     "id": "feature-brief-contract",
@@ -29,7 +29,7 @@
     "anchor": "4. Delegate code-writing to a subagent",
     "position": "before",
     "skill": "p3stack-mode/references/brief-contract.md",
-    "when": "Always when delegating code. Write the brief at hand-off; never store it in a tracker ticket."
+    "when": "When delegating code, write the brief at handoff, not in a tracker ticket."
   },
   {
     "id": "feature-ledger",
@@ -37,15 +37,7 @@
     "anchor": "4. Delegate code-writing to a subagent",
     "position": "before",
     "skill": "p3stack-mode/references/execution-ledger.md",
-    "when": "More than one delegated unit, or work that may outlive this context."
-  },
-  {
-    "id": "feature-floor",
-    "playbook": "playbooks/feature.md",
-    "anchor": "7. If the design is contested, `interrogate` before shipping.",
-    "position": "before",
-    "skill": "p3stack-mode/references/floor.md",
-    "when": "Always. Run floor-check before no-comments; explain or remove every finding."
+    "when": "Open a ledger for more than one delegated unit or work that may outlive this context."
   },
   {
     "id": "feature-comment-review",
@@ -53,7 +45,15 @@
     "anchor": "7. If the design is contested, `interrogate` before shipping.",
     "position": "before",
     "skill": "no-comments",
-    "when": "Review completed code before code-review."
+    "when": "When the code is complete, clean up comments before the floor scan."
+  },
+  {
+    "id": "feature-floor",
+    "playbook": "playbooks/feature.md",
+    "anchor": "7. If the design is contested, `interrogate` before shipping.",
+    "position": "before",
+    "skill": "p3stack-mode/references/floor.md",
+    "when": "After comment cleanup, run floor-check on the final diff; explain or remove every finding."
   },
   {
     "id": "feature-review-stance",
@@ -69,15 +69,7 @@
     "anchor": "7. If the design is contested, `interrogate` before shipping.",
     "position": "before",
     "skill": "code-review",
-    "when": "After no-comments. Keep standards and spec findings separate."
-  },
-  {
-    "id": "bug-floor",
-    "playbook": "playbooks/bug-fix.md",
-    "anchor": "6. Run **Opening a PR**.",
-    "position": "before",
-    "skill": "p3stack-mode/references/floor.md",
-    "when": "Always. Run floor-check before no-comments; explain or remove every finding."
+    "when": "After the floor scan, review the final diff. Keep standards and spec findings separate."
   },
   {
     "id": "bug-comment-review",
@@ -85,7 +77,15 @@
     "anchor": "6. Run **Opening a PR**.",
     "position": "before",
     "skill": "no-comments",
-    "when": "Review completed code before code-review."
+    "when": "When the code is complete, clean up comments before the floor scan."
+  },
+  {
+    "id": "bug-floor",
+    "playbook": "playbooks/bug-fix.md",
+    "anchor": "6. Run **Opening a PR**.",
+    "position": "before",
+    "skill": "p3stack-mode/references/floor.md",
+    "when": "After comment cleanup, run floor-check on the final diff; explain or remove every finding."
   },
   {
     "id": "bug-review-stance",
@@ -101,15 +101,7 @@
     "anchor": "6. Run **Opening a PR**.",
     "position": "before",
     "skill": "code-review",
-    "when": "After no-comments. Keep standards and spec findings separate."
-  },
-  {
-    "id": "opening-pr-host-link",
-    "playbook": "playbooks/opening-a-pr.md",
-    "anchor": "**Forge.**",
-    "position": "before",
-    "skill": "poteto-mode",
-    "when": "Read Pull requests in the host capabilities when opening a PR and before handback. Follow its host integration after creation."
+    "when": "After the floor scan, review the final diff. Keep standards and spec findings separate."
   },
   {
     "id": "skill-authoring-style",
@@ -125,7 +117,7 @@
     "anchor": "1. Use the skill-authoring procedure",
     "position": "before",
     "skill": "playbooks/eval.md",
-    "when": "The change alters behavior, not only wording. Before editing, run the task once without the change and record how the agent fails. After editing, compare against that baseline per the Eval playbook, with the skill-eval workflow template in a terminal."
+    "when": "If the change alters behavior, run the task before editing and record how the agent fails. After editing, compare against that baseline per the Eval playbook, with the skill-eval workflow template in a terminal."
   },
   {
     "id": "prototype-human-judge",
@@ -140,8 +132,8 @@
     "playbook": "playbooks/prototype.md",
     "anchor": "Verify on the matching surface.",
     "position": "before",
-    "skill": "poteto-mode",
-    "when": "A human will judge the prototype. Drive every variant or walkthrough yourself per Drive the app in the host capabilities before anyone sees it."
+    "skill": "poteto-mode/references/host-capabilities.md",
+    "when": "When a human will judge the prototype, follow **Drive the app** to try every variant or walkthrough before handoff."
   },
   {
     "id": "prototype-human-capture",
@@ -173,7 +165,7 @@
     "anchor": "Stop at a safe boundary.",
     "position": "after",
     "skill": "p3stack-mode/references/execution-ledger.md",
-    "when": "A ledger exists for this run. Append the pause point and every open ruling before stopping."
+    "when": "If this run has a ledger, append the pause point and every open ruling before stopping."
   },
   {
     "id": "pickup-ledger",
@@ -188,21 +180,21 @@
     "playbook": "playbooks/hillclimb.md",
     "anchor": "4. Ground each hypothesis in the architecture model from step 1",
     "position": "before",
-    "skill": "poteto-mode",
-    "when": "In a terminal with workflow tools and a scripted evaluator, run the loop from the hillclimb workflow template (Run a workflow in the host capabilities); the runtime keeps or discards each candidate by score."
+    "skill": "poteto-mode/references/host-capabilities.md",
+    "when": "In a terminal with workflow tools and a scripted evaluator, follow **Run a workflow** with the hillclimb template; the runtime keeps or discards each candidate by score."
   },
   {
     "id": "eval-workflow",
     "playbook": "playbooks/eval.md",
     "anchor": "4. **Spawn N parallel candidates**",
     "position": "before",
-    "skill": "poteto-mode",
-    "when": "In a terminal with workflow tools, run steps 4 and 5 from the skill-eval workflow template (Run a workflow in the host capabilities)."
+    "skill": "poteto-mode/references/host-capabilities.md",
+    "when": "In a terminal with workflow tools, follow **Run a workflow** with the skill-eval template for steps 4 and 5."
   },
   {
     "id": "orchestrate-ledger",
     "playbook": "playbooks/orchestrate.md",
-    "anchor": "Keep the program's state in `notes.md`",
+    "anchor": "Run it with your own tools.",
     "position": "after",
     "skill": "p3stack-mode/references/execution-ledger.md",
     "when": "Always. Keep the run's ledger beside notes.md: dispatches, completions, and rulings, so a compacted coordinator never redispatches finished work."
