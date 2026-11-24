@@ -71,7 +71,7 @@
       ],
       "negative": [
         { "prompt": "Diagnose why the checkout is failing in production.", "owner": "diagnosing-bugs" },
-        { "prompt": "Design a deeper interface for the cache module.", "owner": "grilling" }
+        { "prompt": "Interview me about the rollout decision before we implement it.", "owner": "grilling" }
       ] },
     { "skill": "wizard",
       "positive": [
@@ -121,7 +121,7 @@
       ],
       "negative": [
         { "prompt": "Research the history of this protocol from primary sources.", "owner": "research" },
-        { "prompt": "Find deepening opportunities in this module's interface.", "owner": "grilling" }
+        { "prompt": "We agree the billing boundary needs to move. Record our decision in an ADR.", "owner": "domain-modeling" }
       ] },
     { "skill": "maintain-p3stack",
       "positive": [
@@ -161,7 +161,8 @@
       ],
       "negative": [
         { "prompt": "Configure pstack models for each role.", "owner": "setup-pstack" },
-        { "prompt": "Review my branch against main before I open the PR.", "owner": "code-review" }
+        { "prompt": "Review my branch against main before I open the PR.", "owner": "code-review" },
+        { "prompt": "Run a repair loop with two workers and a validator.", "owner": "workflows" }
       ] },
     { "skill": "workflows",
       "positive": [
@@ -171,7 +172,8 @@
       ],
       "negative": [
         { "prompt": "Write the failing test first, then implement the parser.", "owner": "tdd" },
-        { "prompt": "Set up subagents.json for this project.", "owner": "subagents" }
+        { "prompt": "Set up subagents.json for this project.", "owner": "subagents" },
+        { "prompt": "My child cannot use the tool selection I configured. Check its policy.", "owner": "subagents" }
       ] }
   ]
 }
