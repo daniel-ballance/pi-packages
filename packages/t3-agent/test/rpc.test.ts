@@ -35,7 +35,7 @@ export default function(pi) {
       const last = context.messages.at(-1);
       const delegate = last?.role === "user" && JSON.stringify(last.content).includes("delegate");
       const content = delegate
-        ? [{ type: "toolCall", id: "call-1", name: "mcp__t3-code__delegate_task", arguments: { task: "Review the branch" } }]
+        ? [{ type: "toolCall", id: "call-1", name: "mcp__t3-code__delegate_task", arguments: { title: "Review the branch", task: "Check the patch" } }]
         : [{ type: "text", text: JSON.stringify({ system: getCurrentSystemPrompt(context.messages), tools: getCurrentTools(context.messages).map(tool => tool.name) }) }];
       const message = {
         role: "assistant", api: model.api, provider: model.provider, model: model.id, content,

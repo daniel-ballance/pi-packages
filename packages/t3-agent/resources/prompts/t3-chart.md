@@ -2,9 +2,9 @@
 description: Answer with a chart rendered inline in this T3 thread
 argument-hint: "<question or data>"
 ---
-Answer with a chart shown inline in this thread: $@
+Answer with an inline chart; stop after showing it and giving the sources and caveats.
+Question or data: $@
 
-1. Gather the data and note where each number came from.
-2. Write one self-contained HTML file in a temporary directory: inline style and script, no network requests, T3's theme variables (`--chart-1` to `--chart-6`, `--foreground`, `--muted`, `--border`) instead of fixed colors, no page background, and a fixed pixel height for each chart.
-3. Call `html_preview` on it and fix whatever the screenshot or console output shows wrong. Then call `html_render`.
-4. Reply with only what the chart does not already say, such as sources and caveats.
+1. Gather the data and note the source of each number.
+2. Write self-contained HTML with inline styles and scripts, T3 theme variables, a transparent background and a fixed chart height. Use no network requests.
+3. Check with `html_preview`, fix rendering errors and call `html_render`. Explain only what the chart does not show.

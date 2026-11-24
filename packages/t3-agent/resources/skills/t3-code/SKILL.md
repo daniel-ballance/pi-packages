@@ -3,9 +3,9 @@ name: t3-code
 description: Map a job to the T3 Code tool that does it. Use under T3 when a task needs a child agent, another thread, a worktree, a pull request watch, a schedule, a secret, a browser or device preview, an inline chart, or a T3 project.
 ---
 
-T3 tools are named `mcp__t3-code__<name>`. The bridge declares `orchestrator_capabilities`, `delegate_task` and `task_status`; the `t3_agent` prompt section lists the others t3-agent declared. Load any other one with `tool_search`, querying its job ("schedule", "preview tab"). In a codemode script call it as `tools.mcp__t3_code__<name>(args)`, which batches independent T3 calls (reading several threads, closing several tabs) in one step. Each tool's own description holds its argument rules; read it before the first call.
+T3 tools are named `mcp__t3-code__<name>`. `/t3-agent status` lists the tools declared in Pi's active loadout. Load any other one with `tool_search`, querying its job ("schedule", "preview tab"). In a codemode script call it as `tools.mcp__t3_code__<name>(args)`, which batches independent T3 calls (reading several threads, closing several tabs) in one step. Each tool's own description holds its argument rules; read it before the first call.
 
-Every result is JSON text. Copy ids (`taskId`, `scheduledTaskId`, `tabId`) verbatim, and name a thread in your reply by its `link`, verbatim. To retry a lost create call, reuse its `clientRequestId`; new work gets a new one.
+Use the structured result in scripts when supplied. Copy ids (`taskId`, `scheduledTaskId`, `tabId`) verbatim, and name a thread in your reply by its `link`, verbatim. To retry a lost create call, reuse its `clientRequestId`; new work gets a new one.
 
 ## Jobs
 

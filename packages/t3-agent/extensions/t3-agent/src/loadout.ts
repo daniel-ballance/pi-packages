@@ -1,5 +1,4 @@
-// The bridge declares three T3 tools and defers the rest to tool_search, so every
-// other T3 call costs the model a search round trip first. A loadout declares the
+// A loadout activates optional tools the bridge deferred: the
 // tools T3's own guidance tells the model to call, plus tools that the session's
 // open handles make relevant (a tab to close, a PR to unwatch).
 
@@ -20,6 +19,12 @@ export interface ToolInfo {
   name: string;
   exposure?: string;
   sourceInfo?: { source?: string; path?: string };
+}
+
+/** The bridge owns direct declarations and requires even deferred tools on completion gateways. */
+export function manageableTool(tool: ToolInfo, modelApi?: string): boolean {
+  if (tool.name.startsWith(T3_PREFIX)) return tool.exposure === "deferred" && modelApi !== "openai-completions";
+  return READ_ONLY_BUILTINS.some(name => tool.name === name && tool.sourceInfo?.path === `builtin:${name}`);
 }
 
 /** Bare names the open handles make worth declaring. */
