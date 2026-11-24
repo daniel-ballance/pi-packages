@@ -9,7 +9,7 @@ import { tempRoot } from "./support/temp-root.js";
 test("built-in policy is a multi-provider menu with delegation, nesting and loops on, for use with no setup", () => {
   const policy = parsePolicy(DEFAULT_POLICY);
   const ids = policy.models.map(model => model.id);
-  for (const id of ["openai-codex/gpt-6-luna:medium", "openai-codex/gpt-6.1-sol:xhigh", "xai/grok-4.7:high", "anthropic/claude-opus-5-5:high"]) assert.ok(ids.includes(id), id);
+  for (const id of ["openai-codex/gpt-6-luna:medium", "openai-codex/gpt-6.2-sol:xhigh", "xai/grok-4.7:high", "anthropic/claude-opus-5-5:high"]) assert.ok(ids.includes(id), id);
   for (const tool of ["read", "bash", "edit", "write", "todo", "subagent_spawn", "subagent_catalog"]) assert.ok(policy.tools.includes(tool), tool);
   assert.equal(policy.maxDepth, 2);
   assert.equal(policy.loops?.enabled, true);
