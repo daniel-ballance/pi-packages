@@ -46,7 +46,9 @@ pi install "$PWD/packages/p3stack"
 
 Choose one source, not both. Use Git or a checkout for the TypeScript playbook helpers. Node does not run them directly under `node_modules`.
 
-Terminal Pi uses the included subagents component. T3 Code supplies its own delegation. To change child model defaults, use `/p3stack-setup` in an interactive terminal or `/skill:setup-pstack` under T3. For a T3 startup or duplicate-provider problem, see [T3 setup and `/p3stack doctor`](https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/docs/landing/t3-settings.md). The doctor command exists only under T3 Code.
+To set child model defaults, run `/p3stack-setup` in interactive Pi on either host. Terminal Pi uses the included subagents catalog when available. T3 Code uses its own delegation catalog. If the session has no T3 catalog yet, ask Pi to call `p3stack_roles` once, then rerun setup.
+
+Setup writes `p3stack.json` in Pi's agent directory (`PI_CODING_AGENT_DIR` when set, otherwise `~/.pi/agent`). For a T3 startup or duplicate-provider problem, see [T3 setup and `/p3stack doctor`](https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/docs/landing/t3-settings.md).
 
 ## Maintainers
 

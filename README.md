@@ -21,9 +21,9 @@ Open Pi in a repository with an uncommitted change. Send these as two messages:
 Review my uncommitted change before I open a PR. Show me the evidence for each finding. Don't edit files or open a PR.
 ```
 
-See the [p3stack guide](packages/p3stack/README.md) for the expected result, grants, and how to turn routing off.
+See the [p3stack guide](packages/p3stack/README.md) for the expected result, grants, and `/p3stack-setup` on either host.
 
-By default, Pi clones the repository into `~/.pi/agent/git/github.com/daniel-ballance/pi-packages` without its submodules. One production `npm install` at the clone's root installs the runtime dependencies. Run `pi update git:github.com/daniel-ballance/pi-packages` to update this package. Bare `pi update` updates Pi itself.
+For a user install, Pi clones the repository under `git/github.com/daniel-ballance/pi-packages` in its agent directory (`PI_CODING_AGENT_DIR` when set, otherwise `~/.pi/agent`), without submodules. One production `npm install` at the clone's root installs the runtime dependencies. Run `pi update git:github.com/daniel-ballance/pi-packages` to update this package. Bare `pi update` updates Pi itself.
 
 ## Install from a checkout
 
@@ -47,12 +47,12 @@ The owner's nonsecret preferences live in [`global/`](global/README.md). Those f
 
 - [`extensions/p3stack`](packages/p3stack/extensions/p3stack/) owns the mode, `ask_user`, role resolution, and host diagnostics.
 - [`skills`](packages/p3stack/skills/) contains the generated router and workflows from Cursor, Matt Pocock, Addy Osmani, and p3stack's own authors.
-- [`subagents`](packages/p3stack/subagents/README.md) owns persistent RPC children, peer messaging, bounded workflows, and recovery. It stays inactive under T3, which supplies delegation.
+- [`subagents`](packages/p3stack/subagents/README.md) owns persistent RPC children, peer messaging, bounded workflows, and recovery. T3 supplies its own delegation and loads neither the native Manager nor its skills.
 - [`todo`](packages/p3stack/todo/README.md) tracks steps per session branch.
 - [`web-search`](packages/web-search/README.md) searches DuckDuckGo without an API key.
 - [`self-reload`](packages/self-reload/README.md) reloads Pi with automatic continuation.
 - [`claude-subscription`](packages/claude-subscription/README.md) provides Claude models through the Claude Agent SDK and Claude Code login. Read its billing note before use.
-- [`t3-agent`](packages/t3-agent/README.md) tunes Pi for T3 Code: a host prompt section, a T3 tool loadout, a ledger of the T3 objects a session opens, and T3 workflow templates. It does nothing unless T3 launched Pi.
+- [`t3-agent`](packages/t3-agent/README.md) tunes Pi for T3 Code: a host prompt section, a T3 tool loadout, a branch-local record of handles reported by T3 tools, and T3 workflow templates. It does nothing unless T3 launched Pi.
 - [`computer-use`](packages/computer-use/README.md) uses the installed macOS Computer Use Companion locally, or over SSH with `PI_COMPUTER_USE_SSH`. No MCP entry or bridge is required. Local mode stays inactive when the required applications are absent.
 
 Native Pi reads `mcp.json`. The root package does not load mcp-client or replace `/mcp`. The optional replacement has a different protocol stack, configuration limits, and timeout units. Read its migration notes before enabling it.
@@ -80,7 +80,7 @@ Dependencies follow the latest stable release. [`scripts/update-dependencies.mjs
 
 `npm run check` and `pnpm run check` wrap the root gate. The gate validates configuration JSON, generated shared copies, global link tests, the registry, the static T3 contract, and every top-level and nested component's `check` and `test` scripts. It also runs the skill linter tests and mcp-client's format check. It does not need a globally installed Pi, live credentials, or paid provider calls.
 
-Run a component's suite directly from its new path.
+To check one component, run its package scripts:
 
 ```sh
 npm --prefix packages/p3stack/subagents run check
