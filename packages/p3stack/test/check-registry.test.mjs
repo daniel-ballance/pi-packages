@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -33,13 +33,13 @@ test("a changed borrowed upstream path is flagged for review in a bump", async (
   assert.equal(borrowedNote(borrowed, "agent-skills", "skills/a/SKILL.md"), "");
 });
 
-test("registry admits 22 Pocock, 57 pstack, five owner, and four agent-skills skills with reasons for every drop", () => {
-  const skills = rows();
-  for (const [source, count] of [["matt-pocock", 22], ["cursor-plugins", 57], ["owner-plugins", 5], ["agent-skills", 4]]) {
-    assert.equal(skills.filter(row => row.source === source && row.action === "emit").length, count, source);
-  }
-  assert.equal(skills.filter(row => row.action === "drop").length, 60);
-  assert.equal(skills.filter(row => row.source === "superpowers" && row.action === "emit").length, 0, "superpowers is watch only");
+test("registry admissions match the shipped skills, including narrow and watch-only sources", () => {
+  const skills = rows(), admitted = skills.filter(row => row.action === "emit");
+  const shipped = readdirSync(new URL("../skills/", import.meta.url), { withFileTypes: true }).filter(entry => entry.isDirectory());
+  assert.deepEqual(new Set(admitted.map(row => row.name)), new Set(shipped.map(entry => entry.name)));
+  const from = source => new Set(admitted.filter(row => row.source === source).map(row => row.name));
+  assert.deepEqual(from("agent-skills"), new Set(["constraints", "source-grounding", "security-hardening", "instrumentation"]));
+  assert.deepEqual(from("superpowers"), new Set(), "superpowers is watch only");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
   for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").invocation, "user");
@@ -131,6 +131,13 @@ test("generation renders routes and chains from their registry rows", t => {
   assert.match(chains, /first-chain/);
   assert.match(chains, /Implement the sketch\./);
   assert.match(chains, /\[playbooks\/feature.md\]\(\.\.\/poteto-mode\/playbooks\/feature.md\)/);
+});
+
+test("routes may use the same request under distinct grants", t => {
+  const f = fixture(t);
+  f.write("registry/routes.json", ["default", "full-autonomy"].map(grant => ({ request: "plan", grant, target: "first" })));
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("registry admits an explicit router playbook target and rejects a missing one", t => {
@@ -243,6 +250,12 @@ test("registry check reports emitted, dropped, and zero unclassified skills", t 
 for (const [name, mutate, diagnostic] of [
   ["unclassified skill", f => f.write("vendor/demo/skills/unclassified/SKILL.md", f.skill("unclassified")), /unclassified.*skills\/unclassified\/SKILL.md/i],
   ["duplicate name", f => { f.write("vendor/demo/skills/second/SKILL.md", f.skill("second")); f.write("registry/skills.json", [...f.skills, { ...f.skills[0], path: "skills/second/SKILL.md" }]); }, /duplicate emitted name.*first/i],
+  ["invalid route grant", f => f.write("registry/routes.json", [{ request: "build", grant: "maybe", target: "first" }]), /route.*build.*grant.*maybe/i],
+  ["duplicate route key", f => f.write("registry/routes.json", ["first", "playbooks/feature.md"].map(target => ({ request: "build", grant: "default", target }))), /duplicate route.*build.*default/i],
+  ["duplicate chain id", f => {
+    const chain = JSON.parse(readFileSync(join(f.root, "registry/chains.json"), "utf8"))[0];
+    f.write("registry/chains.json", [chain, { ...chain, position: "after" }]);
+  }, /duplicate chain.*first-chain/i],
   ["missing route target", f => f.write("registry/routes.json", [{ request: "broken", grant: "any", target: "absent" }]), /route.*broken.*absent/i],
   ["doubled anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the sketch.\nImplement the sketch.\n"), /chain.*first-chain.*anchor.*2/i],
   ["missing anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the revised sketch.\n"), /chain.*first-chain.*anchor.*0/i],

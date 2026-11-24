@@ -69,8 +69,17 @@ export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
     outputNames.add(name);
     if (!expected.has(path)) problems.push(`Unregistered emitted skill skills/${path}`);
   }
-  for (const row of routes) if (!targetExists(row.target)) problems.push(`Route ${row.request} has missing target ${row.target}`);
+  const routeKeys = new Set(), chainIds = new Set();
+  for (const row of routes) {
+    if (!["any", "default", "full-autonomy"].includes(row.grant)) problems.push(`Route ${row.request} has invalid grant ${row.grant}`);
+    const key = JSON.stringify([row.request, row.grant]);
+    if (routeKeys.has(key)) problems.push(`Duplicate route ${row.request} (${row.grant})`);
+    routeKeys.add(key);
+    if (!targetExists(row.target)) problems.push(`Route ${row.request} has missing target ${row.target}`);
+  }
   for (const row of chains) {
+    if (chainIds.has(row.id)) problems.push(`Duplicate chain id ${row.id}`);
+    chainIds.add(row.id);
     if (!/^playbooks\/[a-z0-9-]+\.md$/.test(row.playbook)) problems.push(`Chain ${row.id} has invalid playbook ${row.playbook}`);
     if (!targetExists(row.skill)) problems.push(`Chain ${row.id} has missing skill ${row.skill}`);
     const path = playbookPath(row.playbook), absolute = join(outDir, path);
