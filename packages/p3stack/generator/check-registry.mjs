@@ -34,7 +34,7 @@ export function chainSlots(text, rows) {
 }
 
 // Use the same workspace YAML parser as lint-skill, including under isolated pnpm installs.
-const { isMap, parseDocument } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("yaml");
+const { isMap, parseDocument, stringify } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("yaml");
 const INVOCATION_FLAG = "disable-model-invocation";
 
 export const frontmatterBlock = text => /^(\uFEFF?---[ \t]*\r?\n)([\s\S]*?)^---[ \t]*\r?$/my.exec(text);
@@ -50,17 +50,39 @@ export function skillFrontmatter(text, path) {
   const hidden = fields[INVOCATION_FLAG] === true;
   return {
     name: fields.name, description: fields.description, hidden,
-    withInvocation(userOnly) {
-      if (userOnly === hidden) return text;
-      // Edit just the flag, preserving other fields, comments, newlines and the entire body.
-      const at = opening.length;
-      if (flag) return text.slice(0, at + flag.range[0]) + userOnly + text.slice(at + flag.range[1]);
-      const start = doc.contents.range[0];
-      const indent = yaml.slice(0, start).split("\n").at(-1);
-      const offset = at + start + (doc.contents.flow ? 1 : 0);
-      const newline = opening.endsWith("\r\n") ? "\r\n" : "\n";
-      const insert = `${INVOCATION_FLAG}: true` + (doc.contents.flow ? ", " : newline + indent);
-      return text.slice(0, offset) + insert + text.slice(offset);
+    withRegistry(row) {
+      const edits = [], newline = opening.endsWith("\r\n") ? "\r\n" : "\n";
+      const setScalar = (key, replacement) => {
+        const [start, end] = doc.get(key, true).range;
+        edits.push([start, end, replacement + (yaml[end - 1] === "\n" ? newline : "")]);
+      };
+      if (typeof fields.name !== "string" || !fields.name) throw new Error(`${path}: expected a frontmatter name`);
+      if (fields.name !== row.name) setScalar("name", stringify(row.name).trimEnd());
+      for (const { key, value } of doc.contents.items) {
+        if (!["icon", "color", "paths", "argument-hint"].includes(key.value)) continue;
+        let start = key.range[0], end = value.range[2];
+        if (doc.contents.flow) {
+          // Delete the following comma. A trailing comma on the last retained pair is valid YAML.
+          end += /^,[ \t]*/.exec(yaml.slice(end))?.[0].length ?? 0;
+        } else {
+          start = yaml.lastIndexOf("\n", start - 1) + 1;
+          if (yaml[end - 1] !== "\n") end = yaml.indexOf("\n", end) + 1;
+        }
+        edits.push([start, end, ""]);
+      }
+      if (row.action === "emit" && (row.invocation === "user") !== hidden) {
+        if (flag) setScalar(INVOCATION_FLAG, String(!hidden));
+        else {
+          const start = doc.contents.range[0], indent = yaml.slice(0, start).split("\n").at(-1);
+          const offset = doc.contents.flow ? start + 1 : start - indent.length, field = `${INVOCATION_FLAG}: true`;
+          edits.push([offset, offset, doc.contents.flow ? field + ", " : indent + field + newline]);
+        }
+      }
+      let header = yaml;
+      for (const [start, end, value] of edits.sort((a, b) => b[0] - a[0] || b[1] - a[1])) {
+        header = header.slice(0, start) + value + header.slice(end);
+      }
+      return opening + header + text.slice(opening.length + yaml.length);
     },
   };
 }

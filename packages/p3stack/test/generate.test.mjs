@@ -85,6 +85,23 @@ test("the coupling lint scans the second source", () => {
   } finally { dispose(); }
 });
 
+test("the coupling lint flags /loop invocations but permits path segments", t => {
+  const { deny, denyCommands } = JSON.parse(readFileSync(new URL("../rules/lint.json", import.meta.url)));
+  const path = "skills/demo/usage.md", safe = 'Read [route](/loop), GET /loop HTTP/1.1, /loop/data or passes/loop-check.ts.\n';
+  const f = fixture({
+    ["vendor/up/" + path]: safe,
+    "vendor/up/skills/demo/compiler.ts": 'import { loopCheck } from "./passes/loop-check.ts";\n',
+    "rules/lint.json": JSON.stringify({ deny, denyCommands }),
+  });
+  t.after(f.dispose);
+  const build = () => generate({ packageDir: f.root, outDir: f.out });
+  build();
+  for (const invocation of ["Use **/loop**.", "`/loop 1h` until green.", "/loop"]) {
+    writeFileSync(join(f.root, "vendor/up", path), safe + invocation + "\n");
+    assert.throws(build, /skills\/demo\/usage\.md:2: \/loop/);
+  }
+});
+
 test("source-scoped token rules rewrite only that source and global rules still span sources", () => {
   const { root, out, read, dispose } = twoSources({
     "rules/tokens.json": JSON.stringify([
@@ -905,7 +922,16 @@ pocockCase("11 slash commands use emitted names and protect paths", ({ run, inpu
   writeFileSync(file, readFileSync(file, "utf8") + "\nUse /tdd and /code-review, /to-spec, /clear. Keep ../research/SKILL.md.\nargument-hint: ignored\n");
   assert.equal(run().status, 0);
   assert.ok(read("implement-spec/references/implement.md").includes("Use /skill:tdd and /skill:code-review, /skill:to-spec, /clear. Keep ../research/SKILL.md."));
-  assert.doesNotMatch(read("implement-spec/references/implement.md"), /argument-hint:/);
+  assert.ok(read("implement-spec/references/implement.md").includes("\nargument-hint: ignored\n"));
+});
+
+pocockCase("metadata rules preserve a fenced header in a renamed skill", ({ run, input, read }) => {
+  const file = input("engineering/prototype/SKILL.md");
+  const sample = "\n```yaml\n---\nname: prototype\ndescription: Example.\nicon: paintbrush\ncolor: blue\npaths: [src/**]\nargument-hint: optional\n---\n```\n";
+  writeFileSync(file, readFileSync(file, "utf8") + sample);
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(read("interactive-prototype/SKILL.md").endsWith(sample));
 });
 
 pocockCase("12 dependency closure does not depend on invocation spelling", ({ run, input, rewrite }) => {
@@ -1028,16 +1054,18 @@ pocockCase("17 staged lint rejects missing resources in both modes", ({ run, inp
   }
 });
 
-pocockCase("staged resource checks keep their source scope", ({ run, root, input }) => {
-  const cursorFile = join(root, "vendor/pstack/pstack/skills/bro/SKILL.md");
-  writeFileSync(cursorFile, readFileSync(cursorFile, "utf8") + "\n[missing](references/not-bundled.md)\n");
-  const cursor = run();
-  assert.equal(cursor.status, 0, cursor.stderr);
-  const file = input("engineering/research/SKILL.md");
-  writeFileSync(file, readFileSync(file, "utf8") + "\n[missing](references/not-bundled.md)\n");
-  const pocock = run();
-  assert.equal(pocock.status, 1);
-  assert.match(pocock.stderr, /skills\/research.*|Referenced resource does not exist/);
+pocockCase("all owners pass resource lint before installation, including authored skills", ({ run, root }) => {
+  for (const [path, resource] of [
+    ["vendor/pstack/pstack/skills/bro/SKILL.md", "missing-cursor"],
+    ["authored/skills/release/SKILL.md", "missing-authored"],
+  ]) {
+    const file = join(root, path);
+    writeFileSync(file, readFileSync(file, "utf8") + `\n[missing](references/${resource}.md)\n`);
+  }
+  const result = run();
+  assert.equal(result.status, 1);
+  for (const resource of ["missing-cursor", "missing-authored"]) assert.match(result.stderr, new RegExp(resource));
+  assert.equal(existsSync(join(root, "skills")), false);
 });
 
 pocockCase("18 unavailable staged linter refuses replacement", ({ root, run }) => {

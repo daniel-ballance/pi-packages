@@ -164,8 +164,25 @@ test("a moved file's own path in plain prose is rebased, and SKILL.md stays a co
     "Run ../first/references/leaf/scripts/check, then ../first/references/leaf/scripts/check again. Every skill has a SKILL.md.\n");
 });
 
+for (const sample of [
+  "Keep scripts/ small. Most projects have a `scripts/` directory.\n",
+  "In the user's repo:\n\n```sh\necho hi > references/note.md\n```\n",
+  "Example evidence:\n\n```tsv\nphase\tevidence\nbaseline\tscripts/check\n```\n",
+]) {
+  test(`moving a reference preserves the consumer example: ${sample.split("\n")[0]}`, t => {
+    const f = referenceFixture(t);
+    f.write("vendor/demo/skills/leaf/scripts/check", "#!/bin/sh\n");
+    f.write("vendor/demo/skills/leaf/references/note.md", "Note.\n");
+    f.write("vendor/demo/skills/leaf/usage.md", sample);
+    f.build();
+    assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf/usage.md"), "utf8"), sample);
+  });
+}
+
 for (const [form, example, line, resource = "scripts/check"] of [
   ["fence", "```md\n[run](scripts/check)\n```", 3],
+  ["fenced invocation", "~~~sh\necho hi > scripts/check\nbash scripts/check --arg\n~~~", 4],
+  ["fenced copy of own script", "```sh\ncp scripts/check \"$workdir/\"\n```", 3],
   ["HTML attribute", '<a href="./scripts/check">run</a>', 2],
   ["untranslated flag", "Run --file=scripts/check.", 2],
   ["directory href", '<a href="scripts/">scripts</a>', 2, "scripts/"],
@@ -205,11 +222,26 @@ test("the command lint distinguishes dropped commands from resource paths and UR
   const f = referenceFixture(t), path = "skills/retired/SKILL.md";
   f.write("vendor/demo/" + path, f.skill("retired"));
   f.write("registry/skills.json", [...f.skills, f.ref, { source: "demo", path, action: "drop", reason: "Retired." }]);
-  f.write("extra/agents/read.md", "See https://example.test/retired and [app route](/leaf).\n");
+  f.write("extra/agents/read.md", "See https://example.test/retired and [app route](/leaf). GET /leaf HTTP/1.1; cd /retired.\n");
   f.build();
   rmSync(f.outDir, { recursive: true }); // Each generation starts in fresh staging.
   f.write("extra/agents/read.md", "Run /retired.\n");
   assert.throws(f.build, /read.md:1: removed skill command \/retired/);
+});
+
+test("untranslated fenced and indented invocations fail at the installed file and line", t => {
+  const f = fixture(t);
+  f.write("registry/chains.json", []);
+  const examples = [
+    "GET /first HTTP/1.1", "cd /first", '[endpoint](/first)', '<a href="/first">path</a>',
+    "/first the topic", "Then invoke **/first**.",
+  ];
+  f.write("extra/agents/examples.md", ["# Prompts", "", "~~~~md", ...examples, "~~~~", "", "    Run `/first` next.", ""].join("\n"));
+  assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), error => {
+    const hits = error.message.split("\n").filter(line => line.includes("untranslated fenced command"));
+    assert.deepEqual(hits, [8, 9, 12].map(line => `agents/examples.md:${line}: untranslated fenced command /first`));
+    return true;
+  });
 });
 
 test("a reference cannot own another reference", t => {
@@ -322,6 +354,16 @@ test("registry reads resolved YAML aliases and edits invocation at its use site"
   f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
   generate({ packageDir: f.root, outDir });
   assert.equal(readFileSync(join(outDir, path), "utf8"), source);
+});
+
+test("adding an invocation flag does not overlap removal of an indented first field", t => {
+  const f = fixture(t), path = "skills/first/SKILL.md";
+  f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
+  f.write("registry/chains.json", []);
+  f.write(`vendor/demo/${path}`, "---\n  icon: crown\n  name: first\n  description: First.\n---\n");
+  const outDir = join(f.root, "out");
+  generate({ packageDir: f.root, outDir });
+  assert.equal(readFileSync(join(outDir, path), "utf8"), "---\n  disable-model-invocation: true\n  name: first\n  description: First.\n---\n");
 });
 
 for (const invocation of ["model", "user"]) {
@@ -443,10 +485,12 @@ test("generation uses registry drops, renamed directories, and invocation", t =>
   ]);
   f.write("registry/routes.json", []);
   f.write("registry/chains.json", []);
-  f.write("rules/tokens.json", [{ id: "rename", min: 1, find: "name: first", replace: "name: renamed", files: "^skills/renamed/SKILL.md$" }]);
+  const body = "\n```yaml\nname: first\nicon: crown\npaths: [src/**]\n```\n";
+  const kept = "# retained comment\ndescription: >-\n  A fixture\n  skill.\n";
+  f.write("vendor/demo/skills/first/SKILL.md", `---\nname: first # local label\nicon: crown\npaths:\n  - src/**\n${kept}---\n${body}`);
   const outDir = join(f.root, "out");
   generate({ packageDir: f.root, outDir });
-  assert.match(readFileSync(join(outDir, "skills/renamed/SKILL.md"), "utf8"), /disable-model-invocation: true/);
+  assert.equal(readFileSync(join(outDir, "skills/renamed/SKILL.md"), "utf8"), `---\ndisable-model-invocation: true\nname: renamed # local label\n${kept}---\n${body}`);
   assert.equal(existsSync(join(outDir, "skills/first")), false);
   assert.equal(existsSync(join(outDir, "skills/dropped")), false);
 });
