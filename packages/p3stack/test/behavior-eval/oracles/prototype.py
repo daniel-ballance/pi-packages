@@ -30,6 +30,8 @@ class Prototype(HTMLParser):
     def handle_data(self, data):
         if self.section == "style" and re.search(r"@import\b", data, re.I):
             self.external = True
+        if self.section == "script" and re.search(r"""\b(?:import\s*\(?\s*|from\s*)['"]""", data):
+            self.external = True
         if self.section == "script" and re.search(r"addEventListener\s*\(|\.on(?:click|change|submit|input)\s*=", data, re.I):
             self.handler = True
         self.content.append(data)

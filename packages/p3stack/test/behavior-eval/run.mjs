@@ -3,7 +3,7 @@
 // p3stack-mode on and off, and grades what the agent did (tool calls, files,
 // commands, final reply) rather than what it says it did. Spends tokens.
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +19,7 @@ function walk(dir, base = dir) {
   return readdirSync(dir).flatMap(name => {
     const path = join(dir, name);
     if (name === ".git" || name === "node_modules") return [];
-    return statSync(path).isDirectory() ? walk(path, base) : [relative(base, path)];
+    return lstatSync(path).isDirectory() ? walk(path, base) : [relative(base, path)];
   });
 }
 
@@ -125,13 +125,17 @@ export function grade(check, { calls, final }, project, beforeRun) {
     case "file": {
       const files = walk(project).filter(path => new RegExp(check.pattern).test(path));
       if (check.count !== undefined && files.length !== check.count) return false;
-      if (check.verifyPrototype) return files.length === 1 && runCheck("python3", [join(here, "oracles/prototype.py"), files[0]], project).status === 0;
+      if (check.verifyPrototype) return files.length === 1 && lstatSync(join(project, files[0])).isFile() && runCheck("python3", [join(here, "oracles/prototype.py"), files[0]], project).status === 0;
       if (!check.contains && !check.absent) return check.count !== undefined || files.length > 0;
       return files.some(path => {
         const text = readFileSync(join(project, path), "utf8");
         return (!check.contains || text.includes(check.contains)) && (!check.absent || !new RegExp(check.absent).test(text));
       });
     }
+    case "skipped-test": return final.split(/(?<=[.!?])\s+/).some(sentence =>
+      /\b(?:skips?|skipped|disabled)\b/i.test(sentence) && /sumAll|sum\.test\.js/i.test(sentence) &&
+      /empty[- ](?:list|array|input)|\[\s*\]|sum\.test\.js:13\b/i.test(sentence) &&
+      !/\b(?:not|never|no tests?(?: were| was| are| is)?) (?:skipped|disabled)\b/i.test(sentence));
     case "unchanged": return beforeRun !== undefined && treeState(project) === beforeRun;
     case "regression": return regressionFailsOnOriginal(project);
     case "oracle": return runCheck(process.execPath, [join(here, "oracles", check.script)], project).status === 0;

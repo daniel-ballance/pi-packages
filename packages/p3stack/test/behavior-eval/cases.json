@@ -11,7 +11,7 @@
       "tools": "read,bash,grep,find,ls",
       "outcome": [
         { "id": "unchanged-tree", "kind": "unchanged" },
-        { "id": "names-skipped-test", "kind": "final", "pattern": "(?=[\\s\\S]*\\b(?:skips?|skipped|disabled)\\b)(?=[\\s\\S]*(?:sumAll|sum\\.test\\.js))(?=[\\s\\S]*(?:empty[- ](?:list|array|input)|\\[\\s*\\]|sum\\.test\\.js:13\\b))" }
+        { "id": "names-skipped-test", "kind": "skipped-test" }
       ],
       "process": [
         { "id": "ran-floor-check", "kind": "bash", "pattern": "floor-check\\.mjs" }

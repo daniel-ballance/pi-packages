@@ -62,6 +62,8 @@ test("the review must identify the skipped empty-list test and preserve an alrea
   assert.equal(report('test/sum.test.js skips “sumAll of an empty list is zero”; sumAll([]) actually throws.'), true);
   assert.equal(report("No tests were skipped."), false);
   assert.equal(report("There is a skipped test in this repo."), false);
+  assert.equal(report("No tests were skipped. sumAll([]) works."), false);
+  assert.equal(report("The test for sumAll([]) is not skipped."), false);
   assert.equal(check("unchanged-tree"), true);
   put("notes.txt", "unrequested\n");
   assert.equal(check("unchanged-tree"), false);
@@ -75,18 +77,26 @@ const html = `<output id="state">requested</output>
   <button onclick="state.value='rejected'">Reject</button>
   <button onclick="state.value='refunded'">Complete refund</button>`;
 test("prototype checks apply to one usable HTML document, not scattered markers or external assets", t => {
-  const { check, put } = fixture(t, "prototype-logic");
+  const { check, put, project } = fixture(t, "prototype-logic");
   const passes = () => check("single-self-contained-prototype");
   put("a.html", html);
   assert.equal(passes(), true);
   for (const broken of ["<button>Inert</button><!-- refunded -->", "<button>requested approved rejected refunded</button>",
-    html + "<ScRiPt SRC='refund.js'></SCRIPT>", html + "<link href=theme.css REL='preload stylesheet'>", html + '<style>@import url("theme.css");</style>']) {
+    html + '<script type="module">import "./refund.js";</script>', html + "<ScRiPt SRC='refund.js'></SCRIPT>", html + "<link href=theme.css REL='preload stylesheet'>", html + '<style>@import url("theme.css");</style>']) {
     put("a.html", broken);
     assert.equal(passes(), false, broken);
   }
   put("a.html", html);
   put("b.html", "<!-- refunded -->");
   assert.equal(passes(), false, "a second HTML file, even without a button");
+  const outside = mkdtempSync(join(tmpdir(), "linked-html-"));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  writeFileSync(join(outside, "external.html"), html);
+  const path = join(project, "a.html");
+  rmSync(path);
+  rmSync(join(project, "b.html"));
+  symlinkSync(join(outside, "external.html"), path);
+  assert.equal(passes(), false, "a link to a document outside the submission is not self-contained");
 });
 
 test("source grounding requires retrieved Vitest docs, not an error, unrelated search or mere citation", t => {
