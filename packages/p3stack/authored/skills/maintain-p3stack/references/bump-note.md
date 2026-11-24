@@ -37,7 +37,7 @@ Name dependency-refresh or host-contract work kept separate. Record anything blo
 
 ## PR body evidence
 
-For every newly classified skill, include the exact source-relative path and its emit or drop verdict in the PR body. For a min-match repair, include the rule id and the literal old and new `find` values. The note retains the full decision list. These body details let the reviewer identify the repair without opening another file.
+For every newly classified skill, include the exact source-relative path and its emit, reference or drop verdict in the PR body. For a min-match repair, include the rule id and the literal old and new `find` values. The note retains the full decision list. These body details let the reviewer identify the repair without opening another file.
 
 ### Include a min-match repair
 
