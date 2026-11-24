@@ -1,6 +1,7 @@
 {
   "rankOneFloor": 0.95,
   "collisionThreshold": 0.4,
+  "pending": [],
   "cases": [
     { "skill": "code-review",
       "positive": [
