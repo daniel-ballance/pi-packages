@@ -33,3 +33,24 @@ test("grilling returns a design without inventing an approval or starting a buil
   assert.match(grill, /(?:approval|verdict|sign-off)[^\n]*pending/i);
   assert.doesNotMatch(grill, /until the user confirms you have reached a shared understanding/i);
 });
+
+test("a body-only request uses the same format as PR delivery without publishing", () => {
+  const pr = skill("pr"), opening = playbook("opening-a-pr");
+  assert.match(pr, /Descriptions[^\n]*opening-a-pr\.md/i);
+  assert.match(pr, /return (?:just|only) the body/i);
+  assert.doesNotMatch(pr, /^## (?:Summary|Evidence|Merge Danger)$/m);
+  assert.match(opening, /repository[^\n]*PR template[^\n]*(?:otherwise|absence|without one)/i);
+  assert.match(opening, /## Verification/);
+});
+
+test("an integration queue opens a draft, links it, and promotes the reviewed head", () => {
+  const spec = skill("implement-spec"), opening = playbook("opening-a-pr");
+  assert.match(spec, /tracker closes work through PRs[^\n]*draft[^\n]*first merge[^\n]*opening-a-pr\.md/i);
+  assert.match(spec, /final integration head[^\n]*review[^\n]*same PR ready/i);
+  assert.match(spec, /(?:otherwise|without a PR|if there is no PR)[^\n]*report the integration branch/i);
+  assert.match(opening, /integration (?:draft|queue)[^\n]*(?:--draft|draft: true)/i);
+  assert.match(opening, /ready for review[^\n]*draft: false/i);
+  assert.match(opening, /host integration[^\n]*draft/i);
+  assert.match(opening, /before (?:opening|marking)[^\n]*ready[^\n]*verdict on the changed diff/i);
+  assert.doesNotMatch(opening, /open every PR ready|draft: false` on every creation|if a PR still opens as a draft/i);
+});

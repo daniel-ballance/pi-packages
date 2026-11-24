@@ -61,7 +61,7 @@ test("T3 capacity, heartbeat and prototype checks have a permitted action", () =
 test("opening a PR cites the Pull requests section once", () => {
   const opening = readFileSync(new URL("../skills/poteto-mode/playbooks/opening-a-pr.md", import.meta.url), "utf8");
   assert.match(opening, /Pull requests/i);
-  assert.match(opening, /\]\(references\/host-capabilities\.md[#)]/);
+  assert.match(opening, /\]\(\.\.\/poteto-mode\/references\/host-capabilities\.md[#)]/);
 });
 
 test("the workflow gate is a caller feature and the template helper resolves from the installed skill", () => {
