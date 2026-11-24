@@ -26,6 +26,11 @@ test("trace keeps tool calls in order and the last assistant text", () => {
   assert.match(seen.final, /vitest\.dev/);
 });
 
+test("trace rejects corrupt or empty evidence instead of grading the surviving lines", () => {
+  assert.throws(() => trace(events + "corrupt\n"), /JSONL/);
+  assert.throws(() => trace("  \n"), /empty/i);
+});
+
 test("grade checks reads, order, tools with arguments, any-of, and the final reply", () => {
   const seen = trace(events);
   assert.equal(grade({ kind: "read", pattern: "diagnosing-bugs/SKILL\\.md" }, seen), true);

@@ -2,16 +2,18 @@
 // Tier C behavior eval: runs realistic tasks in fixture repositories with
 // p3stack-mode on and off, and grades what the agent did (tool calls, files,
 // commands, final reply) rather than what it says it did. Spends tokens.
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { gitEnv } from "../../generator/git-env.mjs";
+import { agentSource, defaultOutput, parseEvent, positiveInteger, receipts, runPi } from "../routing-eval/harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SUBSTITUTIONS = { "{{SKIP}}": "skip" };
-const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe", env: { ...process.env, GIT_AUTHOR_NAME: "eval", GIT_AUTHOR_EMAIL: "eval@example.com", GIT_COMMITTER_NAME: "eval", GIT_COMMITTER_EMAIL: "eval@example.com" } }).toString();
+const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe", env: { ...gitEnv(), GIT_AUTHOR_NAME: "eval", GIT_AUTHOR_EMAIL: "eval@example.com", GIT_COMMITTER_NAME: "eval", GIT_COMMITTER_EMAIL: "eval@example.com" } }).toString();
 
 function walk(dir, base = dir) {
   return readdirSync(dir).flatMap(name => {
@@ -46,7 +48,7 @@ function treeState(root) {
 }
 
 function runCheck(command, args, cwd) {
-  const env = { ...process.env };
+  const env = gitEnv();
   delete env.NODE_TEST_CONTEXT; // node --test otherwise skips discovery inside our own test suite.
   const result = spawnSync(command, args, { cwd, env, encoding: "utf8", timeout: 120000 });
   if (result.error) throw result.error;
@@ -72,8 +74,7 @@ export function trace(jsonl) {
   let final = "", position = 0;
   for (const line of jsonl.split("\n")) {
     if (!line.trim()) continue;
-    let event;
-    try { event = JSON.parse(line); } catch { continue; }
+    const event = parseEvent(line);
     position++;
     if (event.type === "tool_execution_start") {
       const call = { tool: event.toolName, args: event.args ?? {}, start: position, ok: undefined };
@@ -91,6 +92,7 @@ export function trace(jsonl) {
       if (text.trim()) final = text;
     }
   }
+  if (!position) throw new Error("Empty Pi JSONL stream");
   return { calls: order, final };
 }
 
@@ -142,56 +144,45 @@ export function assess(row, seen, project, beforeRun) {
   return { outcome, process, passed: outcome.score === 1 };
 }
 
-function runPi({ agentDir, project, model, row, arm, timeoutSeconds }) {
-  return new Promise(done => {
-    const env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
-    for (const key of ["PI_SUBAGENT", "PI_SUBAGENT_POLICY", "PI_SUBAGENT_ALLOWED_TOOLS", "PI_SUBAGENT_PEER_FD", "T3_MCP_URL"]) delete env[key];
-    const mode = arm === "on" ? `/p3stack on ${row.grant === "autonomous" ? "autonomous" : "default"}` : "/p3stack off";
-    const args = ["--mode", "json", "--no-session", "--model", model, "--tools", row.tools, "--no-context-files", "--approve", ...(row.mcp ? [] : ["--no-mcp", "--offline"]), mode, row.prompt];
-    const child = spawn("pi", args, { cwd: project, env, stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "", stderr = "", timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 3000); }, timeoutSeconds * 1000);
-    child.stdout.on("data", chunk => { stdout += chunk; });
-    child.stderr.on("data", chunk => { stderr += chunk; });
-    child.on("close", code => { clearTimeout(timer); done({ stdout, stderr, code, timedOut }); });
-  });
-}
-
 async function main() {
   const { values } = parseArgs({ options: {
     "agent-dir": { type: "string", default: process.env.P3STACK_EVAL_AGENT_DIR },
     model: { type: "string" }, only: { type: "string" }, arms: { type: "string", default: "on,off" },
-    runs: { type: "string", default: "1" }, output: { type: "string", default: join(here, "output") },
-    keep: { type: "boolean", default: false },
+    runs: { type: "string", default: "1" }, output: { type: "string", default: defaultOutput },
+    keep: { type: "boolean", default: false }, "timeout-seconds": { type: "string" },
   } });
-  const agentDir = values["agent-dir"] && resolve(values["agent-dir"]);
-  if (!agentDir || agentDir === join(homedir(), ".pi/agent")) throw new Error("Pass --agent-dir <disposable agent directory> holding auth.json, models.json, settings.json, and mcp.json for MCP cases; never the live ~/.pi/agent.");
-  if (!["auth.json", "models.json", "settings.json"].every(name => existsSync(join(agentDir, name)))) throw new Error(`${agentDir} needs auth.json, models.json, and settings.json (packages: this p3stack and web-search).`);
   const suite = JSON.parse(readFileSync(join(here, "cases.json"), "utf8"));
-  const model = values.model ?? suite.model, arms = values.arms.split(","), runs = Number(values.runs);
-  const rows = suite.cases.filter(row => !values.only || values.only.split(",").includes(row.id));
-  if (!rows.length) throw new Error(`Unknown case ${values.only}`);
-  mkdirSync(values.output, { recursive: true });
+  const model = values.model ?? suite.model, arms = values.arms.split(",");
+  if (!model.trim()) throw new Error("--model must not be empty");
+  if (arms.some(arm => !["on", "off"].includes(arm)) || new Set(arms).size !== arms.length) throw new Error("Expected distinct --arms on,off, on or off");
+  const runs = positiveInteger(values.runs, "--runs");
+  const timeoutSeconds = positiveInteger(values["timeout-seconds"] ?? suite.timeoutSeconds, "--timeout-seconds");
+  const ids = values.only?.split(",");
+  if (ids?.some(id => !suite.cases.some(row => row.id === id))) throw new Error(`Unknown case in ${values.only}`);
+  const rows = suite.cases.filter(row => !ids || ids.includes(row.id));
+  if (!rows.length) throw new Error("No behavior cases to run");
+  const source = agentSource(values["agent-dir"], { settingsRequired: true, mcp: rows.some(row => row.mcp) });
+  const output = receipts(values.output, "behavior", source);
   const results = [];
   for (const row of rows) for (const arm of arms) for (let run = 1; run <= runs; run++) {
-    const project = mkdtempSync(join(tmpdir(), `p3stack-behavior-${row.id}-`));
+    const project = mkdtempSync(join(source.scratch, `p3stack-behavior-${row.id}-`));
     try {
       const before = materialize(row.fixture, project);
       const started = Date.now();
-      const outcome = await runPi({ agentDir, project, model, row, arm, timeoutSeconds: suite.timeoutSeconds });
+      const mode = arm === "on" ? `/p3stack on ${row.grant ?? "default"}` : "/p3stack off";
+      const args = ["--mode", "json", "--no-session", "--model", model, "--tools", row.tools, "--no-context-files", "--approve", ...(row.mcp ? [] : ["--no-mcp", "--offline"]), mode, row.prompt];
+      const outcome = await runPi({ source, cwd: project, args, timeoutSeconds, mcp: row.mcp, log: join(output, `${row.id}.${arm}.${run}`) });
       const seen = trace(outcome.stdout);
       const scores = assess(row, seen, project, before);
-      const name = `${row.id}.${arm}.${run}`;
-      writeFileSync(join(values.output, `${name}.jsonl`), outcome.stdout);
-      writeFileSync(join(values.output, `${name}.stderr`), outcome.stderr);
-      const result = { id: row.id, arm, run, seconds: Math.round((Date.now() - started) / 1000), timedOut: outcome.timedOut, exit: outcome.code, toolCalls: seen.calls.length, ...scores };
+      const result = { id: row.id, arm, run, seconds: Math.round((Date.now() - started) / 1000), project: values.keep ? project : undefined, exit: outcome.code, toolCalls: seen.calls.length, ...scores };
       results.push(result);
       for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${(scores[name].score * 100).toFixed(0)}%: ${scores[name].checks.map(c => `${c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
     } finally {
       if (!values.keep) rmSync(project, { recursive: true, force: true });
     }
   }
-  writeFileSync(join(values.output, "results.json"), JSON.stringify({ model, results }, null, 2) + "\n");
+  if (!results.length) throw new Error("No completed behavior runs");
+  writeFileSync(join(output, "results.json"), JSON.stringify({ model, results }, null, 2) + "\n");
   for (const row of rows) for (const arm of arms) {
     const own = results.filter(r => r.id === row.id && r.arm === arm);
     const mean = name => (100 * own.reduce((sum, r) => sum + r[name].score, 0) / own.length).toFixed(0);
