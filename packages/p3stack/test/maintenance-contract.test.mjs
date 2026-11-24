@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -31,6 +31,21 @@ test("maintenance sources share one durable note; nightly resolves a role", () =
   assert.match(docs[2], /every source/i);
   assert.match(docs[2], /docs\/bumps\/README.md/);
   assert.match(docs[1], /role/i);
+});
+
+test("smoke rejects the physical selected agent directory and descendants before mktemp", t => {
+  const home = mkdtempSync(join(tmpdir(), "smoke-guard-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const agent = join(home, "custom agent"), child = join(agent, "sub"), alias = join(home, "linked agent");
+  mkdirSync(child, { recursive: true }); symlinkSync(agent, alias);
+  // Stop before any creation or credential access if the guard fails.
+  writeFileSync(join(home, "mktemp"), '#!/bin/sh\necho reached-mktemp >&2\nexit 23\n', { mode: 0o755 });
+  for (const TMPDIR of [agent, child]) {
+    const run = spawnSync("bash", [join(dir, "scripts/with-smoke-dir.sh"), "true"], { cwd: new URL("../../../", import.meta.url), encoding: "utf8",
+      env: { ...process.env, PATH: home + ":" + process.env.PATH, HOME: home, TMPDIR, PI_CODING_AGENT_DIR: alias } });
+    assert.equal(run.status, 2, run.stderr);
+    assert.doesNotMatch(run.stderr, /reached-mktemp/);
+  }
 });
 
 test("smoke credentials stay private and are removed after success, failure or interruption", t => {
