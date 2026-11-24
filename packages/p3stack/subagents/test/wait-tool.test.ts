@@ -203,7 +203,10 @@ test("a preview is not a review; delegation-only reads can replay each complete 
   });
 });
 
-test("only the human's confirmation clears a detached live-PID slot", async () => {
+for (const evidence of [
+  { pid: process.pid, unconfirmedStop: "pending" },
+  { uncertainSubmission: { at: "now", reason: "Prompt acceptance timed out" } },
+]) test(`only the human's confirmation reconciles a detached ${evidence.pid ? "live PID" : "uncertain submission"}`, async () => {
   await withWaitTool(async ({ manager, confirmStop, worker }) => {
     const live = manager.capacity().live;
     assert.equal((await manager.close("detached")).outcome, "unconfirmed");
@@ -213,8 +216,9 @@ test("only the human's confirmation clears a detached live-PID slot", async () =
     await confirmStop("detached", true);
     assert.equal(manager.capacity().live, live - 1);
     assert.equal(manager.get("detached").status, "stopped");
+    assert.equal(manager.get("detached").uncertainSubmission, undefined);
     assert.ok(manager.get("detached").hold, "manual stop confirmation never releases a hold");
-  }, [{ id: "detached", pid: process.pid, unconfirmedStop: "pending", hold: {kind: "kill", at: "now", outcome: "failed"} }]);
+  }, [{ id: "detached", ...evidence, hold: {kind: "halt", at: "now", outcome: "failed"} }]);
 });
 
 test("a fully paged result is no longer advertised as a pending full read", async () => {
