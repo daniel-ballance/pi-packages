@@ -43,7 +43,7 @@ function rpc(t: TestContext, env: NodeJS.ProcessEnv = {}, extensions: string[] =
     }
     assert.fail(`No matching RPC event: ${stderr}\n${events.slice(from).map(e => e.type).join(", ")}`);
   }
-  return { send, wait, root, requests: () => existsSync(requests) ? readFileSync(requests, "utf8").trim().split("\n").map(line => JSON.parse(line) as Packet) : [] };
+  return { send, wait, root, events: () => events, requests: () => existsSync(requests) ? readFileSync(requests, "utf8").trim().split("\n").map(line => JSON.parse(line) as Packet) : [] };
 }
 
 for (const host of ["terminal", "t3"]) test(`${host}: provider requests scope routing to this request and preserve the user's grant and correction`, async t => {
@@ -145,6 +145,18 @@ for (const route of ["nested", "workflow"]) test(`native ${route} initial delive
     await new Promise(resolve => setTimeout(resolve, 20));
   }
   assert.fail("no initial worker assignment reached the fixture provider");
+});
+
+test("without a configured deadline an RPC question stays open until it is answered", async t => {
+  const pi = rpc(t);
+  const from = pi.send({ type: "prompt", message: `CALL ${JSON.stringify({ name: "ask_user", arguments: { question: "Where?", default: "here" } })}` });
+  const dialog = await pi.wait(from, e => e.type === "extension_ui_request" && e.method === "input");
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  assert.equal(pi.events().slice(from).some(e => e.type === "tool_execution_end" && e.toolName === "ask_user"), false);
+  pi.send({ type: "extension_ui_response", id: dialog.id, value: "there" });
+  const result = await pi.wait(from, e => e.type === "tool_execution_end" && e.toolName === "ask_user");
+  assert.match(result.result.content[0].text, /The human answered: there/);
+  await pi.wait(from, e => e.type === "agent_settled");
 });
 
 test("an unanswered RPC dialog reaches its deadline; an explicit dismissal does not", async t => {

@@ -1,9 +1,10 @@
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+// Opt-in: a person may answer hours later, and a host such as T3 holds the question open until then.
 function rpcDeadline() {
   const ms = Number(process.env.P3STACK_ASK_TIMEOUT_MS);
-  return AbortSignal.timeout(Number.isSafeInteger(ms) && ms > 0 && ms <= 2_147_483_647 ? ms : 5 * 60_000);
+  return Number.isSafeInteger(ms) && ms > 0 && ms <= 2_147_483_647 ? AbortSignal.timeout(ms) : undefined;
 }
 
 const OTHER = "Other (type an answer)";

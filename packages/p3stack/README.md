@@ -35,7 +35,7 @@ An explicit request for full autonomy raises the grant for that task without cha
 pi --mode json --no-session '/p3stack on default' 'Explain how requests enter this repository. Do not edit files.'
 ```
 
-In RPC mode, `ask_user` waits up to five minutes for an answer, including free text after a choice. Set `P3STACK_ASK_TIMEOUT_MS` to change that deadline in milliseconds. A timeout is not a dismissal or approval. Terminal dialogs have no deadline.
+`ask_user` waits for an answer for as long as the question is open. For an RPC client that may never answer, set `P3STACK_ASK_TIMEOUT_MS` to a deadline in milliseconds; it covers free text after a choice too. A timeout is reported as no answer, not as a dismissal or an approval. Terminal dialogs have no deadline.
 
 ## Install choices and setup
 
