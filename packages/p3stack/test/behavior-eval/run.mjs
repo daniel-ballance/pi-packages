@@ -38,6 +38,32 @@ export function materialize(fixture, root) {
   git(root, "add", "-A");
   git(root, "commit", "-q", "-m", "base");
   if (existsSync(join(dir, "change"))) copyTree(join(dir, "change"), root);
+  if (fixture === "floor-review") return treeState(root);
+}
+
+function treeState(root) {
+  return [git(root, "rev-parse", "HEAD"), git(root, "status", "--porcelain", "--ignored", "-uall"), git(root, "diff", "--binary", "--no-ext-diff", "HEAD")].join("\0");
+}
+
+function runCheck(command, args, cwd) {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT; // node --test otherwise skips discovery inside our own test suite.
+  const result = spawnSync(command, args, { cwd, env, encoding: "utf8", timeout: 120000 });
+  if (result.error) throw result.error;
+  return result;
+}
+
+function regressionFailsOnOriginal(project) {
+  const copy = mkdtempSync(join(tmpdir(), "p3stack-red-"));
+  try {
+    cpSync(project, copy, { recursive: true, filter: path => ![".git", "node_modules"].includes(path.split("/").at(-1)) });
+    // Use the grader's base, not a commit or test selected by the agent.
+    const split = "src/split.js";
+    rmSync(join(copy, split), { force: true });
+    cpSync(join(here, "fixtures/bug-red-first/base", split), join(copy, split));
+    const result = runCheck(process.execPath, ["--test", "--test-reporter=tap"], copy);
+    return result.status === 1 && /ERR_ASSERTION/.test(result.stdout);
+  } finally { rmSync(copy, { recursive: true, force: true }); }
 }
 
 /** Parses Pi JSON-mode events into the trace the grader reads. */
@@ -58,6 +84,7 @@ export function trace(jsonl) {
       const call = calls.get(event.toolCallId);
       call.ok = event.isError === false && !event.result?.isError;
       call.end = position;
+      call.result = event.result?.content?.filter(part => part.type === "text").map(part => part.text).join("\n");
     }
     if (event.type === "message_end" && event.message?.role === "assistant") {
       const text = (event.message.content ?? []).filter(part => part.type === "text").map(part => part.text).join("\n");
@@ -71,7 +98,7 @@ const argText = call => JSON.stringify(call.args);
 const pathOf = call => String(call.args.path ?? call.args.file_path ?? "");
 function matches(step, calls) {
   const pattern = new RegExp(step.pattern, "i");
-  return calls.findIndex(call => call.ok === true && (
+  return calls.findIndex(call => call.ok === true && (!step.result || new RegExp(step.result, "i").test(call.result ?? "")) && (
     step.kind === "bash" ? call.tool === "bash" && pattern.test(String(call.args.command ?? "")) :
     step.kind === "read" ? call.tool === "read" && pattern.test(pathOf(call)) :
     step.kind === "edit" ? ["edit", "write"].includes(call.tool) && pattern.test(pathOf(call)) :
@@ -79,11 +106,11 @@ function matches(step, calls) {
 }
 
 /** Grades one expectation against the trace and the project directory after the run. */
-export function grade(check, { calls, final }, project) {
+export function grade(check, { calls, final }, project, beforeRun) {
   switch (check.kind) {
     case "bash": case "read": case "edit": case "tool": return matches(check, calls) >= 0;
     case "final": return new RegExp(check.pattern, "i").test(final);
-    case "any": return check.of.some(step => grade(step, { calls, final }, project));
+    case "any": return check.of.some(step => grade(step, { calls, final }, project, beforeRun));
     case "order": {
       const first = matches(check.first, calls), before = matches(check.before, calls);
       return first >= 0 && before >= 0 && (calls[first].end ?? first) < (calls[before].start ?? before);
@@ -91,15 +118,28 @@ export function grade(check, { calls, final }, project) {
     case "file": {
       const files = walk(project).filter(path => new RegExp(check.pattern).test(path));
       if (check.count !== undefined && files.length !== check.count) return false;
+      if (check.verifyPrototype) return files.length === 1 && runCheck("python3", [join(here, "oracles/prototype.py"), files[0]], project).status === 0;
       if (!check.contains && !check.absent) return check.count !== undefined || files.length > 0;
       return files.some(path => {
         const text = readFileSync(join(project, path), "utf8");
         return (!check.contains || text.includes(check.contains)) && (!check.absent || !new RegExp(check.absent).test(text));
       });
     }
-    case "command": return spawnSync("bash", ["-c", check.run], { cwd: project, stdio: "ignore", timeout: 120000 }).status === 0;
+    case "unchanged": return beforeRun !== undefined && treeState(project) === beforeRun;
+    case "regression": return regressionFailsOnOriginal(project);
+    case "oracle": return runCheck(process.execPath, [join(here, "oracles", check.script)], project).status === 0;
+    case "command": return runCheck("bash", ["-c", check.run], project).status === 0;
     default: throw new Error(`Unknown check kind ${check.kind}`);
   }
+}
+
+export function assess(row, seen, project, beforeRun) {
+  const group = expectations => {
+    const checks = expectations.map(check => ({ id: check.id, passed: grade(check, seen, project, beforeRun) }));
+    return { checks, score: checks.filter(check => check.passed).length / checks.length };
+  };
+  const outcome = group(row.outcome), process = group(row.process);
+  return { outcome, process, passed: outcome.score === 1 };
 }
 
 function runPi({ agentDir, project, model, row, arm, timeoutSeconds }) {
@@ -136,27 +176,28 @@ async function main() {
   for (const row of rows) for (const arm of arms) for (let run = 1; run <= runs; run++) {
     const project = mkdtempSync(join(tmpdir(), `p3stack-behavior-${row.id}-`));
     try {
-      materialize(row.fixture, project);
+      const before = materialize(row.fixture, project);
       const started = Date.now();
       const outcome = await runPi({ agentDir, project, model, row, arm, timeoutSeconds: suite.timeoutSeconds });
       const seen = trace(outcome.stdout);
-      const checks = row.expect.map(check => ({ id: check.id, passed: grade(check, seen, project) }));
+      const scores = assess(row, seen, project, before);
       const name = `${row.id}.${arm}.${run}`;
       writeFileSync(join(values.output, `${name}.jsonl`), outcome.stdout);
       writeFileSync(join(values.output, `${name}.stderr`), outcome.stderr);
-      const result = { id: row.id, arm, run, seconds: Math.round((Date.now() - started) / 1000), timedOut: outcome.timedOut, exit: outcome.code, toolCalls: seen.calls.length, checks, score: checks.filter(check => check.passed).length / checks.length };
+      const result = { id: row.id, arm, run, seconds: Math.round((Date.now() - started) / 1000), timedOut: outcome.timedOut, exit: outcome.code, toolCalls: seen.calls.length, ...scores };
       results.push(result);
-      console.log(`${row.id} [${arm}] run ${run}: ${checks.map(check => `${check.passed ? "+" : "-"}${check.id}`).join(" ")} (${result.seconds}s${outcome.timedOut ? ", timed out" : ""})`);
+      for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${(scores[name].score * 100).toFixed(0)}%: ${scores[name].checks.map(c => `${c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
     } finally {
       if (!values.keep) rmSync(project, { recursive: true, force: true });
     }
   }
   writeFileSync(join(values.output, "results.json"), JSON.stringify({ model, results }, null, 2) + "\n");
-  for (const row of rows) {
-    const mean = arm => { const own = results.filter(r => r.id === row.id && r.arm === arm); return own.length ? own.reduce((sum, r) => sum + r.score, 0) / own.length : undefined; };
-    const on = mean("on"), off = mean("off");
-    console.log(`${row.id}: on ${on === undefined ? "-" : (on * 100).toFixed(0) + "%"}, off ${off === undefined ? "-" : (off * 100).toFixed(0) + "%"}${on !== undefined && off !== undefined ? `, delta ${((on - off) * 100).toFixed(0)} points` : ""}`);
+  for (const row of rows) for (const arm of arms) {
+    const own = results.filter(r => r.id === row.id && r.arm === arm);
+    const mean = name => (100 * own.reduce((sum, r) => sum + r[name].score, 0) / own.length).toFixed(0);
+    console.log(`${row.id} [${arm}]: outcomes ${mean("outcome")}%, process ${mean("process")}%`);
   }
+  if (results.some(result => !result.passed)) process.exitCode = 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => { console.error(error.message); process.exit(2); });

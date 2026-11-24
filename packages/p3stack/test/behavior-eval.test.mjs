@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { grade, materialize, trace } from "./behavior-eval/run.mjs";
+import { assess, grade, materialize, trace } from "./behavior-eval/run.mjs";
 
 const suite = JSON.parse(readFileSync(new URL("./behavior-eval/cases.json", import.meta.url), "utf8"));
 const events = [
@@ -65,13 +65,29 @@ test("file count is for matching paths, not just files with desirable content", 
   assert.equal(grade(check, seen, root), false);
 });
 
+test("outcome is the gate, not a blended score", t => {
+  const root = mkdtempSync(join(tmpdir(), "review-outcome-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const before = materialize("floor-review", root), row = suite.cases.find(row => row.id === "floor-review");
+  const seen = { calls: [], final: "The empty-list sumAll test is skipped; sumAll([]) throws." };
+  const good = assess(row, seen, root, before);
+  assert.equal(good.passed, true);
+  assert.equal(good.outcome.score, 1);
+  assert.equal(good.process.score, 0);
+  seen.calls.push({ tool: "bash", args: { command: "node floor-check.mjs" }, ok: true });
+  seen.final = "No tests were skipped.";
+  const bad = assess(row, seen, root, before);
+  assert.equal(bad.passed, false);
+  assert.equal(bad.process.score, 1);
+  assert.equal(bad.outcome.score, 0.5);
+});
+
 test("every case's fixture materializes as a committed base with the change left uncommitted, and file and command checks read it", t => {
   for (const row of suite.cases) {
     const root = mkdtempSync(join(tmpdir(), "behavior-fixture-"));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     materialize(row.fixture, root);
     assert.match(execFileSync("git", ["log", "--oneline"], { cwd: root }).toString(), /base/, row.id);
-    for (const check of row.expect) assert.ok(["bash", "read", "edit", "tool", "final", "any", "order", "file", "command"].includes(check.kind), `${row.id}/${check.id}`);
   }
   const root = mkdtempSync(join(tmpdir(), "behavior-floor-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
