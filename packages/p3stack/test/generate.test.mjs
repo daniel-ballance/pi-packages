@@ -220,6 +220,87 @@ test("a leaf section ends at the next heading of the same or a higher level, and
   } finally { leaf.dispose(); }
 });
 
+function sectionFixture(text, rule, tokens = []) {
+  const file = "skills/demo/SKILL.md";
+  return fixture({
+    [`vendor/up/${file}`]: text,
+    "rules/tokens.json": JSON.stringify(tokens),
+    "rules/sections.json": JSON.stringify([{ file, overlay: "demo/subagents.md", ...rule }]),
+    "rules/lint.json": "{\"deny\":[]}",
+  });
+}
+
+test("a token that turns a sibling into a child cannot expand a hashed overlay", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nMust survive.\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "demote", min: 1, find: "^## Next$", flags: "m", replace: "### Next" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /"## Pick" is not a leaf.*### Next/);
+});
+
+test("a token cannot make an overlay consume the body of a vanished sibling heading", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nNever part of Pick.\n\n## Last\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "remove-heading", min: 1, find: "## Next", replace: "Next:" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /section rule: skills\/demo\/SKILL.md:.*Pick.*boundary/);
+});
+
+test("a token may rename an unoverlaid sibling without moving the boundary", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nKeep me.\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "rename-heading", min: 1, find: "## Next", replace: "## Renamed" },
+  ]);
+  t.after(f.dispose);
+  generate({ packageDir: f.root, outDir: f.out });
+  assert.ok(f.read("skills/demo/SKILL.md").endsWith("## Renamed\n\nKeep me.\n"));
+});
+
+test("two overlays cannot claim the same leaf", t => {
+  const f = fixture({});
+  t.after(f.dispose);
+  const path = join(f.root, "rules/sections.json"), [rule] = JSON.parse(readFileSync(path, "utf8"));
+  writeFileSync(path, JSON.stringify([rule, rule]));
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /duplicate section.*skills\/demo\/SKILL.md.*Subagents/i);
+});
+
+test("a Setext child in the raw section is refused, even if a token removes its underline", t => {
+  const raw = "# Pick\n\nOld.\n\nDetail\n------\n\nKeep this.\n";
+  const f = sectionFixture(raw, { heading: "# Pick", upstream: sectionHash(raw, "# Pick") }, [
+    { id: "strip-underline", min: 1, find: "------", replace: "" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /"# Pick" is not a leaf.*Detail/);
+});
+
+test("a Setext section ends at its sibling and a fenced underline stays in the hashed leaf", t => {
+  const leaf = "Pick\n====\n\n```md\nFake\n----\n```\n";
+  const sibling = "Next\n====\n\nKeep this.\n";
+  const f = sectionFixture(leaf + "\n" + sibling, { heading: "Pick", upstream: sectionHash(leaf, "Pick") });
+  t.after(f.dispose);
+  generate({ packageDir: f.root, outDir: f.out });
+  assert.equal(f.read("skills/demo/SKILL.md"), "## Subagents\n\nPi delegation.\n\n" + sibling);
+});
+
+for (const [name, rule, diagnostic] of [
+  ["missing hash", {}, /(?:missing|expected|required).*upstream hash/i],
+  ["absent raw heading and hash", { upstreamHeading: "## Typo" }, /upstream heading "## Typo" not found/],
+  ["absent raw heading", { upstreamHeading: "## Typo", upstream: "123456789abc" }, /upstream heading "## Typo" not found/],
+  ["non-heading raw line", { upstreamHeading: "Old.", upstream: "123456789abc" }, /upstream heading "Old\." not found/],
+]) {
+  test(`section rejects ${name} without suggesting an undefined hash`, t => {
+    const f = sectionFixture("## Pick\n\nOld.\n", { heading: "## Pick", ...rule });
+    t.after(f.dispose);
+    assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), error => {
+      assert.match(error.message, diagnostic);
+      assert.doesNotMatch(error.message, /undefined/);
+      return true;
+    });
+  });
+}
+
 test("patches apply after tokens and sections, and a stale patch fails with its name", () => {
   const patch = [
     "--- a/skills/demo/SKILL.md", "+++ b/skills/demo/SKILL.md", "@@ -11,3 +11,3 @@", " ## Next", " ", "-Kept.", "+Patched.", "",

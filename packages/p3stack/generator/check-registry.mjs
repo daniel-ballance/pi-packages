@@ -13,8 +13,10 @@ export const playbookPath = target => target.startsWith("p3stack-mode/") ? `skil
 const { isMap, parseDocument } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("yaml");
 const INVOCATION_FLAG = "disable-model-invocation";
 
+export const frontmatterBlock = text => /^(\uFEFF?---[ \t]*\r?\n)([\s\S]*?)^---[ \t]*\r?$/my.exec(text);
+
 export function skillFrontmatter(text, path) {
-  const header = /^(\uFEFF?---[ \t]*\r?\n)([\s\S]*?)^---[ \t]*\r?$/my.exec(text);
+  const header = frontmatterBlock(text);
   if (!header) throw new Error(`${path}: expected a leading --- frontmatter block`);
   const [, opening, yaml] = header, doc = parseDocument(yaml);
   if (doc.errors.length || !isMap(doc.contents)) throw new Error(`${path}: invalid frontmatter: ${doc.errors[0]?.message ?? "expected a YAML mapping"}`);

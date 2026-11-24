@@ -2,11 +2,12 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
-import { checkRegistry, loadRegistry, skillFrontmatter } from "./check-registry.mjs";
+import { checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
 import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
@@ -76,7 +77,7 @@ function expander(commit, problems) {
   };
 }
 
-function applyTokens(files, owners, rules, expanders, problems) {
+function applyTokens(files, owners, rules, expanders, problems, sectionRewrites) {
   const skillNames = [...files.keys()]
     .flatMap(path => /^skills\/([^/]+)\/SKILL\.md$/.exec(path)?.slice(1) ?? [])
     .sort().map(name => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") || "(?!)";
@@ -99,76 +100,97 @@ function applyTokens(files, owners, rules, expanders, problems) {
       const matches = text.match(pattern)?.length ?? 0;
       if (matches === 0) continue;
       count += matches;
-      files.set(path, text.replace(pattern, expanders.get(owners.get(path))(rule.replace, `token rule ${rule.id}`)));
+      const replacement = expanders.get(owners.get(path))(rule.replace, `token rule ${rule.id}`);
+      files.set(path, text.replace(pattern, replacement));
+      sectionRewrites.get(path)?.push([pattern, replacement]);
     }
     if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min} after earlier token rewrites (source: ${rule.source ?? "all sources"}; files: ${rule.files ?? "all files"}). Review its scope and upstream text.`);
   }
 }
 
-// Whether each line sits inside fenced code. A fence opens with three or more
-// backticks or tildes, indented at most three spaces, and closes with a line of
-// at least as many of the same character (CommonMark).
-function fencedLines(lines) {
-  let fence;
-  return lines.map(line => {
-    const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-    if (!fence) {
-      if (marker && !(marker[1][0] === "`" && marker[2].includes("`"))) { fence = marker[1]; return true; }
-      return false;
-    }
-    if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && marker[2].trim() === "") fence = undefined;
-    return true;
+const { fromMarkdown } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("mdast-util-from-markdown");
+
+function sectionView(text) {
+  const lines = text.split("\n"), header = frontmatterBlock(text)?.[0] ?? "";
+  const offset = header.split("\n").length - 1;
+  // Only document headings delimit an overlay, not examples in fences or blockquotes.
+  const headings = fromMarkdown(text.slice(header.length)).children.filter(node => node.type === "heading").map(node => {
+    const start = offset + node.position.start.line - 1, last = offset + node.position.end.line - 1;
+    // For Setext headings the rule names the title, without the underline.
+    const title = lines.slice(start, Math.max(start + 1, last)).join("\n").replace(/\r$/gm, "");
+    return { start, title, level: node.depth };
   });
+  return { lines, headings };
 }
 
-const headingLevel = line => line.match(/^ {0,3}(#{1,6})(?:[ \t]|$)/)?.[1].length;
-
-function findSection(lines, heading) {
-  const fenced = fencedLines(lines);
-  const starts = lines.flatMap((line, index) => line === heading && !fenced[index] ? [index] : []);
-  if (starts.length !== 1) return { error: starts.length === 0 ? "not found" : `found ${starts.length} times` };
-  const start = starts[0], level = headingLevel(heading) ?? 0;
-  let end = lines.length;
-  const children = [];
-  for (let index = start + 1; index < lines.length; index++) {
-    const found = fenced[index] ? undefined : headingLevel(lines[index]);
-    if (found === undefined) continue;
-    if (found <= level) { end = index; break; }
-    children.push(lines[index]);
+function findSection({ lines, headings }, title) {
+  const matches = headings.filter(node => node.title === title);
+  if (matches.length !== 1) return { error: matches.length ? `found ${matches.length} times` : "not found" };
+  const [{ start, level }] = matches, children = [];
+  for (const next of headings) {
+    if (next.start <= start) continue;
+    if (next.level <= level) return { start, end: next.start, children };
+    children.push(next.title);
   }
-  return { start, end, children };
+  return { start, end: lines.length, children };
 }
 
-// The hash of the untranslated upstream section an overlay replaces. When
-// upstream edits that section, the overlay must be reviewed, not left to hide it.
-export function sectionHash(text, heading) {
-  const lines = text.split("\n"), section = findSection(lines, heading);
-  if (section.error) return undefined;
-  const body = lines.slice(section.start, section.end).join("\n").trimEnd() + "\n";
+function sectionText(lines, { start, end }) {
+  return lines.slice(start, end).join("\n") + (end < lines.length ? "\n" : "");
+}
+
+function hashSection(lines, section) {
+  const body = sectionText(lines, section).trimEnd() + "\n";
   return createHash("sha256").update(body).digest("hex").slice(0, 12);
 }
 
-function applySections(files, upstream, sections, overlaysDir, expand, problems) {
-  for (const { file, heading, upstreamHeading = heading, overlay, upstream: expected } of sections) {
+// Hash the untranslated section, never its rewritten text.
+export function sectionHash(text, heading) {
+  const view = sectionView(text), section = findSection(view, heading);
+  return section.error ? undefined : hashSection(view.lines, section);
+}
+
+function applySections(files, upstream, sections, sectionRewrites, overlaysDir, expand, problems) {
+  for (const [file, rules] of Map.groupBy(sections, rule => rule.file)) {
     const text = files.get(file);
     if (typeof text !== "string") { problems.push(`section rule: ${file} is not an emitted text file`); continue; }
-    const lines = text.split("\n"), section = findSection(lines, heading);
-    if (section.error) { problems.push(`section rule: ${file}: heading "${heading}" ${section.error}. Upstream changed the section.`); continue; }
-    const source = upstream.get(file);
-    const sourceSection = typeof source === "string" ? findSection(source.split("\n"), upstreamHeading) : undefined;
-    if (sourceSection && !sourceSection.error && sourceSection.children.length) {
-      const listed = sourceSection.children.map(line => `"${line}"`).join(", ");
-      problems.push(`section rule: ${file}: "${heading}" is not a leaf; it contains ${listed}. Replace each child. Put text before the first child in a token anchored on "${heading}". A sibling with no rule is emitted.`);
-      continue;
+    const raw = sectionView(upstream.get(file)), rewritten = sectionView(text), edits = [];
+    for (const { heading, upstreamHeading = heading, overlay, upstream: expected } of rules) {
+      const section = findSection(rewritten, heading);
+      if (section.error) { problems.push(`section rule: ${file}: heading "${heading}" ${section.error} after token rewrites.`); continue; }
+      const original = findSection(raw, upstreamHeading);
+      if (original.error) { problems.push(`section rule: ${file}: upstream heading "${upstreamHeading}" ${original.error}.`); continue; }
+      const children = [...new Set([...original.children, ...section.children])];
+      if (children.length) {
+        const listed = children.map(line => `"${line}"`).join(", ");
+        problems.push(`section rule: ${file}: "${heading}" is not a leaf; it contains ${listed}. Replace each child. Put text before the first child in a token anchored on "${heading}". A sibling with no rule is emitted.`);
+        continue;
+      }
+      const actual = hashSection(raw.lines, original);
+      if (!/^[0-9a-f]{12}$/.test(expected ?? "")) {
+        problems.push(`section rule: ${file}: "${heading}": expected a 12-digit upstream hash. Review the overlay against the raw section (hash ${actual}).`);
+        continue;
+      }
+      if (actual !== expected) {
+        problems.push(`section rule: ${file}: section "${heading}" changed upstream (was ${expected}, now ${actual}). Review the overlay, then update its hash.`);
+        continue;
+      }
+      // A sibling can also disappear without becoming a child. Replace only the
+      // translation of the raw span we hashed, not surrounding unreviewed text.
+      const translated = sectionRewrites.get(file).reduce((span, [pattern, replacement]) => span.replace(pattern, replacement), sectionText(raw.lines, original));
+      if (translated !== sectionText(rewritten.lines, section)) {
+        problems.push(`section rule: ${file}: "${heading}" changed boundary during token rewrites. Keep each rewrite inside or outside the reviewed section.`);
+        continue;
+      }
+      if (edits.some(edit => edit.start === section.start)) { problems.push(`Duplicate section rule: ${file}: "${heading}"`); continue; }
+      const replacement = expand(readFileSync(join(overlaysDir, overlay), "utf8"), `overlay ${overlay}`, file);
+      edits.push({ ...section, replacement });
     }
-    const actual = sectionHash(source, upstreamHeading);
-    if (actual !== expected) {
-      problems.push(`section rule: ${file}: section "${heading}" changed upstream (was ${expected}, now ${actual}). Review the overlay, then update its hash.`);
-      continue;
+    // All offsets refer to the same after-tokens view, never to an earlier overlay's text.
+    for (const { start, end, replacement } of edits.sort((a, b) => b.start - a.start)) {
+      rewritten.lines.splice(start, end - start, ...replacement.trimEnd().split("\n"), "");
     }
-    const replacement = expand(readFileSync(join(overlaysDir, overlay), "utf8"), `overlay ${overlay}`, file);
-    lines.splice(section.start, section.end - section.start, ...replacement.trimEnd().split("\n"), "");
-    files.set(file, lines.join("\n"));
+    files.set(file, rewritten.lines.join("\n"));
   }
 }
 
@@ -261,8 +283,10 @@ export function generate({ packageDir, outDir }) {
   const expanders = new Map(sources.map(source => [source.name, expander(infos.find(info => info.source === source.name)?.commit, problems)]));
   const expand = (text, where, path) => expanders.get(owners.get(path))(text, where);
   const upstream = new Map(files);
-  applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems);
-  applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
+  const sections = readJson(join(rules, "sections.json"), []);
+  const sectionRewrites = new Map(sections.map(({ file }) => [file, []]));
+  applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems, sectionRewrites);
+  applySections(files, upstream, sections, sectionRewrites, join(packageDir, "overlays"), expand, problems);
   if (registry) {
     for (const row of registry.skills.filter(row => row.action === "emit" && row.source !== "p3stack")) {
       const path = `skills/${row.name}/SKILL.md`, text = files.get(path);
