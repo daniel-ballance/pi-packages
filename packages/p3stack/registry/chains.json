@@ -195,9 +195,9 @@
     "id": "orchestrate-ledger",
     "playbook": "playbooks/orchestrate.md",
     "anchor": "Run it with your own tools.",
-    "position": "after",
+    "position": "before",
     "skill": "p3stack-mode/references/execution-ledger.md",
-    "when": "Always. Keep the run's ledger beside notes.md: dispatches, completions, and rulings, so a compacted coordinator never redispatches finished work."
+    "when": "Open the run ledger before dispatch. Keep notes.md beside it in the run directory."
   },
   {
     "id": "orchestrate-floor",
@@ -211,15 +211,15 @@
     "id": "autopilot-ledger",
     "playbook": "playbooks/autopilot-full.md",
     "anchor": "2. **Spawn one owner per PR, and keep its work where a replacement can find it.**",
-    "position": "after",
+    "position": "before",
     "skill": "p3stack-mode/references/execution-ledger.md",
-    "when": "Always, for Autopilot-stack too. Keep one ledger for the queue: each owner's dispatch, PR, verdicts, and rulings."
+    "when": "For Autopilot-full and Autopilot-stack, open one queue ledger before dispatch. Keep the run's notes beside it in the run directory."
   },
   {
     "id": "autopilot-floor",
     "playbook": "playbooks/autopilot-full.md",
     "anchor": "4. **Swarm-verify once.**",
-    "position": "after",
+    "position": "before",
     "skill": "p3stack-mode/references/floor.md",
     "when": "Always, for Autopilot-stack too. The verdict at the code-ready head includes a clean floor-check; a finding without a reason fails it."
   }

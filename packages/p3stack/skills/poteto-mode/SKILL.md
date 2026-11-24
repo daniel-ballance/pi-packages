@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Poteto mode
 
-Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's absolute path in every `poteto-agent` prompt.
+Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's absolute path in terminal `poteto-agent` prompts.
 
 ## Non-negotiables
 
@@ -93,7 +93,7 @@ Run the playbook in the chat that received it. Delegate units within a step per 
 
 Choose the role, not a model tweak. Use the code playbook's role (`feature, refactoring`, `bug-fix`, `perf-issue` or `hillclimb`), `hardest tasks` for the hardest changes, `judgment and prose` for judgment or writing, and `swarm workers` for verification. For a routed skill use its named roles. Use the selection `p3stack_roles` returns per [Models and role defaults](references/host-capabilities.md#models-and-role-defaults).
 
-With p3stack on, the extension adds the session grant and host-appropriate writer or report-only instructions. Supply the assignment, not a second header: goal, interfaces, owned files, constraints, done check and expected evidence. Pass absolute file pointers only for material the child can access. Without the header, state the grant and stance in the brief yourself.
+With p3stack on, the extension adds the session grant and host-appropriate writer or report-only instructions. Supply the assignment, not a second header: goal, interfaces, owned files, constraints, done check and expected evidence. Pass file pointers per your host's [Store](references/host-capabilities.md#store). Without the header, state the grant and stance in the brief yourself.
 
 Start a fresh child for each new round. Include amended scope, prior evidence and the branch; reuse a worker only for live state the new task needs, such as uncommitted work or a running process. Use a fresh reviewer for a recheck. Verify the diff or evidence yourself and report your conclusion.
 

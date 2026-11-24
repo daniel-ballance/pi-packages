@@ -104,11 +104,15 @@ test("PR delivery has an explicit trigger and never resets a checkout between ch
   assert.doesNotMatch(text, /end of every other playbook|reset --hard|reset from main/);
 });
 
-test("the plan records installed paths for briefs and reserves git show for project files", () => {
+test("the coordinator records installed paths; T3 briefs travel without that installation", () => {
   const plan = playbook("multi-phase-plan");
   assert.doesNotMatch(plan, /pstack\/skills\/|execution playbook from trunk/);
   assert.match(plan, /absolute installed path/i);
-  assert.match(plan, /brief[^\n]*recorded path|recorded path[^\n]*brief/i);
+  for (const doc of [plan, playbook("autopilot-full"), skill("thermos"), skill("dyl-review")]) {
+    assert.match(doc, /T3[^\n]*inline[^\n]*commit/i);
+    assert.doesNotMatch(doc, /Give each worker (?:its paths|the relevant recorded paths)/);
+  }
+  assert.doesNotMatch(plan, /per the \[poteto-agent recipe\]|git fetch origin <head-branch> && git checkout|\/tmp\/swarm-/);
   assert.match(plan, /project-owned[^\n]*git show <[^>]+>:<[^>]+>/i);
 });
 
@@ -118,6 +122,14 @@ for (const mode of ["autopilot-full", "autopilot-stack"]) {
     assert.doesNotMatch(playbook(mode), /playbook from trunk/);
   });
 }
+
+test("Autopilot opens the ledger before owner dispatch and sets the floor before swarm dispatch", () => {
+  const run = playbook("autopilot-full");
+  for (const [precondition, dispatch] of [["[execution-ledger]", "**Spawn one owner"], ["[floor]", "**Swarm-verify once"]]) {
+    assert.ok(run.indexOf(precondition) >= 0 && run.indexOf(precondition) < run.indexOf(dispatch));
+  }
+  assert.match(playbook("orchestrate"), /notes\.md[^\n]*run directory/i);
+});
 
 test("plan checker accepts installed files outside the consumer repo, not missing files or trunk markers", t => {
   const cwd = scratch(t), file = join(cwd, "plan.md");
@@ -178,6 +190,7 @@ for (const name of reviews) {
   test(`${name} recipe points to the rubric it uses without a plugin or child forge call`, () => {
     const text = read(`agents/${name}-subagent.md`);
     assert.ok(text.includes(`(../skills/${name}/SKILL.md)`));
+    assert.match(text, /child[^\n]*skip this section/i);
     assert.doesNotMatch(text, /Thermos plugin|Invoked delegated child|use `gh` or `glab`/);
   });
 }

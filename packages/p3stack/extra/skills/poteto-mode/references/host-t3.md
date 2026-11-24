@@ -20,7 +20,7 @@ A child does the work itself unless its assignment explicitly authorizes delegat
 
 ## Store
 
-Pass absolute store paths only to children that share the filesystem. Otherwise collect evidence in the task result.
+Inline what the child needs or cite the commit and repo-relative path. Give an absolute path only into the run store and only to a child on this machine; otherwise collect evidence in the task result.
 
 ## Wake and loop
 

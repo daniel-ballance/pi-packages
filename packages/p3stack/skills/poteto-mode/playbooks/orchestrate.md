@@ -2,9 +2,9 @@
 
 **You run the program, never the code. Decide which agent does each piece of work, then check what each one produces.** For a standing project handed to one coordinator chat: multi-day, many stacked PRs, dozens to hundreds of subagents, few human turns. One task driven to a predicate is Autonomous run. One ambitious run that needs a bespoke workflow is figure-it-out. Work that one agent could finish inside the session's budget is not a program.
 
-Run it with your own tools. Spawn workers per **Delegate** in the [host capabilities](references/host-capabilities.md). Keep the program's state in `notes.md` under **Store** in the [host capabilities](references/host-capabilities.md). Watch each PR with PR and CI event subscriptions when your harness has them. Call no scripts, run no polling loops, and never relay messages or status between agents.
+> **p3stack only:** [execution-ledger](../p3stack-mode/references/execution-ledger.md) — Open the run ledger before dispatch. Keep notes.md beside it in the run directory.
 
-> **p3stack only:** [execution-ledger](../p3stack-mode/references/execution-ledger.md) — Always. Keep the run's ledger beside notes.md: dispatches, completions, and rulings, so a compacted coordinator never redispatches finished work.
+Run it with your own tools. Spawn workers per **Delegate** in the [host capabilities](references/host-capabilities.md). Keep `notes.md` in the run directory under **Store** in the [host capabilities](references/host-capabilities.md). Watch each PR with PR and CI event subscriptions when your harness has them. Call no scripts, run no polling loops, and never relay messages or status between agents.
 
 #### Topology
 
