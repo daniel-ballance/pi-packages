@@ -279,6 +279,24 @@ test("dyl-review keeps code-review coordination and Git/forge work in the parent
   assert.doesNotMatch(text, /child running \[code-review\]|code-review child|every worker the depth calls for in one message/);
 });
 
+test("domain setup pairs the interview with domain-modeling", () => {
+  assert.match(read("skills/setup-matt-pocock-skills/domain.md"), /(?:alongside|together with) `\/skill:grilling`/);
+});
+
+for (const kind of ["verification-skill", "formal-verification-skill"]) {
+  test(`audit an existing ${kind} before starting the create procedure`, () => {
+    const entry = skill(`create-${kind}`).split("\n## ")[0];
+    assert.match(entry, /audit or realign/i);
+    assert.ok(entry.includes(`(references/maintain-${kind}.md)`));
+  });
+}
+
+test("architect stops on a prompt-only request and compares viable designs on depth", () => {
+  const doc = skill("architect");
+  assert.match(doc, /only to sharpen[^\n]*return the rewritten prompt and stop/i);
+  assert.match(doc, /Compare viable candidates on interface depth\.[^\n]*references\/codebase-design\.md/);
+});
+
 test("Pi help starts at the persistent router and distinguishes an explicit standalone skill", () => {
   const help = skill("poteto-help");
   for (const command of ["/p3stack on`", "/p3stack on autonomous`", "/p3stack off`", "/skill:<name>"]) assert.ok(help.includes(command), command);
@@ -296,22 +314,32 @@ test("a reflection reviewer still recognizes reads of any skill in the transcrip
   }
 });
 
-test("the help table offers exactly the emitted commands and names their references", () => {
-  const registry = JSON.parse(read("registry/skills.json"));
-  const rows = skill("poteto-help").split("## Pick a skill")[1].split("\n## ")[0].split("\n").filter(line => line.startsWith("| [`/skill:"));
-  const commands = rows.map(line => line.match(/\[`\/skill:([\w-]+)`\]/)[1]);
-  assert.equal(commands.length, 46);
-  assert.deepEqual(commands.sort(), registry.filter(row => row.action === "emit").map(row => row.name).sort());
+test("help leads with routed requests, then covers the other emitted skills and every reference owner", () => {
+  const help = skill("poteto-help"), routes = JSON.parse(read("registry/routes.json")), registry = JSON.parse(read("registry/skills.json"));
+  assert.equal(help.match(/^## .+$/m)[0], "## Find a job");
+  const [jobs, rest] = help.split("### Other standalone jobs"), [direct, owners] = rest.split("### References by owner");
+  for (const { request, grant, target } of routes) {
+    const row = jobs.split("\n").find(line => line.startsWith(`| ${request} |`));
+    assert.ok(row, request);
+    if (target?.includes("playbooks/")) assert.ok(row.includes(`Use the ${target.split("/").pop().replace(/\.md$/, "")} playbook`), row);
+    else if (target) assert.ok(row.includes(target.includes("/") ? target : `/skill:${target}`), row);
+    if (grant !== "any") assert.ok(row.includes(grant === "default" ? "default" : "autonomous"), row);
+  }
+  const targets = new Set(routes.map(row => row.target));
+  const names = [...direct.matchAll(/\]\(\.\.\/([\w-]+)\/SKILL\.md\)/g)].map(match => match[1]);
+  assert.deepEqual(names.sort(), registry.filter(row => row.action === "emit" && !targets.has(row.name)).map(row => row.name).sort());
+  assert.match(direct, /\[`\/p3stack on`\]\(\.\.\/p3stack-mode\/SKILL\.md\)/);
   for (const { name, owner } of registry.filter(row => row.action === "reference")) {
-    const row = rows.find(line => line.startsWith(`| [\`/skill:${owner}\`]`));
-    assert.ok(row?.includes(name.startsWith("principle-") ? "principle-*" : name + ".md"), name);
+    const row = owners.split("\n").find(line => line.startsWith(`- [${owner}]`));
+    assert.ok(row?.includes(name.startsWith("principle-") ? "principle-*" : `../${owner}/references/${name}.md`), name);
   }
 });
 
 test("copyable help recipes can be sent after enabling the Pi router", () => {
   const recipes = read("skills/poteto-help/references/recipes.md");
   assert.match(recipes, /\/p3stack on/);
-  assert.doesNotMatch(recipes, /`\/skill:poteto-mode /);
+  assert.doesNotMatch(recipes, /`\/skill:(?:poteto-mode|p3stack-mode) /);
+  assert.match(recipes, /p3stack-mode\/references\/show-me-your-work\.md[^\n]*decision log/);
 });
 
 test("tracker setup selects the first instruction file Pi loads", () => {

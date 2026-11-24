@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, posix } from "node:path";
 import test from "node:test";
-import { removedCommandPattern } from "../generator/generate.mjs";
 import { walk } from "../generator/source-paths.mjs";
 
 // Use the skill linter's Markdown parser under both npm and pnpm.
@@ -65,13 +64,18 @@ test("every reference is packed under its owner's skill, not discoverable as a c
 
 test("no emitted file contains a removed command or a path to a retired skill directory", () => {
   const names = [...registry.filter(row => row.action === "reference").map(row => row.name), "automate-me", "grill-with-docs", "ketchup-video"];
-  const oldPath = new RegExp(`(?:\\.\\./|\\bskills/)(?:${names.join("|")})/`), command = removedCommandPattern(registry);
+  const oldPath = new RegExp(`(?:\\.\\./|\\bskills/)(?:${names.join("|")})/`);
+  const commands = new Set(registry.filter(row => row.action !== "emit").flatMap(row => {
+    const name = row.name ?? posix.basename(posix.dirname(row.path));
+    return [`/${name}`, `/skill:${name}`];
+  }));
   const problems = [];
   for (const root of ["skills", "agents"]) {
     for (const path of walk(join(cwd, root))) {
       const file = join(root, path), text = readFileSync(join(cwd, file), "utf8");
       for (const [i, line] of text.split("\n").entries()) {
-        const hits = line.match(command) ?? [], pathHit = line.match(oldPath);
+        const words = line.split(/[\s`"'()[\],;!]+/).map(word => word.replace(/[.?:]$/, ""));
+        const hits = words.filter(word => commands.has(word)), pathHit = line.match(oldPath);
         if (pathHit) hits.push(pathHit[0]);
         for (const hit of hits) problems.push(`${file}:${i + 1}: ${hit}`);
       }

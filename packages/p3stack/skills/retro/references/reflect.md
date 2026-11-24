@@ -1,6 +1,6 @@
 # Reflect
 
-Spawn three parallel review subagents over the active transcript, surface learnings, and route each to a concrete edit on an existing skill. Use when the user says reflect.
+Spawn three parallel review subagents over the active transcript, surface learnings, and route each to a concrete edit on an existing skill.
 
 Mine the current conversation for durable learnings, then route them into skill edits.
 
@@ -36,7 +36,7 @@ Delegate one child on the `reflect judgment, divergent, synthesizer` role (defau
 
 ## 4. Structural enforcement check
 
-Move any Accepted item that a lint rule, script, metadata flag, or runtime check would enforce more reliably to Backlog. See the **encode-lessons-in-structure** principle skill.
+Move any Accepted item that a lint rule, script, metadata flag, or runtime check would enforce more reliably to Backlog. See the [encode-lessons-in-structure](../poteto-mode/references/principle-encode-lessons-in-structure.md) reference.
 
 ## 5. Apply
 

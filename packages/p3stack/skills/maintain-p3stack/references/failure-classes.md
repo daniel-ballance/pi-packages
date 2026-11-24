@@ -4,10 +4,15 @@ Paths here are relative to the package unless prefixed with `packages/p3stack/` 
 
 | Diagnostic | Fix location and action |
 | --- | --- |
-| `Unclassified skill`, `Stale registry row`, or `Missing authored skill` | Classify each new upstream path in `registry/skills.json` with an emit or drop reason. Update renamed or removed paths and their consumers. Restore a missing owned skill in `authored/`, or remove its row and routes together. |
+| `Unclassified skill`, `Stale registry row`, or `Missing authored skill` | Classify each new upstream path in `registry/skills.json` with an emit, reference or drop reason. Update renamed or removed paths and their consumers. Restore a missing owned skill in `authored/`, or remove its row and routes together. |
 | Duplicate row or emitted name, invalid action, name, or invocation, or missing reason, phases, or roles | Repair `registry/skills.json`. Keep one row per source path and one owner per emitted name. |
 | `Authored skill ... must emit at`, different frontmatter name or invocation | Align the owned file in `authored/` with `registry/skills.json`. For vendored files, correct the registry and the scoped rename rule in `rules/tokens.json`. |
 | `Missing emitted skill`, `Unregistered emitted skill`, or `Registry skill ... is not mapped` | Align `registry/skills.json` with maps in `rules/manifest.json`. Register new owned inputs in `authored/`. Check whether an `extra/` file unintentionally creates a second skill. |
+| `removed skill command`, or upstream prose still names a moved skill without a link | Look up the name in `registry/skills.json`. The generator links standalone command spans, bold names and backticked names for reference rows. For a new spelling or a command inside an example, add a scoped rule in `rules/tokens.json` pointing to `../<owner>/references/<name>.md` from the skill directory. For a drop, replace the instruction with its supported alternative. |
+| `owner ... must be an emitted skill` | The reference cannot live under another reference or a drop. Set its `owner` to an emit row's name in `registry/skills.json`. |
+| `both land at` or `nested SKILL.md would register a reference as a skill` | Two inputs would overwrite one destination, or Pi would discover a companion file as another skill. Inspect both source paths; change the owner's conflicting resource or fix the resource map or exclusion in `rules/manifest.json`. |
+| `reference needs its registered name and description` or `Missing reference` | For bad frontmatter, align the registered name and translated header and supply a description through a scoped token rule. For a missing file, check the source path, map and exclusions: the entry must reach `skills/<name>/SKILL.md` before relocation. |
+| `unrebased resource path` | The moved file still points at one of its old resources. At the reported line, trace the operand to the original input; translate it with a scoped rule or patch using the installed path under the owner's references directory. |
 | `token rule <id>: ... matches, expected at least <min>` | Review the new upstream sentence and prior rewrites. Update the scoped `find` in `rules/tokens.json`, or remove a rule whose translation is no longer needed. Preserve its Pi behavior elsewhere if still required. Do not lower `min` to hide a missed match. Record the old and new match in the bump note. |
 | Unknown token source, missing upstream checkout for a commit placeholder, or invalid regular expression | Correct the source, scope, expression, or upstream declaration in `rules/tokens.json` or `rules/manifest.json`. |
 | Section `changed upstream` with old and new hashes | Compare the untranslated section at both pins. Review its corresponding file in `overlays/`. Update the overlay and only then accept the printed hash in `rules/sections.json`. Attach the section diff to the bump note. |
@@ -37,7 +42,7 @@ Unknown sources, missing checkouts, bad refs, and fetch failures stop before a r
 
 ## Classify an upstream skill
 
-Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every placeholder with the observed source, source-relative skill path, and reviewed decision. Use the existing registry's phase and role vocabulary for an emit row. Do not copy both rows for one path.
+Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every placeholder with the observed source, source-relative skill path, and reviewed decision. Use the existing registry's phase and role vocabulary for an emit row. Use a reference when the procedure belongs under an emitted skill. Choose one row per path.
 
 ```json
 {
@@ -49,6 +54,17 @@ Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every 
   "phases": ["<phase>"],
   "roles": ["<role>"],
   "reason": "<why this skill belongs in p3stack>"
+}
+```
+
+```json
+{
+  "source": "<source>",
+  "path": "<path>/SKILL.md",
+  "action": "reference",
+  "name": "<reference-name>",
+  "owner": "<emitted-skill-name>",
+  "reason": "<when the owner reads this procedure>"
 }
 ```
 
