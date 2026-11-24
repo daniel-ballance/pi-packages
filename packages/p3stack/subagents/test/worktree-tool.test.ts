@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
+import { SubagentManager, type SpawnOptions } from "../extensions/subagents/src/manager.js";
 import { asHost } from "./host-env.js";
 import { git as runGit } from "./git.js";
 import { tempRoot } from "./support/temp-root.js";
@@ -52,6 +53,33 @@ test("a worktree outside workingDirectories is refused before git writes anythin
     assert.equal(existsSync(join(repo, ".pi")), false, "refused before git wrote anything");
     assert.equal(git("worktree", "list").split("\n").length, 1, "no worktree left behind");
     assert.equal(git("branch", "--list", "subagent/*"), "", "no branch left behind");
+  });
+});
+
+test("a failed launch reports its error and any checkout it could not safely remove", async t => {
+  await withSpawnTool(["."], async (spawn, repo, git) => {
+    let path = "";
+    t.mock.method(SubagentManager.prototype, "spawn", async ({ cwd }: SpawnOptions) => {
+      path = cwd;
+      writeFileSync(join(cwd, "src/a.ts"), "changes");
+      throw new Error("child unavailable");
+    });
+    await assert.rejects(spawn({ name: "dirty", task: "x", cwd: repo, model: "p/m:off", tools: [], worktree: { branch: "keep-dirty" } }), (error: Error) => {
+      assert.match(error.message, /child unavailable/);
+      assert.ok(path && error.message.includes(path) && error.message.includes("keep-dirty"), error.message);
+      return true;
+    });
+    assert.ok(git("worktree", "list").includes(path));
+    assert.ok(existsSync(join(path, "src/a.ts")));
+  });
+});
+
+test("a failure reporting an accepted spawn does not roll back the live child's checkout", async t => {
+  await withSpawnTool(["."], async (spawn, repo, git) => {
+    // Acceptance succeeds; the subsequent lookup for the receipt fails.
+    t.mock.method(SubagentManager.prototype, "spawn", async () => ({ id: "missing-receipt" }));
+    await assert.rejects(spawn({ name: "accepted", task: "x", cwd: repo, model: "p/m:off", tools: [], worktree: { branch: "keep-live" } }), /missing-receipt/);
+    assert.match(git("worktree", "list"), /keep-live/);
   });
 });
 

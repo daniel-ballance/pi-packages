@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
@@ -34,7 +35,7 @@ const git = (cwd: string, ...args: string[]) =>
 
 function gitError(error: unknown): string {
   const stderr = (error as { stderr?: Buffer | string }).stderr;
-  return String(stderr ?? (error as Error).message ?? error).trim().split("\n").at(-1) ?? "git failed";
+  return String(stderr || (error as Error).message || error).trim().split("\n").at(-1) || "git failed";
 }
 
 const succeeds = (run: () => unknown) => { try { run(); return true; } catch { return false; } };
@@ -60,33 +61,47 @@ export function planWorktree(request: WorktreeRequest): WorktreePlan {
   return { root, path: join(root, ".pi", "worktrees", directory), branch, base, commit };
 }
 
-// Creation only: merging, and removing a finished checkout, stay with the parent.
-// Any failure, including one after git wrote the checkout, removes what it made.
+// Claim the branch separately: a failed worktree add (including a checkout hook)
+// can leave either a registration or just the branch. Never adopt a raced branch.
 export function createWorktree(request: WorktreeRequest | WorktreePlan): Worktree {
   const plan = "commit" in request ? request : planWorktree(request);
+  const lock = `subagent creation ${randomBytes(16).toString("hex")}`;
+  let branchCreated = false;
   try {
-    git(plan.root, "worktree", "add", "-b", plan.branch, plan.path, plan.commit);
+    if (existsSync(plan.path)) throw new Error(`destination already exists: ${plan.path}`);
+    git(plan.root, "branch", "--no-track", "--", plan.branch, plan.commit);
+    branchCreated = true;
+    // If a checkout hook fails, distinguish our partial registration from a competing add.
+    git(plan.root, "worktree", "add", "--lock", "--reason", lock, "--", plan.path, plan.branch);
     const ignored = succeeds(() => git(plan.root, "check-ignore", "-q", plan.path));
-    return { ...plan, head: git(plan.path, "rev-parse", "HEAD"), ignored };
+    const head = git(plan.path, "rev-parse", "HEAD");
+    git(plan.root, "worktree", "unlock", "--", plan.path);
+    return { ...plan, head, ignored };
   } catch (error) {
-    // Only what this attempt made: a checkout registered at the planned path on the
-    // planned branch. A branch or checkout another process created stays.
-    if (registeredBranch(plan) === `refs/heads/${plan.branch}`) removeWorktree(plan);
-    throw new Error(`Cannot create a worktree on branch ${plan.branch} from ${plan.base}: ${gitError(error)}`);
+    const failure = new Error(`Cannot create a worktree on branch ${plan.branch} from ${plan.base}: ${gitError(error)}`);
+    if (branchCreated) removeWorktree(plan, failure, lock);
+    throw failure;
   }
 }
 
-/** The branch git has registered for a checkout at the plan's path, if any. */
-function registeredBranch(plan: WorktreePlan): string | undefined {
-  let listing: string;
-  try { listing = git(plan.root, "worktree", "list", "--porcelain"); } catch { return undefined; }
-  const entry = listing.split("\n\n").map(block => block.split("\n")).find(lines => lines[0] === `worktree ${plan.path}`);
-  return entry?.find(line => line.startsWith("branch "))?.slice("branch ".length);
-}
-
-/** Undo a creation this package made: the checkout and its branch. */
-export function removeWorktree(worktree: WorktreePlan): void {
-  succeeds(() => git(worktree.root, "worktree", "remove", "--force", "--force", worktree.path));
-  succeeds(() => git(worktree.root, "worktree", "prune"));
-  if (succeeds(() => git(worktree.root, "show-ref", "--verify", "--quiet", `refs/heads/${worktree.branch}`))) git(worktree.root, "branch", "-D", worktree.branch);
+/** Roll back our unchanged checkout and branch. Let git refuse dirty or locked checkouts. */
+export function removeWorktree({ root, path, branch, commit }: WorktreePlan, failure?: unknown, creationLock?: string): void {
+  try {
+    const ref = `refs/heads/${branch}`;
+    const entry = git(root, "worktree", "list", "--porcelain", "-z").split("\0\0")
+      .map(block => block.split("\0")).find(lines => lines[0] === `worktree ${path}`);
+    if (entry) {
+      if (!entry.includes(`branch ${ref}`) || !entry.includes(`HEAD ${commit}`)) throw new Error("checkout branch or commit changed");
+      if (creationLock) {
+        if (!entry.includes(`locked ${creationLock}`)) throw new Error("checkout was not registered by this creation");
+        git(root, "worktree", "unlock", "--", path);
+      }
+      git(root, "worktree", "remove", "--", path);
+    } else if (existsSync(path)) throw new Error("path is not a registered worktree");
+    if (git(root, "rev-parse", "--verify", ref) !== commit) throw new Error("branch no longer points at its starting commit");
+    // Unlike update-ref -d, branch refuses to delete a branch in use in another checkout.
+    git(root, "branch", "-D", "--", branch);
+  } catch (error) {
+    throw new Error(`${failure ? `${failure}; ` : ""}Cleanup failed for worktree ${path} (branch ${branch}): ${gitError(error)}. Inspect it before manual cleanup.`, { cause: error });
+  }
 }

@@ -390,13 +390,14 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const plan = wanted ? planWorktree({ cwd: requested, name, ...(typeof wanted === "object" ? wanted : {}) }) : undefined;
       if (plan) policy.newDirectory(plan.path);
       normalizeCoordination(declared, plan?.path ?? requested);
-      let worktree: Worktree | undefined;
+      let worktree: Worktree | undefined, accepted = false;
       try {
         if (plan) worktree = createWorktree(plan);
         const cwd = worktree?.path ?? requested;
         if (worktree) config = policy.compile(cwd, selection, depth);
         const coordination = normalizeCoordination(declared, cwd);
         const child = await manager.spawn({ name, task, ...config, coordination, ...(parentId ? { parentId } : {}) });
+        accepted = true; // A lost receipt must not remove a live child's checkout.
         const record = manager.get(child.id);
         const all = coordinationWarnings(coordination, manager.list(), child.id), warnings = visible(all);
         const outside = all.length - warnings.length;
@@ -411,7 +412,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         };
         return result(receipt, ctx);
       } catch (error) {
-        if (worktree) try { removeWorktree(worktree); } catch { /* report the spawn failure, not the cleanup */ }
+        if (worktree && !accepted) removeWorktree(worktree, error);
         throw error;
       }
     },
