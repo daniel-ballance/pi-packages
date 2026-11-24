@@ -254,8 +254,10 @@ function renderCatalog(files, { skills, routes }, helpJobs) {
       let next = "Ask directly; no skill needed.";
       if (target && !target.includes("/")) next = command(target);
       else if (target) {
-        const label = posix.basename(target, ".md"), link = `[${label}](../${targetPath(target)})`;
-        next = target.includes("/references/") ? `${command(target.split("/")[0])} using ${link}` : `\`Use the ${label} playbook\``;
+        const label = posix.basename(target, ".md"), path = targetPath(target), link = `[${label}](../${path})`;
+        // The skill that holds a playbook loads it with routing off; a bare playbook name loads nothing.
+        // No link: the skill linter would read the playbook's own links as the help skill's.
+        next = target.includes("/references/") ? `${command(target.split("/")[0])} using ${link}` : `\`/skill:${path.split("/")[0]} use the ${label} playbook\``;
       }
       table.push(`| ${cell(request)} | ${next}${setting} |`);
     }
@@ -331,11 +333,12 @@ function linkReferenceMentions(text, references, linkTo, output) {
     inHeading ||= node.type === "heading";
     const code = node.type === "inlineCode", command = code && node.value.startsWith("/skill:");
     const label = command ? node.value.slice(7) : code ? node.value : node.type === "strong" && node.children.length === 1 ? node.children[0].value : undefined;
-    const ref = references.get(label);
-    if (ref && (command ? ref.name === label : !inLink && !inHeading)) {
-      const target = `skills/${referencePath(ref)}`, { start, end } = node.position;
+    const ref = references.get(label), { start, end } = node.position ?? {};
+    const suffix = ref && !command && /^(['’]s)? (?:principle )?skill(s?)\b/.exec(text.slice(end.offset));
+    // A one-word name in bold is also plain emphasis: "**implement** it" names no skill.
+    if (ref && (command ? ref.name === label : !inLink && !inHeading && (code || suffix || label.includes("-")))) {
+      const target = `skills/${referencePath(ref)}`;
       const link = `[${label}](${linkTo(target)})`;
-      const suffix = !command && /^(['’]s)? (?:principle )?skill(s?)\b/.exec(text.slice(end.offset));
       edits.push([start.offset, end.offset + (suffix ? suffix[0].length : 0),
         command && (inLink || target === output) ? label : link + (suffix ? `${suffix[1] ?? ""} reference${suffix[2]}` : "")]);
     } else {
@@ -421,7 +424,7 @@ function rebaseResources(text, path, output, moves, targets, linkTo) {
     if (node.type === "linkReference" || node.type === "imageReference") return;
     if (node.children) return node.children.forEach(visit);
     const rewritten = node.type === "inlineCode" || node.type === "text" ? span.replace(operands, (match, operand, line) =>
-      (line || node.type === "inlineCode" && operand !== "SKILL.md") ? aliases.get(operand) + (line ?? "") : match) : span;
+      (line || operand !== "SKILL.md") ? aliases.get(operand) + (line ?? "") : match) : span;
     guard(rewritten, start.offset); // includes fences, raw HTML and unhandled shell syntax
     if (rewritten !== span) edits.push([start.offset, end.offset, rewritten]);
   }

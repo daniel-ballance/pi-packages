@@ -129,6 +129,15 @@ test("rooted paths and URLs are not moved resources", t => {
   assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf/notes/example.md"), "utf8"), text);
 });
 
+test("a moved file's own path in plain prose is rebased, and SKILL.md stays a convention", t => {
+  const f = referenceFixture(t);
+  f.write("vendor/demo/skills/leaf/scripts/check", "#!/bin/sh\n");
+  f.write("vendor/demo/skills/leaf/usage.md", "Run scripts/check, then ./scripts/check again. Every skill has a SKILL.md.\n");
+  f.build();
+  assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf/usage.md"), "utf8"),
+    "Run ../first/references/leaf/scripts/check, then ../first/references/leaf/scripts/check again. Every skill has a SKILL.md.\n");
+});
+
 for (const [form, example, line, resource = "scripts/check"] of [
   ["fence", "```md\n[run](scripts/check)\n```", 3],
   ["HTML attribute", '<a href="./scripts/check">run</a>', 2],
@@ -148,11 +157,11 @@ test("prose names link from the skill root, including both spellings of a princi
   f.write(`vendor/demo/${path}`, f.skill(name));
   f.write("registry/skills.json", [...f.skills, f.ref, { ...f.ref, name, path }]);
   const untouched = '## The **leaf** skill\n\n[the **leaf** skill](SKILL.md) or <a href="SKILL.md">the `leaf` skill</a>\n\n```md\nthe `leaf` skill\n```\n';
-  f.write("vendor/demo/skills/first/references/notes.md", "The **leaf** skill and the `leaf` skill. The **test-first** and **principle-test-first** principle skills.\n\n" + untouched);
+  f.write("vendor/demo/skills/first/references/notes.md", "The **leaf** skill and the `leaf` skill. Use `leaf`, then **leaf** through it; **test-first** applies. The **test-first** and **principle-test-first** principle skills.\n\n" + untouched);
   f.write("extra/skills/first/local.md", "Owned: the **leaf** skill.\n");
   f.build();
   const read = path => readFileSync(join(f.outDir, "skills/first", path), "utf8");
-  assert.equal(read("references/notes.md"), "The [leaf](../first/references/leaf.md) reference and the [leaf](../first/references/leaf.md) reference. The [test-first](../first/references/principle-test-first.md) and [principle-test-first](../first/references/principle-test-first.md) references.\n\n" + untouched);
+  assert.equal(read("references/notes.md"), "The [leaf](../first/references/leaf.md) reference and the [leaf](../first/references/leaf.md) reference. Use [leaf](../first/references/leaf.md), then **leaf** through it; [test-first](../first/references/principle-test-first.md) applies. The [test-first](../first/references/principle-test-first.md) and [principle-test-first](../first/references/principle-test-first.md) references.\n\n" + untouched);
   assert.equal(read("local.md"), "Owned: the **leaf** skill.\n");
 });
 

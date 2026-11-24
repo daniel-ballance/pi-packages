@@ -321,10 +321,17 @@ test("help leads with routed requests, then covers the other emitted skills and 
   for (const { request, grant, target } of routes) {
     const row = jobs.split("\n").find(line => line.startsWith(`| ${request} |`));
     assert.ok(row, request);
-    if (target?.includes("playbooks/")) assert.ok(row.includes(`Use the ${target.split("/").pop().replace(/\.md$/, "")} playbook`), row);
+    if (target?.includes("playbooks/")) {
+      // A playbook is no command: the row names the skill whose directory holds it, which loads it with routing off.
+      const label = target.split("/").pop().replace(/\.md$/, ""), holder = target.startsWith("playbooks/") ? "poteto-mode" : target.split("/")[0];
+      assert.ok(row.endsWith(`| \`/skill:${holder} use the ${label} playbook\` |`), row);
+      assert.ok(read(`skills/${holder}/playbooks/${label}.md`), row);
+    }
     else if (target) assert.ok(row.includes(target.includes("/") ? target : `/skill:${target}`), row);
     if (grant !== "any") assert.ok(row.includes(grant === "default" ? "default" : "autonomous"), row);
   }
+  assert.ok(jobs.includes("| Review my change | `/skill:p3stack-mode use the review-local playbook` |"));
+  assert.ok(jobs.includes("| Open a PR | `/skill:poteto-mode use the opening-a-pr playbook` |"));
   const targets = new Set(routes.map(row => row.target));
   const names = [...direct.matchAll(/\]\(\.\.\/([\w-]+)\/SKILL\.md\)/g)].map(match => match[1]);
   assert.deepEqual(names.sort(), registry.filter(row => row.action === "emit" && !targets.has(row.name)).map(row => row.name).sort());

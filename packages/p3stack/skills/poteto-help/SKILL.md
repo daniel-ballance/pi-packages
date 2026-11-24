@@ -14,54 +14,54 @@ Read the file you route to before you quote it, and trust it when it disagrees w
 
 ## Find a job
 
-Type `/p3stack on`, then say the [routed request](../p3stack-mode/SKILL.md#routes) and name your target. Set a marked grant with `/p3stack on default` or `/p3stack on autonomous`. With routing off, type the skill command.
+With `/p3stack on`, say the [request](../p3stack-mode/SKILL.md#routes) in your own words and name your target; the router picks the row. Or type the row's command, which works with routing on or off. A row marked (router: default) or (router: autonomous) is the router's choice only under that grant: set it with `/p3stack on default` or `/p3stack on autonomous`.
 
 | Request | What to type or ask for |
 | --- | --- |
 | Small task: the exact edit in a named file, or one fact answered by reading one function | Ask directly; no skill needed. |
-| Understand one existing subsystem or code path | `Use the investigation playbook` |
-| Onboard to a repository, or map it as a whole | `Use the onboard-brownfield playbook` |
+| Understand one existing subsystem or code path | `/skill:poteto-mode use the investigation playbook` |
+| Onboard to a repository, or map it as a whole | `/skill:p3stack-mode use the onboard-brownfield playbook` |
 | Find a fact outside the repository | [`/skill:research`](../research/SKILL.md) |
 | Align on a design with the human present | [`/skill:grilling`](../grilling/SKILL.md) (router: default) |
 | Design without an interview or explore design alternatives | [`/skill:architect`](../architect/SKILL.md) (router: autonomous) |
 | Map a large effort with unresolved decisions | [`/skill:wayfinder`](../wayfinder/SKILL.md) (router: default) |
 | Publish a tracker spec | [`/skill:to-spec`](../to-spec/SKILL.md) (router: default) |
 | Split a spec into tracker tickets | [`/skill:to-tickets`](../to-tickets/SKILL.md) (router: default) |
-| Plan a program of PRs | `Use the multi-phase-plan playbook` |
-| Execute an approved multi-PR plan with authority to merge | `Use the autopilot-full playbook` |
-| Execute an approved multi-PR plan through verification; the operator lands the PRs | `Use the autopilot-stack playbook` |
-| Prototype a design to compare, try, or show someone | `Use the prototype playbook` |
-| Match an existing UI pixel for pixel | `Use the visual-parity playbook` |
-| Build new or changed behavior | `Use the feature playbook` |
+| Plan a program of PRs | `/skill:poteto-mode use the multi-phase-plan playbook` |
+| Execute an approved multi-PR plan with authority to merge | `/skill:poteto-mode use the autopilot-full playbook` |
+| Execute an approved multi-PR plan through verification; the operator lands the PRs | `/skill:poteto-mode use the autopilot-stack playbook` |
+| Prototype a design to compare, try, or show someone | `/skill:poteto-mode use the prototype playbook` |
+| Match an existing UI pixel for pixel | `/skill:poteto-mode use the visual-parity playbook` |
+| Build new or changed behavior | `/skill:poteto-mode use the feature playbook` |
 | Fix a reported bug without a failing reproduction | [`/skill:diagnosing-bugs`](../diagnosing-bugs/SKILL.md) |
-| Fix a bug with a failing reproduction | `Use the bug-fix playbook` |
-| Diagnose a recorded trace, profile, or heap snapshot | `Use the trace-forensics playbook` |
-| Diagnose a running process by capturing a live profile or trace | `Use the runtime-forensics playbook` |
-| Investigate measured slowness when a timing or throughput number is given | `Use the perf-issue playbook` |
-| Improve one measured metric repeatedly | `Use the hillclimb playbook` |
-| Restructure code without changing behavior | `Use the refactoring playbook` |
-| Review my change | `Use the review-local playbook` |
+| Fix a bug with a failing reproduction | `/skill:poteto-mode use the bug-fix playbook` |
+| Diagnose a recorded trace, profile, or heap snapshot | `/skill:poteto-mode use the trace-forensics playbook` |
+| Diagnose a running process by capturing a live profile or trace | `/skill:poteto-mode use the runtime-forensics playbook` |
+| Investigate measured slowness when a timing or throughput number is given | `/skill:poteto-mode use the perf-issue playbook` |
+| Improve one measured metric repeatedly | `/skill:poteto-mode use the hillclimb playbook` |
+| Restructure code without changing behavior | `/skill:poteto-mode use the refactoring playbook` |
+| Review my change | `/skill:p3stack-mode use the review-local playbook` |
 | Clean up comments in a change | [`/skill:code-review`](../code-review/SKILL.md) using [no-comments](../code-review/references/no-comments.md) |
 | Review someone else's PR | [`/skill:dyl-review`](../dyl-review/SKILL.md) |
 | Triage incoming issues or external PRs | [`/skill:triage`](../triage/SKILL.md) |
-| Open a PR | `Use the opening-a-pr playbook` |
-| Drive an existing PR to readiness | `Use the babysit playbook` |
-| Land a verified stack when authorized | `Use the shipping playbook` |
+| Open a PR | `/skill:poteto-mode use the opening-a-pr playbook` |
+| Drive an existing PR to readiness | `/skill:poteto-mode use the babysit playbook` |
+| Land a verified stack when authorized | `/skill:poteto-mode use the shipping playbook` |
 | Set or audit the project's quality bar | [`/skill:constraints`](../constraints/SKILL.md) |
 | Harden or threat-model a change | [`/skill:security-hardening`](../security-hardening/SKILL.md) |
 | Add telemetry, metrics, or alerts | [`/skill:instrumentation`](../instrumentation/SKILL.md) |
 | Survey codebase health | [`/skill:improve-codebase-architecture`](../improve-codebase-architecture/SKILL.md) |
 | Implement a tracker ticket graph | [`/skill:implement-spec`](../implement-spec/SKILL.md) |
-| Run one job until a checkable condition holds | `Use the autonomous-run playbook` |
-| Run a standing program of PRs | `Use the orchestrate playbook` |
+| Run one job until a checkable condition holds | `/skill:poteto-mode use the autonomous-run playbook` |
+| Run a standing program of PRs | `/skill:poteto-mode use the orchestrate playbook` |
 | Hand work to another tool or person | [`/skill:handoff`](../handoff/SKILL.md) |
-| Pause the current session | `Use the pause-safely playbook` |
-| Resume an existing session | `Use the session-pickup playbook` |
+| Pause the current session | `/skill:poteto-mode use the pause-safely playbook` |
+| Resume an existing session | `/skill:poteto-mode use the session-pickup playbook` |
 | Review the session's environment | [`/skill:retro`](../retro/SKILL.md) |
-| Write or change a skill | `Use the authoring-a-skill playbook` |
+| Write or change a skill | `/skill:poteto-mode use the authoring-a-skill playbook` |
 | Prepare steps only a human can perform | [`/skill:wizard`](../wizard/SKILL.md) |
-| Audit and clean up stale worktrees or simulator data | `Use the worktree-cleanup playbook` |
-| Evaluate an agent or instruction change in a blinded experiment | `Use the eval playbook` |
+| Audit and clean up stale worktrees or simulator data | `/skill:poteto-mode use the worktree-cleanup playbook` |
+| Evaluate an agent or instruction change in a blinded experiment | `/skill:poteto-mode use the eval playbook` |
 | Cut a release | [`/skill:release`](../release/SKILL.md) |
 | Audit p3stack pins, refresh its upstream sources, or revert a p3stack maintenance PR | [`/skill:maintain-p3stack`](../maintain-p3stack/SKILL.md) |
 | Handle a task with no matching playbook | [`/skill:figure-it-out`](../figure-it-out/SKILL.md) |
@@ -119,7 +119,7 @@ Infer the need from the message and the conversation. A named situation, such as
 
 - Get set up
 - Start a task with `/p3stack on`
-- Pick a skill for a situation
+- Find the skill or playbook for a job
 - Fix a run that went wrong
 - Make pstack my own
 
