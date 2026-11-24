@@ -5,7 +5,7 @@ description: Configure which models pstack uses per role and at what reasoning b
 
 # Setup pstack
 
-Write `~/.pi/agent/p3stack.json`, the role defaults file that sets p3stack's model per role.
+Write personal role defaults to `<agent-dir>/p3stack.json`, where `<agent-dir>` is Pi's agent directory (`PI_CODING_AGENT_DIR` when set, otherwise `~/.pi/agent`).
 
 ## Steps
 
