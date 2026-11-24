@@ -1,5 +1,18 @@
 {
   "providers": {
+    "openai-codex": {
+      "modelOverrides": {
+        "gpt-6.2-sol": {
+          "contextWindow": 1050000
+        },
+        "gpt-6.2-astra": {
+          "contextWindow": 1050000
+        },
+        "gpt-6-luna": {
+          "contextWindow": 1050000
+        }
+      }
+    },
     "xai": {
       "modelOverrides": {
         "grok-4.7": {
