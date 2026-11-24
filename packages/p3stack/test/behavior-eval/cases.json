@@ -32,7 +32,7 @@
       "process": [
         { "id": "read-diagnosing-bugs", "kind": "read", "pattern": "diagnosing-bugs/SKILL\\.md" },
         { "id": "test-command-before-edit", "kind": "order",
-          "first": { "kind": "bash", "pattern": "^\\s*(?:cd\\s+[^;&|\\n]+\\s*&&\\s*)?(?:(?:[^\\s;&|\"'\\x60]*/)?node\\s+--test|npm\\s+(?:run\\s+)?test)(?=\\s|$)", "diagnostic": "(?:^|\\n)\\s*(?:AssertionError(?: \\[ERR_ASSERTION\\])?:|code:\\s*['\"]ERR_ASSERTION['\"])" },
+          "first": { "kind": "bash", "pattern": "^\\s*(?:cd\\s+[^;&|\\n]+\\s*&&\\s*)?(?:timeout\\s+\\d+(?:\\.\\d+)?[smhd]?\\s+)?(?:npx\\s+(?:--no-install\\s+)?)?(?:(?:[^\\s;&|\"'\\x60]*/)?node\\s+--test|npm\\s+(?:run\\s+)?test)(?=\\s|$)", "diagnostic": "(?:^|\\n)\\s*(?:AssertionError(?: \\[ERR_ASSERTION\\])?:|code:\\s*['\"]ERR_ASSERTION['\"])" },
           "before": { "kind": "edit", "pattern": "src/split\\.js" }
         }
       ]

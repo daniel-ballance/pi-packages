@@ -52,7 +52,12 @@ test("red evidence is a completed assertion failure before the first source edit
   const red = run();
   assert.equal(red[1].isError, true);
   assert.match(red[1].result.content[0].text, /ERR_ASSERTION/);
-  assert.equal(grade(check, eventTrace([...red, ...edit])), true);
+  for (const [command, expected] of [["node --test", true], ["timeout 60 node --test", true],
+    ["npx --no-install node --test", true], ["timeout 60 echo node --test", false]]) {
+    const start = { ...red[0], args: { command } };
+    assert.equal(grade(check, eventTrace([start, red[1], ...edit])), expected, command);
+    assert.equal(grade(check, eventTrace([start, green[1], ...edit])), false, "green: " + command);
+  }
   for (const events of [[...green, ...edit], [...edit, ...red], [red[0], ...edit, red[1]],
     [...bashEvents(project, "node --test absent.js"), ...edit]]) {
     assert.equal(grade(check, eventTrace(events)), false);
