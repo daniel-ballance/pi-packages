@@ -86,7 +86,10 @@ test("local review checks the same artifact throughout and returns only findings
   assert.match(review, /return the report in your reply/i);
   assert.match(review, /merge-base/);
   assert.match(review, /staged.*unstaged.*untracked/i);
-  assert.match(review, /--base <base>/);
+  const scan = review.split("**Scan the floor.**")[1].split("\n")[0];
+  assert.match(scan, /--base <base>/);
+  assert.match(scan, /submodule[^\n]*gitlink[^\n]*parent[^\n]*base/i);
+  assert.match(scan, /report the gap/i);
   const floor = review.indexOf("floor-check"), reviewSkill = review.indexOf("](../code-review/SKILL.md)");
   const baseline = review.indexOf("checkout-fingerprint.mjs");
   assert.ok(baseline >= 0 && baseline < floor && floor < reviewSkill);
