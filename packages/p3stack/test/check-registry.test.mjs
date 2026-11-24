@@ -138,8 +138,25 @@ test("a moved file's own path in plain prose is rebased, and SKILL.md stays a co
     "Run ../first/references/leaf/scripts/check, then ../first/references/leaf/scripts/check again. Every skill has a SKILL.md.\n");
 });
 
+for (const sample of [
+  "Keep scripts/ small. Most projects have a `scripts/` directory.\n",
+  "In the user's repo:\n\n```sh\necho hi > references/note.md\n```\n",
+  "Example evidence:\n\n```tsv\nphase\tevidence\nbaseline\tscripts/check\n```\n",
+]) {
+  test(`moving a reference preserves the consumer example: ${sample.split("\n")[0]}`, t => {
+    const f = referenceFixture(t);
+    f.write("vendor/demo/skills/leaf/scripts/check", "#!/bin/sh\n");
+    f.write("vendor/demo/skills/leaf/references/note.md", "Note.\n");
+    f.write("vendor/demo/skills/leaf/usage.md", sample);
+    f.build();
+    assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf/usage.md"), "utf8"), sample);
+  });
+}
+
 for (const [form, example, line, resource = "scripts/check"] of [
   ["fence", "```md\n[run](scripts/check)\n```", 3],
+  ["fenced invocation", "~~~sh\necho hi > scripts/check\nbash scripts/check --arg\n~~~", 4],
+  ["fenced copy of own script", "```sh\ncp scripts/check \"$workdir/\"\n```", 3],
   ["HTML attribute", '<a href="./scripts/check">run</a>', 2],
   ["untranslated flag", "Run --file=scripts/check.", 2],
   ["directory href", '<a href="scripts/">scripts</a>', 2, "scripts/"],

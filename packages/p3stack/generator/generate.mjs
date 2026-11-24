@@ -400,13 +400,22 @@ function rebaseResources(text, path, output, moves, targets, linkTo) {
   }
   const alternatives = keys => [...keys].map(escapeRegex).join("|");
   const operands = new RegExp("(?<![^\\s`(<'\"])" + `(${alternatives(aliases.keys())})(:\\d+)?` + "(?=$|[\\s`)>#?'\",;]|[.!](?!\\w))", "g");
-  const stale = own.length && new RegExp(`(?<![\\w./-])(?:${alternatives(own)})(?![\\w/-]|\\.\\w)`);
+  const stale = own.length && new RegExp(`(?<![\\w./-])(?:${alternatives(own)})(?![\\w/-]|\\.\\w)`, "g");
   const edits = [];
-  function guard(span, start) {
-    const bad = stale && stale.exec(span);
-    if (bad) {
+  function guard(span, start, type, language) {
+    if (!stale) return;
+    for (const bad of span.matchAll(stale)) {
+      const operand = bad[0], prefix = span.slice(span.lastIndexOf("\n", bad.index - 1) + 1, bad.index);
+      const qualified = operand.startsWith("../") || operand.startsWith(before + "/");
+      const address = /(?:\]\(\s*<?|(?:href|src|--[\w-]+)=)["']?$/i.test(prefix);
+      // "Keep scripts/ small" doesn't address a directory. An href to scripts/ does.
+      if (operand.endsWith("/") && !qualified && !address && type !== "destination") continue;
+      // A shell output operand or a cell in an example log is consumer data. Keep
+      // checking inputs even to unfamiliar commands, and all qualified addresses.
+      const sampleData = />[ \t]*["']?$/.test(prefix) || ["csv", "tsv"].includes(language) || prefix.includes("\t") && !language;
+      if (type === "code" && !qualified && !address && sampleData) continue;
       const line = text.slice(0, start).split("\n").length + span.slice(0, bad.index).split("\n").length - 1;
-      throw new Error(`${output}:${line}: unrebased resource path ${bad[0]}`);
+      throw new Error(`${output}:${line}: unrebased resource path ${operand}`);
     }
   }
   function visit(node) {
@@ -422,14 +431,14 @@ function rebaseResources(text, path, output, moves, targets, linkTo) {
         const at = delimiter && labelEnd + delimiter.index + delimiter[0].length;
         if (at && text.startsWith(node.url, at)) edits.push([at, at + node.url.length, linkTo(target) + (line ? `#L${line}` : fragment)]);
         else guard(span, start.offset);
-      } else guard(node.url, start.offset);
+      } else guard(node.url, start.offset, "destination");
       return; // link labels and titles are not operands
     }
     if (node.type === "linkReference" || node.type === "imageReference") return;
     if (node.children) return node.children.forEach(visit);
     const rewritten = node.type === "inlineCode" || node.type === "text" ? span.replace(operands, (match, operand, line) =>
       (line || operand !== "SKILL.md") ? aliases.get(operand) + (line ?? "") : match) : span;
-    guard(rewritten, start.offset); // includes fences, raw HTML and unhandled shell syntax
+    guard(rewritten, start.offset, node.type, node.lang);
     if (rewritten !== span) edits.push([start.offset, end.offset, rewritten]);
   }
   if (path.endsWith(".md")) visit(fromMarkdown(text));
