@@ -45,6 +45,11 @@ process.stdin.on('data', chunk => {
         respond(cmd, { disposition: 'handled' });
         continue;
       }
+      if (cmd.message === 'HANDLED STREAMING' || cmd.message === 'HANDLED PENDING') {
+        if (cmd.message === 'HANDLED STREAMING') working = true;
+        else followUps.push('waiting for delivery');
+        respond(cmd, { disposition: 'handled' }); continue;
+      }
       if (cmd.message === 'CONSUME' || cmd.message === 'IDLE USAGE') {
         respond(cmd, { disposition: 'handled' });
         if (cmd.message === 'IDLE USAGE') setTimeout(() => {

@@ -198,6 +198,17 @@ test("consumed input restores assignment state and does not leave phantom work",
   } finally { await s.cleanup(); }
 });
 
+for (const task of ["HANDLED STREAMING", "HANDLED PENDING"]) test(`${task}: a handled prompt with outstanding work is not a no-run receipt`, async () => {
+  const s = await setup();
+  try {
+    const { id } = await s.spawn("CONSUME");
+    const receipt = await s.manager.send(id, task);
+    assert.equal(receipt.disposition, "handled");
+    assert.equal(receipt.workStarted, undefined);
+    assert.equal(receipt.lastSubmission?.workStarted, undefined);
+  } finally { await s.cleanup(); }
+});
+
 test("idle usage entries refresh authoritative costs without an assistant event", async () => {
   const s = await setup();
   try {

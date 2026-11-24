@@ -241,11 +241,12 @@ test("overflow keeps supervision and every omitted report handle without skippin
     assert.equal(out.nextCursor, before);
     assert.deepEqual(out.omittedReports.map((u: any) => u.cursor), reports.map(u => u.cursor));
     // Page out of order: consuming C must not skip A or B.
-    for (const i of [2, 0, 1]) {
+    for (const [i, expectedCursor] of [[2, before], [0, reports[0].cursor], [1, reports[2].cursor]]) {
       let args = out.omittedReports[i].readFull, text = "";
       do { assert.equal(typeof args.page, "string"); const page = (await read(args)).details as any; text += page.text; args = page.nextRead; } while (args);
       assert.equal(text, reports[i].text);
-      if (i === 2) assert.equal(r.readCursor, before);
+      assert.equal(r.readCursor, expectedCursor,
+        "the last page advances over contiguous consumed reports, never past an unread report");
     }
     assert.deepEqual(((await read({id})).details as any).updates, []);
     assert.equal(manager.summary(id).unread, 0);
