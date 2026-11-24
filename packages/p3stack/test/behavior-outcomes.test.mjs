@@ -224,6 +224,22 @@ test("in a browser, the prototype check follows what clicks render, not how the 
   }
 });
 
+test("refund arithmetic measures Refunded and Refundable labels", { skip: !chromium && "no Chromium on PATH" }, t => {
+  const { check, put } = fixture(t, "prototype-logic");
+  const page = readFileSync(new URL("./fixtures/refund/real1.html", import.meta.url), "utf8");
+  for (const labels of [page, page.replace("Refundable:", "Left:"), page.replace("Refunded:", "Paid:")]) {
+    put("a.html", labels);
+    assert.equal(check("successive-refund-balance"), true);
+  }
+});
+
+test("a click-through failure is not an arithmetic measurement", { skip: !chromium && "no Chromium on PATH" }, t => {
+  const { check, put } = fixture(t, "prototype-logic");
+  put("a.html", html + '<script src="missing.js"></script>');
+  assert.equal(check("self-contained-prototype-responds"), false);
+  assert.equal(check("successive-refund-balance"), null);
+});
+
 for (const name of ["form", "loop"]) {
   test(`refund arithmetic grades the ${name} page as broken, not a missing browser`, { skip: !chromium && "no Chromium on PATH" }, t => {
     const { check, put } = fixture(t, "prototype-logic");

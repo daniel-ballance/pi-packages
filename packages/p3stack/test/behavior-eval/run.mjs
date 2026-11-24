@@ -177,6 +177,7 @@ export function grade(check, { calls, final }, project, beforeRun) {
         // Drive the page in a browser when one is installed; exit 3 means none could be driven.
         const driven = runCheck(process.execPath, [join(here, "oracles/prototype-browser.mjs"), files[0], ...(check.verifyArithmetic ? ["--arithmetic"] : [])], project).status;
         if (driven === 0 || driven === 1) return driven === 0;
+        if (driven === 4 && check.verifyArithmetic) return null;
         if (driven !== 3) throw new Error(`Prototype browser grader exited ${driven}`);
         if (check.verifyArithmetic) throw new Error("No browser could be driven to verify refund arithmetic");
         console.warn("prototype check: no browser could be driven; fell back to the structural check");
@@ -203,11 +204,15 @@ export function grade(check, { calls, final }, project, beforeRun) {
 export function assess(row, seen, project, beforeRun) {
   const group = expectations => {
     const checks = expectations.map(check => ({ id: check.id, passed: grade(check, seen, project, beforeRun) }));
-    return { checks, score: checks.filter(check => check.passed).length / checks.length };
+    const measured = checks.filter(c => c.passed !== null);
+    return { checks, score: measured.length ? measured.filter(c => c.passed).length / measured.length : null };
   };
   const outcome = group(row.outcome), process = group(row.process);
-  return { outcome, process, passed: outcome.score === 1 };
+  const passed = outcome.checks.some(c => c.passed === false) ? false : outcome.checks.some(c => c.passed === null) ? null : true;
+  return { outcome, process, passed };
 }
+
+const percent = score => score === null ? "not graded" : (score * 100).toFixed(0) + "%";
 
 async function main() {
   const { values } = parseArgs({ options: {
@@ -250,7 +255,7 @@ async function main() {
       });
       results.push(result);
       writeFileSync(join(output, "results.json"), JSON.stringify({ model, results }, null, 2) + "\n");
-      for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${(result[name].score * 100).toFixed(0)}%: ${result[name].checks.map(c => `${c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
+      for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${percent(result[name].score)}: ${result[name].checks.map(c => `${c.passed === null ? "?" : c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
     } finally {
       if (values.keep) console.log(`Kept project: ${project}`);
       else rmSync(project, { recursive: true, force: true });
@@ -259,10 +264,15 @@ async function main() {
   if (!results.length) throw new Error("No completed behavior runs");
   for (const row of rows) for (const arm of arms) {
     const own = results.filter(r => r.id === row.id && r.arm === arm);
-    const mean = name => (100 * own.reduce((sum, r) => sum + r[name].score, 0) / own.length).toFixed(0);
-    console.log(`${row.id} [${arm}]: outcomes ${mean("outcome")}%, process ${mean("process")}%`);
+    const mean = name => {
+      const measured = own.map(r => r[name].score).filter(score => score !== null);
+      return percent(measured.length ? measured.reduce((sum, score) => sum + score, 0) / measured.length : null);
+    };
+    const arithmetic = row.outcome.find(check => check.verifyArithmetic);
+    const notGraded = arithmetic ? own.filter(r => r.outcome.checks.some(c => c.id === arithmetic.id && c.passed === null)).length : 0;
+    console.log(`${row.id} [${arm}]: outcomes ${mean("outcome")}, process ${mean("process")}${arithmetic ? `, arithmetic not graded: ${notGraded}/${own.length}` : ""}`);
   }
-  if (results.some(result => !result.passed)) process.exitCode = 1;
+  if (results.some(result => result.passed === false)) process.exitCode = 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => { console.error(error.message); process.exit(2); });

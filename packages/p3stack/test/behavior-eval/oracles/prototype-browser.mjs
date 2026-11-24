@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Drives a refund prototype in headless Chromium over the DevTools protocol and checks that its
 // controls change what is rendered. Exit 0: passed. Exit 1: failed page. Exit 3: Chromium
-// could not start. No dependencies: Node's
-// WebSocket speaks the protocol.
+// could not start. Exit 4: no measurable balance. Node's WebSocket speaks the protocol.
 import { refundArithmetic } from "./refund.mjs";
 import { findBrowser } from "./find-browser.mjs";
 import { spawn } from "node:child_process";
@@ -172,6 +171,10 @@ if (!browser) { console.log("Prototype browser check: no Chromium found"); proce
 const seen = await drive(browser, file, arithmetic);
 if (seen.exitCode) process.exit(seen.exitCode);
 if (arithmetic) {
+  if (seen.balanceError?.unmeasured) {
+    console.log("Refund balance: not graded (no measurable order balance)");
+    process.exit(4);
+  }
   const problem = seen.balanceError || seen.errors[0] || seen.external[0];
   console.log(`Refund balance: ${problem || "pass"}`);
   process.exit(problem ? 1 : 0);

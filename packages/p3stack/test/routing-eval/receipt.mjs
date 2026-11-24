@@ -61,7 +61,7 @@ export async function recordAttempt({ checkout, tier, row, arm, run, pi, grade, 
       host: "terminal", piVersion: outcome?.piVersion ?? null, promptSha256: hash(row.prompt),
       models: [...models.values()], turns, usage: turns && !missingUsage ? usage : null,
       elapsedMs: Math.round(performance.now() - start), reason: outcome?.reason ?? "invalid", exit: outcome?.code ?? null, signal: outcome?.signal ?? null,
-      status: !result ? "invalid" : result.passed === undefined ? "not graded" : result.passed ? "passed" : "failed",
+      status: !result ? "invalid" : result.passed == null ? "not graded" : result.passed ? "passed" : "failed",
       passed: result?.passed ?? null, outcome: result?.outcome, process: result?.process,
       artifact: { private: true, file: basename(work), sha256: hash(bytes) },
     }), { mode: 0o600 });
