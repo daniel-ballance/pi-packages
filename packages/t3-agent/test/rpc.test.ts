@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,14 +71,33 @@ export default function(pi) {
 }
 `;
 
+const cli = fileURLToPath(new URL("./bundle/cli.js", import.meta.resolve("@earendil-works/pi-coding-agent")));
+const extension = fileURLToPath(new URL("../extensions/t3-agent/index.ts", import.meta.url));
+
+test("RPC get_commands discovers the six shortcut templates only with the T3 marker", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "t3-agent-discovery-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const marked = Boolean(process.env.T3_MCP_URL);
+  const child = spawnSync(process.execPath, [cli, "--mode", "rpc", "--no-session", "--offline", "--no-extensions",
+    "--no-context-files", "-e", extension], {
+    cwd: dir, env: { PATH: process.env.PATH, HOME: dir, PI_CODING_AGENT_DIR: join(dir, "agent"), PI_TELEMETRY: "0",
+      ...(marked && { T3_MCP_URL: "http://t3.invalid/mcp" }) },
+    input: '{"id":"commands","type":"get_commands"}\n', encoding: "utf8", timeout: 20_000,
+  });
+  assert.equal(child.status, 0, child.stderr);
+  const reply = child.stdout.trim().split("\n").map(line => JSON.parse(line)).find(e => e.id === "commands");
+  assert.equal(reply?.success, true);
+  const prompts = reply.data.commands.filter((c: { source: string }) => c.source === "prompt");
+  assert.deepEqual(prompts.map((c: { name: string }) => c.name).sort(), marked
+    ? ["t3-babysit", "t3-chart", "t3-fanout", "t3-handoff", "t3-review", "t3-ship"] : []);
+});
+
 test("under a real Pi RPC session the prompt section, loadout and ledger reach the model", { timeout: 60_000 }, async t => {
   const dir = await mkdtemp(join(tmpdir(), "t3-agent-rpc-"));
   const agentDir = join(dir, "agent");
   await mkdir(agentDir);
   const fixture = join(dir, "fake-t3.ts");
   await writeFile(fixture, FIXTURE);
-  const cli = fileURLToPath(new URL("./bundle/cli.js", import.meta.resolve("@earendil-works/pi-coding-agent")));
-  const extension = fileURLToPath(new URL("../extensions/t3-agent/index.ts", import.meta.url));
   const child = spawn(process.execPath, [cli, "--mode", "rpc", "--no-session", "--no-extensions", "--no-skills",
     "--no-prompt-templates", "--no-context-files", "-e", fixture, "-e", extension, "--provider", "t3-test", "--model", "fake"], {
     cwd: dir,

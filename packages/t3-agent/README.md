@@ -55,7 +55,7 @@ The ledger keeps bounded identifiers, caller-supplied titles, states and checked
 
 **The `t3-code` skill** maps each job (child agents, threads, worktrees, PRs, schedules, secrets, charts, browser and device previews, attachments, projects) to the T3 tool that does it. It also states the rules no single tool description gives.
 
-**Prompt templates** for T3 workflows, in the composer's `/` menu:
+**Prompt templates** for T3 workflows. Type these in the running thread. The composer's `/` menu can use a different command list: T3 Code 0.1.9 discovers workspace commands in an ephemeral Pi process without `T3_MCP_URL`.
 
 | Command | Does |
 | --- | --- |
