@@ -298,6 +298,16 @@ test("registry reads resolved YAML aliases and edits invocation at its use site"
   assert.equal(readFileSync(join(outDir, path), "utf8"), source);
 });
 
+test("adding an invocation flag does not overlap removal of an indented first field", t => {
+  const f = fixture(t), path = "skills/first/SKILL.md";
+  f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
+  f.write("registry/chains.json", []);
+  f.write(`vendor/demo/${path}`, "---\n  icon: crown\n  name: first\n  description: First.\n---\n");
+  const outDir = join(f.root, "out");
+  generate({ packageDir: f.root, outDir });
+  assert.equal(readFileSync(join(outDir, path), "utf8"), "---\n  disable-model-invocation: true\n  name: first\n  description: First.\n---\n");
+});
+
 for (const invocation of ["model", "user"]) {
   test(`generation sets ${invocation} invocation only in frontmatter and preserves the body bytes`, t => {
     const f = fixture(t), path = "skills/first/SKILL.md";
@@ -417,10 +427,12 @@ test("generation uses registry drops, renamed directories, and invocation", t =>
   ]);
   f.write("registry/routes.json", []);
   f.write("registry/chains.json", []);
-  f.write("rules/tokens.json", [{ id: "rename", min: 1, find: "name: first", replace: "name: renamed", files: "^skills/renamed/SKILL.md$" }]);
+  const body = "\n```yaml\nname: first\nicon: crown\npaths: [src/**]\n```\n";
+  const kept = "# retained comment\ndescription: >-\n  A fixture\n  skill.\n";
+  f.write("vendor/demo/skills/first/SKILL.md", `---\nname: first # local label\nicon: crown\npaths:\n  - src/**\n${kept}---\n${body}`);
   const outDir = join(f.root, "out");
   generate({ packageDir: f.root, outDir });
-  assert.match(readFileSync(join(outDir, "skills/renamed/SKILL.md"), "utf8"), /disable-model-invocation: true/);
+  assert.equal(readFileSync(join(outDir, "skills/renamed/SKILL.md"), "utf8"), `---\ndisable-model-invocation: true\nname: renamed # local label\n${kept}---\n${body}`);
   assert.equal(existsSync(join(outDir, "skills/first")), false);
   assert.equal(existsSync(join(outDir, "skills/dropped")), false);
 });

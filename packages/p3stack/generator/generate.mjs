@@ -101,6 +101,10 @@ function applyTokens(files, owners, rules, expanders, problems, sectionRewrites)
           if (tally) count += span.match(pattern)?.length ?? 0;
           return span.replace(pattern, replacement);
         };
+        if (rule.frontmatter) {
+          const header = frontmatterBlock(input)?.[0];
+          return header ? replace(header) + input.slice(header.length) : input;
+        }
         return rule.markdownProse ? mapProse(input, replace) : replace(input);
       };
       files.set(path, rewrite(text, true));
@@ -514,10 +518,10 @@ export function generate({ packageDir, outDir }) {
   applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems, sectionRewrites);
   applySections(files, upstream, sections, sectionRewrites, join(packageDir, "overlays"), expand, problems);
   if (registry) {
-    for (const row of registry.skills.filter(row => row.action === "emit" && row.source !== "p3stack")) {
+    for (const row of registry.skills.filter(row => row.action !== "drop" && row.source !== "p3stack")) {
       const path = `skills/${row.name}/SKILL.md`, text = files.get(path);
       if (typeof text !== "string") { problems.push(`Registry skill ${row.name} is not mapped to ${path}`); continue; }
-      files.set(path, skillFrontmatter(text, path).withInvocation(row.invocation === "user"));
+      files.set(path, skillFrontmatter(text, path).withRegistry(row));
     }
   }
   const put = by => (path, contents, executable = false) => {

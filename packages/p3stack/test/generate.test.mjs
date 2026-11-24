@@ -895,7 +895,16 @@ pocockCase("11 slash commands use emitted names and protect paths", ({ run, inpu
   writeFileSync(file, readFileSync(file, "utf8") + "\nUse /tdd and /code-review, /to-spec, /clear. Keep ../research/SKILL.md.\nargument-hint: ignored\n");
   assert.equal(run().status, 0);
   assert.ok(read("implement-spec/references/implement.md").includes("Use /skill:tdd and /skill:code-review, /skill:to-spec, /clear. Keep ../research/SKILL.md."));
-  assert.doesNotMatch(read("implement-spec/references/implement.md"), /argument-hint:/);
+  assert.ok(read("implement-spec/references/implement.md").includes("\nargument-hint: ignored\n"));
+});
+
+pocockCase("metadata rules preserve a fenced header in a renamed skill", ({ run, input, read }) => {
+  const file = input("engineering/prototype/SKILL.md");
+  const sample = "\n```yaml\n---\nname: prototype\ndescription: Example.\nicon: paintbrush\ncolor: blue\npaths: [src/**]\nargument-hint: optional\n---\n```\n";
+  writeFileSync(file, readFileSync(file, "utf8") + sample);
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(read("interactive-prototype/SKILL.md").endsWith(sample));
 });
 
 pocockCase("12 dependency closure does not depend on invocation spelling", ({ run, input, rewrite }) => {
