@@ -5,9 +5,9 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { workspacePackages } from "../../../../scripts/root-package.mjs";
+import { workspacePackages } from "../scripts/root-package.mjs";
 
-const root = fileURLToPath(new URL("../../../..", import.meta.url));
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 function assertSafe(name: string, version: unknown, source: string): void {
   assert.ok(typeof version === "string", `${source}: version must be a string`);

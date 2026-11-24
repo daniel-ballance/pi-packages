@@ -12,7 +12,8 @@
     "scripts/lint-skill"
   ],
   "scripts": {
-    "check": "bash scripts/check.sh"
+    "check": "bash scripts/check.sh",
+    "test": "node --test shared/*.test.ts scripts/*.test.mjs test/*.test.mts"
   },
   "piBundle": [
     "packages/claude-subscription",

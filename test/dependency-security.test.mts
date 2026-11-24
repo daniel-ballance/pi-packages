@@ -3,10 +3,11 @@ import { readFile, readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import test from "node:test";
+import { piSdk } from "./pi-sdk.mjs";
 import { fileURLToPath } from "node:url";
-import { workspacePackages } from "../../../../scripts/root-package.mjs";
+import { workspacePackages } from "../scripts/root-package.mjs";
 
-const root = fileURLToPath(new URL("../../../..", import.meta.url));
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 // Current dependency line: all three 2026 denial-of-service advisories are
 // patched in 5.0.12. A deliberate major upgrade must review this contract.
@@ -38,7 +39,7 @@ async function assertNpmLockPatched(path: string): Promise<number> {
 }
 
 test("installed Pi host resolves patched brace-expansion despite its published shrinkwrap", async (): Promise<void> => {
-  const sdkRequire = createRequire(import.meta.resolve("@earendil-works/pi-coding-agent"));
+  const sdkRequire = createRequire(piSdk);
   const matcherRequire = createRequire(sdkRequire.resolve("minimatch"));
   const path = matcherRequire.resolve("brace-expansion/package.json");
   const manifest: unknown = JSON.parse(await readFile(path, "utf8"));
