@@ -136,6 +136,25 @@ test("human approval is explicit, tied to input, and never supplied by resume", 
   } finally { await h.close(); }
 });
 
+test("resume at the attempt limit succeeds only for a fully passed DAG before its deadline", async t => {
+  for (const scenario of ["complete", "pending", "late", "rejected"]) {
+    const h = setup();
+    try {
+      const def = definition(h.root, [task("a"), { id: "approval", kind: "check", input: "a", validator: { kind: "human", instructions: "Accept?" } }]);
+      def.limits.maxAttempts = 2;
+      if (scenario === "pending") def.steps.push(task("next", ["approval"]));
+      const run = await settled(h.engine, idOf(h.engine.start(def)));
+      assert.equal(run.status, "blocked");
+      if (scenario === "late") t.mock.method(Date, "now", () => run.deadline);
+      h.engine.decide(run.id, "approval", scenario === "rejected" ? "fail" : "pass");
+      if (scenario === "rejected") await assert.rejects(h.engine.control(run.id, "resume"), /retry/);
+      await h.engine.control(run.id, "resume", scenario === "rejected" ? ["approval"] : []);
+      assert.equal(run.status, scenario === "complete" ? "succeeded" : "exhausted", scenario);
+      assert.equal(run.usedAttempts, 2);
+    } finally { t.mock.restoreAll(); await h.close(); }
+  }
+});
+
 test("existing workflow state permissions are repaired on reopen", { skip: process.platform === "win32" }, async () => {
   const h = setup();
   let restored: Workflows | undefined;
