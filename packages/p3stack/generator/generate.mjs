@@ -62,7 +62,7 @@ function expander(commit, problems) {
 
 // Rewrite only visible Markdown text and inline command spans. Source offsets
 // preserve fence contents, raw HTML, link destinations and all original bytes around them.
-function mapProse(text, pattern, rewrite) {
+function mapProse(text, pattern, rewrite, skipped) {
   let result = "", offset = 0;
   function visit(node) {
     if (node.type === "text" || node.type === "inlineCode") {
@@ -74,6 +74,7 @@ function mapProse(text, pattern, rewrite) {
       for (const hit of text.slice(start.offset, end.offset).matchAll(pattern)) {
         const at = start.offset + hit.index, next = at + hit[0].length;
         if (!pathOperand(text.slice(0, at), text.slice(next))) continue;
+        skipped?.(hit[0], at);
         result += rewrite(text.slice(offset, at)) + hit[0];
         offset = next;
       }
@@ -116,7 +117,14 @@ function applyTokens(files, owners, rules, expanders, problems, sectionRewrites)
           const header = frontmatterBlock(input)?.[0];
           return header ? replace(header) + input.slice(header.length) : input;
         }
-        return rule.markdownProse ? mapProse(input, pattern, replace) : replace(input);
+        if (!rule.markdownProse) return replace(input);
+        return mapProse(input, pattern, replace, tally ? (command, at) => {
+          const accepted = rule.allowPaths?.some(({ file, text }) => {
+            const i = text.indexOf(command);
+            return file === path && i >= 0 && at >= i && input.startsWith(text, at - i);
+          });
+          if (!accepted) problems.push(`${path}:${input.slice(0, at).split("\n").length}: untranslated prose command ${command} (treated as a path)`);
+        } : undefined);
       };
       files.set(path, rewrite(text, true));
       sectionRewrites.get(path)?.push(rewrite);

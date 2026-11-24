@@ -15,7 +15,7 @@ const rules = name => JSON.parse(read(`rules/${name}.json`));
 
 // Exercise the shipping rewrites in order. Only the whole pin, not a single
 // example, is required to meet their aggregate match counts.
-function translate(t, source, files) {
+function translate(t, source, files, allowPaths = []) {
   const root = mkdtempSync(join(tmpdir(), "p3stack-translation-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const write = (path, data) => {
@@ -26,7 +26,7 @@ function translate(t, source, files) {
   const map = ["skills/", "agents/"].map(path => ({ from: path, to: path }));
   write("rules/manifest.json", JSON.stringify({ sources: [{ name: source, vendor: "vendor", map }] }));
   write("rules/tokens.json", JSON.stringify(rules("tokens")
-    .filter(rule => !rule.source || rule.source === source).map(rule => ({ ...rule, min: 0 }))));
+    .filter(rule => !rule.source || rule.source === source).map(rule => ({ ...rule, min: 0, ...(rule.markdownProse && { allowPaths }) }))));
   write("rules/sections.json", JSON.stringify(rules("sections").filter(rule => Object.hasOwn(files, rule.file))));
   symlinkSync(join(pkg, "overlays"), join(root, "overlays"), "dir");
   write("rules/lint.json", JSON.stringify({ deny: rules("lint").deny }));
@@ -100,11 +100,26 @@ test("slash translation recognizes commands, not URL segments, file paths, or un
   const output = translate(t, "matt-pocock", {
     "skills/research/SKILL.md": "# Research\n",
     [path]: [commands, ...examples].join("\n"),
-  });
+  }, ["GET /research HTTP/1.1", "POST `/research`", "cd /research", "ls -l /research", "Mount the route at /research.", "The /research endpoint"]
+    .map(text => ({ file: path, text })));
   assert.equal(output(path), [
     "Run /skill:research. Try [`/skill:research`](../research/SKILL.md), not /wait-what or /research-more.",
     ...examples,
   ].join("\n"));
+});
+
+test("an untranslated prose path needs an exception for that occurrence in that file", t => {
+  const file = "skills/notes/examples.md", other = "agents/helper.md";
+  const accepted = "Mount the route at /tdd.";
+  const allow = [{ file, text: accepted }];
+  const files = { "skills/tdd/SKILL.md": "# TDD\n", [file]: "# Example\n\nThe shortest path is /tdd. " + accepted, [other]: accepted };
+  assert.throws(() => translate(t, "matt-pocock", files, allow), error => {
+    assert.match(error.message, /skills\/notes\/examples\.md:3:.*\/tdd/);
+    assert.match(error.message, /agents\/helper\.md:1:.*\/tdd/);
+    return true;
+  });
+  const out = translate(t, "matt-pocock", { ...files, [file]: "Run /tdd. " + accepted, [other]: "" }, allow);
+  assert.equal(out(file), "Run /skill:tdd. " + accepted);
 });
 
 test("the prototype's throwaway page is an app route", () => {
