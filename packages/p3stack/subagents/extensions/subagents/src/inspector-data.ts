@@ -142,7 +142,7 @@ export function inspectorPage(source: InspectorSource, location: Location, now =
       return { title: `${agent.name.toLowerCase()} / details`, subtitle: `${label(agent.status)} · metadata`, rows };
     }
     const active = agent.assignment;
-    if (agent.hold) add("hold", `${agent.hold.kind} ${agent.hold.outcome} at ${agent.hold.at}${agent.hold.detail ? ` · ${preview(agent.hold.detail, 300)}` : ""} · held for explicit parent recovery`, agent.hold.outcome === "failed" ? "error" : "warning");
+    if (agent.hold) add("hold", `${agent.hold.kind} ${agent.hold.outcome} at ${agent.hold.at}${agent.hold.detail ? ` · ${agent.hold.detail}` : ""} · held for explicit parent recovery`, agent.hold.outcome === "failed" ? "error" : "warning");
     add("purpose", `purpose: ${preview(active?.task ?? agent.task, 400)}`);
     add("current", `now: ${preview(live.phase ?? agent.activity ?? word, 160)} · ${word} · elapsed ${card.elapsed ? duration(card.elapsed.ms) : "unknown"}${card.elapsed?.lastObserved ? " (last observed)" : ""} · last observed ${ago(agent.updatedAt)} ago`);
     add("result", `latest result · ${preview(latestResult(agent), 600)}`, card.review === "unread" ? "warning" : "text");

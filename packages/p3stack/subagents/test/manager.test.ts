@@ -608,7 +608,7 @@ test("held prompt acceptance cannot revive state or create a post-halt assignmen
   } finally { await s.cleanup(); }
 });
 
-test("timed-out prompt cannot make a halt safely releasable; late timeout downgrades confirmation", async () => {
+test("a pending or timed-out submission cannot confirm a halt or make it releasable", async () => {
   const s = await setup();
   try {
     const a = await s.spawn("initial");
@@ -624,7 +624,7 @@ test("timed-out prompt cannot make a halt safely releasable; late timeout downgr
     };
     const sending = s.manager.send(a.id, "maybe accepted");
     const halted = await s.manager.intervene(a.id, "halt");
-    assert.equal(halted.hold?.outcome, "confirmed", "abort acknowledgement is idle, but a prompt request is still pending");
+    assert.equal(halted.hold?.outcome, "failed", "an idle acknowledgement cannot fence a prompt whose acceptance is still pending");
     assert.throws(() => s.manager.releaseHold(a.id), /in flight/);
     timeOut();
     await assert.rejects(sending, /RPC prompt timed out/);

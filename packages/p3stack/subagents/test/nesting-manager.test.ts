@@ -41,6 +41,7 @@ test("a coordinator and its subtree delegate nothing while it is being closed or
     const closing = t.manager.close(t.b); // The fence is set before the first await.
     assert.throws(() => open(t.b), /being cancelled or closed/);
     assert.throws(() => open(t.c), /being cancelled or closed/);
+    await assert.rejects(t.manager.send(t.c, "no new work in a closing subtree"), /being cancelled or closed/);
     open(t.a);
     await closing;
     assert.equal(t.manager.get(t.c).status, "stopped");

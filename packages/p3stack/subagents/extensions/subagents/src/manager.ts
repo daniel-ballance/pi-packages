@@ -830,7 +830,8 @@ export class SubagentManager {
     if (!message.trim()) throw new Error("message must not be empty");
     if (this.aborting.has(id)) throw new Error("Abort is still in progress; wait for its acknowledgement before sending another task.");
     const record = this.get(id);
-    this.assertReleased(record);
+    this.assertDelegationOpen(record);
+    if (this.shuttingDown || record.unconfirmedStop) throw new Error("Child is shutting down or stop is unconfirmed");
     if (record.uncertainSubmission) throw new Error(`${id} has uncertain prompt acceptance; close or kill its process before sending more work.`);
     const child = this.child(id);
     // Acceptance can precede agent_start on a later stdout chunk. Reserve the
@@ -858,7 +859,10 @@ export class SubagentManager {
         // A human hold installed while prompt acceptance was pending owns all later state.
         if (record.hold) {
           // Acceptance after the first clear_queue/abort can enqueue a fresh run.
-          if (record.hold.kind === "halt" && this.children.get(id) === child && !this.aborting.has(id)) await this.abort(id).catch(() => {});
+          if (record.hold.kind === "halt" && this.children.get(id) === child) {
+            await this.abortRuns.get(id)?.catch(() => {});
+            await this.abort(id).catch(() => {});
+          }
           throw new Error(`${id} was held while prompt acceptance was pending`);
         }
         // An input hook can consume ordinary text too: acceptance need not schedule work.
@@ -961,6 +965,7 @@ export class SubagentManager {
       await child.request({ type: "abort" });
       const state = await child.request({ type: "get_state" });
       if (state.isStreaming !== false) throw new Error("Abort acknowledged but child still reports streaming or unknown state; cancellation unconfirmed");
+      if (this.submitting.has(id)) throw new Error("Prompt submission is still in flight; a late run may still start. Cancellation unconfirmed.");
       if (record.uncertainSubmission) throw new Error("Prompt acceptance remains unknown; cancellation unconfirmed. Kill or close the process before release.");
       return this.summary(id);
     } finally {
@@ -1039,7 +1044,9 @@ export class SubagentManager {
   releaseHold(id: string) {
     const record = this.get(id);
     if (!record.hold) throw new Error(`${id} has no human hold`);
-    if (record.uncertainSubmission) throw new Error(`${id} has uncertain prompt acceptance; kill or close its process before releasing the hold (inspect for orphans after a crash).`);
+    if (record.uncertainSubmission) throw new Error(this.children.has(id)
+      ? `${id} has uncertain prompt acceptance; kill or close its process before releasing the hold.`
+      : `${id} has uncertain prompt acceptance and no attached process. The manager cannot confirm its exit. Inspect for orphaned work before manual recovery.`);
     if (this.aborting.has(id) || this.submitting.has(id) || [...this.responding].some(key => key.startsWith(`${id}:`)) || record.hold.outcome === "pending") {
       throw new Error(`${id} intervention/submission is still in flight; wait before releasing the hold`);
     }
@@ -1090,7 +1097,7 @@ export class SubagentManager {
   }
   async resume(id: string, message?: string, env?: Record<string, string>) {
     const record = this.get(id);
-    this.assertReleased(record);
+    this.assertDelegationOpen(record);
     this.checkDetached(record);
     if (this.children.has(id)) throw new Error(`${id} already has a process`);
     if (!existsSync(record.sessionFile)) throw new Error("No saved child session exists");
