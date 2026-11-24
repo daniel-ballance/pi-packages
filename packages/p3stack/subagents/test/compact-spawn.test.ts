@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import { createEventBus, type ExtensionAPI, type Theme } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { subagentRenderers } from "../extensions/subagents/src/render.js";
 import { Workflows } from "../extensions/subagents/src/workflows.js";
@@ -44,7 +44,7 @@ async function withSpawn(run: (spawn: (args: Record<string, unknown>) => Promise
         registerFlag() {}, getFlag() { return false; },
         on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
         registerTool(tool: { name: string }) { tools.set(tool.name, tool as never); }, registerCommand() {}, sendMessage() {},
-        getAllTools: () => [], getCommands: () => [], events: { on: () => () => {} },
+        getAllTools: () => [], getCommands: () => [], events: createEventBus(),
       } as unknown as ExtensionAPI);
       for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     });

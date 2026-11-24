@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createEventBus, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { asHost } from "./host-env.js";
 import { tempRoot } from "./support/temp-root.js";
@@ -37,7 +37,7 @@ test("a nested spawn at the live cap is told not to retry, and a root spawn is n
         registerFlag() {}, getFlag() { return false; },
         on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
         registerTool(tool: { name: string }) { tools.set(tool.name, tool as never); }, registerCommand() {}, sendMessage() {},
-        getAllTools: () => [], getCommands: () => [], events: { on: () => () => {} },
+        getAllTools: () => [], getCommands: () => [], events: createEventBus(),
       } as unknown as ExtensionAPI);
       for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
     });
