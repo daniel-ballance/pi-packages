@@ -4,6 +4,8 @@
 
 Check `subagent_catalog` for spawn permission, models, tools and limits. Call `subagent_spawn` with a `name`, standalone `task`, absolute allowed `cwd`, exact catalog `model` and explicit `tools`. Select only what the brief needs, including required extensions for those tools. Use `coordination.owns` to declare work areas, not to enforce them. For a report-only child, omit delegation tools, `edit` and `write`. Omit `bash` unless the brief needs commands. Report-only is a stance, not a permission boundary: policy `alwaysTools` still apply.
 
+With p3stack on, the dispatch hook supplies the header. For a task-specific grant, start the assignment with `Task grant: default` or `Task grant: full-autonomy` on its own line. A coordinator passes its grant or a narrower one to its workers.
+
 Save the returned IDs. At the root, end your turn when you have nothing else to do; completion wakes you. When you need every child's result, pass their `ids` and `mode: "all"` to `subagent_wait`. `final: true` selects the last report, not when the wait returns. Check `wake` for input, holds, messages or timeout; drain unread reports with `subagent_read` and wait on outstanding IDs. A report too long to return whole carries a `readFull` handle: pass it to `subagent_read`, then each `nextRead`, until none is returned. `since` replays updates only. A coordinator child must collect its own children's results before ending its turn. Use `subagent_close` after collecting a child you no longer need: idle children still consume capacity.
 
 ## Models and role defaults

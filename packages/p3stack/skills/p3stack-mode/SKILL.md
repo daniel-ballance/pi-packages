@@ -12,7 +12,7 @@ Paths here are relative to this file's directory. If this file is `<package>/ski
 
 ## Grants
 
-Use the session grant in the system prompt (`Grant: default` or `Grant: full-autonomy`); if absent, use `default`. An explicit request for full autonomy in the user's message raises it for this task only. The brief header shows the session grant. For a different grant, the parent writes `Task grant: <grant>` in each brief; that line sets the task grant, higher or lower. A child never raises its own grant. Operator gates hold under either grant; pause before irreversible actions.
+Use the session grant in the system prompt (`Grant: default` or `Grant: full-autonomy`); if absent, use `default`. An explicit request for full autonomy in the user's message raises it for this task only. The brief header defaults to the session grant. For a different grant, the parent writes `Task grant: <grant>` per the host's Delegate instructions; that grant can be higher or lower. A child never raises its own grant. Operator gates hold under either grant; pause before irreversible actions.
 
 Match `any` or the effective grant. For a full-autonomy design request, architect rewrites the brief without an interview; stop at the design synthesis and return its recommendation. Infer covered choices from repository evidence and report them. Under default, use [grilling](../grilling/SKILL.md) for product choices and record settled terms and decisions with [domain-modeling](../domain-modeling/SKILL.md).
 

@@ -140,7 +140,15 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     }
     return manager;
   };
-  const getWorkflows = (ctx: ExtensionContext) => workflows ??= new Workflows(join(get(ctx).directory, "workflows"), managerWorkflowHost(get(ctx), () => getPolicy(ctx)), () => {
+  // Workflow and proxied spawns bypass the root tool_call hook. With no listener
+  // the standalone package dispatches the original assignment unchanged.
+  const prepareBrief = (task: string, tools: string[], parentTask?: string) => {
+    const request = { task, tools, parentTask, error: undefined as string | undefined };
+    pi.events.emit("subagents:prepare-brief", request);
+    if (request.error) throw new Error(request.error);
+    return request.task;
+  };
+  const getWorkflows = (ctx: ExtensionContext) => workflows ??= new Workflows(join(get(ctx).directory, "workflows"), managerWorkflowHost(get(ctx), () => getPolicy(ctx), prepareBrief), () => {
     reportActivity();
     if (context?.hasUI && workflows) {
       const running = runningWorkflows();
@@ -203,6 +211,10 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       throw new Error(`Invalid subagent_${op} arguments: ${errors.join("; ")}`);
     }
     const scoped = manager, args = { ...raw };
+    if (op === "spawn") {
+      const parent = scoped.get(callerId);
+      args.task = prepareBrief(raw.task as string, raw.tools as string[], parent.assignment?.task ?? parent.task);
+    }
     const own = (target: unknown) => {
       if (typeof target !== "string" || !scoped.isDescendant(target, callerId)) throw new Error(`${String(target)} is not one of your Children or their descendants.`);
     };

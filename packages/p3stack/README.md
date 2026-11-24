@@ -35,6 +35,8 @@ An explicit request for full autonomy raises the grant for that task without cha
 pi --mode json --no-session '/p3stack on default' 'Explain how requests enter this repository. Do not edit files.'
 ```
 
+In RPC mode, `ask_user` waits up to five minutes for an answer, including free text after a choice. Set `P3STACK_ASK_TIMEOUT_MS` to change that deadline in milliseconds. A timeout is not a dismissal or approval. Terminal dialogs have no deadline.
+
 ## Install choices and setup
 
 The Git command installs the [six-package collection](https://github.com/daniel-ballance/pi-packages#install-from-github). To install **only p3stack** from a checkout, run from the repository root:

@@ -1,11 +1,10 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { Pi } from "./mode.ts";
 import { BUDGETS, rolesFor } from "./role-definitions.ts";
 import { agentDir, candidates, roleHost, setupCatalog } from "./roles.ts";
 
-export function registerSetup(pi: Pi & Partial<Pick<ExtensionAPI, "sendMessage">>) {
+export function registerSetup(pi: ExtensionAPI) {
   pi.registerCommand("p3stack-setup", {
     description: "Choose a thinking budget, a code model and a judgment model, and write personal defaults for every p3stack role",
     handler: async (_args, ctx) => {
