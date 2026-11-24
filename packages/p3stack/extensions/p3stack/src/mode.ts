@@ -44,13 +44,13 @@ export type Grant = "default" | "autonomous";
 const GRANTS: readonly Grant[] = ["default", "autonomous"];
 /** The router's grant column names full autonomy `full-autonomy`. */
 export const grantToken = (grant: Grant) => grant === "autonomous" ? "full-autonomy" : "default";
-const USAGE = "Usage: /p3stack on [default|autonomous] | grant <default|autonomous> | off | status | doctor";
-
 export function registerMode(pi: Pi, potetoSkill: string) {
+  const host = detectHost();
+  const usage = `/p3stack on [default|autonomous] | grant <default|autonomous> | off | status${host === "t3" ? " | doctor" : ""}`;
   const modeSkill = resolve(dirname(potetoSkill), "../p3stack-mode/SKILL.md");
   let modeOn = false, grant: Grant = "default";
   const showMode = (ctx: Context) => {
-    if (ctx.hasUI && ctx.mode === "tui" && detectHost() === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx, pi.events, () => grant) : undefined);
+    if (ctx.hasUI && ctx.mode === "tui" && host === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx, pi.events, () => grant) : undefined);
   };
   const rebuild = (_event: unknown, ctx: Context) => {
     modeOn = false;
@@ -76,10 +76,14 @@ export function registerMode(pi: Pi, potetoSkill: string) {
     return { message: { customType: "p3stack-turn", display: false, content: `[p3stack-mode is on, grant: ${grantToken(grant)}] Before anything else, route this request. Read ${modeSkill} if you have not read it in this session, select its matching route, read that target, and follow it. Before delegating, call \`p3stack_roles\` for the role models. Only a question about the mode itself skips this.` } };
   });
   pi.registerCommand("p3stack", {
-    description: "Turn p3stack-mode on or off, set its grant, show status, or write the T3 contract report. /p3stack on [default|autonomous] | grant <default|autonomous> | off | status | doctor",
+    description: `Control p3stack-mode and its grant. ${usage}`,
     handler: async (args, ctx) => {
       const [want = "", value, ...rest] = args.trim().split(/\s+/);
-      if (want === "doctor") {
+      if (want === "doctor" && value === undefined) {
+        if (host !== "t3") {
+          if (ctx.hasUI) ctx.ui.notify("This session was not launched by T3 Code.", "info");
+          return;
+        }
         const file = doctor(pi);
         if (ctx.hasUI) ctx.ui.notify(`Wrote ${file}`, "info");
         return;
@@ -90,7 +94,7 @@ export function registerMode(pi: Pi, potetoSkill: string) {
         (want === "grant" && requested !== undefined && GRANTS.includes(requested)) ||
         ((want === "off" || want === "status" || !want) && requested === undefined));
       if (!valid) {
-        if (ctx.hasUI) ctx.ui.notify(USAGE, "info");
+        if (ctx.hasUI) ctx.ui.notify(`Usage: ${usage}`, "info");
         return;
       }
       if (want === "on" || want === "off" || want === "grant") {

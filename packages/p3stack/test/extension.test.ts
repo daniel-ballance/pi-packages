@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
@@ -66,6 +66,16 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
   const dispose = () => { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; rmSync(root, { recursive: true, force: true }); };
   return { root, cwd, agentDir, ctx, tools, commands, emit, results, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
+}
+function hostHarness(host: "terminal" | "t3", options?: Parameters<typeof harness>[0]) {
+  const previous = process.env.T3_MCP_URL;
+  if (host === "terminal") delete process.env.T3_MCP_URL;
+  else process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+  const h = harness(options);
+  return { ...h, dispose() {
+    h.dispose();
+    if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous;
+  } };
 }
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
 
@@ -531,51 +541,55 @@ test("T3 research and review roles get a short recipe while writing and unspecif
   } finally { h.dispose(); }
 });
 
-test("doctor records every T3 tool exposure, the bridge hash, and explicit provider-before-bridge ordering", async () => {
-  const h = harness({ extraTools: [
+test("doctor is neither advertised nor run in a terminal", async () => {
+  const h = hostHarness("terminal");
+  try {
+    await h.command("p3stack", "doctor");
+    assert.equal(existsSync(join(h.agentDir, "p3stack", "t3-contract.json")), false);
+    assert.match(h.notices.at(-1)![0], /not launched by T3 Code/i);
+    assert.doesNotMatch(h.commands.get("p3stack").description, /doctor|T3/i);
+    await h.command("p3stack", "help");
+    assert.doesNotMatch(h.notices.at(-1)![0], /doctor|T3/i);
+  } finally { h.dispose(); }
+});
+
+test("doctor records all T3 exposures and bridge provenance, not launch argument order", async () => {
+  const h = hostHarness("t3", { extraTools: [
     { name: "mcp__t3-code__delegate_task", exposure: "direct" },
     { name: "mcp__t3-code__hidden", exposure: "hidden" },
     { name: "mcp__other__tool", exposure: "codemode" },
   ] });
-  const argv = process.argv, previous = process.env.T3_PI_MCP_EXTENSION_PATH;
-  const bridge = join(h.root, "bridge.ts"), provider = join(h.root, "claude-subscription", "index.ts");
+  const previous = process.env.T3_PI_MCP_EXTENSION_PATH;
+  const bridge = join(h.root, "bridge.ts"), file = join(h.agentDir, "p3stack", "t3-contract.json");
   writeFileSync(bridge, "bridge content\n");
   process.env.T3_PI_MCP_EXTENSION_PATH = bridge;
   try {
-    for (const [args, expected] of [
-      [["-e", provider, "--extension", bridge], true],
-      [[`--extension=${bridge}`, `--extension=${provider}`], false],
-      [["a prompt naming", provider, bridge], false],
-    ] as [string[], boolean][]) {
-      process.argv = ["node", "pi", ...args];
-      await h.command("p3stack", "doctor");
-      const report = JSON.parse(readFileSync(join(h.agentDir, "p3stack", "t3-contract.json"), "utf8"));
-      assert.deepEqual(report.tools, [{ name: "mcp__t3-code__delegate_task", exposure: "direct" }, { name: "mcp__t3-code__hidden", exposure: "hidden" }]);
-      assert.equal(report.extension.sha256, createHash("sha256").update("bridge content\n").digest("hex"));
-      assert.equal(report.claudeSubscriptionBeforeBridge, expected);
-    }
+    assert.match(h.commands.get("p3stack").description, /doctor/);
+    await h.command("p3stack", "doctor extra");
+    assert.match(h.notices.at(-1)![0], /^Usage: .*doctor/);
+    assert.equal(existsSync(file), false);
+    await h.command("p3stack", "doctor");
+    const report = JSON.parse(readFileSync(file, "utf8"));
+    assert.deepEqual(report.tools, [{ name: "mcp__t3-code__delegate_task", exposure: "direct" }, { name: "mcp__t3-code__hidden", exposure: "hidden" }]);
+    assert.deepEqual(report.extension, { path: bridge, sha256: createHash("sha256").update("bridge content\n").digest("hex") });
+    assert.equal("claudeSubscriptionBeforeBridge" in report, false);
+    assert.deepEqual(report.problems, [], "claude-subscription is optional");
+
+    delete process.env.T3_PI_MCP_EXTENSION_PATH;
+    await h.command("p3stack", "doctor");
+    const missing = JSON.parse(readFileSync(file, "utf8"));
+    assert.equal(missing.extension.sha256, null);
+    assert.match(missing.problems.join("\n"), /T3_PI_MCP_EXTENSION_PATH is not set/);
   } finally {
-    process.argv = argv;
     if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
     h.dispose();
   }
-  const terminal = harness({ hasUI: false });
-  delete process.env.T3_PI_MCP_EXTENSION_PATH;
-  try {
-    await terminal.command("p3stack", "doctor");
-    const report = JSON.parse(readFileSync(join(terminal.agentDir, "p3stack", "t3-contract.json"), "utf8"));
-    assert.deepEqual(report.tools, []);
-    assert.equal(report.extension.sha256, null);
-    assert.equal(report.claudeSubscriptionBeforeBridge, false);
-  } finally {
-    if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
-    terminal.dispose();
-  }
 });
 
-test("doctor counts the claude-subscription files Pi loaded and reports anything but one", async () => {
+
+test("doctor matches real provider paths and flags only multiple distinct copies", async () => {
   const commands: LoadedCommand[] = [];
-  const h = harness({ commands });
+  const h = hostHarness("t3", { commands });
   const file = (install: string) => {
     const path = join(h.root, install, "packages/claude-subscription/extensions/claude-subscription/index.ts");
     mkdirSync(dirname(path), { recursive: true });
@@ -589,8 +603,9 @@ test("doctor counts the claude-subscription files Pi loaded and reports anything
     for (const [registered, files, flagged] of [
       [[loaded(checkout), loaded(checkout, "claude-login"), loaded(join(h.root, "web-search/index.ts"), "search")], [checkout], false],
       [[loaded(checkout), loaded(clone)], [checkout, clone], true],
+      [[loaded(linked)], [checkout], false],
       [[loaded(checkout), loaded(linked)], [checkout], false],
-      [[{ ...loaded(checkout), source: "prompt" }], [], true],
+      [[{ ...loaded(checkout), source: "prompt" }], [], false],
     ] as [LoadedCommand[], string[], boolean][]) {
       commands.splice(0, commands.length, ...registered);
       await h.command("p3stack", "doctor");
