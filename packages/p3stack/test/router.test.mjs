@@ -41,11 +41,12 @@ test("a missing reproduction changes the first target, not the owner of the fix"
   assert.match(route("diagnosing-bugs/SKILL.md")?.request ?? "", /without.*failing repro/i);
   assert.match(route("poteto-mode/playbooks/bug-fix.md").request, /with a failing repro/i);
   const diagnosis = /reproduc(?:ed|e) (?:the )?failure.*confirm(?:ed)? (?:its |the )?cause/i;
-  for (const text of [router, read("poteto-mode/playbooks/bug-fix.md")]) {
-    assert.match(text, diagnosis);
-    assert.match(text, /step 3/i);
-    assert.doesNotMatch(text, /continue Bug fix from the plan step/i);
-  }
+  assert.match(router, diagnosis);
+  assert.match(router, /before its fix[^\n]*debug tag[^\n]*probe paths[^\n]*step 3/i);
+  const bug = read("poteto-mode/playbooks/bug-fix.md");
+  const afterFix = bug.split("3. Plan the fix.")[1].split("[floor]")[0];
+  assert.match(afterFix, /remove[^\n]*tagged[^\n]*throwaway probes[^\n]*rerun the original repro/i);
+  assert.match(afterFix, /regression test/);
 });
 
 test("the first house policy caps every route at the requested deliverable", () => {
@@ -58,8 +59,16 @@ test("the first house policy caps every route at the requested deliverable", () 
   for (const policy of ["Authority", "Questions", "Validation", "Migration", "Testing", "Review independence", "Context", "Style"]) {
     assert.ok(rest.some(line => line.includes(`**${policy}.**`)), policy);
   }
+});
+
+test("a stakeholder demo replaces the generic build and stops before either production handoff", () => {
   const prototype = read("poteto-mode/playbooks/prototype.md");
-  assert.doesNotMatch(prototype, /lift the validated module|link it from the issue or PR/i);
+  const build = prototype.split("3. Build throwaway")[0];
+  assert.match(build, /replace step 3[^\n]*logic or UI/i);
+  assert.match(build, /before[^\n]*capture/i);
+  const handoff = prototype.split("Hand the chosen direction")[0];
+  assert.match(handoff, /stop at the checked demo/i);
+  assert.match(handoff, /full autonomy[^\n]*verdict[^\n]*pending/i);
 });
 
 test("local review checks the same artifact throughout and returns only findings", () => {

@@ -32,7 +32,7 @@ Match `any` or the effective grant. Under full autonomy, replace design intervie
 
 Playbooks carry p3stack's added steps inline; read each marked link when its condition holds.
 
-On a bug-fix request without a failing reproduction, stop diagnosing-bugs at a reproduced failure and confirmed cause, before its fix and cleanup. Implement once, starting at step 3 (plan and delegate the fix) of `poteto-mode/playbooks/bug-fix.md`.
+On a bug-fix request without a failing reproduction, stop diagnosing-bugs at a reproduced failure and confirmed cause, before its fix. Hand the original reproduction, cause, debug tag and throwaway probe paths to `poteto-mode/playbooks/bug-fix.md` at step 3 for the only implementation.
 
 | Request | Grant | Read or do |
 | --- | --- | --- |
