@@ -68,16 +68,24 @@ export function parseEvent(line) {
 export async function runPi({ source, mcp, cwd, args, timeoutSeconds, log, onEvent }) {
   if (timeoutSeconds > 2147483) throw new Error("--timeout-seconds exceeds the timer limit");
   const dir = mkdtempSync(join(source.scratch, "p3stack-eval-agent-"));
+  const interruption = new AbortController();
+  const interrupt = signal => interruption.abort(signal);
+  const signals = ["SIGINT", "SIGTERM"];
+  for (const signal of signals) process.on(signal, interrupt);
   try {
     for (const name of ["auth.json", "models.json", ...(mcp ? ["mcp.json"] : [])]) copyFileSync(join(source.dir, name), join(dir, name));
     writeFileSync(join(dir, "settings.json"), JSON.stringify(source.settings), { mode: 0o600 });
     const env = { ...evalEnv(), PI_CODING_AGENT_DIR: dir };
     for (const key of ["PI_SUBAGENT", "PI_SUBAGENT_POLICY", "PI_SUBAGENT_ALLOWED_TOOLS", "PI_SUBAGENT_PEER_FD", "T3_MCP_URL"]) delete env[key];
-    return await capture({ cwd, env, args, timeoutSeconds, log, onEvent });
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+    return await capture({ cwd, env, args, timeoutSeconds, log, onEvent, interruption: interruption.signal });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    for (const signal of signals) process.off(signal, interrupt);
+    if (interruption.signal.aborted) process.kill(process.pid, interruption.signal.reason);
+  }
 }
 
-function capture({ cwd, env, args, timeoutSeconds, log, onEvent }) {
+function capture({ cwd, env, args, timeoutSeconds, log, onEvent, interruption }) {
   return new Promise((done, fail) => {
     const child = spawn("pi", args, { cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "", tail = "", reason, error, killTimer, settled = false, worked = false, modelError;
@@ -93,15 +101,17 @@ function capture({ cwd, env, args, timeoutSeconds, log, onEvent }) {
       child.stdout.destroy();
       child.stderr.destroy();
     };
-    const stop = why => {
-      if (reason) return;
+    const stop = (why, signal = "SIGTERM") => {
+      if (reason && why !== "interrupt") return;
       reason = why;
       if (why === "timeout") hardStop();
       else {
-        signalGroup("SIGTERM");
+        signalGroup(signal);
+        clearTimeout(killTimer);
         killTimer = setTimeout(hardStop, 2000);
       }
     };
+    interruption.addEventListener("abort", () => stop("interrupt", interruption.reason), { once: true });
     const timer = setTimeout(() => stop("timeout"), timeoutSeconds * 1000);
     const record = line => {
       if (!line.trim() || error) return;

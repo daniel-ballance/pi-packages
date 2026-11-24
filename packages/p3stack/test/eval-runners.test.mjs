@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { setTimeout as delay } from "node:timers/promises";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -25,6 +27,14 @@ if (process.env.HELPER) {
   fs.writeFileSync(process.env.HELPER, String(p.pid));
   p.unref(); // the leader exits, the helper still holds the output pipes
 }
+if (process.env.SIGNAL) {
+  require('node:child_process').spawn(process.execPath, ['-e', \`
+    const fs = require('node:fs');
+    process.on(process.env.SIGNAL, () => { fs.writeFileSync(process.env.LOG+'.forwarded', process.env.SIGNAL); process.exit(0); });
+    fs.writeFileSync(process.env.LOG+'.ready', String(process.ppid));
+    setTimeout(() => {}, 10000);
+  \`], {stdio:'inherit'});
+}
 process.stdout.write(process.env.STREAM);
 if (process.env.HANG) setInterval(() => {}, 1000);
 process.exitCode = Number(process.env.CODE ?? 0);`;
@@ -40,14 +50,14 @@ function setup(t, tier) {
   writeFileSync(join(bin, "pi"), stub, { mode: 0o700 });
   symlinkSync(execFileSync("which", ["git"], { encoding: "utf8" }).trim(), join(bin, "git"));
   const env = { HOME: home, PATH: bin, TMPDIR: scratch, LOG: log, STREAM: jsonl([...(tier === "routing" ? reads : []), ...finish]) };
+  const args = [join(pkg, "test", tier + "-eval/run.mjs"), "--agent-dir", source, "--output", output, "--runs", "1",
+    ...(tier === "routing" ? ["--only", "feature"] : ["--only", "floor-review", "--arms", "on"])];
   function run(extra = [], vars = {}) {
-    const args = [join(pkg, "test", tier + "-eval/run.mjs"), "--agent-dir", source, "--output", output, "--runs", "1",
-      ...(tier === "routing" ? ["--only", "feature"] : ["--only", "floor-review", "--arms", "on"]), ...extra];
-    const child = spawnSync(process.execPath, args, { env: { ...env, ...vars }, cwd: root, encoding: "utf8", timeout: 20000 });
+    const child = spawnSync(process.execPath, [...args, ...extra], { env: { ...env, ...vars }, cwd: root, encoding: "utf8", timeout: 20000 });
     if (child.error) throw child.error;
     return child;
   }
-  return { run, source, root, home, bin, output, settings, log, calls: () => readFileSync(log, "utf8").trim().split("\n").map(s => JSON.parse(s)) };
+  return { run, args, env, source, root, home, bin, output, settings, log, calls: () => readFileSync(log, "utf8").trim().split("\n").map(s => JSON.parse(s)) };
 }
 
 function invalid(result, reason) {
@@ -144,6 +154,31 @@ for (const tier of ["behavior", "routing"]) {
     invalid(f.run(), /spawn pi ENOENT/i);
     assert.ok(f.calls().every(call => !existsSync(call.dir)), "clean up on every failure path");
     assert.ok(!readdirSync(f.output, { recursive: true }).some(name => name.endsWith("results.json")));
+  });
+}
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  test(`${signal} reaches the eval process group and removes its private directory`, async t => {
+    const f = setup(t, "routing"), ready = f.log + ".ready";
+    const runner = spawn(process.execPath, f.args, { cwd: f.root, env: { ...f.env, STREAM: "", SIGNAL: signal },
+      stdio: "ignore", timeout: 10000, killSignal: "SIGKILL" });
+    const exited = once(runner, "exit");
+    try {
+      const deadline = Date.now() + 5000;
+      while (!existsSync(ready) && Date.now() < deadline) await delay(10);
+      assert.ok(existsSync(ready), "stub helper is listening");
+      runner.kill(signal);
+      assert.deepEqual(await exited, [null, signal]);
+      assert.ok(!existsSync(f.calls()[0].dir), "private credential copy survived interruption");
+      assert.equal(readFileSync(f.log + ".forwarded", "utf8"), signal);
+    } finally {
+      runner.kill("SIGKILL");
+      const group = existsSync(ready) && Number(readFileSync(ready, "utf8"));
+      if (group && Number.isSafeInteger(group) && group > 1) {
+        try { process.kill(-group, "SIGKILL"); }
+        catch (e) { if (e.code !== "ESRCH") throw e; }
+      }
+    }
   });
 }
 
