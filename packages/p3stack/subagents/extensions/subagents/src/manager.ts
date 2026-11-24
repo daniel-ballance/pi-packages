@@ -475,8 +475,10 @@ export class SubagentManager {
         record.activity = expected ? "Stopped; saved conversation available" : "Process exited";
         record.uiRequests = [];
         this.inbox.expireInputNotices(record);
-        if (delivery.error) record.error = delivery.error;
-        else if (!expected) record.error = error?.message || "Child exited unexpectedly";
+        if (!expected) {
+          const exitReason = error?.message || "Child exited unexpectedly";
+          record.error = delivery.error ? `${delivery.error}; then ${exitReason}` : exitReason;
+        } else if (delivery.error) record.error = delivery.error;
         const update = this.inbox.appendUpdate(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
         if (record.assignment?.status === "running") {
           record.assignment.status = expected ? "cancelled" : "failed";
