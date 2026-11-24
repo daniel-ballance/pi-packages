@@ -70,19 +70,23 @@ function forgeKey(host: unknown, repository: unknown, number: unknown): string |
     typeof number !== "number" || !Number.isSafeInteger(number) || number < 1) return undefined;
   const authority = host.toLowerCase(), repo = repository.toLowerCase();
   const route = forgeRoutes.get(authority);
-  if (!route) return `${authority}:${repo}#${number}`; // Reported self-hosted target, not a verified web link.
+  if (!route) return `${repo}#${number}@${authority}`; // Reported self-hosted target, not a verified web link.
   if (authority === "dev.azure.com" ? !/\/_git\/[\w.-]+$/.test(repo) : authority !== "gitlab.com" && repo.split("/").length !== 2) return undefined;
   return `https://${authority}/${repo}/${route}/${number}`;
 }
 
-function prId(value: string): string | undefined {
+function keyFromForgeUrl(value: string): string | undefined {
   if (value.length > 2048) return undefined;
-  const scoped = /^([^/]+):([^#]+)#([1-9]\d*)$/.exec(value);
-  if (scoped) return forgeKey(scoped[1], scoped[2], Number(scoped[3]));
   const url = URL.parse(value);
   if (url?.protocol !== "https:" || !forgeRoutes.has(url.host)) return undefined;
   const match = /^\/(.+?)\/(pull|pulls|pull-requests|-\/merge_requests|pullrequest)\/([1-9]\d*)(?:\/|$)/.exec(url.pathname);
   return match && match[2] === forgeRoutes.get(url.host) ? forgeKey(url.host, match[1], Number(match[3])) : undefined;
+}
+
+function prId(value: string): string | undefined {
+  if (value.length > 2048) return undefined;
+  const scoped = /^([\w./-]+)#([1-9]\d*)@([\w.:-]+)$/.exec(value);
+  return scoped ? forgeKey(scoped[3], scoped[1], Number(scoped[2])) : keyFromForgeUrl(value);
 }
 
 /** The same allowlist gates live writes and replay of untrusted, older session entries. */
@@ -152,7 +156,7 @@ function prKey(input: Json, result?: Json) {
   const host = result?.host ?? input.host;
   if (host !== undefined) return forgeKey(host, result?.repository ?? input.repository, result?.number ?? input.number);
   const url = text(result?.url) ?? text(input.url);
-  return url && prId(url);
+  return url && keyFromForgeUrl(url);
 }
 
 /** Translate one successful T3 tool call into ledger updates. Pure, so it is easy to test. */

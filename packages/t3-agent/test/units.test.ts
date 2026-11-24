@@ -197,6 +197,9 @@ test("PR watches and unwatches share a verified forge key across spellings and r
   step("unwatch_pull_request", { url: deep }, { ...pr, watching: false });
   assert.equal(ledger.open().length, 1);
   step("unwatch_pull_request", other, { ...other, watching: false });
+  step("watch_pull_request", { url: `${canonical}/files#3` }, { watching: true });
+  assert.deepEqual(ledger.open().map(h => h.id), [canonical]);
+  step("unwatch_pull_request", { repository: pr.repository, number: 7 }, { ...pr, watching: false });
   step("watch_pull_request", { url: callback }, { url: callback, watching: true });
   assert.deepEqual(ledger.open(), []);
 });
