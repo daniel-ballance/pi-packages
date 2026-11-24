@@ -158,8 +158,10 @@ test("code-review's Git inputs cover the index, working tree and new files, or t
   const git = (...args) => execFileSync("git", args, { cwd: repo, env, encoding: "utf8" });
   const commit = () => git("-c", "user.name=fixture", "-c", "user.email=fixture@example.org", "commit", "-qm", "fixture");
   git("init", "-q");
-  writeFileSync(join(repo, "tracked"), "base\n");
-  git("add", "tracked");
+  const scope = "review dir", tracked = join(scope, "tracked");
+  mkdirSync(join(repo, scope));
+  writeFileSync(join(repo, tracked), "base\n");
+  git("add", tracked);
   commit();
   const base = git("rev-parse", "HEAD").trim();
 
@@ -167,12 +169,13 @@ test("code-review's Git inputs cover the index, working tree and new files, or t
   // transcript. The old three-dot diff returns no evidence for this change.
   const step = read("skills/code-review/SKILL.md").split("### 2.")[0];
   const commands = [...step.matchAll(/`git ((?:diff|ls-files|status)\b[^`\n]*)`/g)].map(m => m[1]);
-  const run = command => git(...command.replaceAll(/<(?:fixed-point|base)>/g, base).split(" "));
-  writeFileSync(join(repo, "tracked"), "staged content\n");
-  git("add", "tracked");
-  writeFileSync(join(repo, "tracked"), "unstaged content\n");
-  const path = "new file.txt";
-  writeFileSync(join(repo, path), "new content\n");
+  const run = command => git("--no-optional-locks", ...command.split(" ").map(arg => arg === "<paths>" ? scope : arg === "<base>" ? base : arg));
+  writeFileSync(join(repo, tracked), "staged content\n");
+  git("add", tracked);
+  writeFileSync(join(repo, tracked), "unstaged content\n");
+  const path = join(scope, "new\nfile.bin");
+  writeFileSync(join(repo, path), Buffer.alloc(130001));
+  writeFileSync(join(repo, "unrelated"), "not part of this review\n");
 
   const wip = commands.filter(c => c.startsWith("diff")).map(run).join("\n");
   assert.match(wip, /\+staged content/);
@@ -183,22 +186,25 @@ test("code-review's Git inputs cover the index, working tree and new files, or t
   const others = commands.find(c => c.startsWith("ls-files "));
   assert.ok(others);
   assert.deepEqual(run(others).split("\0"), [path, ""]);
-  assert.match(step, /untracked[^\n]*contents/i);
+  assert.match(step, /path[^\n]*size[^\n]*content hash/i);
+  assert.match(step, /binary/i);
 
-  git("add", ".");
+  git("add", "--", scope);
   commit();
   assert.equal(run(status), "");
   const committed = commands.find(c => c.startsWith("diff") && c.includes("HEAD"));
   assert.ok(committed);
-  assert.match(run(committed), /\+new content/);
+  assert.match(run(committed), /Binary files/);
 });
 
 test("both code-review briefs receive the captured input, without a prerequisite commit", () => {
   const review = read("skills/code-review/SKILL.md");
-  for (const brief of ["Standards", "Spec"]) {
-    const prompt = review.split(`**${brief} subagent prompt**`)[1].split("\n\n", 3)[1];
-    assert.match(prompt, /captured/i);
-    assert.doesNotMatch(prompt, /diff command/);
-  }
+  const dispatch = review.split("### 4.")[1].split("### 5.")[0];
+  assert.match(dispatch, /both[^\n]*manifest[^\n]*read-only access/i);
+  assert.doesNotMatch(dispatch, /captured patches|untracked file evidence/);
+  assert.match(review, /caller[^\n]*pinned base[^\n]*captured input/i);
+  assert.match(review, /caller[^\n]*contract[^\n]*spec/i);
+  assert.doesNotMatch(review, /tell the user to run/);
+  assert.match(review, /report[^\n]*(?:unavailable|inaccessible|could not)/i);
   assert.doesNotMatch(read("skills/implement/SKILL.md"), /uncommitted changes would be missed/);
 });

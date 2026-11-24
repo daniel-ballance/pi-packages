@@ -803,7 +803,7 @@ pocockCase("4 ordered rule minima detect upstream drift", ({ run, input, rewrite
 pocockCase("5 tracker prerequisites survive and review collection retains its drift guard", ({ run, read, rewrite }) => {
   const first = run();
   assert.equal(first.status, 0, first.stderr);
-  assert.match(read("code-review/SKILL.md"), /The issue tracker should have been provided/);
+  assert.match(read("code-review/SKILL.md"), /caller[^\n]*contract[^\n]*spec/i);
   assert.match(read("triage/SKILL.md"), /docs\/agents\/issue-tracker.md/);
   const setup = read("setup-matt-pocock-skills/SKILL.md");
   assert.match(setup, /Inspect any legacy domain glossary or map/);

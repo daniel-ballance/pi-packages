@@ -1,10 +1,8 @@
 ### 1. Pin the fixed point and capture the review input
 
-Use the commit, branch, or tag the user supplied. If they didn't specify a fixed point, ask for it. From the repository root, run `git merge-base <fixed-point> HEAD`. Stop if it fails. Record the returned SHA as `<base>` and the commit list from `git log <base>..HEAD --oneline`.
+Reuse the caller's pinned base and captured input. If no base is pinned, use `git merge-base <fixed-point> HEAD` with the supplied ref; ask for a ref only if it is missing. Record base and head SHAs. For input not yet captured, use the caller's paths as separate arguments after `--` (`.` for a whole-branch review). Set `GIT_OPTIONAL_LOCKS=0` for Git queries.
 
-Run `git status --porcelain=v1 --untracked-files=all`. Capture the review input once, without changing any files or staging anything:
+- **Committed range requested, or scoped status clean** (`git status --porcelain=v1 --untracked-files=all -- <paths>`): use `git diff <base> HEAD -- <paths>`.
+- **Work in progress:** label `git diff --cached <base> -- <paths>` and `git diff -- <paths>` separately. Enumerate untracked paths with `git ls-files --others --exclude-standard -z -- <paths>`. An untracked file counts even if both patches are empty.
 
-- **Status has entries — review the working tree.** Capture `git diff --cached <base> --` (branch commits plus staged changes) and `git diff --` (unstaged changes). Keep the two patches labeled. List untracked files with `git ls-files --others --exclude-standard -z`; include each NUL-delimited path and its contents as a new file. For a symlink, record its target without following it.
-- **Status is empty — review the committed range.** Capture `git diff <base> HEAD --`.
-
-Stop here on a failed command or if there is nothing to review. An untracked file counts even when both tracked patches are empty.
+Manifest each changed version by path, byte size and content hash. Mark deletions and binary files; hash symlink targets without following them. Keep the checkout and index read-only. Stop on an unresolved base or empty scope; report any input you could not hand over or whose hash changed before review.

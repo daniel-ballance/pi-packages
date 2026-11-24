@@ -24,7 +24,7 @@ Without the resolver, read the first valid role file: `.pi/p3stack.json` in a tr
 
 ## Isolation
 
-Use separate checkouts for independent writes. A new checkout contains committed work, not dirty edits. To review uncommitted work, give the reviewer the scoped diff and untracked contents or read-only access in place.
+Use separate checkouts for independent writes. A new checkout contains committed work, not dirty edits. For uncommitted work, give reviewers read-only access to the scoped changes in place; report any they cannot inspect.
 
 - [Terminal](../poteto-mode/references/host-terminal.md#isolation)
 - [T3 Code](../poteto-mode/references/host-t3.md#isolation)
