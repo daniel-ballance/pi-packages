@@ -73,8 +73,14 @@ export function modelInvokedSkills(packageDir) {
 export function evaluate(skills, suite) {
   const known = new Set(skills.map(skill => skill.name)), scorer = index(skills);
   const failures = [], firsts = [], covered = new Set(), pending = new Set(suite.pending);
+  for (const key of ["rankOneFloor", "collisionThreshold"]) {
+    if (!Number.isFinite(suite[key]) || suite[key] < 0 || suite[key] > 1) failures.push(`${key} must be a number in [0,1]`);
+  }
   let negatives = 0;
   for (const entry of suite.cases) {
+    for (const { top_k = 3 } of entry.positive ?? []) {
+      if (!Number.isSafeInteger(top_k) || top_k < 1) failures.push(`positive ${entry.skill}: top_k must be a positive integer`);
+    }
     for (const { owner } of entry.negative ?? []) {
       if (owner !== undefined && !known.has(owner)) failures.push(`negative ${entry.skill}: unknown owner ${owner}`);
     }

@@ -34,6 +34,23 @@ test("description lint distinguishes a complete case set from empty, skipped and
   assert.deepEqual(evaluate(extra, { ...suite, pending: ["new-thing"] }).failures, []);
 });
 
+for (const key of ["rankOneFloor", "collisionThreshold"]) {
+  test(`description lint requires ${key} in [0,1]`, () => {
+    for (const value of [undefined, -0.01, 1.01, "0.5", NaN]) {
+      const config = { ...suite, [key]: value };
+      if (value === undefined) delete config[key];
+      assert.match(evaluate(skills, config).failures.join("\n"), new RegExp(key));
+    }
+  });
+}
+
+test("top_k must be a positive integer, including in a pending case", () => {
+  for (const top_k of [-2, 0, 1.5]) {
+    const config = { ...suite, pending: ["later"], cases: [...suite.cases, { skill: "later", positive: [{ prompt: "later", top_k }] }] };
+    assert.match(evaluate(skills, config).failures.join("\n"), /top_k/);
+  }
+});
+
 test("evaluate rejects unknown owners, misplaced positives and negatives, low rank-1 share and collisions", () => {
   const withCase = (extra) => ({ ...suite, cases: [...suite.cases, { skill: "tdd", ...extra }] });
   assert.deepEqual(evaluate(skills, withCase({ negative: [{ prompt: "release", owner: "release" }] })).failures, []);
