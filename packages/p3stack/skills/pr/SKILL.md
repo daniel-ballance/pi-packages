@@ -8,7 +8,7 @@ metadata:
   url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
 ---
 
-Follow **Descriptions** in [Opening a PR](../poteto-mode/playbooks/opening-a-pr.md) for the body format. For a wording request, return only the body. Use the examples below where they help explain the change.
+Follow **Descriptions** in [Opening a PR](../poteto-mode/playbooks/opening-a-pr.md) for the body format. For a wording request, return only the body. Put Summary visuals under Why or What changed, before/after evidence under Verification, and the door judgment and its impact under Blast Radius.
 
 ## Supporting material
 

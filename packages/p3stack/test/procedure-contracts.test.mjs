@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const read = path => readFileSync(new URL(`../skills/${path}`, import.meta.url), "utf8");
@@ -22,7 +26,10 @@ test("tdd selects a public seam by grant before handing the loop to the writer",
   assert.match(seams, /full autonomy[^\n]*reversible[^\n]*record/i);
   assert.doesNotMatch(seams, /no test is written at an unconfirmed seam/i);
   assert.match(read("implement-spec/references/implement.md"), /\[tdd\][^\n]*select seams/i);
-  assert.match(playbook("feature"), /\[tdd\][^\n]*seams[^\n]*implementation brief/i);
+  const featureStep = playbook("feature").split("\n").find(line => line.includes("[tdd]"));
+  assert.match(featureStep, /seams[^\n]*implementation brief/i);
+  assert.match(featureStep, /default grant[^\n]*confirm[^\n]*human before dispatch/i);
+  assert.match(featureStep, /full autonomy[^\n]*record[^\n]*choice/i);
 });
 
 test("grilling returns a design without inventing an approval or starting a build", () => {
@@ -38,6 +45,7 @@ test("a body-only request uses the same format as PR delivery without publishing
   const pr = skill("pr"), opening = playbook("opening-a-pr");
   assert.match(pr, /Descriptions[^\n]*opening-a-pr\.md/i);
   assert.match(pr, /return (?:just|only) the body/i);
+  assert.match(pr, /visuals[^.\n]*Why[^.\n]*What changed[^.\n]*evidence[^.\n]*Verification[^.\n]*door[^.\n]*Blast Radius/i);
   assert.doesNotMatch(pr, /^## (?:Summary|Evidence|Merge Danger)$/m);
   assert.match(opening, /repository[^\n]*PR template[^\n]*(?:otherwise|absence|without one)/i);
   assert.match(opening, /## Verification/);
@@ -51,7 +59,7 @@ test("an integration queue opens a draft, links it, and promotes the reviewed he
   assert.match(opening, /integration (?:draft|queue)[^\n]*(?:--draft|draft: true)/i);
   assert.match(opening, /ready for review[^\n]*draft: false/i);
   assert.match(opening, /host integration[^\n]*draft/i);
-  assert.match(opening, /before (?:opening|marking)[^\n]*ready[^\n]*verdict on the changed diff/i);
+  assert.match(opening, /before opening a ready PR,? or marking a draft ready:[^\n]*verdict on the changed diff/i);
   assert.doesNotMatch(opening, /open every PR ready|draft: false` on every creation|if a PR still opens as a draft/i);
 });
 
@@ -83,6 +91,9 @@ const ledgerPath = "p3stack-mode/references/execution-ledger.md";
 test("the audit trail reviews ledger rows; a shareable TSV is an export, not a second journal", () => {
   const ledger = read(ledgerPath), trail = read("p3stack-mode/references/show-me-your-work.md");
   const row = ledger.split("\n").find(line => line.includes("unit | attempt"));
+  assert.match(row, /\bts\b/);
+  assert.match(ledger, /UTC[^\n]*when[^\n]*decision/i);
+  assert.match(trail, /unit[^\n]*phase/i);
   for (const field of ["decision", "why", "evidence", "result", "head SHA", "pending gate"]) assert.ok(row.includes(field), field);
   assert.ok(trail.includes(`(../${ledgerPath})`));
   assert.match(trail, /export[^\n]*ledger rows/i);
@@ -92,6 +103,25 @@ test("the audit trail reviews ledger rows; a shareable TSV is an export, not a s
   assert.doesNotMatch(trail, /a new chat starts a new run|first row has phase .start.|at .decisions\.tsv. in the work dir/i);
 });
 
+test("the decision export carries the original timestamps even when rows are exported together", t => {
+  const dir = mkdtempSync(join(tmpdir(), "p3stack-export-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "decisions.tsv");
+  const script = fileURLToPath(new URL("../skills/p3stack-mode/references/show-me-your-work/scripts/log.sh", import.meta.url));
+  const times = ["2020-03-02T10:00:00Z", "2020-03-02T10:05:00Z"];
+  for (const ts of times) execFileSync("bash", [script, file, ts, "measure", "change", "why", "@proof", "kept"]);
+  assert.deepEqual(readFileSync(file, "utf8").trimEnd().split("\n"), [
+    "ts\tphase\tdecision\twhy\tevidence\tresult", ...times.map(ts => ts + "\tmeasure\tchange\twhy\t'@proof\tkept"),
+  ]);
+});
+
+test("hillclimb fits each attempt and its gate evidence into the private ledger", () => {
+  const step = playbook("hillclimb").split("\n").find(line => line.startsWith("3. "));
+  for (const mapping of [/id in `attempt`/i, /hypothesis and note in `why`/, /change in `decision`/,
+    /test[^,]*in `evidence path`/, /before, after, delta and verdict[^.]*in `result`/]) assert.match(step, mapping);
+  assert.doesNotMatch(step, /gitignored/i);
+});
+
 test("coordinators record worker reports once, including iterative and autonomous work", () => {
   const orchestration = playbook("orchestrate"), autopilot = playbook("autopilot-full");
   for (const doc of [orchestration, autopilot, playbook("hillclimb"), playbook("autonomous-run")]) {
@@ -99,7 +129,10 @@ test("coordinators record worker reports once, including iterative and autonomou
     assert.doesNotMatch(doc, /start a decision trail|a `decision\.tsv`|pasted in full/i);
   }
   assert.match(orchestration, /notes\.md[^\n]*(?:pointer|link) to the ledger/i);
-  assert.match(autopilot, /send[^\n]*coordinator[^\n]*ledger/i);
+  const report = autopilot.split("\n").find(line => /coordinator[^\n]*queue ledger/i.test(line));
+  assert.match(report, /host-terminal\.md#store[^\n]*report path[^\n]*run store/i);
+  assert.match(report, /host-t3\.md#[^\n]*final task result/i);
+  assert.match(report, /thread list[^\n]*including delegates[^\n]*host-t3\.md#session-history/i);
 });
 
 test("pause points into the ledger and pickup verifies the evidence before routing", () => {

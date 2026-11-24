@@ -5,14 +5,15 @@ export async function refundArithmetic() {
   const cents = match => match ? Math.round(Number(match[1].replaceAll(",", "")) * (match[2] ? 1 : 100)) : undefined;
   const amountAfter = label => cents(document.body.innerText.match(new RegExp(`(?:${label})${money.source}`, "i")));
   const total = amountAfter("order total|total order amount|order amount|\\btotal");
-  const paid = () => amountAfter("total refunded|already refunded|refunded so far");
-  const balance = () => amountAfter("remaining(?: refundable)?(?: balance| amount)?|available to refund|refundable balance")
+  const paid = () => amountAfter("total refunded|already refunded|refunded so far|\\brefunded\\b");
+  const balance = () => amountAfter("remaining(?: refundable)?(?: balance| amount)?|available to refund|\\brefundable(?: balance)?\\b")
     ?? (total - paid());
   const usable = el => !el.matches(":disabled,[aria-disabled=true]") && el.getClientRects().length;
   const controls = () => [...document.querySelectorAll('button,input[type=button],input[type=submit],[role=button]')].filter(usable);
   const label = el => el.innerText || el.value || el.getAttribute("aria-label") || "";
   const start = balance();
-  if (!Number.isSafeInteger(start) || start <= 1) return "no measurable order balance";
+  if (Number.isNaN(start)) return { unmeasured: true }; // Neither a balance nor total minus refunded.
+  if (!Number.isSafeInteger(start) || start <= 1) return "invalid opening balance";
   const order = total ?? start + (paid() ?? 0);
   if (start + (paid() ?? 0) !== order) return "opening balance does not match the order total";
   let remaining = start, debits = 0;

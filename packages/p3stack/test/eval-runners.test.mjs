@@ -22,6 +22,8 @@ const stub = `#!${process.execPath}
 const fs = require('node:fs'), path = require('node:path');
 if (process.argv.includes('--version')) { console.log('1.5.2'); process.exit(0); }
 if (process.env.WRITE_NOTE) fs.writeFileSync('notes.txt', 'proposed patch');
+if (process.env.PAGE) fs.writeFileSync('page.html', process.env.PAGE);
+if (process.env.BREAK_SECOND_TREE && fs.existsSync(process.env.LOG)) fs.rmSync('.git', { recursive: true });
 const dir = process.env.PI_CODING_AGENT_DIR;
 fs.appendFileSync(process.env.LOG, JSON.stringify({dir, mode:fs.statSync(dir).mode & 511, files:fs.readdirSync(dir), settings:JSON.parse(fs.readFileSync(path.join(dir,'settings.json'))), gitVars:Object.keys(process.env).filter(k=>k.startsWith("GIT_"))})+'\\n');
 if (process.env.TRAP_TERM) process.on('SIGTERM', () => process.exit(143)); // Pi print-mode disposal
@@ -224,6 +226,40 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
     }
   });
 }
+
+test("behavior: require Chromium before the first attempt when a later case needs arithmetic", t => {
+  const f = setup(t, "behavior");
+  invalid(f.run(["--only", "floor-review,prototype-logic"]), /Chromium/);
+  assert.equal(existsSync(f.log), false);
+});
+
+test("behavior: a state-only page is counted as not graded for arithmetic", t => {
+  const f = setup(t, "behavior");
+  const browser = spawnSync("which", ["chromium"], { encoding: "utf8" });
+  if (browser.status !== 0) return t.skip("no Chromium on PATH");
+  const page = '<p id="s">requested</p>' + ["approved", "rejected", "refunded"]
+    .map(word => `<button onclick="s.textContent='${word}'">Show ${word}</button>`).join("");
+  writeFileSync(join(f.bin, "chromium"), '#!/bin/sh\nPATH="$BROWSER_PATH" exec "$BROWSER" "$@"\n', { mode: 0o700 });
+  const result = f.run(["--only", "prototype-logic"], {
+    PAGE: page, BROWSER_PATH: process.env.PATH, BROWSER: browser.stdout.trim(),
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /prototype-logic \[on\]:.*arithmetic not graded: 1\/1/);
+  const dir = join(f.output, readdirSync(f.output)[0]);
+  const { results: [r] } = JSON.parse(readFileSync(join(dir, "results.json")));
+  assert.deepEqual(r.outcome.checks.map(c => c.passed), [true, null]);
+  assert.equal(r.outcome.score, 1, "only measured checks contribute");
+  assert.equal(r.passed, null, "a partial grade is not a pass");
+  assert.equal(JSON.parse(readFileSync(join(dir, r.receipt))).status, "not graded");
+});
+
+test("behavior: a grading error leaves completed attempts in results.json", t => {
+  const f = setup(t, "behavior");
+  invalid(f.run(["--runs", "2"], { BREAK_SECOND_TREE: "1" }), /not a git repository/);
+  const dir = join(f.output, readdirSync(f.output)[0]);
+  const { results } = JSON.parse(readFileSync(join(dir, "results.json")));
+  assert.deepEqual(results.map(r => [r.id, r.run, r.passed]), [["floor-review", 1, true]]);
+});
 
 test("behavior: copy mcp.json only for the selected MCP case; fail without it", t => {
   const f = setup(t, "behavior");

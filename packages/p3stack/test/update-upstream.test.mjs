@@ -75,6 +75,24 @@ function addSecondSource({ root, pkg, origin }, submodule = false) {
   return second;
 }
 
+test("sync checks out exactly the distinct repositories in the source manifest", t => {
+  const root = mkdtempSync(join(tmpdir(), "p3stack-sync-list-")), pkg = "packages/p3stack";
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, pkg), { recursive: true });
+  // Capture Git's arguments and stop at the &&, before generation. No real Git on PATH.
+  write(root, { "bin/git": '#!/bin/sh\nprintf "%s\\n" "$@"\nexit 23\n' });
+  chmodSync(join(root, "bin/git"), 0o755);
+  const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
+  const { sources } = JSON.parse(readFileSync(new URL("../rules/manifest.json", import.meta.url)));
+  const run = spawnSync("/bin/sh", ["-c", scripts.sync], { cwd: join(root, pkg), env: { PATH: join(root, "bin") }, encoding: "utf8" });
+  assert.equal(run.status, 23, run.stderr);
+  const args = run.stdout.trimEnd().split("\n");
+  assert.deepEqual(args.splice(0, 5), ["-C", "../..", "submodule", "update", "--init"]);
+  const check = rows => assert.deepEqual(args.toSorted(), [...new Set(rows.map(s => join(pkg, s.upstream.checkout)))].sort());
+  check(sources);
+  assert.throws(() => check([...sources, { upstream: { checkout: "vendor/unlisted" } }]), /vendor\/unlisted/);
+});
+
 test("every source expands its own commit and records its README pin", () => {
   const f = fixture();
   try {

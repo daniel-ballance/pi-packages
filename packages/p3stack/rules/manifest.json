@@ -85,6 +85,14 @@
         {
           "from": "thermos/agents/",
           "to": "agents/"
+        },
+        {
+          "from": "dyl-stack/LICENSE",
+          "to": "LICENSE-dyl-stack"
+        },
+        {
+          "from": "thermos/LICENSE",
+          "to": "LICENSE-thermos"
         }
       ],
       "upstream": {

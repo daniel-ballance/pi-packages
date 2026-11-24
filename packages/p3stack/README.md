@@ -58,6 +58,6 @@ Read [how routing works](https://github.com/daniel-ballance/pi-packages/blob/mai
 
 ## License and upstreams
 
-MIT. See [LICENSE](LICENSE), [LICENSE-matt-pocock](LICENSE-matt-pocock), [LICENSE-agent-skills](LICENSE-agent-skills), and [LICENSE-superpowers](LICENSE-superpowers).
+MIT. See [LICENSE](LICENSE), [LICENSE-matt-pocock](LICENSE-matt-pocock), [LICENSE-agent-skills](LICENSE-agent-skills), [LICENSE-superpowers](LICENSE-superpowers), [LICENSE-dyl-stack](LICENSE-dyl-stack), and [LICENSE-thermos](LICENSE-thermos).
 
 <!-- p3stack:upstream -->`cursor/plugins` [`3dbd22f`](https://github.com/cursor/plugins/tree/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack), pstack 0.15.36; `mattpocock/skills` [`5863806`](https://github.com/mattpocock/skills/tree/5863806dd4e15c63174bee4e7515a4256792ecfa); `cursor/plugins` [`3dbd22f`](https://github.com/cursor/plugins/tree/3dbd22ff12742fb28c9700b9760baa29ed41dc13); `addyosmani/agent-skills` [`39b723c`](https://github.com/addyosmani/agent-skills/tree/39b723ceebf81474d0557c1fecd01eddab585563), agent-skills 0.6.16; `obra/superpowers` [`22f0b46`](https://github.com/obra/superpowers/tree/22f0b463e7a5e579904dd6211a520321035526f7)<!-- /p3stack:upstream -->.

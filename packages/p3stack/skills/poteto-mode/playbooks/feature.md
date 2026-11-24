@@ -5,7 +5,7 @@
 1. `how` over the affected subsystem.
 2. `architect` for parallel design exploration when the change carries design risk (see Non-negotiables). Otherwise name the data shape and its organizing structure here and go to step 3.
 
-> **p3stack only:** [tdd](../tdd/SKILL.md) — Select test seams from the sketch or the existing interface. Put the seams in the implementation brief; its owner runs the red-green loop.
+> **p3stack only:** [tdd](../tdd/SKILL.md) — Select test seams from the sketch or the existing interface. Under the default grant, confirm them with the human before dispatch; under full autonomy, record the choice. Put the seams in the implementation brief; its owner runs the red-green loop.
 
 3. Write the throughput checkpoint as four todo items. A dimension that genuinely does not apply (single file, no fan-out) keeps its item with `n/a: <reason>` rather than being dropped:
    - **Blocking first steps.** Gates run before fan-out.
