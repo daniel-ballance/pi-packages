@@ -126,6 +126,32 @@ test("a maximum has the opposite direction; unknown policy changes need review",
   assert.deepEqual(categories(floorCheck({ cwd: root })), ["weakened-threshold CONSTRAINTS.md:1"]);
 });
 
+for (const [file, before, after, category] of [
+  ["CONSTRAINTS.md", "| Line coverage >= 80% | Latency <= 200 ms |", "| Line coverage >= 70% | Latency <= 200 ms |", "weakened-threshold"],
+  ["CONSTRAINTS.md", "| Line coverage >= 80% | Latency <= 200 ms |", "| Line coverage >= 90% | Latency <= 200 ms |", null],
+  ["vitest.config.ts", "thresholds: { lines: 80, maxWorkers: 4 }", "thresholds: { lines: 90, maxWorkers: 4 }", null],
+  ["vitest.config.ts", "lines: 80", "  lines : 90,", null],
+  [".eslintrc.yaml", "  no-console: error", "  no-console: off # temporary", "weakened-threshold"],
+  [".eslintrc.json", '    "no-console": "error",', '    "no-console": "warn",', "weakened-threshold"],
+  [".eslintrc.json", '    "no-console": 2,', "", "weakened-threshold"],
+  ["tsconfig.json", '    "strict": true,', "", "weakened-threshold"],
+  ["pyproject.toml", 'addopts = "--cov-fail-under=90"', 'addopts = "--cov-fail-under=50"', "weakened-threshold"],
+]) {
+  test(`policy diff in ${file}: ${before} -> ${after}`, t => {
+    const { root } = repo(t, { [file]: before + "\n" });
+    write(root, { [file]: after + "\n" });
+    assert.deepEqual(categories(floorCheck({ cwd: root })), category ? [`${category} ${file}:1`] : []);
+  });
+}
+
+test("a test moved out of the test path is lost, unlike a move between test paths", t => {
+  const { root, git } = repo(t, { "test/a.js": "assert(1)\n" });
+  git("mv", "test/a.js", "test/b.js");
+  assert.deepEqual(categories(floorCheck({ cwd: root })), []);
+  git("mv", "test/b.js", "old.js.bak");
+  assert.deepEqual(categories(floorCheck({ cwd: root })), ["deleted-test test/a.js:0"]);
+});
+
 test("an external reason explains only the named finding on this run", t => {
   const { root } = repo(t, { "old suite.test.js": "ok\n", "other.test.js": "ok\n" });
   unlinkSync(join(root, "old suite.test.js"));
@@ -150,9 +176,12 @@ for (const kind of ["untracked symlink", "tracked symlink", "large untracked fil
     if (kind === "untracked symlink") symlinkSync("original", join(root, "link"));
     if (kind === "tracked symlink") { unlinkSync(join(root, "original")); symlinkSync("missing", join(root, "original")); }
     if (kind.startsWith("large")) write(root, { [kind === "large untracked file" ? "new" : "original"]: kind === "large base blob" ? "small" : large });
-    const run = spawnSync(process.execPath, [script, "--cwd", root], { env, encoding: "utf8", timeout: 5000 });
-    assert.equal(run.status, 2, run.stdout);
-    assert.match(run.stderr, /original|link|new/);
+    const path = kind === "untracked symlink" ? "link" : kind === "large untracked file" ? "new" : "original";
+    const run = (...args) => spawnSync(process.execPath, [script, "--cwd", root, ...args], { env, encoding: "utf8", timeout: 5000 });
+    const hit = run();
+    assert.equal(hit.status, 1, hit.stderr);
+    assert.match(hit.stdout, new RegExp(`unchecked-file ${path}:0`));
+    assert.equal(run("--explain", `unchecked-file ${path}:0=artifact reviewed separately`).status, 0);
   });
 }
 
