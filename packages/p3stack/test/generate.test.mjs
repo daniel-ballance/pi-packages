@@ -619,7 +619,7 @@ pocockCase("3 duplicate names in two buckets fail", ({ run, input }) => {
 
 pocockCase("4 ordered rule minima detect upstream drift", ({ run, input, rewrite }) => {
   for (const path of readdirSync(input(""), { recursive: true }).filter(path => path.endsWith(".md"))) rewrite(path, "sub-agents", "child-workers");
-  assert.match(run().stderr, /subagent-plural: 0 matches/);
+  assert.match(run().stderr, /subagent-spawn-review: 0 matches/);
 });
 
 pocockCase("5 tracker prerequisites survive and review collection retains its drift guard", ({ run, read, rewrite }) => {
@@ -649,7 +649,7 @@ pocockCase("6 unrecognized harness wording names the file", ({ run, input }) => 
 
 pocockCase("7 invalid optional regexes are errors", ({ root, run }) => {
   const file = join(root, "rules/tokens.json"), rules = JSON.parse(readFileSync(file, "utf8"));
-  const rule = rules.find(({ id, source }) => id === "clear-to-new" && source === "matt-pocock");
+  const rule = rules.find(({ id, source }) => id === "arg-hint" && source === "matt-pocock");
   assert.ok(rule);
   rule.find = "(";
   writeFileSync(file, JSON.stringify(rules));
@@ -701,13 +701,11 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.equal(run("--check").status, 0, run("--check").stderr);
 });
 
-pocockCase("11 legacy slash invocations keep links and protect paths", ({ run, input, read }) => {
+pocockCase("11 slash commands use emitted names and protect paths", ({ run, input, read }) => {
   const file = input("engineering/implement/SKILL.md");
   writeFileSync(file, readFileSync(file, "utf8") + "\nUse /tdd and /code-review, /to-spec, /clear. Keep ../research/SKILL.md.\nargument-hint: ignored\n");
   assert.equal(run().status, 0);
-  assert.match(read("implement/SKILL.md"), /\[\/skill:tdd\]\(\.\.\/tdd\/SKILL.md\)/);
-  assert.match(read("implement/SKILL.md"), /\[\/skill:code-review\]\(\.\.\/code-review\/SKILL.md\)/);
-  assert.match(read("implement/SKILL.md"), /\/skill:to-spec, \/new. Keep ..\/research\/SKILL.md/);
+  assert.ok(read("implement/SKILL.md").includes("Use /skill:tdd and /skill:code-review, /skill:to-spec, /clear. Keep ../research/SKILL.md."));
   assert.doesNotMatch(read("implement/SKILL.md"), /argument-hint:/);
 });
 
