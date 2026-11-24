@@ -3,7 +3,7 @@
 // p3stack-mode on and off, and grades what the agent did (tool calls, files,
 // commands, final reply) rather than what it says it did. Spends tokens.
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +60,7 @@ function regressionFailsOnOriginal(project) {
   try {
     cpSync(project, copy, { recursive: true, filter: path => ![".git", "node_modules"].includes(path.split("/").at(-1)) });
     // Use the grader's base, not a commit or test selected by the agent.
+    if (!lstatSync(join(copy, "src"), { throwIfNoEntry: false })?.isDirectory()) return false;
     const split = "src/split.js";
     rmSync(join(copy, split), { force: true });
     cpSync(join(here, "fixtures/bug-red-first/base", split), join(copy, split));
@@ -83,7 +84,10 @@ export function trace(jsonl) {
     }
     if (event.type === "tool_execution_end" && calls.has(event.toolCallId)) {
       const call = calls.get(event.toolCallId);
-      call.ok = event.isError === false && !event.result?.isError;
+      call.ok = event.isError === false && !event.result?.isError && !event.result?.details?.mcpError;
+      if (call.tool === "codemode") {
+        call.nested = (event.result?.details?.calls ?? []).filter(c => c.status === "ok").map(c => ({ tool: c.name, args: c.args }));
+      }
       call.end = position;
       call.result = event.result?.content?.filter(part => part.type === "text").map(part => part.text).join("\n");
     }
@@ -100,11 +104,12 @@ const argText = call => JSON.stringify(call.args);
 const pathOf = call => String(call.args.path ?? call.args.file_path ?? "");
 function matches(step, calls) {
   const pattern = new RegExp(step.pattern, "i");
+  const toolMatches = c => pattern.test(c.tool) && (!step.args || new RegExp(step.args, "i").test(argText(c)));
   return calls.findIndex(call => call.ok === true && (!step.result || new RegExp(step.result, "i").test(call.result ?? "")) && (
     step.kind === "bash" ? call.tool === "bash" && pattern.test(String(call.args.command ?? "")) :
     step.kind === "read" ? call.tool === "read" && pattern.test(pathOf(call)) :
     step.kind === "edit" ? ["edit", "write"].includes(call.tool) && pattern.test(pathOf(call)) :
-    step.kind === "tool" ? pattern.test(call.tool) && (!step.args || new RegExp(step.args, "i").test(argText(call))) : false));
+    step.kind === "tool" ? toolMatches(call) || call.nested?.some(toolMatches) : false));
 }
 
 /** Grades one expectation against the trace and the project directory after the run. */

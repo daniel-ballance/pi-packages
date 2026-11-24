@@ -63,15 +63,13 @@
         { "id": "configured", "kind": "oracle", "script": "coverage.mjs" },
         { "id": "fetched-docs", "kind": "any", "of": [
           { "kind": "tool", "pattern": "^mcp__context7__query_docs$", "args": "vitest", "result": "coverage|thresholds" },
-          { "kind": "tool", "pattern": "^codemode$", "args": "(?=.*context7__query_docs)(?=.*vitest)", "result": "coverage|thresholds" },
-          { "kind": "bash", "pattern": "\\b(?:curl|wget)\\s+.*https?://(?:v3\\.)?vitest\\.dev/", "result": "coverage|thresholds" }
+          { "kind": "bash", "pattern": "^\\s*(?:curl|wget)\\s+.*https?://(?:v3\\.)?vitest\\.dev/", "result": "coverage|thresholds" }
         ] },
-        { "id": "cites-source", "kind": "final", "pattern": "https?://(?:(?:v3\\.)?vitest\\.dev|github\\.com/vitest-dev/vitest)(?:/|\\b)" }
+        { "id": "cites-source", "kind": "final", "pattern": "https?://(?:(?:v3\\.)?vitest\\.dev|github\\.com/vitest-dev/vitest)(?:/|$|\\s)" }
       ],
       "process": [
         { "id": "versioned-docs", "kind": "any", "of": [
           { "kind": "tool", "pattern": "^mcp__context7__query_docs$", "args": "3[._]2" },
-          { "kind": "tool", "pattern": "^codemode$", "args": "context7.*3[._]2" },
           { "kind": "final", "pattern": "3\\.2" }
         ] }
       ]

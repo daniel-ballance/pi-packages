@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { grade, materialize } from "./behavior-eval/run.mjs";
+import { grade, materialize, trace } from "./behavior-eval/run.mjs";
 
 const { cases } = JSON.parse(readFileSync(new URL("./behavior-eval/cases.json", import.meta.url)));
 const seen = (calls = [], final = "") => ({ calls, final });
@@ -43,6 +43,17 @@ test("the submitted suite must distinguish original and fixed source, not just m
     writeFileSync(path, inert);
     assert.equal(check("regression-test"), false);
   }
+});
+
+test("regression replay must not overwrite a source directory linked out of the submission", t => {
+  const { check, project } = fixture(t, "bug-red-first");
+  const other = mkdtempSync(join(tmpdir(), "linked-source-"));
+  t.after(() => rmSync(other, { recursive: true, force: true }));
+  writeFileSync(join(other, "split.js"), goodSplit);
+  rmSync(join(project, "src"), { recursive: true });
+  symlinkSync(other, join(project, "src"));
+  assert.equal(check("regression-test"), false);
+  assert.equal(readFileSync(join(other, "split.js"), "utf8"), goodSplit);
 });
 
 test("the review must identify the skipped empty-list test and preserve an already dirty fixture", t => {
@@ -86,6 +97,22 @@ test("source grounding requires retrieved Vitest docs, not an error, unrelated s
   assert.equal(fetch([{ ...call, ok: false }]), false);
   assert.equal(fetch([{ ...call, tool: "web_search", args: { query: "unrelated" } }]), false);
   assert.equal(fetch([]), false);
+  assert.equal(fetch([{ ...call, tool: "bash", args: { command: "echo 'curl https://vitest.dev/config/coverage'" } }]), false);
+  for (const [url, cited] of [["https://v3.vitest.dev/config/coverage", true], ["https://vitest.invalid", false], ["https://vitest.dev.invalid/", false]]) {
+    assert.equal(check("cites-source", seen([], url)), cited);
+  }
+});
+
+test("a codemode fetch needs a successful nested query receipt, not just matching script text", t => {
+  const { check } = fixture(t, "source-grounding");
+  const query = { name: "mcp__context7__query_docs", args: JSON.stringify({ libraryId: "/vitest-dev/vitest/v3_2_4" }), status: "ok" };
+  const didFetch = calls => check("fetched-docs", trace([
+    { type: "tool_execution_start", toolName: "codemode", toolCallId: "c", args: { code: "text(await tools.mcp__context7__query_docs({libraryId:'vitest'}))" } },
+    { type: "tool_execution_end", toolName: "codemode", toolCallId: "c", isError: false, result: { details: { calls }, content: [{ type: "text", text: "Vitest coverage thresholds" }] } },
+  ].map(e => JSON.stringify(e)).join("\n")));
+  assert.equal(didFetch([query]), true);
+  assert.equal(didFetch([{ ...query, status: "error" }]), false);
+  assert.equal(didFetch([]), false);
 });
 
 test("the effective Vitest line threshold must be numeric 80 in the exported config", t => {
