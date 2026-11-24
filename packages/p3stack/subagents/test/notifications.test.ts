@@ -152,6 +152,21 @@ test("the first durable completed-assignment snapshot already contains its wake 
   } finally { await manager.shutdown(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test("a durable parent message or intervention never precedes its wake notice", async () => {
+  const directory = tempRoot("subagent-report-commit-"), missing: string[] = [];
+  const manager = new SubagentManager(directory, undefined, () => {
+    const { agents: [record], pendingNotices } = JSON.parse(readFileSync(join(directory, "registry.json"), "utf8"));
+    for (const u of record.updates) if (["message", "human_intervention"].includes(u.kind) &&
+      !pendingNotices.some((n: Notice) => n.id === record.id && n.cursor === u.cursor)) missing.push(u.kind);
+  }, undefined, undefined, 0, 1);
+  try {
+    const { id } = await manager.spawn({ name: "worker", task: "until-abort", cwd: directory, executable: process.execPath, executableArgs: [fixture] });
+    (manager as any).messageParent(manager.get(id), "news");
+    await manager.intervene(id, "halt");
+    assert.deepEqual(missing, []);
+  } finally { await manager.shutdown(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test("list/wait do not acknowledge; reading cancels only that run, replay also acknowledges", async () => {
   const s = await managerFixture();
   try {
