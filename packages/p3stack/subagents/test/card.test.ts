@@ -49,8 +49,8 @@ test("each record shape has its own review rule", () => {
   assert.equal(summary({ status: "idle", resultReview: { status: "reviewed" } }).review, "reviewed");
   assert.equal(summary({ status: "idle", unread: 0 }).review, "none");
 
-  assert.equal(read({ status: "idle", hasMore: true, resultReview: { status: "reviewed" } }).review, "unread", "read: more pages remain");
-  assert.equal(read({ status: "idle", resultReview: { status: "unreviewed" } }).review, "reviewed", "read: this read acknowledges it");
+  assert.equal(read({ status: "idle", hasMore: true, resultReview: { status: "reviewed" } }).review, "reviewed", "read: the result is reviewed independently of later updates");
+  assert.equal(read({ status: "idle", resultReview: { status: "unreviewed" } }).review, "unread", "read: a shortened result stays unreviewed");
   assert.equal(read({ status: "idle", unread: 3 }).review, "none");
 });
 

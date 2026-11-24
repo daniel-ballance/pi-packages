@@ -140,6 +140,10 @@ function peerLines(data: Data, theme: Theme): string[] {
 }
 
 function readLines(data: Data, width: number, theme: Theme): string[] {
+  if (typeof data.text === "string" && typeof data.offset === "number" && typeof data.fullLength === "number") {
+    const review = inline(object(data.resultReview)?.status);
+    return [theme.fg("muted", `report characters ${data.offset + 1}–${data.offset + data.text.length} of ${data.fullLength}${review ? " · " + review : ""}`), ...preview(data.text, width, theme)];
+  }
   const [card] = cardsFromDetails([data], "read");
   const lines = card ? cardLines(card, width).map(line => paint(theme, line.spans)) : [];
   if (data.gap === true) lines.push(theme.fg("warning", "history gap · some older updates are no longer retained"));
@@ -361,6 +365,10 @@ export function subagentRenderers(action: Action, names?: NameLookup): Required<
         else {
           const [card] = cardsFromDetails([data], "summary");
           lines = [...card ? cardLines(card, width).map(line => paint(theme, line.spans)) : preview(raw, width, theme), ...overlapLines(data, theme)];
+          if ((action === "close" || action === "abort") && data.outcome === "unconfirmed") {
+            const ids = [...(data.targetOutcome === "unconfirmed" ? [inline(data.id)] : []), ...array(data.subtreeFailures).map(f => inline(f).split(":")[0])];
+            lines.unshift(theme.fg("warning", `subtree unconfirmed: ${ids.join(", ")}`));
+          }
           if (action === "spawn") {
             const task = clip(inline(object(context?.args)?.task));
             if (task) lines.push(theme.fg("dim", `task: ${task}`));

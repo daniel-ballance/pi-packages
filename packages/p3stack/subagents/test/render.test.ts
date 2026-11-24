@@ -83,6 +83,14 @@ test("read foregrounds the latest assistant reply, not lifecycle and sent echoes
   assert.match(render("read", { ...details, updates: [] }), /no new updates/);
 });
 
+test("read page and unconfirmed stop cards show position and failed process IDs", () => {
+  assert.match(render("read", { ...child, text: "answer", offset: 4000, fullLength: 9000 }), /4001.?.*4006.*9000/);
+  for (const action of ["abort", "close"] as const) {
+    const card = render(action, { ...child, status: "stopped", outcome: "unconfirmed", targetOutcome: "unconfirmed", subtreeFailures: ["desc: no exit"] });
+    assert.ok(card.includes("unconfirmed") && card.includes("desc") && card.includes(child.id), card);
+  }
+});
+
 test("read keeps failures, pending dialogs, history gaps and pagination visible", () => {
   const text = render("read", { ...child, status: "waiting_input", gap: true, hasMore: true,
     uiRequests: [{ id: "ui-1", method: "confirm", title: "Approve?" }],
