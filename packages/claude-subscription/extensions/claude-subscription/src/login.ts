@@ -11,7 +11,7 @@ import type {
   AuthContext,
   ProviderAuthInteraction,
 } from "@earendil-works/pi-ai";
-import { Inbox, loadQuery, subscriptionEnv } from "./sdk.js";
+import { loadQuery, probe, subscriptionEnv } from "./sdk.js";
 
 const SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
 
@@ -509,36 +509,9 @@ function expandHome(path: string): string {
 /** The SDK's handshake names the account and does not send a prompt. */
 async function queryAccount(signal: AbortSignal, env: NodeJS.ProcessEnv): Promise<AccountInfo> {
   throwIfCancelled(signal);
-  const start = await loadQuery();
-  throwIfCancelled(signal);
-  const inbox = new Inbox();
-  const query = start({
-    prompt: inbox,
-    options: {
-      cwd: process.cwd(),
-      env: subscriptionEnv(env, packageVersion()),
-      tools: [],
-      settingSources: [],
-      strictMcpConfig: true,
-      persistSession: false,
-      stderr: () => {},
-    },
-  });
-  let stop: (() => void) | undefined;
-  const stopped = new Promise<never>((_, reject) => {
-    stop = () => {
-      query.close();
-      reject(abortError(signal));
-    };
-  });
-  stopped.catch(() => {});
-  if (signal.aborted) stop!();
-  else signal.addEventListener("abort", stop!, { once: true });
-  try {
-    return (await Promise.race([stopped, query.initializationResult()])).account;
-  } finally {
-    signal.removeEventListener("abort", stop!);
-    inbox.end();
-    query.close();
-  }
+  return probe(
+    await loadQuery(),
+    { cwd: process.cwd(), env: subscriptionEnv(env, packageVersion()), signal, aborted: () => abortError(signal) },
+    async query => (await query.initializationResult()).account,
+  );
 }

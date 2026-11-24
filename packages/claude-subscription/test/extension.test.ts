@@ -96,8 +96,7 @@ function harness(t: TestContext, config?: unknown) {
 }
 
 test("the plan is read only for the command, and the footer is left to Pi", async t => {
-  const plan = t.mock.method(ClaudeSubscription.prototype, "planUsage", async () => planReport);
-  t.mock.method(ClaudeSubscription.prototype, "identify", async () => ({ subscriptionType: "Claude Max" }));
+  const plan = t.mock.method(ClaudeSubscription.prototype, "status", async () => ({ account: { subscriptionType: "Claude Max" }, plan: planReport }));
   let closes = 0;
   t.mock.method(ClaudeSubscription.prototype, "closeSessions", () => { closes++; });
   const h = harness(t);
@@ -112,13 +111,12 @@ test("the plan is read only for the command, and the footer is left to Pi", asyn
 });
 
 test("the command reports every plan row, the session's spend and configuration problems", async t => {
-  t.mock.method(ClaudeSubscription.prototype, "identify", async function(this: ClaudeSubscription) {
+  t.mock.method(ClaudeSubscription.prototype, "status", async function(this: ClaudeSubscription) {
     this.fastMode = { state: "off", reason: "extra_usage_disabled" };
     this.spend.costUsd = 0.02;
     this.spend.turns = 1;
-    return { subscriptionType: "Claude Max", email: "user@example.invalid" };
+    return { account: { subscriptionType: "Claude Max", email: "user@example.invalid" }, plan: planReport };
   });
-  t.mock.method(ClaudeSubscription.prototype, "planUsage", async () => planReport);
   const h = harness(t, { status: "always", typo: true });
   // The footer meter was removed; an old setting for it is reported like any other unknown one.
   await h.command();
@@ -135,8 +133,7 @@ test("the command reports every plan row, the session's spend and configuration 
 
 test("a failed sign-in is reported in place of the account, and print modes start nothing", async t => {
   let calls = 0;
-  t.mock.method(ClaudeSubscription.prototype, "identify", async () => { calls++; throw new Error("sign in required"); });
-  t.mock.method(ClaudeSubscription.prototype, "planUsage", async () => undefined);
+  t.mock.method(ClaudeSubscription.prototype, "status", async () => { calls++; throw new Error("sign in required"); });
   const h = harness(t);
   await h.command();
   assert.match(h.notices[0], /Account: sign in required/);
@@ -156,12 +153,11 @@ test("what a turn reports about the plan reaches the command when the full repor
     claude.text("answer", "Hi.", { uuids: [user.uuid] });
     claude.result([user.uuid]);
   });
-  t.mock.method(ClaudeSubscription.prototype, "identify", async () => ({ subscriptionType: "Claude Max" }));
   // Capture the extension's instance, substituting only the SDK query boundary for this turn.
-  t.mock.method(ClaudeSubscription.prototype, "planUsage", async function(this: ClaudeSubscription) {
+  t.mock.method(ClaudeSubscription.prototype, "status", async function(this: ClaudeSubscription) {
     instance = this;
     Object.defineProperty(this, "query", { get: () => Promise.resolve(fake.query) });
-    return undefined;
+    return { account: { subscriptionType: "Claude Max" }, plan: undefined };
   });
   const h = harness(t);
   await h.command();

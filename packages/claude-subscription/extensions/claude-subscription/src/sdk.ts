@@ -137,3 +137,49 @@ export class Inbox implements AsyncIterable<SDKUserMessage> {
     }
   }
 }
+
+export interface ProbeOptions {
+  cwd: string;
+  env: Record<string, string | undefined>;
+  signal?: AbortSignal;
+  /** The error a cancelled probe rejects with. */
+  aborted?(): Error;
+}
+
+/**
+ * Start Claude Code with no tools and none of its configuration, ask it questions over the
+ * control channel without sending a prompt, and close it.
+ */
+export async function probe<T>(start: QueryFunction, options: ProbeOptions, use: (query: AgentQuery) => Promise<T>): Promise<T> {
+  const { signal, aborted = () => new Error("Request was aborted") } = options;
+  if (signal?.aborted) throw aborted();
+  const inbox = new Inbox();
+  const query = start({
+    prompt: inbox,
+    options: {
+      cwd: options.cwd,
+      env: options.env,
+      tools: [],
+      settingSources: [],
+      strictMcpConfig: true,
+      persistSession: false,
+      stderr: () => {},
+    },
+  });
+  let stop!: () => void;
+  const stopped = new Promise<never>((_, reject) => {
+    stop = () => {
+      query.close();
+      reject(aborted());
+    };
+  });
+  stopped.catch(() => {});
+  signal?.addEventListener("abort", stop, { once: true });
+  try {
+    return await Promise.race([stopped, use(query)]);
+  } finally {
+    signal?.removeEventListener("abort", stop);
+    inbox.end();
+    query.close();
+  }
+}

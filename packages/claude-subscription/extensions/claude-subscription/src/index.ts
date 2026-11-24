@@ -61,10 +61,11 @@ export default function claudeSubscription(pi: ExtensionAPI) {
       // Print and JSON modes have nowhere to show it, and it would start a process for nothing.
       if (!ctx.hasUI) return;
       settings = loadConfig(getAgentDir());
-      const [account, report] = await Promise.allSettled([subscription.identify(ctx.signal), subscription.planUsage(ctx.signal)]);
-      ctx.ui.notify(renderReport(readUsage(report.status === "fulfilled" ? report.value : undefined, subscription.rateLimit), {
-        account: account.status === "fulfilled" ? account.value : subscription.account,
-        accountProblem: account.status === "rejected" ? String(account.reason instanceof Error ? account.reason.message : account.reason) : undefined,
+      const status = await subscription.status(ctx.signal).catch((error: unknown) => ({ problem: error instanceof Error ? error.message : String(error) }));
+      const failed = "problem" in status;
+      ctx.ui.notify(renderReport(readUsage(failed ? undefined : status.plan, subscription.rateLimit), {
+        account: failed ? subscription.account : status.account,
+        accountProblem: failed ? status.problem : undefined,
         fastMode: subscription.fastMode, spend: subscription.spend, openSessions: subscription.openSessions,
         configProblems: settings.problems, configPath: settings.path,
       }), "info");

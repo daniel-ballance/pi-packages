@@ -110,6 +110,28 @@ test("a refresh asks Claude Code which models the account offers and persists th
   assert.equal(spawned[0].closed, true);
 });
 
+test("one Claude Code process names the account and the plan, and a missing plan is not a failure", async () => {
+  const plan = { rate_limits: { limits: [] } };
+  const { query, spawned } = fakeQuery(async claude => { claude.planUsage = plan; }, async () => {});
+  const subscription = new ClaudeSubscription({ version: "0.0.0-test", query, env: {} });
+
+  const status = await subscription.status();
+  assert.equal(status.account.subscriptionType, "Claude Max");
+  assert.equal(status.plan, plan);
+  assert.equal(spawned.length, 1);
+  assert.deepEqual(spawned[0].received, [], "no prompt is sent");
+  assert.deepEqual([spawned[0].options.tools, spawned[0].options.settingSources], [[], []]);
+  assert.equal(spawned[0].closed, true);
+
+  assert.deepEqual(await subscription.status(), { account: status.account, plan: undefined }, "an older Claude Code cannot report the plan");
+  assert.equal(spawned[1].closed, true);
+
+  const stop = new AbortController();
+  stop.abort();
+  await assert.rejects(subscription.status(stop.signal), /Request was aborted/);
+  assert.equal(spawned.length, 2, "a cancelled request starts no process");
+});
+
 test("a stored catalog is restored offline and trusted for a day", async () => {
   const { query, spawned } = fakeQuery(reported, reported);
   const subscription = new ClaudeSubscription({ version: "0.0.0-test", query, env: {} });
