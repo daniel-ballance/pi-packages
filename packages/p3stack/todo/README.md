@@ -1,10 +1,9 @@
 # todo
 
-A `todo` tool for Pi. The model keeps the current task's steps in a list where a
-step it started or decided against is never deleted: each one ends `done` or
-`skipped` with a reason. Only a pending item added by mistake can be removed. It
-is the todo list p3stack's playbooks copy their steps into, and it works on its
-own.
+A `todo` tool for Pi. Mark finished steps `done` and intentionally omitted
+steps `skipped` with a reason. Use `remove` for mistakes: it checks that the
+item is currently pending, not whether it was ever started. `set` replaces the
+whole list. The tool works on its own or with p3stack's playbooks.
 
 ## Tool
 

@@ -4,7 +4,7 @@ import type { BoundaryResult, ExtensionAPI } from "@earendil-works/pi-coding-age
 import todo from "../extensions/todo/index.js";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
-type Tool = { name: string; exposure?: string; execute: (...args: unknown[]) => Promise<any>; renderResult?: (...args: unknown[]) => unknown };
+type Tool = { name: string; description: string; promptSnippet: string; exposure?: string; execute: (...args: unknown[]) => Promise<any>; renderResult?: (...args: unknown[]) => unknown };
 
 function harness({ hasUI = true, mode = "tui", branch = [] as unknown[], extensions = [todo] } = {}) {
   const tools: Tool[] = [], entries: { customType: string; data: unknown }[] = [], renderers: string[] = [];
@@ -208,6 +208,12 @@ test("the tool is direct, and the feed shows each change once, as a one-line too
   assert.deepEqual(render(output, true), ["Item 1 is done.", "Todo ━━━━━━────── 1/2", " ✓ 1. Frame", " ○ 2. Fan out"], "expanded shows the list");
   const failed = await h.call({ op: "update", id: 9, state: "done" });
   assert.equal(render(failed, false).length, 1);
+});
+
+test("tool guidance does not repeat the name Pi prefixes or the operation descriptions", () => {
+  const { description, promptSnippet } = harness().tool();
+  assert.doesNotMatch(promptSnippet, /^todo:/i);
+  assert.doesNotMatch(description, /set replaces the list|add appends items|copy a playbook's steps verbatim/i);
 });
 
 test("under T3 a todo-like catalog name never hides the task tracker or registers it twice", async () => {

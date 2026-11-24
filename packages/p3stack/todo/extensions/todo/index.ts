@@ -68,8 +68,8 @@ export default function todo(pi: ExtensionAPI) {
   const tool: ToolDefinition<typeof parameters> = {
     name: "todo",
     label: "Todo",
-    description: "Track the steps of the current task. set replaces the list (copy a playbook's steps verbatim); add appends items to it; update changes one item (id) or several (ids): its state (pending, in_progress, done, skipped), its note, or, for one item, its text; remove deletes pending items added by mistake, such as a duplicate; get returns the list. Mark each item as you finish it. A step you decide not to do is not removed: mark it skipped with the reason in note.",
-    promptSnippet: "todo: track the current task's steps (set, add, update, remove, get); skip a step you won't do, with a reason",
+    description: "Track the current task’s steps. Mark finished work done and intentionally omitted steps skipped.",
+    promptSnippet: "track the current task's steps (set, add, update, remove, get); skip a step you won't do, with a reason",
     parameters,
     outputSchema,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
