@@ -8,12 +8,11 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { gitEnv } from "../../generator/git-env.mjs";
-import { agentSource, defaultOutput, parseEvent, positiveInteger, receipts, runPi } from "../routing-eval/harness.mjs";
+import { agentSource, defaultOutput, evalEnv, parseEvent, positiveInteger, receipts, runPi } from "../routing-eval/harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SUBSTITUTIONS = { "{{SKIP}}": "skip" };
-const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe", env: { ...gitEnv(), GIT_AUTHOR_NAME: "eval", GIT_AUTHOR_EMAIL: "eval@example.com", GIT_COMMITTER_NAME: "eval", GIT_COMMITTER_EMAIL: "eval@example.com" } }).toString();
+const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe", env: { ...evalEnv(), GIT_AUTHOR_NAME: "eval", GIT_AUTHOR_EMAIL: "eval@example.com", GIT_COMMITTER_NAME: "eval", GIT_COMMITTER_EMAIL: "eval@example.com" } }).toString();
 
 function walk(dir, base = dir) {
   return readdirSync(dir).flatMap(name => {
@@ -48,7 +47,7 @@ function treeState(root) {
 }
 
 function runCheck(command, args, cwd) {
-  const env = gitEnv();
+  const env = evalEnv();
   delete env.NODE_TEST_CONTEXT; // node --test otherwise skips discovery inside our own test suite.
   const result = spawnSync(command, args, { cwd, env, encoding: "utf8", timeout: 120000 });
   if (result.error) throw result.error;
