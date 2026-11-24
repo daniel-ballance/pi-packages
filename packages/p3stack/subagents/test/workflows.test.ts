@@ -16,8 +16,13 @@ const worker = { model: "test/stub:off", tools: [] };
 const task = (id: string, dependsOn: string[] = []) => ({ id, kind: "task" as const, worker, instructions: id, dependsOn });
 const definition = (cwd: string, steps: WorkflowDefinition["steps"]): WorkflowDefinition => ({ version: 1, name: "test", cwd, limits: { concurrency: 2, maxAttempts: 20, timeoutSeconds: 30 }, steps });
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+function gate() {
+  let open!: () => void;
+  const wait = new Promise<void>(resolve => { open = resolve; });
+  return { wait, open };
+}
 async function settled(engine: Workflows, id: string) {
-  for (let n = 0; n < 400; n++) { const r = engine.get(id); if (!["running", "pausing"].includes(r.status)) { await sleep(5); return r; } await sleep(5); }
+  for (let n = 0; n < 400; n++) { const r = engine.get(id); if (!["running", "pausing"].includes(r.status)) return r; await sleep(5); }
   assert.fail("Workflow did not settle");
 }
 function setup(overrides: Partial<WorkflowHost> = {}) {
@@ -367,20 +372,47 @@ test("manager host records consumed submission and rejects the attempt before wa
   assert.deepEqual(await managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), ["handler's answer"]);
 });
 
-test("pause is a boundary, cancel and deadline abort execution, and only one run executes", async () => {
-  const h = setup({ agents: async jobs => { await sleep(50); return jobs.map(() => "done"); } });
+for (const [cause, outcome] of [["deadline", "exhausted"], ["cancel", "cancelled"], ["sibling error", "blocked"]] as const) {
+  test(`${cause}: the run stays active until the aborted worker finishes cleanup`, async () => {
+    const started = gate(), aborted = gate(), cleaned = gate();
+    const h = setup({ agents: async (jobs, _links, signal) => {
+      if (jobs[0].step === "fail") throw new Error("worker failed");
+      signal.addEventListener("abort", aborted.open, { once: true });
+      started.open(); await cleaned.wait; return ["done"];
+    } });
+    try {
+      const def = definition(h.root, cause === "sibling error" ? [task("a"), task("fail")] : [task("a")]);
+      if (cause === "deadline") def.limits.timeoutSeconds = 1;
+      const id = idOf(h.engine.start(def)); await started.wait;
+      const cancelling = cause === "cancel" ? h.engine.control(id, "cancel") : undefined;
+      await aborted.wait;
+      assert.equal(h.engine.get(id).status, "pausing");
+      assert.throws(() => h.engine.start(def), /Another workflow/);
+      const recovered = new Workflows(h.engine.directory, h.host).get(id);
+      assert.equal(recovered.status, outcome, "restart during cleanup preserves the stop decision");
+      assert.equal(recovered.steps.a.status, "interrupted");
+      cleaned.open(); await cancelling;
+      const run = await settled(h.engine, id);
+      assert.equal(run.status, outcome); assert.equal(run.steps.a.status, "interrupted");
+      h.engine.start(definition(h.root, [task("next")]));
+    } finally { cleaned.open(); await h.close(); }
+  });
+}
+
+test("pause finishes the active step; a command deadline releases the slot before the next start", async () => {
+  const started = gate(), finish = gate();
+  const h = setup({ agents: async jobs => { started.open(); await finish.wait; return jobs.map(() => "done"); } });
   try {
     const def = definition(h.root, [task("a"), task("b", ["a"])]);
-    const id = idOf(h.engine.start(def)); await sleep(5);
+    const id = idOf(h.engine.start(def)); await started.wait;
     assert.throws(() => h.engine.start(def), /Another workflow/);
-    await h.engine.control(id, "pause"); let run = await settled(h.engine, id);
+    await h.engine.control(id, "pause"); finish.open(); let run = await settled(h.engine, id);
     assert.equal(run.status, "paused"); assert.equal(run.steps.a.status, "passed"); assert.equal(run.steps.b.status, "pending");
     await h.engine.control(id, "resume"); run = await settled(h.engine, id); assert.equal(run.status, "succeeded");
     const commandDef = definition(h.root, [task("a"), { id: "slow", kind: "check", input: "a", validator: { kind: "command", command: "sleep 30" } }]);
     commandDef.limits.timeoutSeconds = 1;
     const slow = idOf(h.engine.start(commandDef)); run = await settled(h.engine, slow);
     assert.equal(run.status, "exhausted"); assert.match(run.reason!, /deadline/);
-    const cancelled = idOf(h.engine.start(def)); await sleep(5); await h.engine.control(cancelled, "cancel");
-    assert.equal(h.engine.get(cancelled).status, "cancelled"); assert.equal(h.engine.get(cancelled).steps.a.status, "interrupted");
-  } finally { await h.close(); }
+    h.engine.start(def);
+  } finally { finish.open(); await h.close(); }
 });
