@@ -15,23 +15,27 @@ Tier B uses a run-wide `--max-reads`, raised to at least the expected sequence l
 B and C spend tokens. Agree on the model, cases, repetitions, and spend limit first. Start with the affected case. For a change to a playbook, compare the base and candidate with the same model, tools, prompt, and grant.
 
 1. Use a disposable account or container with its own home, a trusted test checkout, and Pi on `PATH`. Do not mount your real home, writable work, or SSH agent. Start with a clean environment, including no repository-local Git variables such as `GIT_DIR`, `GIT_WORK_TREE`, or `GIT_INDEX_FILE`. A temporary project is not a sandbox. Tier C runs agent and grader commands there.
-2. From `packages/p3stack`, prepare fresh private directories **outside the checkout**:
+2. From `packages/p3stack`, prepare a private **credential/config source** outside the checkout:
 
    ```sh
    umask 077
    run=$(mktemp -d)
-   mkdir "$run/routing-agent" "$run/behavior-agent"
+   mkdir "$run/source"
    ```
 
-3. Put test-only `auth.json` and `models.json` in each agent directory. Never pass a live agent directory, a symlink to one, or a directory of settings you want to keep. Tier B writes its own `settings.json`. Use a model that works with that setup. For C, supply `settings.json` with the package paths for the p3stack checkout and any tools the case needs. For source-grounding, configure web-search and the test MCP service in `mcp.json`. File presence does not verify credentials, packages, or tools.
+3. Put disposable `auth.json` and `models.json` in `$run/source`. Supply provider packages and extensions via `settings.json` (required for C, optional for B). For source-grounding, also supply the test service's `mcp.json`. `--agent-dir` names this read-only source, **not** the directory Pi runs in. Each attempt imports the required files into a fresh private Pi agent directory, writes settings there with the test checkout enabled, and removes that directory afterwards. File presence does not verify credentials or tool availability.
 4. Set `model` to the funded test model and thinking level. Run only the tier you need:
 
    ```sh
-   npm run eval:routing -- --agent-dir "$run/routing-agent" --output "$run/routing" --model "$model" --only design --runs 3
-   npm run eval:behavior -- --agent-dir "$run/behavior-agent" --output "$run/behavior" --model "$model" --only bug-red-first --arms on,off --runs 1
+   npm run eval:routing -- --agent-dir "$run/source" --output "$run/routing" --model "$model" --only design --runs 3
+   npm run eval:behavior -- --agent-dir "$run/source" --output "$run/behavior" --model "$model" --only bug-red-first --arms on,off --runs 1
    ```
 
-5. Check the attempt count, exit or timeout, and individual checks in `results.json`. An unavailable tool or an incomplete run is not evidence against a change. Inspect the produced work before drawing a conclusion. Keep raw JSONL and stderr private. Publish only scrubbed evidence and remove the disposable credentials after the run.
+5. Use the exit status and the printed `Receipts:` directory:
+   - **0 or 1:** inspect `results.json` for completed attempts. Exit 1 is a graded failure. Compare the per-attempt `*.receipt.json` files: match the prompt hash, mode/grant and observed model/effort before comparing revisions. Usage sums completed assistant messages only; missing metadata is unknown, not the requested value. Check the linked artifact against its digest: B records the read sequence and ranges; C records the final reply and before/after file text, including new files.
+   - **2:** invalid, not a score. Read the runner's error first. If a process started, inspect its private `<attempt>.stderr` and `<attempt>.jsonl` at the printed log prefix. Raw logs may be all that survived; preflight can fail before even those exist.
+
+   Share the scrubbed receipt. Artifacts contain untrusted work product: review and redact them separately before sharing. Keep raw logs private and remove the disposable credentials when finished.
 
 ## Decision log
 

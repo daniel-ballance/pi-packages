@@ -64,7 +64,7 @@ function setup(t, tier) {
 }
 
 function invalid(result, reason) {
-  assert.notEqual(result.status, 0, result.stdout);
+  assert.equal(result.status, 2, result.stderr + result.stdout);
   assert.match(result.stderr, reason);
   assert.doesNotMatch(result.stdout, /prompts pass;|outcomes \d+%/);
 }
@@ -187,7 +187,11 @@ for (const tier of ["behavior", "routing"]) {
     invalid(f.run([], { STREAM: jsonl(finish) + "bad JSON\n" }), /JSONL/);
     invalid(f.run([], { STREAM: "" }), /no completed|empty/i);
     invalid(f.run([], { STREAM: jsonl([{ type: "session" }, { type: "agent_start" }]) }), /no completed|incomplete/i);
-    invalid(f.run([], { CODE: "17", STREAM: jsonl(finish) }), /17/);
+    const nonzero = f.run([], { CODE: "17", STREAM: jsonl(finish) });
+    invalid(nonzero, /17/);
+    const log = nonzero.stderr.match(/\(log: (.+)\)/)?.[1];
+    assert.ok(log && existsSync(log + ".stderr"), "the diagnostic locates the raw logs");
+    assert.equal(readFileSync(log + ".jsonl", "utf8"), jsonl(finish));
     invalid(f.run(["--timeout-seconds", "1"], { HANG: "1", STREAM: "" }), /timed out|timeout after/i);
     rmSync(join(f.bin, "pi"));
     invalid(f.run(), /spawn pi ENOENT/i);
