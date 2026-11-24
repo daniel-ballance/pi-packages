@@ -123,12 +123,15 @@ test("old branch entries pass the same privacy and type checks when replayed", a
   }
 });
 
-test("foreign PR watches cannot close this thread's watch, and a Pi fork does not inherit it", async () => {
+test("scoped handles replay as unconfirmed until observed; foreign watches, rewinds and forks stay separate", async () => {
   const session = SessionManager.inMemory();
   const f = fixture(T3, { sessionId: session.getSessionId() });
   await f.emit("session_start");
   await toolResult(f, "orchestrator_capabilities", {}, { parentThreadId: "thread:here", runtimeMode: "auto", providers: [] });
   await toolResult(f, "t3_environment_links", {}, { environmentId: "env-here", links: [], notListed: "" });
+  const before = session.appendCustomEntry("before-handles", {});
+  await toolResult(f, "delegate_task", { task: "check" }, { taskId: "d", status: "running", workState: "working" });
+  await toolResult(f, "schedule_task", { prompt: "check" }, { scheduledTaskId: "s", enabled: true });
   const pr = { host: "github.com", repository: "o/r", number: 7, url: "https://github.com/o/r/pull/7", watching: true, wasWatching: false };
   await toolResult(f, "watch_pull_request", { url: pr.url }, pr);
   for (const input of [{ threadId: "elsewhere" }, { threadId: "thread:here", environmentId: "env-remote" }]) {
@@ -136,21 +139,35 @@ test("foreign PR watches cannot close this thread's watch, and a Pi fork does no
   }
   assert.match((await startTurn(f)).t3_agent!, /watching PR .*\/pull\/7/);
   const { entries } = await f.emit("turn_end", { entries: [] });
-  assert.deepEqual(entries.map((e: any) => e.data.target), [undefined, { threadId: "elsewhere" }, { environmentId: "env-remote", threadId: "thread:here" }]);
+  assert.deepEqual(entries.map((e: any) => e.data.target), [undefined, undefined, undefined, { threadId: "elsewhere" }, { environmentId: "env-remote", threadId: "thread:here" }]);
   for (const { data } of entries) assert.deepEqual(data.scope, { sessionId: session.getSessionId(), threadId: "thread:here", environmentId: "env-here" });
   for (const entry of entries) session.appendCustomEntry(entry.customType, entry.data);
-  const resumed = fixture(T3, { sessionId: session.getSessionId(), branch: session.getBranch() });
+  const branch = session.getBranch();
+  const resumed = fixture(T3, { sessionId: session.getSessionId(), branch });
   await resumed.emit("session_start");
+  const open = (await startTurn(resumed)).t3_agent!;
+  for (const key of ["taskId=d", "scheduledTaskId=s", "watching PR"]) {
+    const line = open.split("\n").find(line => line.includes(key)) ?? "";
+    assert.match(line, /recorded in thread thread:here.*not yet confirmed/i, key);
+  }
+  await toolResult(resumed, "t3_thread_list", {}, { currentThreadId: "thread:other", threads: [], nextCursor: null, total: 0 });
+  assert.doesNotMatch((await startTurn(resumed)).t3_agent!, /watching PR|taskId=d|scheduledTaskId=s/);
   await toolResult(resumed, "t3_thread_list", {}, { currentThreadId: "thread:here", threads: [], nextCursor: null, total: 0 });
+  assert.match((await startTurn(resumed)).t3_agent!, /watching PR .*not yet confirmed/i);
   await toolResult(resumed, "t3_environment_read", {}, { environmentId: "env-remote", label: "Other", preferences: {} });
   assert.doesNotMatch((await startTurn(resumed)).t3_agent!, /watching PR/);
   await toolResult(resumed, "t3_environment_read", {}, { environmentId: "env-here", label: "Local", preferences: {} });
-  assert.match((await startTurn(resumed)).t3_agent!, /watching PR/);
+  const confirmed = (await startTurn(resumed)).t3_agent!;
+  assert.match(confirmed, /watching PR/);
+  assert.doesNotMatch(confirmed, /not yet confirmed/i);
+  branch.splice(0, branch.length, ...session.getBranch(before));
+  await resumed.emit("session_tree", { oldLeafId: session.getLeafId(), newLeafId: before });
+  assert.doesNotMatch((await startTurn(resumed)).t3_agent!, /watching PR|taskId=d|scheduledTaskId=s/);
   session.appendCustomEntry(ENTRY_TYPE, { kind: "preview", id: "legacy-tab", open: true });
   session.createBranchedSession(session.getLeafId()!);
   const fork = fixture(T3, { branch: session.getBranch(), sessionId: session.getSessionId(), parentSession: "/parent.jsonl" });
   await fork.emit("session_start", { reason: "fork", previousSessionFile: "/parent.jsonl" });
-  assert.doesNotMatch((await startTurn(fork)).t3_agent!, /watching PR|legacy-tab/);
+  assert.doesNotMatch((await startTurn(fork)).t3_agent!, /watching PR|taskId=d|scheduledTaskId=s|legacy-tab/);
 });
 
 test("same schedule id on a linked environment is retained but never treated as the local schedule", async () => {
