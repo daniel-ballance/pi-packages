@@ -139,7 +139,7 @@ test("a trusted project's file wins over the personal one, and a broken file is 
   } finally { broken.dispose(); }
 });
 
-test("roles resolve against the live allowlist, clamp thinking down, and report missing selections", async t => {
+test("roles resolve against the live allowlist, clamp thinking down, and name substitutions", async t => {
   t.after(asHost("cli"));
   const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude/claude-opus-5-5:xhigh"] };
   const h = harness({ subagents: catalog });
@@ -151,8 +151,8 @@ test("roles resolve against the live allowlist, clamp thinking down, and report 
     catalog.models = ["xai/grok-4.7:low"];
     const second = (await h.call("p3stack_roles", {})).structuredContent;
     assert.equal(second.roles["swarm workers"], "xai/grok-4.7:low");
-    assert.equal(second.roles["judgment and prose"], undefined);
-    assert.match(second.problems.join("\n"), /judgment and prose.*no live catalog selection/);
+    assert.equal(second.roles["judgment and prose"], "xai/grok-4.7:low");
+    assert.match(second.problems.join("\n"), /judgment and prose.*substituted xai\/grok-4\.7:low for claude-opus-5-5-xhigh/);
   } finally { h.dispose(); }
 });
 
@@ -171,11 +171,11 @@ test("distinctFrom moves each role off the author's family when the catalog offe
     assert.equal(roles["judgment and prose"], "openai-codex/gpt-6-astra:xhigh", "the closest level outside the family");
     assert.equal(roles["swarm workers"], "xai/grok-4.7:high", "already outside the family");
     assert.deepEqual(roles["interrogate reviewers"], ["openai-codex/gpt-6-astra:xhigh", "xai/grok-4.7:high"]);
-    assert.match(text(result), /judgment and prose: substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude\//);
+    assert.match(text(result), /judgment and prose.*substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude\//);
     catalog.models = ["claude/claude-opus-5-5:xhigh"];
     const only = await h.call("p3stack_roles", { distinctFrom: "claude" });
     assert.equal(only.structuredContent.roles["judgment and prose"], "claude/claude-opus-5-5:xhigh");
-    assert.match(text(only), /judgment and prose: no model outside the claude family is offered/);
+    assert.match(text(only), /judgment and prose.*no model outside the claude family is offered/);
   } finally { h.dispose(); }
 });
 

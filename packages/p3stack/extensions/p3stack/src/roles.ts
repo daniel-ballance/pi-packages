@@ -184,44 +184,52 @@ const hintParts = (hint: string) => {
   return { name: match?.[1] ?? hint, level: match?.[2] };
 };
 
+const KNOWN_FAMILY = /claude|grok|composer|gpt|gemini|deepseek|llama|mistral|qwen|kimi|glm|minimax/i;
+function modelFamily(id: string): string {
+  const known = id.match(KNOWN_FAMILY)?.[0].toLowerCase();
+  return known === "composer" ? "grok" : known ?? id;
+}
+
+export function family(model: string): string {
+  const { name } = hintParts(model);
+  return modelFamily(name.slice(name.indexOf("/") + 1));
+}
+
+const independent = (a: string, b: string) => a !== b && KNOWN_FAMILY.test(a) && KNOWN_FAMILY.test(b);
+const prefer = (choices: Selection[], test: (s: Selection) => boolean) => {
+  const matches = choices.filter(test);
+  return matches.length ? matches : choices;
+};
+
 function scopedChoices(name: string, catalog: LiveCatalog): Selection[] {
   const slash = name.indexOf("/");
   if (!catalog.instances || slash < 0) return catalog.choices;
   const prefix = name.slice(0, slash);
   if (catalog.instances.has(prefix)) return catalog.choices.filter(s => s.provider === prefix);
-  // A Pi identity under T3 is a foreign-host hint, not permission to strip an
-  // unrecognised instance. Only match a whole catalog model id on one instance.
-  const foreign = catalog.choices.filter(s => s.model === name);
-  return new Set(foreign.map(s => s.provider)).size === 1 ? foreign : [];
+  // A foreign Pi identity must match the model namespace on a single instance.
+  // Never strip an unknown instance and redirect its pin to a bare model id.
+  const foreign = catalog.choices.filter(s => s.model.startsWith(prefix + "/") && modelFamily(s.model) === family(name));
+  const matches = prefer(foreign, s => s.model === name);
+  return new Set(matches.map(s => s.provider)).size === 1 ? matches : [];
 }
 
-function resolveHint(hint: string, catalog: LiveCatalog, parent: string | undefined): Selection | undefined {
-  if (hint === "auto" || hint === "inherit-parent") {
-    return catalog.inherited ?? catalog.choices.find(s => !catalog.instances && identity(s) === parent);
+function choose(hint: string, fromFile: boolean, catalog: LiveCatalog, author?: string, panelFamilies?: string[], fallbackAuthor?: string) {
+  const { name, level } = hintParts(hint), wantedFamily = family(hint);
+  function match(s: Selection): number {
+    if (nameOf(s) === name) return 3; // exact (instance, whole model id) wins
+    if (s.model === name || (!name.includes("/") && s.model.split("/").at(-1) === name)) return 2;
+    return modelFamily(s.model) === wantedFamily ? 1 : 0;
   }
-  const { name, level } = hintParts(hint);
-  const choices = scopedChoices(name, catalog);
-  const exact = choices.filter(s => nameOf(s) === name);
-  const matches = exact.length ? exact : choices.filter(s => s.model === name || (!name.includes("/") && s.model.split("/").at(-1) === name));
-  return matches.filter(s => !level || (s.level && rank(s.level) <= rank(level)))
-    .sort((a, b) => rank(b.level) - rank(a.level))[0];
-}
-
-/** A model's family is the leading word of its id without the provider: claude-opus-5-5 -> claude, xai/grok-4.7 -> grok. */
-export function family(model: string): string {
-  const name = model.split("/").at(-1)!.replace(/:(off|minimal|low|medium|high|xhigh|max)$/, "");
-  return (name.match(/^[a-z]+/i)?.[0] ?? name).toLowerCase();
-}
-
-const selectionFamily = (selection: Selection) => family(selection.model);
-
-/** Prefers a selection from another family than `avoid`, at the same or the closest lower thinking level. */
-function diversify(selection: Selection, catalog: Selection[], avoid: string): Selection | undefined {
-  if (selectionFamily(selection) !== avoid) return selection;
-  const wanted = LEVELS.indexOf(selection.level ?? "off");
-  const others = catalog.filter(entry => selectionFamily(entry) !== avoid);
-  const at = (entry: Selection) => LEVELS.indexOf(entry.level ?? "off");
-  return others.filter(entry => at(entry) <= wanted).sort((a, b) => at(b) - at(a))[0] ?? others.sort((a, b) => at(a) - at(b))[0];
+  let choices = scopedChoices(name, catalog).filter(s => !level || (s.level && rank(s.level) <= rank(level)));
+  const avoid = author ?? (!fromFile && !choices.some(match) ? fallbackAuthor : undefined);
+  if (fromFile) choices = choices.filter(match);
+  else {
+    if (avoid) choices = prefer(choices, s => independent(modelFamily(s.model), avoid));
+    if (panelFamilies) choices = prefer(choices, s => KNOWN_FAMILY.test(s.model) && panelFamilies.every(f => independent(modelFamily(s.model), f)));
+  }
+  const found = choices.sort((a, b) => match(b) - match(a) || rank(b.level) - rank(a.level))[0];
+  const substituted = found && (match(found) < (fromFile ? 3 : 2) || (level && level !== found.level));
+  return { found, substituted, avoid };
 }
 
 export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?: string, signal?: AbortSignal) {
@@ -235,22 +243,45 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
     problems.push(`${source} unavailable (${(error as Error).message}). Blocked roles: ${Object.keys(defaults.roles).join("; ")}.`);
     return { source: defaults.source, budget: defaults.budget, roles, problems };
   }
-  const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}:${pi.getThinkingLevel()}` : undefined;
-  for (const [role, { value }] of Object.entries(defaults.roles)) {
-    const avoid = distinctFrom ? family(distinctFrom) : undefined;
-    const resolved = (Array.isArray(value) ? value : [value]).map(hint => {
-      const found = resolveHint(hint, catalog, parent);
-      if (!found) { problems.push(`${role} has no live catalog selection for ${hint}`); return undefined; }
-      if (catalog.instances && (hint === "inherit-parent" || hint === "auto")) return null;
-      const selection = avoid ? diversify(found, catalog.choices, avoid) ?? found : found;
-      if (selection !== found) problems.push(`${role}: substituted ${identity(selection)} for ${hint} to differ from ${distinctFrom}`);
-      else if (avoid && selectionFamily(found) === avoid) problems.push(`${role}: no model outside the ${avoid} family is offered, so ${hint} stays on it`);
-      const { level } = hintParts(hint);
-      if (selection === found && level && level !== found.level) problems.push(`${role}: substituted ${identity(found)} for ${hint} (closest offered thinking below ${level})`);
-      return catalog.instances ? asTarget(selection) : identity(selection);
-    });
-    if (resolved.every(value => value !== undefined)) roles[role] = Array.isArray(value) ? resolved : resolved[0]!;
+  const parent = catalog.instances ? catalog.inherited : catalog.choices.find(s =>
+    s.provider === ctx.model?.provider && s.model === ctx.model.id && s.level === pi.getThinkingLevel());
+  const author = distinctFrom ? family(distinctFrom) : undefined;
+  const parentId = catalog.inherited?.model ?? ctx.model?.id;
+  const notes = new Map<string, Set<string>>();
+  const note = (role: string, message: string) => {
+    if (!notes.has(message)) notes.set(message, new Set());
+    notes.get(message)!.add(role);
+  };
+  for (const [role, { value, fromFile }] of Object.entries(defaults.roles)) {
+    const seats: (string | Target | null)[] = [], used: string[] = [];
+    const reviewing = JUDGMENT_ROLES.includes(role) || PANEL_ROLES.includes(role);
+    const fallbackAuthor = reviewing && parentId ? modelFamily(parentId) : undefined;
+    for (const hint of Array.isArray(value) ? value : [value]) {
+      const inherit = hint === "auto" || hint === "inherit-parent";
+      const { found, substituted, avoid } = inherit ? { found: parent, substituted: false, avoid: author }
+        : choose(hint, fromFile, catalog, author, Array.isArray(value) ? used : undefined, fallbackAuthor);
+      if (!found) {
+        note(role, `no live catalog selection for ${hint} in the returned list at the requested level or below. Check the role default or allowlist.`);
+        continue;
+      }
+      const f = modelFamily(found.model);
+      if (substituted) {
+        const why = avoid && family(hint) === avoid && independent(f, avoid) ? ` to differ from ${distinctFrom ?? avoid}` : "";
+        note(role, `substituted ${identity(found)} for ${hint}${why}`);
+      }
+      if (avoid && !independent(f, avoid)) {
+        if (!KNOWN_FAMILY.test(avoid) || !KNOWN_FAMILY.test(f)) note(role, `unknown family: cannot verify independence of ${identity(found)} from ${distinctFrom ?? avoid}`);
+        else note(role, fromFile ? `pin ${hint} stays in the author's ${avoid} family` : `no model outside the ${avoid} family is offered at this level or below`);
+      }
+      seats.push(catalog.instances ? (inherit ? null : asTarget(found)) : identity(found));
+      used.push(f);
+    }
+    if (Array.isArray(value) && value.length > 1 && (used.length < value.length || used.some((f, i) => !KNOWN_FAMILY.test(f) || used.indexOf(f) !== i))) {
+      note(role, "cannot give every panel seat a distinct family within the available selections and role defaults");
+    }
+    if (seats.length) roles[role] = Array.isArray(value) ? seats : seats[0];
   }
+  for (const [message, affected] of notes) problems.push(`${[...affected].join("; ")}: ${message}`);
   return { source: defaults.source, budget: defaults.budget, roles, problems };
 }
 
