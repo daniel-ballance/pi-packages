@@ -27,12 +27,12 @@ function checkContract(pin, hostMap) {
 }
 
 function doctorProblems(dump, pin, hostMap) {
-  if (!Array.isArray(dump?.tools) || dump.tools.some(tool => typeof tool?.name !== "string" || !["direct", "deferred"].includes(tool.exposure)) ||
+  if (!Array.isArray(dump?.tools) || dump.tools.some(tool => typeof tool?.name !== "string" || !["direct", "model-only", "codemode", "deferred", "hidden"].includes(tool.exposure)) ||
       typeof dump.extension?.path !== "string" || !/^[a-f0-9]{64}$/.test(dump.extension.sha256 ?? "") || !Array.isArray(dump.problems) || dump.problems.some(problem => typeof problem !== "string")) {
     throw new Error("Invalid doctor dump. Expected tools, extension, and problems from /p3stack doctor.");
   }
   const direct = new Set(dump.tools.filter(tool => tool.exposure === "direct").map(tool => tool.name));
-  const available = new Set(dump.tools.map(tool => tool.name));
+  const available = new Set(dump.tools.filter(tool => tool.exposure !== "hidden").map(tool => tool.name));
   const problems = dump.problems.map(problem => `doctor reported ${problem}`);
   for (const name of requiredTools(pin)) if (!direct.has(name)) problems.push(`doctor directTools missing ${name}`);
   for (const name of documentedTools(hostMap)) if (!available.has(name)) problems.push(`doctor tools missing host map tool ${name}`);
