@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { BoundaryResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { AgentSession, type BoundaryResult, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import todo from "../extensions/todo/index.js";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
@@ -152,12 +152,19 @@ test("a malformed snapshot is ignored as a whole, preserving the last valid item
 test("the widget shows open work, clears when nothing is open, and no UI is touched without one", async () => {
   const h = harness();
   await h.call({ op: "set", items: ["Frame"] });
-  const [key, widget] = h.ui.widgets.at(-1) as [string, (tui: unknown, theme: unknown) => { render(width: number): string[] }];
-  assert.equal(key, "todo");
-  assert.deepEqual(widget(undefined, plainTheme).render(80), [" Todo ──────────── 0/1", "  ○ 1. Frame"]);
-  await h.call({ op: "update", id: 1, state: "done" });
-  assert.deepEqual(h.ui.widgets.at(-1), ["todo", undefined]);
-  assert.deepEqual(h.ui.statuses, []);
+  if (process.env.T3_MCP_URL) {
+    assert.deepEqual(h.ui.widgets, [], "the terminal widget stays inert even if T3 reports tui mode");
+    assert.deepEqual(h.ui.statuses.at(-1), ["todo", "todo 0/1 · next: Frame"]);
+    await h.call({ op: "update", id: 1, state: "done" });
+    assert.deepEqual(h.ui.statuses.at(-1), ["todo", undefined]);
+  } else {
+    const [key, widget] = h.ui.widgets.at(-1) as [string, (tui: unknown, theme: unknown) => { render(width: number): string[] }];
+    assert.equal(key, "todo");
+    assert.deepEqual(widget(undefined, plainTheme).render(80), [" Todo ──────────── 0/1", "  ○ 1. Frame"]);
+    await h.call({ op: "update", id: 1, state: "done" });
+    assert.deepEqual(h.ui.widgets.at(-1), ["todo", undefined]);
+    assert.deepEqual(h.ui.statuses, []);
+  }
   const headless = harness({ hasUI: false, mode: "print" });
   await headless.call({ op: "set", items: ["Frame"] });
   await headless.call({ op: "update", id: 1, state: "in_progress" });
@@ -327,6 +334,25 @@ test("a script that ran todo is still a todo turn if the nested-call record omit
   assert.equal((await h.emit("turn_end", turn("read"))).length, 1);
 });
 
+for (const role of ["user", "custom"]) {
+  test(`a queued ${role} message supersedes the todo check before its first answer`, async () => {
+    const h = harness();
+    await h.call({ op: "set", items: ["Inspect the report"] });
+    await h.emit("turn_end", turn("todo", "read"));
+    assert.equal((await h.emit("agent_before_settle", settle())).length, 1);
+    // Streaming delivery does not fire before_agent_start. Use the SDK's custom-message queue path.
+    const messages: unknown[] = [];
+    if (role === "custom") {
+      const recipient = { isStreaming: true, agent: { followUp: (message: unknown) => messages.push(message) } };
+      await AgentSession.prototype.sendCustomMessage.call(recipient as unknown as AgentSession,
+        { customType: "completion", content: "The report is ready", display: true }, { triggerTurn: true, deliverAs: "followUp" });
+    } else messages.push({ role: "user", content: [{ type: "text", text: "Explain the report" }], timestamp: Date.now() });
+    for (const message of messages) await h.emit("message_start", { message });
+    assert.doesNotMatch(text(await h.call({ op: "update", id: 1, state: "done" })), /end your turn/i);
+    assert.deepEqual(await h.emit("agent_before_settle", settle()), []);
+  });
+}
+
 test("a custom wake after a settle nudge is a new request, not its silent continuation", async () => {
   const h = harness();
   await h.emit("before_agent_start", { messageType: "user" });
@@ -375,6 +401,7 @@ test("a run that used the list and leaves items open gets one more turn to mark 
   await h.emit("agent_start");
   const answer = await h.call({ op: "update", id: 2, state: "in_progress" });
   assert.match(text(answer), /^Item 2 is in progress\.\nThat answers the todo check\. End your turn now without writing anything/, "the update answering the check says to stop there");
+  assert.doesNotMatch(text(await h.call({ op: "get" })), /end your turn/i, "the first answer consumes the hint");
   assert.deepEqual(await h.emit("agent_before_settle", settle()), [], "the continuation it asked for is not nudged again");
   await h.emit("before_agent_start", { messageType: "user" });
   assert.doesNotMatch(text(await h.call({ op: "get" })), /todo check/, "a new request is not answering it");
