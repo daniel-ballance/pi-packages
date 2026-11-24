@@ -11,7 +11,8 @@ export function noticeBatch(notices: Notice[]): { notices: Notice[]; content: st
     const plain = (text: string) => stripVTControlCharacters(text).replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/\s+/g, " ").trim();
     const summary = plain(notice.text);
     const preview = summary.slice(0, 600) + (summary.length > 600 ? "…" : "");
-    return `- ${JSON.stringify(plain(notice.name).slice(0, 120))} (${notice.id}) [${notice.kind}]: ${JSON.stringify(preview)}`;
+    const more = notice.readFull ? ` (${notice.fullLength} characters; subagent_read ${JSON.stringify(notice.readFull)})` : "";
+    return `- ${JSON.stringify(plain(notice.name).slice(0, 120))} (${notice.id}) [${notice.kind}]: ${JSON.stringify(preview)}${more}`;
   });
   return {
     notices: selected, supervisory,

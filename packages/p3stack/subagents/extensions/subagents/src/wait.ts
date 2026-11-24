@@ -109,7 +109,7 @@ export const withCurrentReviews = (manager: SubagentManager, report: WaitReport)
 export function childNews(record: AgentRecord): ChildNews {
   return {
     id: record.id, name: record.name, status: record.status, activity: record.activity, error: record.error,
-    unread: record.updates.filter(update => update.cursor > record.readCursor && REPORT_KINDS.has(update.kind)).length,
+    unread: record.updates.filter(update => update.cursor > record.readCursor && !update.consumed && REPORT_KINDS.has(update.kind)).length,
     hold: record.hold && { kind: record.hold.kind, outcome: record.hold.outcome, detail: record.hold.detail },
     uiRequests: record.uiRequests.length ? record.uiRequests.map(({ id, method, title }) => ({ id, method, title })) : undefined,
     depth: record.depth, parentId: record.parentId,
@@ -176,7 +176,7 @@ export function waitReport(manager: SubagentManager, end: WaitEnd, collect: bool
   const agents = statuses.map(news => {
     if (manager.reportsDrainedBy(news.id) !== callerId) return news;
     const record = manager.get(news.id);
-    const plan = reportPlan(record.updates.filter(update => update.cursor > record.readCursor), final, news.status);
+    const plan = reportPlan(record.updates.filter(update => update.cursor > record.readCursor && !update.consumed), final, news.status);
     if (plan.mode === "skip") return news;
     const chosen = plan.mode === "one" ? plan.cursor : undefined;
     const page = manager.read(news.id, chosen === undefined ? undefined : chosen - 1, false);
@@ -185,9 +185,9 @@ export function waitReport(manager: SubagentManager, end: WaitEnd, collect: bool
       const start = page.updates[0].cursor;
       const end = page.updates[page.updates.length - 1].cursor;
       updates = [
-        ...record.updates.filter(update => update.cursor > record.readCursor && update.cursor < start),
-        ...page.updates,
-        ...record.updates.filter(update => update.cursor > end),
+        ...record.updates.filter(update => !update.consumed && update.cursor > record.readCursor && update.cursor < start),
+        ...page.updates.filter(update => !update.consumed),
+        ...record.updates.filter(update => update.cursor > end && !update.consumed),
       ];
     }
     const { prefix, reports } = takePage(updates, plan, budget);

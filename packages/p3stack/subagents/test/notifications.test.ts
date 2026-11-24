@@ -135,6 +135,22 @@ async function managerFixture() {
   return { directory, manager, spawn, async close() { await manager.shutdown(); await rm(directory, { recursive: true, force: true }); } };
 }
 
+for (const length of [800, 14000]) test(`a shortened wake carries that assignment's page and original length (${length})`, async () => {
+  const s = await managerFixture();
+  try {
+    const task = "文".repeat(length);
+    const { id } = await s.spawn(task);
+    await s.manager.wait([id], "all", 2000);
+    const notice = s.manager.pendingNotices()[0] as any, content = noticeBatch([notice]).content;
+    assert.equal(notice.fullLength, length + 2);
+    assert.equal(notice.assignmentId, s.manager.get(id).assignment?.id);
+    assert.ok(content.includes(String(length + 2)) && content.includes(notice.readFull.page));
+    await s.manager.send(id, "new task");
+    await s.manager.wait([id], "all", 2000);
+    assert.ok((s.manager as any).readReportPage(id, notice.readFull.page).data.text.startsWith("1:文"));
+  } finally { await s.close(); }
+});
+
 test("the first durable completed-assignment snapshot already contains its wake notice", async () => {
   const directory = tempRoot("subagent-atomic-notice-");
   const snapshots: boolean[] = [];

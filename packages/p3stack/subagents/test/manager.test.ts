@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { access, chmod, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -963,6 +963,20 @@ function workflowJobs(directory: string): AgentJob[] {
 function workflowPolicy(): SubagentPolicy {
   return { compile: (cwd: string) => ({ cwd, executable: process.execPath, executableArgs: [fixture] }) } as unknown as SubagentPolicy;
 }
+
+test("only shortened display copies write report files; a child retains at most its latest 100 saved reports", async () => {
+  const s = await setup();
+  try {
+    const { id } = await s.spawn("short");
+    await s.manager.wait([id], "all", 2000);
+    const files = () => readdirSync(s.dir).filter(f => f.endsWith(".report"));
+    assert.deepEqual(files(), []);
+    const r = s.manager.get(id), m = s.manager as any;
+    for (let i = 0; i < 102; i++) m.appendUpdate(r, "assistant", "x".repeat(12001), true);
+    assert.equal(files().length, 100);
+    assert.equal(r.savedReports!.length, 100);
+  } finally { await s.cleanup(); }
+});
 
 test("workflow results use the terminal response independently of retained progress", async () => {
   const s = await setup();

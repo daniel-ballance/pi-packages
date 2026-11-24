@@ -47,8 +47,8 @@ export const TOOL_SPECS = {
       parameters: Type.Object({ id, message, behavior: Type.Optional(Type.Unsafe<"steer" | "followUp">({ type: "string", enum: ["steer", "followUp"] })) }),
   },
   subagent_read: {
-      description: "Read a page of child updates and pending dialogs. A normal read advances the cursor; since replays. Returned updates are acknowledged unless the result spills.",
-      parameters: Type.Object({ id, since: Type.Optional(Type.Integer({ minimum: 0 })) }),
+      description: "Read child updates and dialogs; since replays updates only. For full report pages pass readFull, then nextRead until absent. The last page consumes the report.",
+      parameters: Type.Object({ id, since: Type.Optional(Type.Integer({ minimum: 0 })), page: Type.Optional(Type.String({ description: "Opaque report page handle from readFull or nextRead." })) }, { additionalProperties: false }),
   },
   subagent_wait: {
       description: WAIT_SELECTION + " With nothing else to do, end your turn: finished children's reports wake you.",

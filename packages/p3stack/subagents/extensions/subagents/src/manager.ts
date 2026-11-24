@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
@@ -31,10 +31,11 @@ export interface SpawnOptions {
   parentId?: string;
   coordination?: { owns?: string[]; outputs?: string[] };
 }
-type ReadArgs = { id: string; since: number };
-export interface Update { cursor: number; kind: string; text: string; time: string; truncated?: true; fullLength?: number; readFull?: ReadArgs; assignmentId?: string }
-/** Page cursors occupy the otherwise unused interval [firstPage, updateCursor). */
-interface SavedReport { assignmentId?: string; firstPage: number; updateCursor: number; fullLength: number; readThrough?: number; file: string }
+type ReadArgs = { id: string; page: string };
+export const reportPage = (id: string, cursor: number, offset = 0): ReadArgs => ({ id, page: `${cursor}:${offset}` });
+export interface Update { cursor: number; kind: string; text: string; time: string; truncated?: true; fullLength?: number; readFull?: ReadArgs; assignmentId?: string; consumed?: true }
+interface SavedReport { assignmentId?: string; updateCursor: number; fullLength: number; reviewed?: true; file?: string; text?: string }
+const SAVED_REPORTS = 100;
 const DISPLAY_CHARS = 12_000;
 // Even worst-case JSON escaping fits a page inside both tool and private-pipe limits.
 const PAGE_CHARS = 4_000;
@@ -76,7 +77,7 @@ interface InputDelivery {
   batch?: boolean;
   lastResult?: Update;
 }
-export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string }
+export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string; assignmentId?: string; fullLength?: number; readFull?: ReadArgs }
 export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
 export interface SlotReservation { readonly id: symbol }
 const MAX_LOG = 20 * 1024 * 1024;
@@ -202,6 +203,8 @@ export class SubagentManager {
         record.activity = record.unconfirmedStop ?? "No process attached. Resume explicitly to continue the saved conversation.";
         enforcePrivatePathIfPresent(record.logFile, 0o600, false);
         enforcePrivatePathIfPresent(record.stderrFile, 0o600, false);
+        for (const u of record.updates) if (u.readFull) u.readFull = reportPage(record.id, u.cursor); // pre-page registries
+        this.trimReports(record);
         this.records.set(record.id, record);
       }
       // Old registries have no pending queue: never reconstruct already-sent reports.
@@ -238,20 +241,28 @@ export class SubagentManager {
     enforcePrivatePath(this.registry, 0o600, false);
     this.changed();
   }
+  private trimReports(record: AgentRecord) {
+    const saved = record.savedReports;
+    if (!saved || saved.length <= SAVED_REPORTS) return;
+    for (const {file} of saved.splice(0, saved.length - SAVED_REPORTS)) {
+      if (file && resolve(file) === resolve(this.directory, file.split(/[\\/]/).pop()!) && /[\da-f-]{36}\.report$/.test(file) && existsSync(file)) unlinkSync(file);
+    }
+  }
   private appendUpdate(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
     record.updatedAt = new Date().toISOString();
     const truncated = text.length > DISPLAY_CHARS, assignmentId = record.assignment?.id;
-    let readFull: ReadArgs | undefined;
-    if (finalAnswer || (truncated && REPORT_KINDS.has(kind))) {
-      const firstPage = record.cursor + 1, pages = Math.max(1, Math.ceil(text.length / PAGE_CHARS));
-      const file = join(this.directory, `${randomUUID()}.report`);
-      writeFileSync(file, text, { encoding: "utf16le", mode: 0o600, flag: "wx" });
-      record.cursor += pages;
-      (record.savedReports ??= []).push({ file, assignmentId, firstPage, updateCursor: record.cursor + 1, fullLength: text.length });
-      readFull = { id: record.id, since: firstPage };
+    const cursor = ++record.cursor;
+    if (finalAnswer || (REPORT_KINDS.has(kind) && text.length > 600)) {
+      const saved: SavedReport = { assignmentId, updateCursor: cursor, fullLength: text.length };
+      if (truncated) {
+        saved.file = join(this.directory, `${randomUUID()}.report`);
+        writeFileSync(saved.file, text, { encoding: "utf16le", mode: 0o600, flag: "wx" });
+      } else saved.text = text;
+      (record.savedReports ??= []).push(saved);
+      this.trimReports(record);
     }
-    const update: Update = { cursor: ++record.cursor, kind, text: text.slice(0, DISPLAY_CHARS), time: record.updatedAt,
-      ...(truncated ? { truncated: true, fullLength: text.length } : {}), ...(readFull ? { assignmentId, readFull } : {}) };
+    const update: Update = { cursor, kind, text: text.slice(0, DISPLAY_CHARS), time: record.updatedAt, assignmentId,
+      ...(truncated ? { truncated: true, fullLength: text.length, ...(REPORT_KINDS.has(kind) ? { readFull: reportPage(record.id, cursor) } : {}) } : {}) };
     record.updates.push(update);
     record.updates = record.updates.slice(-100);
     return update;
@@ -277,7 +288,12 @@ export class SubagentManager {
     if (kind !== "human_intervention" && (this.shuttingDown || this.workflowChildren.has(record.id) || record.observedCursors?.includes(cursor))) return;
     const key = `${record.id}:${cursor}:${kind}`;
     if (this.notices.has(key)) return;
-    const notice = { id: record.id, name: record.name, kind, text: text.slice(0, 4000), cursor, key, requestId };
+    const saved = record.savedReports?.find(r => r.updateCursor === cursor);
+    const fullLength = saved?.fullLength ?? text.length;
+    const notice = { id: record.id, name: record.name, kind, text: text.slice(0, 4000), cursor, key, requestId,
+      ...(fullLength > 600 && (saved || record.updates.some(u => u.cursor === cursor)) ? {
+        assignmentId: saved?.assignmentId ?? record.assignment?.id, fullLength, readFull: reportPage(record.id, cursor),
+      } : {}) };
     this.notices.set(key, notice);
     this.persist();
     // Notification scheduling must not prevent a human cancellation; the queue is durable.
@@ -328,7 +344,7 @@ export class SubagentManager {
     }
     this.observe(record, cursors, !byRoot);
     if (receipt.updates.some(u => u.cursor === record.assignment?.resultCursor && !u.truncated)) this.review(record);
-    if (advanceCursor) record.readCursor = Math.max(record.readCursor, receipt.nextCursor);
+    if (advanceCursor) { record.readCursor = Math.max(record.readCursor, receipt.nextCursor); this.advanceConsumed(record); }
     this.persist();
   }
   private review(record: AgentRecord) {
@@ -360,7 +376,7 @@ export class SubagentManager {
   }
   list(includeRejected = false) {
     return [...this.records.values()].filter(record => includeRejected || !record.rejected).map(({ updates, config, runStartCursor, runRevision, observedCursors, savedReports, ...record }) => {
-      const unreadUpdates = updates.filter(u => u.cursor > record.readCursor);
+      const unreadUpdates = updates.filter(u => u.cursor > record.readCursor && !u.consumed);
       // Tool-facing snapshots must not retain nested references to live records.
       return structuredClone({
         ...record, cwd: config.cwd, coordination: config.coordination,
@@ -425,44 +441,56 @@ export class SubagentManager {
   }
   finalAnswer(id: string) {
     const saved = this.savedFinal(this.get(id));
-    return saved && readFileSync(saved.file, "utf16le");
+    return saved?.file ? readFileSync(saved.file, "utf16le") : saved?.text;
   }
-  /** Explicit subagent_read replay. Page handles remain valid across assignments, retention and reload. */
-  readReportPage(id: string, since: number) {
+  readReportPage(id: string, page: string) {
     const record = this.get(id);
-    const saved = record.savedReports?.find(r => r.firstPage <= since && since < r.updateCursor);
-    if (!saved) return;
-    const offset = (since - saved.firstPage) * PAGE_CHARS;
-    // Fixed-width storage lets a page seek straight to its text. Include the
-    // adjacent code units so neither end of a page splits a surrogate pair.
-    const from = Math.max(0, offset - 1), to = Math.min(saved.fullLength, offset + PAGE_CHARS + 1);
-    const bytes = Buffer.alloc((to - from) * 2);
-    const fd = openSync(saved.file, "r");
-    try {
-      if (readSync(fd, bytes, 0, bytes.length, from * 2) !== bytes.length) throw new Error("Incomplete saved report");
-    } finally { closeSync(fd); }
-    const window = bytes.toString("utf16le");
+    const match = /^(\d+):(\d+)$/.exec(page);
+    const cursor = Number(match?.[1]), offset = Number(match?.[2]);
+    const saved = record.savedReports?.find(r => r.updateCursor === cursor);
+    const update = record.updates.find(u => u.cursor === cursor && REPORT_KINDS.has(u.kind));
+    const inline = saved?.text ?? (update && !update.truncated ? update.text : undefined);
+    const fullLength = saved?.fullLength ?? inline?.length;
+    if (fullLength === undefined || !Number.isSafeInteger(offset) || offset % PAGE_CHARS || offset >= fullLength) throw new Error("Unknown or expired report page");
+    // Seek including the adjacent code units so a boundary never splits a surrogate pair.
+    const from = Math.max(0, offset - 1), to = Math.min(fullLength, offset + PAGE_CHARS + 1);
+    let window: string;
+    if (saved?.file) {
+      const bytes = Buffer.alloc((to - from) * 2), fd = openSync(saved.file, "r");
+      try {
+        if (readSync(fd, bytes, 0, bytes.length, from * 2) !== bytes.length) throw new Error("Incomplete saved report");
+      } finally { closeSync(fd); }
+      window = bytes.toString("utf16le");
+    } else window = inline!.slice(from, to);
     const boundary = (n: number) => /[\uD800-\uDBFF]/.test(window.charAt(n - 1)) && /[\uDC00-\uDFFF]/.test(window.charAt(n)) ? n + 1 : n;
     const start = boundary(offset - from), text = window.slice(start, boundary(offset - from + PAGE_CHARS));
-    const data = { id, assignmentId: saved.assignmentId, text, offset: from + start, fullLength: saved.fullLength, truncated: text.length < saved.fullLength,
-      nextRead: since + 1 < saved.updateCursor ? { id, since: since + 1 } : undefined };
-    return { data, acknowledge: () => {
-      if ((saved.readThrough ?? saved.firstPage - 1) !== since - 1) return;
-      saved.readThrough = since;
-      if (since + 1 === saved.updateCursor) {
-        this.observe(record, [saved.updateCursor]);
-        if (record.assignment?.resultCursor === saved.updateCursor) this.review(record);
-      }
+    const data = { id, assignmentId: saved?.assignmentId ?? update?.assignmentId, text, offset: from + start, fullLength, truncated: text.length < fullLength,
+      resultReview: record.resultReview, nextRead: offset + PAGE_CHARS < fullLength ? reportPage(id, cursor, offset + PAGE_CHARS) : undefined };
+    return { data, acknowledge: (byRoot = true) => {
+      if (data.nextRead) return;
+      this.observe(record, [cursor], !byRoot);
+      if (saved) saved.reviewed = true;
+      if (update) update.consumed = true;
+      if (record.assignment?.resultCursor === cursor) this.review(record);
+      data.resultReview = record.resultReview;
+      this.advanceConsumed(record);
       this.persist();
     } };
   }
-  read(id: string, since?: number, acknowledge = true) {
+  private advanceConsumed(record: AgentRecord) {
+    for (const update of record.updates) {
+      if (update.cursor <= record.readCursor) continue;
+      if (!update.consumed) break;
+      record.readCursor = update.cursor;
+    }
+  }
+  read(id: string, since?: number, acknowledge = true, allUpdates = false) {
     const record = this.get(id);
     const cursor = since ?? record.readCursor;
     const updates: Update[] = [];
     let size = 0;
-    for (const update of record.updates.filter(u => u.cursor > cursor)) {
-      if (size + update.text.length > 24000 && updates.length) break;
+    for (const update of record.updates.filter(u => u.cursor > cursor && (since !== undefined || !u.consumed))) {
+      if (!allUpdates && size + update.text.length > 24000 && updates.length) break;
       updates.push(update); size += update.text.length;
     }
     const nextCursor = updates.at(-1)?.cursor ?? cursor;
@@ -471,7 +499,7 @@ export class SubagentManager {
       id, name: record.name, status: record.status, activity: record.activity,
       model: record.model, thinking: record.thinking,
       updates, nextCursor, hasMore: record.cursor > nextCursor,
-      ...(saved ? { readFull: { id, since: saved.firstPage }, fullLength: saved.fullLength } : {}),
+      ...(saved?.file && saved.fullLength > DISPLAY_CHARS ? { readFull: reportPage(id, saved.updateCursor), fullLength: saved.fullLength } : {}),
       gap: record.updates.length > 0 && cursor < record.updates[0].cursor - 1,
       uiRequests: record.uiRequests, sessionFile: record.sessionFile,
       logFile: record.logFile, stderrFile: record.stderrFile, error: record.error,
@@ -700,7 +728,7 @@ export class SubagentManager {
     if (record.assignment && !record.assignment.finishedAt) {
       record.assignment.finishedAt = new Date().toISOString();
       record.assignment.resultCursor = last?.cursor ?? record.cursor;
-      record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last?.truncated || this.savedFinal(record)?.readThrough === last.cursor - 1) ? "reviewed" : "unreviewed" };
+      record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last?.truncated || this.savedFinal(record)?.reviewed) ? "reviewed" : "unreviewed" };
     }
     // announce commits the result and its wake notice together, before calling
     // the scheduler. A suppressed notice still needs the settlement committed.
