@@ -68,8 +68,7 @@ The built-in policy applies only when no `subagents.json` exists. It is a menu a
     {"id": "openai-codex/gpt-6.2-sol:medium", "description": "Strong general model."},
     {"id": "openai-codex/gpt-6.2-sol:high", "description": "Strong general model, more thinking."},
     {"id": "openai-codex/gpt-6.2-sol:xhigh", "description": "Hardest code and judgment."},
-    {"id": "openai-codex/gpt-6.1-sol:high", "description": "Strong general model where GPT-6.2 Sol is not in the catalog."},
-    {"id": "openai/gpt-6.1-sol:high", "description": "Strong general model (API key)."},
+    {"id": "openai/gpt-6.2-sol:high", "description": "Strong general model (API key)."},
     {"id": "xai/grok-4.7:high", "description": "Code work. Grok stops at high."},
     {"id": "anthropic/claude-opus-5-5:high", "description": "Judgment and prose. Claude stops at high."},
     {"id": "anthropic/claude-sonnet-5-5:high", "description": "Cheaper Claude reviewer."}
