@@ -302,20 +302,29 @@ function referenceBody(text, path, name, owner) {
   return title + newline.repeat(2) + trigger + newline.repeat(2) + rest.replace(/^(?:\r?\n)+/, "");
 }
 
-// Translate command spans the upstream slash rule recognized, not command examples in
-// fences or longer shell snippets. A rule must settle those in context or lint fails.
-function linkReferenceCommands(text, moves, linkTo, output) {
-  if (!text.includes("/skill:")) return text;
+// Link whole names and command spans, not substrings of a shell command. Keep
+// existing labels, headings and code examples intact when linking prose names.
+function linkReferenceMentions(text, references, linkTo, output) {
   const edits = [];
-  function visit(node, parent) {
-    if (node.type === "inlineCode" && node.value.startsWith("/skill:")) {
-      const name = node.value.slice(7), target = moves.get(`skills/${name}/SKILL.md`);
-      if (target) edits.push([node.position, parent.type === "link" || parent.type === "linkReference" || target === output ? name : `[${name}](${linkTo(target)})`]);
-    } else node.children?.forEach(child => visit(child, node));
+  function visit(node, inLink = false, inHeading = false) {
+    inLink ||= node.type === "link" || node.type === "linkReference";
+    inHeading ||= node.type === "heading";
+    const code = node.type === "inlineCode", command = code && node.value.startsWith("/skill:");
+    const label = command ? node.value.slice(7) : code ? node.value : node.type === "strong" && node.children.length === 1 ? node.children[0].value : undefined;
+    const ref = references.get(label);
+    if (ref && (command ? ref.name === label : !inLink && !inHeading)) {
+      const target = `skills/${referencePath(ref)}`, { start, end } = node.position;
+      const link = `[${label}](${linkTo(target)})`;
+      const suffix = !command && /^(['’]s)? (?:principle )?skill(s?)\b/.exec(text.slice(end.offset));
+      edits.push([start.offset, end.offset + (suffix ? suffix[0].length : 0),
+        command && (inLink || target === output) ? label : link + (suffix ? `${suffix[1] ?? ""} reference${suffix[2]}` : "")]);
+    } else node.children?.forEach(child => visit(child, inLink, inHeading));
   }
+  const header = frontmatterBlock(text)?.[0] ?? "";
+  text = text.slice(header.length);
   visit(fromMarkdown(text));
-  for (const [{ start, end }, replacement] of edits.reverse()) text = text.slice(0, start.offset) + replacement + text.slice(end.offset);
-  return text;
+  for (const [start, end, replacement] of edits.reverse()) text = text.slice(0, start) + replacement + text.slice(end);
+  return header + text;
 }
 
 const linkBase = path => path.startsWith("skills/") ? path.split("/").slice(0, 2).join("/") : posix.dirname(path);
@@ -323,12 +332,15 @@ const linkBase = path => path.startsWith("skills/") ? path.split("/").slice(0, 2
 function relocateReferences(outDir, skills, owners) {
   const paths = walk(outDir).map(path => path.split(sep).join("/")), moves = referenceMoves(paths, skills);
   if (!moves.size) return;
+  const references = new Map(skills.filter(row => row.action === "reference").flatMap(row =>
+    row.name.startsWith("principle-") ? [[row.name, row], [row.name.slice("principle-".length), row]] : [[row.name, row]]));
   for (const path of paths) {
     const output = moves.get(path) ?? path, oldFile = join(outDir, path), file = join(outDir, output);
     const before = linkBase(path), after = linkBase(output);
-    // A reference can be reached from a sibling skill. Qualify its links so
-    // they resolve from either that reader or the owner.
-    const linkTo = dest => moves.has(path) ? "../" + dest.slice("skills/".length) : posix.relative(after, dest);
+    // Playbooks and references can be read from a sibling skill. Qualify
+    // their links so they resolve from either that reader or the owner.
+    const shared = output.startsWith("skills/") && output !== `${after}/SKILL.md`;
+    const linkTo = dest => shared ? "../" + dest.slice("skills/".length) : posix.relative(after, dest);
     const contents = decode(readFileSync(oldFile));
     if (file !== oldFile) {
       mkdirSync(dirname(file), { recursive: true });
@@ -359,7 +371,7 @@ function relocateReferences(outDir, skills, owners) {
       return aliases.get(operand);
     }));
     if (owners.has(path) && !["extra", "authored", "registry"].includes(owners.get(path)) && path.endsWith(".md")) {
-      text = linkReferenceCommands(text, moves, linkTo, output);
+      text = linkReferenceMentions(text, references, linkTo, output);
     }
     if (text !== contents) writeFileSync(file, text);
   }

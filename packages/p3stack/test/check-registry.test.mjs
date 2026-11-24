@@ -105,6 +105,19 @@ for (const heading of ["# Leaf", ""]) {
   });
 }
 
+test("prose names link from the skill root, including both spellings of a principle", t => {
+  const f = referenceFixture(t), name = "principle-test-first", path = `skills/${name}/SKILL.md`;
+  f.write(`vendor/demo/${path}`, f.skill(name));
+  f.write("registry/skills.json", [...f.skills, f.ref, { ...f.ref, name, path }]);
+  const untouched = "## The **leaf** skill\n\n[the **leaf** skill](SKILL.md)\n\n```md\nthe `leaf` skill\n```\n";
+  f.write("vendor/demo/skills/first/references/notes.md", "The **leaf** skill and the `leaf` skill. The **test-first** and **principle-test-first** principle skills.\n\n" + untouched);
+  f.write("extra/skills/first/local.md", "Owned: the **leaf** skill.\n");
+  f.build();
+  const read = path => readFileSync(join(f.outDir, "skills/first", path), "utf8");
+  assert.equal(read("references/notes.md"), "The [leaf](../first/references/leaf.md) reference and the [leaf](../first/references/leaf.md) reference. The [test-first](../first/references/principle-test-first.md) and [principle-test-first](../first/references/principle-test-first.md) references.\n\n" + untouched);
+  assert.equal(read("local.md"), "Owned: the **leaf** skill.\n");
+});
+
 for (const command of ["/leaf", "/skill:leaf", "/leaf?"]) {
   test(`a leftover ${command} command fails generation by file and line`, t => {
     const f = referenceFixture(t);
@@ -420,7 +433,7 @@ test("every principle in the index resolves by title or its explicit name", () =
   const dir = new URL("../skills/poteto-mode/", import.meta.url);
   const index = readFileSync(new URL("SKILL.md", dir), "utf8").split("## Principles\n")[1].split("\n## ")[0];
   assert.match(index, /references\/principle-<title>\.md/);
-  const names = [...index.matchAll(/^- \*\*(.+?)\*\*(?: \(\*\*(principle-[\w-]+)\*\*\))?/gm)]
+  const names = [...index.matchAll(/^- \*\*(.+?)\*\*(?: \(\[(principle-[\w-]+)\]\(references\/\2\.md\)\))?/gm)]
     .map(([, title, explicit]) => explicit ?? "principle-" + title.toLowerCase().replace(/[^a-z0-9 -]/g, "").replaceAll(" ", "-"));
   assert.equal(names.length, 24);
   assert.deepEqual(new Set(names), new Set(rows().filter(row => row.action === "reference" && row.owner === "poteto-mode").map(row => row.name)));

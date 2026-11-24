@@ -12,7 +12,7 @@ Be scientific. Every shipped line traces to runtime evidence. Belt-and-suspender
 
 4. Verify on the same surface. The original repro now passes. "Inconclusive" or wrong-surface is not a pass. Flag it. Unit tests show branch behavior, not bug absence.
 5. Stage the commits so the failing repro lands before the fix in git history. See the [regression-test](../tdd/references/regression-test.md) for the failing-test-first cadence when the bug has a cheap local test path. Skip it when the test would be expensive, integration-heavy, or unclear.
-   This is the canonical **sequence-verifiable-units** principle skill, the failing test first and the fix on top.
+   This is the canonical [sequence-verifiable-units](../poteto-mode/references/principle-sequence-verifiable-units.md) reference, the failing test first and the fix on top.
 
 > **p3stack only:** [no-comments](../code-review/references/no-comments.md) — When the code is complete, clean up comments before the floor scan.
 
