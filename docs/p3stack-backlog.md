@@ -64,6 +64,9 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 - Test the two subagents checks that have none: the conditions that decide `workStarted: false`, and the step that advances the read cursor after a report is fully paged. (final re-check, subagents D4)
 - Keep slash commands inside fenced text translated. Translation now skips fences to protect literal paths, and one rule patches the single command the plan template carries there; nothing flags the next one. (final re-check, generator D4)
 
+- Stop translating `/name` in plain prose that is a path, such as `GET /research HTTP/1.1`. Fenced code, link destinations and HTML attributes are protected; bare prose is not. No such text exists at the current pins. (final re-check, generator F12)
+- Scope what a T3 child reads to its brief: when a parent sets `Task grant:`, the child sees both that line and the header's session grant, and relies on the header's one sentence to pick. (final re-check, instructions A-M4)
+
 ## A Pi crash seen during this work
 
 Two delegated sessions exited the moment a codemode script's `Promise.all` rejected on a missing file while its other reads were still in flight. An offline reproduction against Pi 1.5.2's codemode executor with a stand-in session did not crash. The cause is not isolated.
