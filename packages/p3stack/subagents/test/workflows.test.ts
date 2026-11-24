@@ -322,7 +322,7 @@ test("manager host records consumed submission and rejects the attempt before wa
   const fakeManager = {
     reserveSlots: () => ({ id: Symbol("reservation") }), releaseSlots() {},
     spawn: async () => ({ id: "consumed-child" }), get: () => ({ id: "consumed-child" }),
-    send: async () => ({ id: "consumed-child", disposition: "handled" }),
+    send: async () => ({ id: "consumed-child", disposition: "handled", workStarted: false }),
     wait: async () => assert.fail("Consumed input must not wait for a nonexistent run"),
     close: async () => { closed = true; return { outcome: "confirmed" }; }, peers: {},
   } as unknown as Parameters<typeof managerWorkflowHost>[0];
@@ -332,6 +332,12 @@ test("manager host records consumed submission and rejects the attempt before wa
   await assert.rejects(managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), /input was handled/);
   assert.deepEqual(submitted, { id: "consumed-child", disposition: "handled" });
   assert.equal(closed, true);
+  Object.assign(fakeManager, {
+    send: async () => ({ id: "consumed-child", disposition: "handled" }),
+    wait: async () => ({wake: "settled"}), get: () => ({ id: "consumed-child", status: "idle" }),
+    finalAnswer: () => "handler's answer", read() {},
+  });
+  assert.deepEqual(await managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), ["handler's answer"]);
 });
 
 test("pause is a boundary, cancel and deadline abort execution, and only one run executes", async () => {

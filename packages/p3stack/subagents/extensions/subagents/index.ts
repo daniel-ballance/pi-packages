@@ -413,7 +413,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         const receipt: SpawnReceipt = {
           ...childNews(record),
           disposition: child.lastSubmission?.disposition,
-          ...(child.lastSubmission?.disposition === "handled" ? { workStarted: false } : {}),
+          ...(child.lastSubmission?.workStarted === false ? { workStarted: false } : {}),
           ...(record.model ? { model: record.model } : {}),
           ...(record.thinking ? { thinking: record.thinking } : {}),
           ...(worktree ? { worktree } : {}),

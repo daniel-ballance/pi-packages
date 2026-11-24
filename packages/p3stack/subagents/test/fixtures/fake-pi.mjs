@@ -30,7 +30,7 @@ process.stdin.on('data', chunk => {
   let nl;
   while ((nl = buffer.indexOf('\n')) >= 0) {
     const cmd = JSON.parse(buffer.slice(0, nl)); buffer = buffer.slice(nl + 1);
-    if (cmd.type === 'get_state') respond(cmd, { sessionFile: file, sessionId: 'fake-session', model: { provider: 'test', id: 'fake' }, thinkingLevel: 'medium', isStreaming: working, autoCompactionEnabled: true });
+    if (cmd.type === 'get_state') respond(cmd, { sessionFile: file, sessionId: 'fake-session', model: { provider: 'test', id: 'fake' }, thinkingLevel: 'medium', isStreaming: working, pendingMessageCount: followUps.length, autoCompactionEnabled: true });
     else if (cmd.type === 'get_session_stats') respond(cmd, {
       userMessages: history.length, assistantMessages,
       cost: extraCost + (history.includes('live-usage') ? assistantMessages * 0.125 : Number(process.env.TEST_COST ?? 0)),

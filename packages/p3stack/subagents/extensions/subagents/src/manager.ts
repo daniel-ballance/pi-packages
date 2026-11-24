@@ -53,7 +53,7 @@ export interface AgentRecord {
   model?: string; thinking?: string; activity?: string; error?: string; lastError?: string;
   rejected?: boolean; startedAt?: string;
   usage?: unknown; updates: Update[]; cursor: number; readCursor: number;
-  lastSubmission?: { disposition: InputDisposition; at: string };
+  lastSubmission?: { disposition: InputDisposition; at: string; workStarted?: false };
   uiRequests: Packet[]; hadEnvOverrides: boolean;
   savedReports?: SavedReport[];
   runStartCursor?: number; aborted?: boolean; runRevision?: number;
@@ -894,6 +894,7 @@ export class SubagentManager {
     this.persist();
     this.submitting.set(id, (this.submitting.get(id) ?? 0) + 1);
     let disposition: InputDisposition = "unknown";
+    let noWork = false;
     let acceptedUnderHalt: HumanHold | undefined;
     try {
       try {
@@ -918,7 +919,9 @@ export class SubagentManager {
           if (record.runRevision === revision && !record.hold) {
             record.usage = noteAutoCompaction(record.usage, state.autoCompactionEnabled);
             record.status = record.uiRequests.length ? "waiting_input" : state.isStreaming ? "working" : "idle";
-            if (record.status === "idle") record.activity = disposition === "handled" ? "Input handled; no task run scheduled" : "Waiting for instructions";
+            noWork = disposition === "handled" && previous === "idle" && state.isStreaming === false && state.pendingMessageCount === 0;
+            if (noWork) record.lastSubmission.workStarted = false;
+            if (record.status === "idle") record.activity = noWork ? "Input handled; no task run scheduled" : "Waiting for instructions";
           }
         }
       } catch (error) {
@@ -944,7 +947,7 @@ export class SubagentManager {
       }
       if (record.hold) throw new Error(`${id} was held while prompt acceptance was pending`);
       this.update(record, "sent", message);
-      return { ...this.summary(id), disposition };
+      return { ...this.summary(id), disposition, ...(noWork ? { workStarted: false as const } : {}) };
     } finally {
       const remaining = (this.submitting.get(id) ?? 1) - 1;
       if (remaining) this.submitting.set(id, remaining);

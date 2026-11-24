@@ -75,6 +75,9 @@ test("a consumed first input returns a compact handled/no-work spawn receipt", {
     assert.equal(details.disposition, "handled");
     assert.equal(details.workStarted, false);
     assert.equal(details.status, "idle");
+    const handled = await spawn({ name: "handled", task: "/handled-work", cwd: repo, model: "p/m:off", tools: [] });
+    assert.equal(handled.details.disposition, "handled");
+    assert.equal("workStarted" in handled.details, false);
   });
 });
 
