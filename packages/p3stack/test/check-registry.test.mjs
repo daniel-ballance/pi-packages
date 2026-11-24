@@ -140,6 +140,13 @@ test("routes may use the same request under distinct grants", t => {
   assert.equal(result.status, 0, result.stderr);
 });
 
+test("an authored file cannot be silently overwritten by a registry table", t => {
+  const f = fixture(t), path = "skills/p3stack-mode/references/routes.md";
+  f.write(`authored/${path}`, "Hand-written route.\n");
+  f.write("registry/chains.json", []);
+  assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), /routes\.md:.*authored.*registry/);
+});
+
 test("registry admits an explicit router playbook target and rejects a missing one", t => {
   const f = fixture(t);
   f.write("registry/routes.json", [{ request: "onboard", grant: "any", target: "p3stack-mode/playbooks/onboard-brownfield.md" }]);

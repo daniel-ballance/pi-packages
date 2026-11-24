@@ -301,8 +301,45 @@ test("a replaced section that changes upstream fails with its new hash, so the o
   } finally { dispose(); }
 });
 
-test("authored files copy after extras without token rewrites and keep executable modes", () => {
+test("undeclared overwrites name the competing input producers and output", t => {
+  for (const [from, to] of [["cursor-plugins", "extra"], ["cursor-plugins", "authored"], ["extra", "authored"]]) {
+    const file = "skills/demo/note.md";
+    const { root, out, dispose } = fixture({ [`${from === "cursor-plugins" ? "vendor/up" : from}/${file}`]: "Old.", [`${to}/${file}`]: "New." });
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), error => {
+      for (const part of [from, to, file]) assert.ok(error.message.includes(part), error.message);
+      return true;
+    });
+    assert.equal(existsSync(out), false);
+  }
+});
+
+test("an uninstalled root fails generation even when introduced by a patch", t => {
+  const file = "prompts/new.md";
+  const patch = [`diff --git a/${file} b/${file}`, "new file mode 100644", "--- /dev/null", `+++ b/${file}`, "@@ -0,0 +1 @@", "+Hello", ""].join("\n");
+  for (const files of [{ [`authored/${file}`]: "Hello\n" }, { "patches/prompt.patch": patch }]) {
+    const { root, out, dispose } = fixture(files);
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /prompts\/new\.md:.*(?:move|declare)/i);
+  }
+});
+
+test("drift and install recognize previously owned licenses without sweeping unrelated licenses", t => {
+  const { root, dispose } = fixture({ "LICENSE-superpowers": "stale pin\n", "LICENSE-local": "keep\n" });
+  t.after(dispose);
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });
+  assert.match(run("--check").stderr, /LICENSE-superpowers: not generated/);
+  const installed = run();
+  assert.equal(installed.status, 0, installed.stderr);
+  assert.equal(existsSync(join(root, "LICENSE-superpowers")), false);
+  assert.equal(readFileSync(join(root, "LICENSE-local"), "utf8"), "keep\n");
+});
+
+test("a declared authored replacement supplies both bytes and mode without token rewrites", () => {
   const { root, out, read, dispose } = fixture({
+    "rules/manifest.json": JSON.stringify({ ...JSON.parse(manifest()), overwrites: [
+      { file: "skills/demo/references/contract.md", from: "extra", by: "authored" },
+    ] }),
     "extra/skills/demo/references/contract.md": "Extra copy.\n",
     "authored/skills/demo/references/contract.md": "Authored copy.\n",
     "authored/skills/release/SKILL.md": "---\nname: release\ndescription: Prepare a release.\n---\n\n# Release\n",
@@ -312,9 +349,11 @@ test("authored files copy after extras without token rewrites and keep executabl
     "rules/lint.json": JSON.stringify({ deny: [] }),
   });
   try {
+    chmodSync(join(root, "extra/skills/demo/references/contract.md"), 0o755);
     chmodSync(join(root, "authored/skills/release/scripts/version.sh"), 0o755);
     generate({ packageDir: root, outDir: out });
     assert.equal(read("skills/demo/references/contract.md"), "Authored copy.\n");
+    assert.equal(statSync(join(out, "skills/demo/references/contract.md")).mode & 0o111, 0);
     assert.match(read("skills/release/SKILL.md"), /^name: release$/m);
     assert.equal(statSync(join(out, "skills/release/scripts/version.sh")).mode & 0o111, 0o111);
   } finally { dispose(); }

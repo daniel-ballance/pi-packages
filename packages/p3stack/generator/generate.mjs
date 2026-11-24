@@ -162,32 +162,42 @@ function applySections(files, upstream, sections, overlaysDir, expand, problems)
   }
 }
 
-function addExtras(files, extraDir, executables) {
-  for (const path of walk(extraDir)) {
-    const output = path.split("\\").join("/");
-    files.set(output, readFileSync(join(extraDir, path)));
-    if (isExecutable(join(extraDir, path))) executables.add(output);
+function addExtras(dir, put) {
+  for (const path of walk(dir)) {
+    const input = join(dir, path);
+    put(path.split("\\").join("/"), readFileSync(input), isExecutable(input));
   }
 }
 
-function renderRegistry(files, { routes, chains }) {
+function renderRegistry(files, { routes, chains }, put) {
   const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
   const path = target => target.startsWith("p3stack-mode/") ? `../${target}` : target.startsWith("playbooks/") ? `../poteto-mode/${target}` : `../${target}/SKILL.md`;
   const link = target => `[${target}](${path(target)})`;
   const table = (title, columns, rows) => `# ${title}\n\n| ${columns.join(" | ")} |\n| ${columns.map(() => "---").join(" | ")} |\n${rows.map(row => `| ${row.map(cell).join(" | ")} |`).join("\n")}\n`;
-  files.set("skills/p3stack-mode/references/routes.md", table("Routes", ["Request", "Grant", "Target"], routes.map(row => [row.request, row.grant, link(row.target)])));
-  files.set("skills/p3stack-mode/references/chains.md", table("Chains", ["Id", "Playbook", "Anchor", "Position", "Skill", "When"], chains.map(row => [row.id, link(row.playbook), row.anchor, row.position, link(row.skill), row.when])));
+  put("skills/p3stack-mode/references/routes.md", table("Routes", ["Request", "Grant", "Target"], routes.map(row => [row.request, row.grant, link(row.target)])));
+  put("skills/p3stack-mode/references/chains.md", table("Chains", ["Id", "Playbook", "Anchor", "Position", "Skill", "When"], chains.map(row => [row.id, link(row.playbook), row.anchor, row.position, link(row.skill), row.when])));
   const template = "skills/p3stack-mode/SKILL.md.tmpl";
   if (!files.has(template)) return;
   const readPath = target => `\`<this file's directory>/${path(target)}\``;
   const routesTable = table("Routes", ["Request", "Grant", "Read"], routes.map(row => [row.request, row.grant, readPath(row.target)])).replace(/^# Routes\n\n/, "").trimEnd();
   const chainsTable = table("Chains", ["Playbook", "Anchor", "Position", "Read", "When"], chains.map(row => [readPath(row.playbook), row.anchor, row.position, readPath(row.skill), row.when])).replace(/^# Chains\n\n/, "").trimEnd();
-  files.set("skills/p3stack-mode/SKILL.md", files.get(template).toString().replaceAll("{{routes}}", routesTable).replaceAll("{{chains}}", chainsTable));
+  put("skills/p3stack-mode/SKILL.md", files.get(template).toString().replaceAll("{{routes}}", routesTable).replaceAll("{{chains}}", chainsTable));
   files.delete(template);
+}
+
+// Roots replaced wholesale by installGenerated, even if a source stops supplying one.
+const GENERATED_ROOTS = ["LICENSE", "LICENSE-agent-skills", "LICENSE-matt-pocock", "LICENSE-superpowers", "agents", "skills"];
+
+function checkOutputPath(path) {
+  const parts = path.split(/[/\\]/);
+  if (!GENERATED_ROOTS.includes(parts[0]) || parts.some(part => !part || part === "." || part === "..")) {
+    throw new Error(`${path}: not an installed output path. Move it under a generated root, or explicitly declare its root in GENERATED_ROOTS.`);
+  }
 }
 
 function writeFiles(files, executables, outDir) {
   for (const [path, contents] of files) {
+    checkOutputPath(path);
     mkdirSync(dirname(join(outDir, path)), { recursive: true });
     writeFileSync(join(outDir, path), contents);
     chmodSync(join(outDir, path), executables.has(path) ? 0o755 : 0o644);
@@ -253,15 +263,28 @@ export function generate({ packageDir, outDir }) {
       files.set(path, row.invocation === "user" ? visible.replace(/^---\n/, "---\ndisable-model-invocation: true\n") : visible);
     }
   }
-  addExtras(files, join(packageDir, "extra"), executables);
-  addExtras(files, join(packageDir, "authored"), executables);
-  if (registry) renderRegistry(files, registry);
+  const put = by => (path, contents, executable = false) => {
+    const from = owners.get(path);
+    if (from !== undefined && !manifest.overwrites?.some(rule => rule.file === path && rule.from === from && rule.by === by)) {
+      problems.push(`${path}: ${from} and ${by} both emit this path. Remove the duplicate or declare {file, from, by} in rules/manifest.json overwrites.`);
+      return;
+    }
+    files.set(path, contents);
+    owners.set(path, by);
+    if (executable) executables.add(path);
+    else executables.delete(path);
+  };
+  for (const dir of ["extra", "authored"]) addExtras(join(packageDir, dir), put(dir));
+  if (registry) renderRegistry(files, registry, put("registry"));
   if (problems.length) throw new Error(problems.join("\n"));
   writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));
   // Patches are rewritten under the caller's umask; keep only the executable bit.
-  for (const path of walk(outDir)) chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
+  for (const path of walk(outDir)) {
+    checkOutputPath(path);
+    chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
+  }
   const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
   lint(outDir, checks.deny, lintProblems);
   for (const { file, contains } of checks.require ?? []) {
@@ -276,12 +299,9 @@ export function generate({ packageDir, outDir }) {
   return infos;
 }
 
-const generatedRoots = packageDir =>
-  [...new Set(readJson(join(packageDir, "rules/manifest.json")).sources.flatMap(source => source.map.map(({ to }) => to.split("/")[0])))].sort();
-
 function drift(packageDir, outDir) {
   const problems = [];
-  for (const root of generatedRoots(packageDir)) {
+  for (const root of GENERATED_ROOTS) {
     const expected = new Set(walk(join(outDir, root)).map(file => join(root, file)));
     const actual = new Set(walk(join(packageDir, root)).map(file => join(root, file)));
     for (const path of [...new Set([...expected, ...actual])].sort()) {
@@ -336,7 +356,7 @@ export function installGenerated({ packageDir, outDir, copy = cpSync }) {
   const backupsDir = join(outDir, BACKUPS), changed = [];
   mkdirSync(backupsDir);
   try {
-    for (const root of generatedRoots(packageDir)) {
+    for (const root of GENERATED_ROOTS) {
       const destination = join(packageDir, root);
       const backup = existsSync(destination) || isLink(destination) ? join(backupsDir, root) : undefined;
       if (backup) renameSync(destination, backup);
