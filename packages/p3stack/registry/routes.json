@@ -1,6 +1,7 @@
 [
   { "request": "Small task: the exact edit in a named file, or one fact answered by reading one function", "grant": "any", "action": "Use the normal route for an unclear cause, more than one file, new behavior, or any risk. Otherwise inspect, edit only if asked, run the nearest existing check, and reply." },
-  { "request": "Understand an existing subsystem", "grant": "any", "target": "playbooks/investigation.md" },
+  { "request": "Understand one existing subsystem or code path", "grant": "any", "target": "playbooks/investigation.md" },
+  { "request": "Onboard to a repository, or map it as a whole", "grant": "any", "target": "p3stack-mode/playbooks/onboard-brownfield.md" },
   { "request": "Find a fact outside the repository", "grant": "any", "target": "research" },
   { "request": "Align on a design with the human present", "grant": "default", "target": "grill-with-docs" },
   { "request": "Align on a design without blocking", "grant": "full-autonomy", "target": "sharpen" },
@@ -44,7 +45,6 @@
   { "request": "Audit and clean up stale worktrees or simulator data", "grant": "any", "target": "playbooks/worktree-cleanup.md" },
   { "request": "Evaluate an agent or instruction change in a blinded experiment", "grant": "any", "target": "playbooks/eval.md" },
   { "request": "Cut a release", "grant": "any", "target": "release" },
-  { "request": "Onboard to an existing repository", "grant": "any", "target": "p3stack-mode/playbooks/onboard-brownfield.md" },
   { "request": "Audit p3stack pins, refresh its upstream sources, or revert a p3stack maintenance PR", "grant": "any", "target": "maintain-p3stack" },
   { "request": "Handle a task with no matching playbook", "grant": "any", "target": "figure-it-out" }
 ]

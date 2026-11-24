@@ -7,23 +7,22 @@ const read = path => readFileSync(new URL(path, skills), "utf8");
 const router = read("p3stack-mode/SKILL.md");
 const rows = [...router.matchAll(/^\| (.+?) \| (any|default|full-autonomy) \| (.+) \|$/gm)]
   .map(([, request, grant, next]) => ({ request, grant, next }));
-const route = path => rows.find(row => row.next === `\`${path}\``);
+const route = path => rows.find(row => row.next === `\`../poteto-mode/SKILL.md\`, then \`../${path}\``);
 
 test("only the narrow small-task row bypasses both reads", () => {
   const [first, ...routed] = rows;
   assert.match(first.request, /exact edit.*file|file.*exact edit/i);
   assert.match(first.request, /one (?:code )?fact.*(?:one|single) function/i);
   assert.equal(first.grant, "any");
-  assert.ok(routed.every(({ next }) => /^`[^\s]+`$/.test(next)));
+  assert.ok(routed.every(({ next }) => /^`\.\.\/poteto-mode\/SKILL\.md`, then `\.\.\/[^\s]+`$/.test(next)), "every routed row names both reads");
   for (const boundary of [/unclear cause/i, /more than one file|multiple files/i, /new behavior/i, /risk/i]) {
     assert.match(first.next, boundary);
   }
   assert.match(first.next, /inspect.*edit only if asked.*nearest existing check.*reply/i);
   const entry = router.split("## Grants")[0];
-  assert.match(entry, /route table[^\n]*skills directory/i);
-  assert.match(entry, /links[^\n]*skill directory/i);
+  assert.match(entry, /relative to this file's directory/i);
   assert.match(entry, /small.task[^\n]*no poteto-mode[^\n]*playbook/i);
-  assert.match(entry, /choose.*route[^\n]*read `poteto-mode\/SKILL\.md` in full[^\n]*then (?:read )?the (?:selected )?target/i);
+  assert.match(entry, /next two tool calls[^\n]*poteto-mode in full, then the target/i);
 });
 
 test("every playbook is selectable before the fallback, with or without merge authority", () => {

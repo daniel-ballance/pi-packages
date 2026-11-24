@@ -6,15 +6,15 @@ disable-model-invocation: true
 
 # p3stack mode
 
-Choose the route by deliverable and grant before using tools. Follow the small-task row here: no poteto-mode read or playbook. On every other route, read `poteto-mode/SKILL.md` in full, then the selected target, before any other tool call. This router wins where their rules differ.
+Choose the row by deliverable and grant before any other tool call. The small-task row needs no poteto-mode read and no playbook. For every other row, your next two tool calls are that row's two reads, in order: poteto-mode in full, then the target. This router wins where their rules differ.
 
-Resolve the route table's Read paths from the skills directory (the parent of `p3stack-mode/`). Ordinary links resolve from the skill directory.
+Paths here are relative to this file's directory. If this file is `<package>/skills/p3stack-mode/SKILL.md`, then `../poteto-mode/SKILL.md` is `<package>/skills/poteto-mode/SKILL.md`.
 
 ## Grants
 
 Use the session grant in the system prompt (`Grant: default` or `Grant: full-autonomy`); if absent, use `default`. An explicit request for full autonomy in the user's message raises it for this task only. The brief header shows the session grant. For a different grant, the parent writes `Task grant: <grant>` in each brief; that line sets the task grant, higher or lower. A child never raises its own grant. Operator gates hold under either grant; pause before irreversible actions.
 
-Match `any` or the effective grant. Under full autonomy, replace design interviews with sharpen. Use the rewritten brief for architect; on a design route stop at its design synthesis and return the recommendation. Infer covered choices from repository evidence and report them. Under default, use the interview skills for product choices.
+Match `any` or the effective grant. Under full autonomy, a design request starts at sharpen, which replaces the design interviews. Then give its rewritten brief to architect, stop at architect's design synthesis, and return the recommendation. Infer covered choices from repository evidence and report them. Under default, use the interview skills for product choices.
 
 ## House policies
 

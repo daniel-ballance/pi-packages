@@ -21,11 +21,23 @@ test("reads are correlated by id, not completion position; a partial open is rec
   assert.equal(replay([...recording, { type: "tool_execution_start", toolName: "read", toolCallId: "extra", args: { path: "/extra/SKILL.md" } }]).matches(expected), true);
 });
 
-test("failed, incomplete, wrong and overlapping routing reads do not establish the ordered prefix", () => {
+test("failed, incomplete and wrong routing reads do not establish the ordered prefix", () => {
   const withoutEnd = recording.filter(e => !(e.toolCallId === "mode" && e.type === "tool_execution_end"));
-  for (const events of [withoutEnd, withoutEnd.concat(recording.find(e => e.toolCallId === "mode" && e.type === "tool_execution_end")),
+  for (const events of [withoutEnd,
     recording.map(e => e.toolCallId === "book" ? { ...e, isError: true } : e),
     recording.map(e => e.toolCallId === "book" && e.args ? { ...e, args: { path: "/pkg/skills/triage/SKILL.md" } } : e)]) {
     assert.equal(replay(events).matches(expected), false);
   }
+});
+
+test("a row's reads issued as one batch count in start order", () => {
+  const withoutEnd = recording.filter(e => !(e.toolCallId === "mode" && e.type === "tool_execution_end"));
+  const batched = withoutEnd.concat(recording.find(e => e.toolCallId === "mode" && e.type === "tool_execution_end"));
+  assert.equal(replay(batched).matches(expected), true);
+});
+
+test("a small-task prompt fails when a read it should skip happens", () => {
+  assert.equal(replay(recording).matches(expected.slice(0, 1)), true);
+  assert.equal(replay(recording).matches(expected.slice(0, 1), ["poteto-mode/SKILL.md"]), false);
+  assert.equal(replay(recording.filter(e => e.toolCallId === recording.find(first => first.type === "tool_execution_start").toolCallId)).matches(expected.slice(0, 1), ["poteto-mode/SKILL.md"]), true);
 });

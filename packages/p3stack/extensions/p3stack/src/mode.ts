@@ -94,7 +94,7 @@ export function registerMode(pi: Pi, potetoSkill: string) {
     if (options?.forceSystemPrompt !== undefined) options.forceSystemPrompt += "\n\n" + line;
     else if (options?.sections) options.sections[MODE] = line;
     if (event?.messageType !== "user") return;
-    return { message: { customType: "p3stack-turn", display: false, content: `Automated note from the p3stack extension, not from the user. p3stack-mode is on. Before anything else, route this request: read ${modeSkill} unless its text is already in your context, select its matching route, then follow that row. If the user's message answers, approves or corrects the task already in progress, continue that task instead. A question about the mode itself needs no route. Call p3stack_roles before delegating.` } };
+    return { message: { customType: "p3stack-turn", display: false, content: `Automated note from the p3stack extension, not from the user. p3stack-mode is on. Before anything else, route this request: read ${modeSkill} unless its text is already in your context, select its matching row, then do what that row says, in its order, before anything else. If the user's message answers, approves or corrects the task already in progress, continue that task instead. A question about the mode itself needs no route. Call p3stack_roles before delegating.` } };
   });
   pi.registerCommand("p3stack", {
     description: `Control p3stack-mode and its grant. ${usage}`,

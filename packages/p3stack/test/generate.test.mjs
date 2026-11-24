@@ -647,7 +647,7 @@ test("the maintenance skill and its references are emitted byte-for-byte from au
     }
     const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
     assert.ok(routes.some(row => row.target === "maintain-p3stack"));
-    assert.match(readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8"), /`maintain-p3stack\/SKILL\.md`/);
+    assert.match(readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8"), /`\.\.\/maintain-p3stack\/SKILL\.md`/);
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
 
@@ -658,7 +658,7 @@ test("only routes are tabulated; each playbook carries its own conditional reads
     const router = readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8");
     assert.doesNotMatch(router, /\{\{(?:routes|chains)\}\}/);
     assert.doesNotMatch(router, /\/home\/|\/tmp\/|<this file's directory>|^## Chains$/m);
-    assert.match(router, /route table's Read paths from the skills directory/i);
+    assert.match(router, /relative to this file's directory/i);
     assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
     for (const name of ["routes", "chains"]) {
       assert.equal(existsSync(join(out, `skills/p3stack-mode/references/${name}.md`)), false);
@@ -668,7 +668,8 @@ test("only routes are tabulated; each playbook carries its own conditional reads
       const line = router.split("\n").find(line => line.startsWith(`| ${request} |`));
       assert.ok(line, request);
       if (action) { assert.ok(line.includes(action), request); continue; }
-      const path = line.match(/`([^`]+)` \|$/)?.[1];
+      assert.ok(line.includes("`../poteto-mode/SKILL.md`, then "), request);
+      const path = line.match(/`\.\.\/([^`]+)` \|$/)?.[1];
       assert.equal(path, target.startsWith("playbooks/") ? `poteto-mode/${target}` : target.includes("/") ? target : `${target}/SKILL.md`, request);
       assert.ok(existsSync(join(out, "skills", path)), path);
     }

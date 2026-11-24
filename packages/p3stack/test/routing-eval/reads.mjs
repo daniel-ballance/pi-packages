@@ -25,9 +25,11 @@ export function readSequence(fixture, skillsRoot, limit) {
       return false;
     },
     observed: () => routing().map(r => r.path),
-    matches(expected) {
+    // Start order decides: a row's reads issued as one batch overlap and still count.
+    matches(expected, absent = []) {
       const route = routing();
-      return expected.length > 0 && expected.every((path, i) => route[i]?.ok && route[i].path === path && (!i || route[i-1].end < route[i].start));
+      return expected.length > 0 && expected.every((path, i) => route[i]?.ok && route[i].path === path)
+        && !route.some(r => absent.includes(r.path));
     },
   };
 }

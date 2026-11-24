@@ -36,7 +36,7 @@ async function main() {
     for (let run = 1; run <= runs; run++) {
       const probe = readSequence(fixture, join(pkg, "skills"), Math.max(maxReads, expected?.length ?? 0));
       const { reason, code, signal } = await runPi({ source, cwd: fixture, args, timeoutSeconds, log: join(output, `${row.id}.${run}`), onEvent: probe.record });
-      attempts.push({ observed: probe.observed(), reads: probe.reads, passed: modeOff ? undefined : probe.matches(expected), reason, code, signal });
+      attempts.push({ observed: probe.observed(), reads: probe.reads, passed: modeOff ? undefined : probe.matches(expected, row.absent), reason, code, signal });
     }
     const result = { id: row.id, prompt: row.prompt, runs, expected, attempts };
     if (!modeOff) {
