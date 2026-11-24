@@ -209,6 +209,13 @@ test("timeoutSeconds 0 makes exactly one relayed call, and aborting a relayed wa
   } finally { r.close(); }
 });
 
+test("even a zero-time relayed wait sees a queued coordinator message", async () => {
+  const r = await relay(async () => ({ wake: "timeout", agents: [] }));
+  try {
+    assert.deepEqual(await r.wait({ timeoutSeconds: 0 }, undefined, () => true), { wake: "message", agents: [] });
+  } finally { r.close(); }
+});
+
 test("a truncated segment reply ends the relay, and the collecting call returns its preview", async () => {
   const truncated = fitDelegatedReply({ wake: "timeout", agents: [{ error: "e".repeat(70_000) }] });
   const r = await relay(async () => truncated);

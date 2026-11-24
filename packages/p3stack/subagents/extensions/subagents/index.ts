@@ -484,7 +484,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       return output;
     },
   });
-  const rootLatch = messageLatch();
+  const rootLatch = messageLatch(pi);
   registerTool({
     name: "subagent_wait", label: "Wait for Subagents",
     ...render("wait"),

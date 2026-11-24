@@ -1020,7 +1020,9 @@ export class SubagentManager {
   }
   /** callerId: the coordinator Child waiting, or undefined for the root Parent. */
   async wait(ids: readonly string[], mode: "any" | "all", timeoutMs?: number, signal?: AbortSignal, messageQueued?: () => boolean, callerId?: string): Promise<WaitEnd> {
-    const selected = ids.length ? [...ids] : this.list().map(record => record.id);
+    const selected = ids.length ? [...ids] : [...this.records.values()]
+      .filter(record => !record.rejected && !record.workflow && this.reportsDrainedBy(record.id) === callerId)
+      .map(record => record.id);
     for (const id of selected) this.get(id);
     const watched = new Set(selected);
     // Only messages this caller will collect: a grandchild's message is its coordinator's.
@@ -1031,8 +1033,15 @@ export class SubagentManager {
     while (true) {
       signal?.throwIfAborted();
       const records = selected.map(id => this.get(id));
-      if (records.some(record => record.hold)) return end("hold");
-      if (records.some(record => record.status === "waiting_input")) return end("input");
+      // Descendant results belong to their coordinator; a descendant's dialog or
+      // hold belongs to the root. Include blockers in the report, not in readiness.
+      const blockers = callerId ? [] : [...this.records.values()].filter(record =>
+        !watched.has(record.id) && (record.hold || record.status === "waiting_input")
+        && (!ids.length || this.ancestorsOf(record.id).some(id => watched.has(id))));
+      if (blockers.length || records.some(record => record.hold || record.status === "waiting_input")) {
+        return { wake: [...records, ...blockers].some(record => record.hold) ? "hold" : "input",
+          ids: [...selected, ...blockers.map(record => record.id)] };
+      }
       const ready = records.filter(record => !BUSY.has(record.status)).length;
       if (!selected.length || (mode === "any" ? ready > 0 : ready === selected.length)) return end("settled");
       if (childMessage()) return end("child_message");

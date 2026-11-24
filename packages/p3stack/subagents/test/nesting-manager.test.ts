@@ -117,6 +117,29 @@ test("a coordinator's read leaves its Child's input request for the root; the ro
   } finally { await t.cleanup(); }
 });
 
+test("an implicit wait selects only the caller's drainable children", async () => {
+  const t = await settledTree();
+  try {
+    await t.manager.send(t.a, "until-abort");
+    assert.deepEqual(await t.manager.wait([], "any", 0), { wake: "timeout", ids: [t.a] });
+    assert.deepEqual(await t.manager.wait([], "any", 0, undefined, undefined, t.a), { wake: "settled", ids: [t.b] });
+    await t.stopOnly(t.b);
+    assert.deepEqual(await t.manager.wait([], "any", 0), { wake: "settled", ids: [t.a, t.c] }, "C now routes to the root");
+  } finally { await t.cleanup(); }
+});
+
+test("a root wait scoped to a coordinator names the descendant needing root intervention", async () => {
+  const t = await settledTree();
+  try {
+    await t.manager.send(t.a, "until-abort");
+    await t.manager.send(t.c, "ui");
+    assert.equal((await t.manager.wait([t.c], "any", 2000)).wake, "input");
+    assert.deepEqual(await t.manager.wait([t.a], "any", 0), { wake: "input", ids: [t.a, t.c] });
+    await t.manager.intervene(t.c, "halt");
+    assert.deepEqual(await t.manager.wait([t.a], "any", 0), { wake: "hold", ids: [t.a, t.c] });
+  } finally { await t.cleanup(); }
+});
+
 test("a nested report waits for its parent, and reaches the root if that parent stops first", async () => {
   const wakes: Notice[] = [];
   const t = await settledTree(undefined, notice => wakes.push(notice));

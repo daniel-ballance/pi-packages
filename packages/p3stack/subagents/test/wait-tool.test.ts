@@ -23,6 +23,7 @@ async function withWaitTool(run: (tools: {
   spawn: (task: string) => Promise<string>;
   delegatedWait: (args: Record<string, unknown>) => Promise<unknown>;
   queue: (pending: boolean) => void;
+  delivered: () => void;
 }) => Promise<void>, extraRecords: Record<string, unknown>[] = []) {
   const root = tempRoot("wait-tool-"), agentDir = join(root, "agent");
   mkdirSync(join(agentDir, "subagents", "s"), { recursive: true });
@@ -74,6 +75,7 @@ async function withWaitTool(run: (tools: {
       spawn: async task => (await manager!.spawn({ name: task, task, cwd: root, selection: { model: "test/fake:medium", tools: [] } })).id,
       delegatedWait: args => manage!("coordinator", { op: "wait", args }, new AbortController().signal),
       queue: value => { pending = value; },
+      delivered: () => { pending = false; for (const handler of handlers.get("message_start") ?? []) handler({ message: { role: "user" } }, ctx); },
     });
   } finally {
     SubagentManager.prototype.setManagementHandler = install;
@@ -96,6 +98,18 @@ test("a queued message ends the root's wait once per batch, and never a coordina
     assert.equal(wake((await wait({ ids: [worker], timeoutSeconds: 0 })).details), "timeout");
     queue(true);
     assert.equal(wake((await wait({ ids: [worker] })).details), "message", "a new batch after the queue drained");
+  });
+});
+
+test("delivery between root waits re-arms the message latch without an empty poll", async () => {
+  await withWaitTool(async ({ wait, queue, delivered, worker }) => {
+    const check = async () => wake((await wait({ ids: [worker], timeoutSeconds: 0 })).details);
+    queue(true);
+    assert.equal(await check(), "message");
+    delivered();
+    queue(true);
+    assert.equal(await check(), "message");
+    assert.equal(await check(), "timeout");
   });
 });
 

@@ -1,3 +1,4 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Static } from "typebox";
 import { BUSY, REPORT_KINDS, type AgentRecord, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
 import type { TOOL_SPECS } from "./tool-schemas.js";
@@ -14,8 +15,11 @@ export const isWakeReason = (value: unknown): value is WakeReason =>
 export interface WaitEnd { readonly wake: WakeReason; readonly ids: readonly string[] }
 
 /** Pi drains a steer after the tool batch and leaves a follow-up queued until the turn ends. */
-export function messageLatch(): (pending: boolean) => boolean {
+export function messageLatch(pi?: Pick<ExtensionAPI, "on">): (pending: boolean) => boolean {
   let reported = false;
+  // Pi removes delivered steers/follow-ups before message_start. There need
+  // not be another wait between that delivery and the next queued message.
+  pi?.on("message_start", event => { if (event.message.role === "user") reported = false; });
   return pending => {
     if (!pending) return reported = false;
     if (reported) return false;
@@ -63,7 +67,7 @@ export async function relayWait(manage: (args: WaitArgs, signal?: AbortSignal) =
   signal?.throwIfAborted();
   const final = await manage({ ...args, timeoutSeconds: 0 }, signal);
   const relayed = parseRelayed(final);
-  return queued && relayed.kind === "report" && relayed.wake === "timeout" ? { ...final as object, wake: "message" } : final;
+  return relayed.kind === "report" && relayed.wake === "timeout" && (queued || messageQueued()) ? { ...final as object, wake: "message" } : final;
 }
 
 export interface Report { readonly kind: string; readonly text: string }
