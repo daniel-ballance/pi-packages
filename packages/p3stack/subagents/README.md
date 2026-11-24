@@ -135,7 +135,7 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 
 ## Tools
 
-The parent starts with catalog, spawn, send, wait, read and close. For history, recovery, workflows, loops or peers, search for the tool by name. Without tool search, call `subagent_catalog({})` and pass the names you need back in `activate`, for example `subagent_catalog({activate:["subagent_list"]})`. These `managementTools` are for the root parent; `tools` is the child's composition menu. Human stop controls in `/subagents` and `/loop stop` do not depend on model tool discovery.
+The parent starts with catalog, spawn, send, wait, read, respond and close. For history, recovery, workflows, loops or peers, search for the tool by name. Without tool search, call `subagent_catalog({})` and pass the names you need back in `activate`, for example `subagent_catalog({activate:["subagent_list"]})`. These `managementTools` are for the root parent; `tools` is the child's composition menu. Human stop controls in `/subagents` and `/loop stop` do not depend on model tool discovery.
 
 | Tool | Purpose |
 |---|---|
@@ -373,7 +373,7 @@ How it works, and its limits:
 
 State lives in `<Pi agent directory>/subagents/<parent-session-id>/`: the registry, saved Pi sessions, full report files and per-child event/stderr logs. **Report files are private to the operating-system user, not to other children with file or shell tools.** The manager checks subtree ownership for tool reads, including pages. It is not a filesystem sandbox: children run as the same OS user. Directories are 0700 and manager-written files 0600; logs may contain sensitive task data and are capped at 20 MiB each.
 
-The manager reads v1 registries and writes v2 on the next change. `registry.json` holds live or changed child records and the pending notice queue. An unchanged stopped child can instead be named by ID in the registry, with its record in a private `archived-*.json` file beside it. Back up the directory, not just the registry. A missing referenced archive is an error, not an empty slot.
+The manager reads v1 registries and writes v2 on the next change. `registry.json` holds live or changed child records and the pending notice queue. An unchanged stopped child can instead be named by ID in the registry, with its record in a private `archived-*.json` file beside it. Back up the directory, not just the registry. If an archive is unreadable, its child appears stopped with the archive path. Other children remain usable. Restore the file and reload to recover that record.
 
 Each child retains its latest 100 saved reports (terminal assistant answers and reports over 600 characters). The oldest expires first, even if unread. Only a report longer than its 12,000-character display copy needs a separate file; shorter saved text stays in the child record. A retained handle can outlive the update window, later assignments and reload. An expired handle is refused. Sessions and logs are not automatically deleted.
 

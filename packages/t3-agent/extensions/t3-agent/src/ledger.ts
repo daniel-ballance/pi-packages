@@ -86,12 +86,17 @@ function forgeKey(host: unknown, repository: unknown, number: unknown): string |
   return `https://${authority}/${repo}/${route}/${number}`;
 }
 
-function keyFromForgeUrl(value: string): string | undefined {
+function forgeUrlParts(value: string): [host: string, repository: string, number: number] | undefined {
   if (value.length > 2048) return undefined;
   const url = URL.parse(value);
   if (url?.protocol !== "https:" || !forgeRoutes.has(url.host)) return undefined;
   const match = /^\/(.+?)\/(pull|pulls|pull-requests|-\/merge_requests|pullrequest)\/([1-9]\d*)(?:\/|$)/.exec(url.pathname);
-  return match && match[2] === forgeRoutes.get(url.host) ? forgeKey(url.host, match[1], Number(match[3])) : undefined;
+  return match && match[2] === forgeRoutes.get(url.host) ? [url.host, match[1], Number(match[3])] : undefined;
+}
+
+function keyFromForgeUrl(value: string): string | undefined {
+  const parts = forgeUrlParts(value);
+  return parts && forgeKey(...parts);
 }
 
 // The old URL-only writer could mistake a callback path for a repository. Match a later
@@ -326,25 +331,36 @@ function observations(tool: string, input: Json, result: Json | undefined, ledge
 const targetKey = (t?: Target) => [t?.environmentId && `env=${t.environmentId}`, t?.threadId && `thread=${t.threadId}`].filter(Boolean).join(",");
 export const scopedId = (h: Handle) => [targetKey(h.target), h.hostId, h.id].filter(Boolean).join("/");
 
-export class Ledger {
-  private readonly handles = new Map<string, Handle>();
+// Replay-only provenance, never part of a saved receipt.
+type ListedHandle = Handle & { unconfirmedIn?: string };
 
-  apply(update: Handle): void {
+export class Ledger {
+  private readonly handles = new Map<string, ListedHandle>();
+
+  apply(update: Handle, unconfirmedIn?: string): void {
     const key = `${update.kind}:${scopedId(update)}`;
-    if (update.kind === "pr" && update.id.includes("@") && !update.id.startsWith("legacy:")) {
-      this.handles.delete(`pr:${scopedId({ ...update, id: legacyAlias(update.id) })}`);
+    if (update.kind === "pr" && !update.id.startsWith("legacy:")) {
+      const dropAlias = (id: string) => this.handles.delete(`pr:${scopedId({ ...update, id })}`);
+      const at = update.id.indexOf("@");
+      if (at >= 0) { // Structured self-hosted key: repo#number@host.
+        dropAlias(legacyAlias(update.id));
+        dropAlias(update.id.slice(0, at));
+      } else {
+        const parts = forgeUrlParts(update.id);
+        if (parts) dropAlias(`${parts[1]}#${parts[2]}`); // The receipt already canonicalized the repository.
+      }
     }
     const previous = this.handles.get(key);
     // Re-insert open receipts so iteration order is most recent last. Closed IDs need no cache.
     this.handles.delete(key);
-    if (update.open) this.handles.set(key, { ...previous, ...update });
+    if (update.open) this.handles.set(key, { ...previous, ...update, unconfirmedIn });
   }
 
   clear(): void {
     this.handles.clear();
   }
 
-  open(kind?: HandleKind, target?: Target): Handle[] {
+  open(kind?: HandleKind, target?: Target): ListedHandle[] {
     const key = targetKey(target);
     return [...this.handles.values()].filter(h => (kind === undefined || h.kind === kind) && targetKey(h.target) === key);
   }
@@ -380,7 +396,11 @@ export class Ledger {
   }
 }
 
-function handleLine(handle: Handle): string {
+function handleLine(handle: ListedHandle): string {
+  return describeHandle(handle) + (handle.unconfirmedIn ? ` (recorded in ${handle.unconfirmedIn}; not yet confirmed)` : "");
+}
+
+function describeHandle(handle: Handle): string {
   const { kind, explicitTitle, id, status, link, hostId } = handle;
   const label = explicitTitle ? ` "${explicitTitle}"` : "";
   const state = status ? `, status ${status}` : "";
@@ -418,9 +438,8 @@ export function rebuild(ledger: Ledger, entries: ReadonlyArray<{ type: string; c
     }
     const fields = ["threadId", "environmentId"] as const;
     if (fields.some(k => saved[k] !== undefined && (!scopeId(saved[k]) || (scope[k] !== undefined && saved[k] !== scope[k])))) continue;
-    // Withhold a scoped observation (and any older, less specific one for the same id)
-    // until the caller is known. Reading T3 just to discover that scope would be polling.
-    const confirmed = fields.every(k => saved[k] === undefined || saved[k] === scope[k]);
-    ledger.apply(confirmed ? update : { ...update, open: false });
+    const unconfirmed = fields.some(k => saved[k] !== undefined && scope[k] === undefined);
+    const recordedIn = [saved.threadId && `thread ${saved.threadId}`, saved.environmentId && `environment ${saved.environmentId}`];
+    ledger.apply(update, unconfirmed ? recordedIn.filter(Boolean).join(", ") : undefined);
   }
 }

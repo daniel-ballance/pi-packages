@@ -548,13 +548,15 @@ test("assistant errors are provisional until settlement or exit commits the resu
   } finally { await s.cleanup(); }
 });
 
-test("a process exit during provider retry reports the provider failure", async () => {
+test("a process exit during provider retry reports both the provider failure and exit reason", async () => {
   const s = await setup();
   try {
     const { id } = await s.spawn("exit-during-retry");
     await s.manager.wait([id], "all", 2000);
-    assert.equal(s.manager.read(id, undefined, false).error, "503 provider unavailable");
-    assert.deepEqual(s.manager.pendingNotices().map(n => [n.kind, n.text]), [["failure", "503 provider unavailable"]]);
+    const report = s.manager.read(id, undefined, false);
+    assert.match(report.error!, /503 provider unavailable.*Child exited: code=2/i);
+    assert.ok(report.updates.some(u => u.kind === "error" && u.text === report.error));
+    assert.deepEqual(s.manager.pendingNotices().map(n => [n.kind, n.text]), [["failure", report.error]]);
     assert.equal(s.manager.get(id).assignment?.status, "failed");
   } finally { await s.cleanup(); }
 });

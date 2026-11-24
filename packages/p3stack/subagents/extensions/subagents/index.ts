@@ -9,7 +9,7 @@ import { StopUnconfirmedError, SubagentManager, type InputDisposition } from "./
 import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
-import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
+import { isSupervisoryNotice, MANAGEMENT_HINT, NoticeScheduler } from "./src/notifications.js";
 import { DEFAULT_WAIT_MODE, messageLatch, waitReport, type ChildNews } from "./src/wait.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { cardsFromDetails, listingLine } from "./src/card.js";
@@ -75,7 +75,7 @@ export default function subagents(pi: ExtensionAPI) {
 function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext) {
   // The root's own tools also serve proxied calls from Children (nesting.ts).
   const proxiable = new Map<string, ToolDefinition<any, any>>();
-  const direct = new Set(["subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_send", "subagent_close"]);
+  const direct = new Set(["subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_send", "subagent_close", "subagent_respond"]);
   const management = new Set<string>();
   function registerTool<P extends TSchema, D>(tool: ToolDefinition<P, D>) {
     if (isProxiedTool(tool.name)) proxiable.set(tool.name, tool);
@@ -369,7 +369,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
   registerTool({
     name: "subagent_catalog", label: "Subagent Catalog",
     ...render("catalog"),
-    description: TOOL_SPECS.subagent_catalog.description,
+    description: `${TOOL_SPECS.subagent_catalog.description} ${MANAGEMENT_HINT}`,
     parameters: Type.Object({
       activate: Type.Optional(Type.Array(Type.String(), { description: "Without tool search, declare these names from managementTools for the next call." })),
     }, { additionalProperties: false }),

@@ -38,6 +38,10 @@ export function registerBrief(pi: ExtensionAPI, isOn: (() => boolean) & { grant(
       if (!isOn() || event.toolName !== "mcp__t3-code__delegate_task") return;
       const { task, role } = event.input;
       if (typeof task !== "string") return;
+      if (["approval-required", "auto", "auto-accept-edits"].includes(process.env.T3_PI_RUNTIME_MODE ?? "") &&
+          Object.keys(event.input).at(-1) !== "task" && JSON.stringify(event.input, null, 2).length > 4000) {
+        return { block: true, reason: "Put task last so the other arguments precede the brief in T3's 4,000-character approval preview." };
+      }
       if (task.length > 120_000) return tooLong(task.length - 120_000);
       const kind = role === "research" || role === "review" ? "report" : "work";
       const override = /^<p3stack-brief>\n(Task grant: (?:default|full-autonomy))\n/.exec(task)?.[1];

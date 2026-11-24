@@ -4,7 +4,7 @@ A small parent-owned DAG scheduler built on the existing subagent manager. The p
 
 ## Getting started
 
-1. In a terminal Pi parent, check `subagent_catalog.features.workflows`. Use the catalog's composition menu to choose allowed workers; workflow workers cannot delegate or use `parent_send`, even through `alwaysTools`.
+1. In a terminal Pi parent, check `subagent_catalog.features.workflows`. Activate deferred management tools with `subagent_catalog({activate:[name]})` or find them with `tool_search`. Use the catalog's composition menu to choose allowed workers; workflow workers cannot delegate or use `parent_send`, even through `alwaysTools`.
 2. Write a JSON definition using the examples below. Starting a workflow authorizes its listed tasks and commands within its limits; inspect the definition first.
 3. `subagent_workflow_start({"path":"/absolute/path/to/workflow.json"})` returns acceptance and a run ID. Execution continues while the parent is idle.
 4. `subagent_workflow_inspect({"id":"workflow-…"})` shows progress, attempts, child IDs, artifacts and latest validation. Add `step` for full attempt history. Omit `id` to list runs.

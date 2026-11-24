@@ -54,6 +54,7 @@ export interface AgentRecord {
   sessionFile: string; sessionId?: string; logFile: string; stderrFile: string;
   createdAt: string; updatedAt: string; pid?: number;
   model?: string; thinking?: string; activity?: string; error?: string; lastError?: string;
+  archiveError?: string; // In-memory placeholder only; its saved row still points to the archive.
   rejected?: boolean; startedAt?: string;
   usage?: unknown; updates: Update[]; cursor: number; readCursor: number;
   lastSubmission?: { disposition: InputDisposition; at: string; workStarted?: false };
@@ -162,6 +163,11 @@ export class SubagentManager {
     if (stored) {
       peerState = stored.peers;
       for (const record of stored.agents) {
+        if (record.archiveError) {
+          record.activity = record.lastError = record.archiveError;
+          this.records.set(record.id, record);
+          continue;
+        }
         // Keep old cap-preflight artifacts inspectable, but don't count
         // them as agents by default. Never hide actual process launch failures.
         if (!record.sessionId && !record.startedAt && !existsSync(record.sessionFile) &&
@@ -469,8 +475,10 @@ export class SubagentManager {
         record.activity = expected ? "Stopped; saved conversation available" : "Process exited";
         record.uiRequests = [];
         this.inbox.expireInputNotices(record);
-        if (delivery.error) record.error = delivery.error;
-        else if (!expected) record.error = error?.message || "Child exited unexpectedly";
+        if (!expected) {
+          const exitReason = error?.message || "Child exited unexpectedly";
+          record.error = delivery.error ? `${delivery.error}; then ${exitReason}` : exitReason;
+        } else if (delivery.error) record.error = delivery.error;
         const update = this.inbox.appendUpdate(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
         if (record.assignment?.status === "running") {
           record.assignment.status = expected ? "cancelled" : "failed";
@@ -1005,6 +1013,7 @@ export class SubagentManager {
   }
   async resume(id: string, message?: string, env?: Record<string, string>) {
     const record = this.get(id);
+    if (record.archiveError) throw new Error(record.archiveError);
     this.assertDelegationOpen(record);
     this.checkDetached(record);
     if (this.children.has(id)) throw new Error(`${id} already has a process`);

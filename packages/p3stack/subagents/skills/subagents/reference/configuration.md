@@ -18,6 +18,8 @@ A project override must restate every capability it needs from the global config
 
 ## Fields and defaults
 
+The tool allowlist below governs children. In the root parent, activate deferred management tools with `subagent_catalog({activate:[name]})` or find them with `tool_search`.
+
 | Field | Meaning |
 |---|---|
 | `version` | Required, currently `1`. |
