@@ -34,11 +34,11 @@ Real sessions, counted on 2026-11-24 across the 469 Pi session files on the owne
 The settle reminder costs more than it returns when the open items wait on delegates or the user. Changing either todo reminder is the owner's call.
 
 - The stock footer: Pi 1.5.2 has no supported way to decorate it, so the copied renderer stays. `src/footer.ts` records what was checked.
+- Shorter descriptions (trial, 2026-11-24): with routing off, a real model opened the intended skill as often with nine one-sentence descriptions as with the current ones (85 against 84 of 99 runs). Not adopted; the [decision log](evals/README.md#decision-log) has the numbers. No skill becomes explicit-only.
 - Held-out paraphrases select the intended skill at rank 1 in 7 of 17 cases, against 49 of 51 on the examples the descriptions were written against. The number is reported by `npm run check` and fails nothing.
 
 ## Open
 
-- Trial shorter descriptions for the model-invoked skills, and check discovery with routing off before making any skill explicit-only. The owner agreed to the trial on 2026-11-24.
 - Make nightly maintenance report the sources whose upstream moved and open a pull request only when asked. The owner agreed on 2026-11-24. The T3 schedule and `maintain-p3stack`'s nightly reference still bump and land every changed tip.
 - Report to Pi that 1.5.2 does not activate a deferred tool first registered at `session_start` when it is named with `--tools +name`. The subagents catalog does not depend on it.
 

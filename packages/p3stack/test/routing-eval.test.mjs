@@ -60,7 +60,7 @@ test("the discovery suite names only real skills, one example and one held-out p
   const paths = skillPaths();
   assert.equal(suite.arm, "off");
   for (const row of suite.prompts) for (const path of row.expected) assert.ok(paths.has(path), path);
-  for (const { skill } of cases) {
+  for (const { skill } of cases.filter(({ skill }) => !(skill in suite.notListed))) {
     assert.ok(suite.prompts.some(row => row.id === `${skill}-example`), skill);
     assert.ok(suite.prompts.some(row => row.id === `${skill}-held-out`), skill);
   }

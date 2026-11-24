@@ -1,6 +1,10 @@
 {
   "model": "openai-codex/gpt-6-luna:low",
   "arm": "off",
+  "notListed": {
+    "subagents": "listed only in tui and rpc modes; this tier runs Pi in json mode",
+    "workflows": "listed only in tui and rpc modes; this tier runs Pi in json mode"
+  },
   "runs": 3,
   "minRate": 0.66,
   "prompts": [
@@ -110,20 +114,6 @@
       ]
     },
     {
-      "id": "subagents-example",
-      "prompt": "Set up subagents.json so my children can use the Claude model.",
-      "expected": [
-        "subagents/SKILL.md"
-      ]
-    },
-    {
-      "id": "workflows-example",
-      "prompt": "Write a workflow that fans out three workers and validates their results.",
-      "expected": [
-        "workflows/SKILL.md"
-      ]
-    },
-    {
       "id": "code-review-held-out",
       "prompt": "Could you look over the patch for mistakes before I send it to my teammate?",
       "expected": [
@@ -226,20 +216,6 @@
       "prompt": "Confirm that my installed version of the SDK supports this option in the official docs before coding.",
       "expected": [
         "source-grounding/SKILL.md"
-      ]
-    },
-    {
-      "id": "subagents-held-out",
-      "prompt": "I want my helper to inspect the repository but not edit it. Where do I set that up?",
-      "expected": [
-        "subagents/SKILL.md"
-      ]
-    },
-    {
-      "id": "workflows-held-out",
-      "prompt": "Give two workers the same brief, check both proposals, and repeat with the better candidate.",
-      "expected": [
-        "workflows/SKILL.md"
       ]
     },
     {
