@@ -208,17 +208,22 @@ test("the prompt section states mode, workspace, loadout and open handles", () =
     declared: 1,
     ledger: "- watching PR o/r#1",
   });
-  assert.match(supervised, /Permission mode: supervised\. T3 asks the user before every bash call/);
-  assert.match(supervised, /branch `feat\/x` \(not pushed\), a worktree T3 created for this thread from `\/home\/u\/Code\/p`; default branch `origin\/main`/);
+  assert.match(supervised, /Permission mode: supervised.*bridge asks for approval before bash/i);
+  assert.match(supervised, /Workspace: `\/home\/u\/\.t3\/worktrees\/p\/t3-1`, branch `feat\/x` \(no upstream configured\)/);
+  assert.match(supervised, /linked Git worktree under T3's worktree directory/);
+  assert.match(supervised, /treat it as this thread's isolated worktree unless the user says otherwise/i);
+  assert.match(supervised, /origin\/HEAD.*`origin\/main`/);
+  assert.doesNotMatch(supervised, /created for this thread|satisfies any instruction|not pushed/);
   assert.match(supervised, /Declared T3 tools: 1\b/);
   assert.match(supervised, /use `delegate_task`: it is your subagent tool/);
   assert.match(supervised, /### Open T3 handles[\s\S]*watching PR o\/r#1/);
 
   const full = buildSection({ mode: "full-access", declared: 31 });
-  assert.match(full, /Permission mode: full access/);
+  assert.match(full, /Permission mode: full access\. The bridge asks for no approval in this mode\./);
+  assert.doesNotMatch(full, /no tool call asks the user|leave no background process/i);
   assert.match(full, /Declared T3 tools: 31\b/);
   assert.doesNotMatch(full, /Workspace:|Open T3 handles/);
-  assert.match(buildSection({ mode: "auto-accept-edits", declared: 0 }), /auto-accept edits\. Edit and write run without asking/);
+  assert.match(buildSection({ mode: "auto-accept-edits", declared: 0 }), /auto-accept edits\. The bridge accepts edit and write without approval/);
   assert.match(buildSection({ mode: "full-access", declared: 0, workspace: { root: "/r", branch: "main", upstream: "origin/main", linked: false, t3Managed: false } }),
     /the repository's main checkout\. Other T3 threads may share it/);
 });

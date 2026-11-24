@@ -1,6 +1,6 @@
 # t3-agent
 
-Tunes Pi for [T3 Code](https://github.com/pingdotgg/t3code). With this package, Pi knows what the T3 user sees, which permission mode is in force, and which checkout the thread owns. It can call the T3 tools it needs without a search round trip, and it keeps track of the T3 objects it creates.
+Tunes Pi for [T3 Code](https://github.com/pingdotgg/t3code). With this package, Pi knows what the T3 user sees, which permission mode is in force, and what Git reports about the checkout. It can call the T3 tools it needs without a search round trip, and it keeps track of the T3 objects it creates.
 
 **It does nothing unless T3 launched Pi.** T3 sets `T3_MCP_URL` for the Pi processes it starts; the shared host helper ([`shared/host.ts`](../../shared/host.ts)) reads it. In a terminal the extension returns before it registers anything: no tools, commands, prompt text, skills or prompt templates.
 
@@ -13,13 +13,13 @@ T3 injects its own extension into every Pi it launches. The bridge owns the MCP 
 **A `t3_agent` prompt section** (about 2 KB) that states what the bridge's guidance leaves out:
 
 - T3 renders bash calls as command cards and edits as diffs, so the reply should not repeat them.
-- T3 owns every turn: nothing may keep running after the reply, and waiting means ending the turn on a T3 wake.
-- The permission mode from `T3_PI_RUNTIME_MODE`. In supervised and auto-accept-edits threads, `read`, `grep`, `find`, `ls` and read-only T3 tools run without asking the user, so the model is told to search with them and to batch shell commands.
-- The workspace: repository root, branch, upstream, default branch, and whether the checkout is a worktree T3 created for this thread. Such a worktree already counts as isolated for any instruction to work in a worktree.
+- Waiting for T3 means ending the turn on a wake, not leaving an agent polling after the reply.
+- The permission mode from `T3_PI_RUNTIME_MODE`. In supervised and auto-accept-edits threads, `read`, `grep`, `find`, `ls` and read-only T3 tools are exempt from bridge approval, so the model is told to search with them and to batch shell commands.
+- The workspace: repository root, branch, upstream, default branch, and whether Git reports a linked worktree under T3's worktree directory. Treat that as this thread's isolated checkout unless the user says otherwise; the layout is not proof of ownership.
 - Pi has no native subagent tool under T3, so wherever T3's guidance says "your native tool", Pi uses `delegate_task`.
 - The open T3 handles, described below.
 
-The section is rebuilt before each prompt. Pi resends only changed sections, so the stable parts stay in the prompt cache.
+The section is rebuilt before each prompt. Pi can resend changed sections to providers that support mid-conversation system messages.
 
 **A T3 tool loadout.** The model can discover deferred tools with `tool_search` or call known ones in codemode. A loadout declares a chosen set up front:
 

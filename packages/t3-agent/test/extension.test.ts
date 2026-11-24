@@ -187,7 +187,7 @@ test("supervised threads get Pi's read-only search tools", async () => {
   const f = fixture({ ...T3, T3_PI_RUNTIME_MODE: "approval-required" });
   await f.emit("session_start", { reason: "startup" });
   for (const name of ["grep", "find", "ls"]) assert.ok(f.active().includes(name), name);
-  assert.match((await startTurn(f)).t3_agent!, /`read`, `grep`, `find`, `ls`, `tool_search` and read-only T3 tools never ask/);
+  assert.match((await startTurn(f)).t3_agent!, /`read`, `grep`, `find`, `ls`, the built-in `tool_search` and the bridge's read-only T3 tools/);
 });
 
 test("a forced system prompt gets the section appended instead", async () => {

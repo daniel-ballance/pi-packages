@@ -238,7 +238,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     `t3-agent is active: T3 Code launched this Pi (T3_MCP_URL is set).`,
     `Permission mode: ${modeLabel(mode)}.`,
     `Loadout: ${loadout()}${sessionLoadout ? " (set for this session)" : ""}. ${declarationReport()}`,
-    workspace ? `Workspace: ${workspace.root}${workspace.branch ? ` on ${workspace.branch}` : ""}${workspace.t3Managed ? " (T3 worktree)" : workspace.linked ? " (linked worktree)" : ""}.` : "Workspace: not a git checkout.",
+    workspace ? `Workspace: ${workspace.root}${workspace.branch ? ` on ${workspace.branch}` : ""}${workspace.t3Managed ? " (linked worktree under T3's worktree directory)" : workspace.linked ? " (linked worktree)" : ""}.` : "Workspace: not a git checkout.",
     `Open handles:\n${ledger.render() ?? "none"}`,
     ...(problems.length > 0 ? [`Configuration problems:\n${problems.join("\n")}`] : []),
   ].join("\n");
