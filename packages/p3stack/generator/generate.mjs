@@ -315,8 +315,10 @@ function referenceBody(text, path, name) {
   const heading = fromMarkdown(body).children.find(node => node.type === "heading" && node.depth === 1);
   const title = heading ? body.slice(heading.position.start.offset, heading.position.end.offset) : `# ${name}`;
   const rest = heading ? body.slice(0, heading.position.start.offset) + body.slice(heading.position.end.offset) : body;
-  const summary = description.trim().split(/(?<=[.!?])\s+/)
-    .filter(sentence => !/^Use (?:for\b|when the user (?:says|asks|wants)\b)/i.test(sentence)).join(" ");
+  const ownCommand = new RegExp(`(?<![\\w./-])/(?:skill:)?${escapeRegex(name)}(?![\\w/-])`);
+  const offersTrigger = sentence => ownCommand.test(sentence) || /^Use when the user (?:says|asks|wants)\b/i.test(sentence) ||
+    /^Use for\b/i.test(sentence) && (sentence.includes(name) || /["']|\bor\b/.test(sentence));
+  const summary = description.trim().split(/(?<=[.!?])\s+/).filter(sentence => !offersTrigger(sentence)).join(" ");
   return [title, summary, rest.replace(/^(?:\r?\n)+/, "")].filter(Boolean).join(newline.repeat(2));
 }
 
@@ -336,7 +338,15 @@ function linkReferenceMentions(text, references, linkTo, output) {
       const suffix = !command && /^(['’]s)? (?:principle )?skill(s?)\b/.exec(text.slice(end.offset));
       edits.push([start.offset, end.offset + (suffix ? suffix[0].length : 0),
         command && (inLink || target === output) ? label : link + (suffix ? `${suffix[1] ?? ""} reference${suffix[2]}` : "")]);
-    } else node.children?.forEach(child => visit(child, inLink, inHeading));
+    } else {
+      // Inline HTML anchor tags are siblings of their label in mdast.
+      let anchor = false;
+      for (const child of node.children ?? []) {
+        if (child.type === "html" && /^<a(?:\s[^<>]*)?>$/i.test(child.value)) anchor = true;
+        if (child.type === "html" && /^<\/a\s*>$/i.test(child.value)) anchor = false;
+        visit(child, inLink || anchor, inHeading);
+      }
+    }
   }
   const header = frontmatterBlock(text)?.[0] ?? "";
   text = text.slice(header.length);
@@ -372,6 +382,13 @@ function rebaseResources(text, path, output, moves, targets, linkTo) {
       aliases.set(qualified, replacement);
       own.push("./" + operand, qualified, old);
       if (operand !== "SKILL.md") own.push(operand); // the bare name also denotes Pi's convention
+    }
+  }
+  if (path !== output) {
+    for (const dir of targets.keys()) {
+      if (moves.has(dir) || linkBase(dir) !== before) continue;
+      own.push(`../${dir.slice("skills/".length)}/`, `${dir}/`);
+      if (dir !== before) own.push(posix.relative(before, dir) + "/", "./" + posix.relative(before, dir) + "/");
     }
   }
   const alternatives = keys => [...keys].map(escapeRegex).join("|");

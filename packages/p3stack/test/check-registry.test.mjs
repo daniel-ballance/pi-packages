@@ -107,7 +107,7 @@ for (const heading of ["# Leaf", ""]) {
 
 test("a reference opens with its description, not its command or trigger phrases", t => {
   const f = referenceFixture(t);
-  const description = 'Compare two notes. Use for /skill:leaf or "compare my notes". Keep both originals. Use when the user says leaf.';
+  const description = 'Compare two notes. Type /skill:leaf to start. Use for "compare my notes". Keep both originals. Use when the user says leaf.';
   f.write("vendor/demo/skills/leaf/SKILL.md", f.skill("leaf").replace("A fixture skill.", JSON.stringify(description)) + "\nUse for /skill:first after review.\n");
   f.build();
   assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf.md"), "utf8"), "# Fixture\n\nCompare two notes. Keep both originals.\n\nUse for /skill:first after review.\n");
@@ -129,16 +129,17 @@ test("rooted paths and URLs are not moved resources", t => {
   assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf/notes/example.md"), "utf8"), text);
 });
 
-for (const [form, example, line] of [
+for (const [form, example, line, resource = "scripts/check"] of [
   ["fence", "```md\n[run](scripts/check)\n```", 3],
   ["HTML attribute", '<a href="./scripts/check">run</a>', 2],
   ["untranslated flag", "Run --file=scripts/check.", 2],
+  ["directory href", '<a href="scripts/">scripts</a>', 2, "scripts/"],
 ]) {
   test(`a moved file reports an unrebased resource (${form})`, t => {
     const f = referenceFixture(t);
     f.write("vendor/demo/skills/leaf/scripts/check", "#!/bin/sh\n");
     f.write("vendor/demo/skills/leaf/usage.md", "Usage:\n" + example + "\n");
-    assert.throws(f.build, new RegExp(`skills/first/references/leaf/usage.md:${line}: unrebased resource path .*scripts/check`));
+    assert.throws(f.build, new RegExp(`skills/first/references/leaf/usage.md:${line}: unrebased resource path .*${resource}$`));
   });
 }
 
@@ -146,7 +147,7 @@ test("prose names link from the skill root, including both spellings of a princi
   const f = referenceFixture(t), name = "principle-test-first", path = `skills/${name}/SKILL.md`;
   f.write(`vendor/demo/${path}`, f.skill(name));
   f.write("registry/skills.json", [...f.skills, f.ref, { ...f.ref, name, path }]);
-  const untouched = "## The **leaf** skill\n\n[the **leaf** skill](SKILL.md)\n\n```md\nthe `leaf` skill\n```\n";
+  const untouched = '## The **leaf** skill\n\n[the **leaf** skill](SKILL.md) or <a href="SKILL.md">the `leaf` skill</a>\n\n```md\nthe `leaf` skill\n```\n';
   f.write("vendor/demo/skills/first/references/notes.md", "The **leaf** skill and the `leaf` skill. The **test-first** and **principle-test-first** principle skills.\n\n" + untouched);
   f.write("extra/skills/first/local.md", "Owned: the **leaf** skill.\n");
   f.build();
