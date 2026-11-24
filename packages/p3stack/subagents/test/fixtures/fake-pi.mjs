@@ -13,6 +13,10 @@ const emit = data => {
   if (data.type === 'message_end' && data.message?.role === 'assistant') assistantMessages++;
   process.stdout.write(JSON.stringify(data) + '\n');
 };
+const user = text => {
+  const message = { role: "user", content: [{ type: "text", text }] };
+  emit({ type: "message_start", message }); emit({ type: "message_end", message });
+};
 const respond = (cmd, data) => emit({ type: 'response', id: cmd.id, command: cmd.type, success: true, data });
 const settle = (text, error = false, stopReason = error ? 'error' : 'stop') => {
   clearTimeout(timer); working = false;
@@ -53,7 +57,6 @@ process.stdin.on('data', chunk => {
       // same run. An input hook can have changed the text before queue_update.
       if (working && history[0] === "queue-fixture-A" && cmd.streamingBehavior) {
         const queue = steering => emit({ type: "queue_update", followUp: [...followUps], steering });
-        const user = text => emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text }] } });
         if (cmd.streamingBehavior === "followUp") {
           followUps.push(cmd.message.replace("original", "delivered")); queue([]);
           respond(cmd, { disposition: "queued" }); continue;
@@ -61,7 +64,9 @@ process.stdin.on('data', chunk => {
         queue([cmd.message]); queue([]); user(cmd.message);
         respond(cmd, { disposition: "queued" });
         emit({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "answer A" }], stopReason: "stop" } });
-        emit({ type: "turn_end" }); emit({ type: "turn_start" });
+        emit({ type: "turn_end" });
+        if (cmd.message === "between-runs") { emit({ type: "agent_end" }); emit({ type: "agent_start" }); }
+        emit({ type: "turn_start" });
         const batch = [...followUps];
         while (followUps.length) { const text = followUps.shift(); queue([]); user(text); }
         settle("answer " + batch.join(" and ")); continue;
@@ -83,7 +88,12 @@ process.stdin.on('data', chunk => {
         }, 80);
         continue;
       }
-      working = true; emit({ type: 'agent_start' }); respond(cmd);
+      working = true; emit({ type: 'agent_start' }); user(cmd.message); respond(cmd);
+      if (cmd.message === "retry-success") {
+        emit({ type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "retryable" } });
+        emit({ type: "agent_end" }); emit({ type: "agent_start" });
+        settle("successful retry"); continue;
+      }
       clearTimeout(timer);
       if (cmd.message === 'ui') { pendingUI = true; emit({ type: 'extension_ui_request', id: 'ui-1', method: 'confirm', title: 'Confirm test action?' }); }
       else if (cmd.message === 'inspector-stream') {
@@ -123,6 +133,7 @@ process.stdin.on('data', chunk => {
         : settle(`${history.length}:${cmd.message}`, cmd.message === 'error'), cmd.message.startsWith('slow') ? 5000 : 25);
     }
     else if (cmd.type === 'clear_queue') {
+      followUps = []; emit({ type: "queue_update", steering: [], followUp: [] });
       if (working && history.at(-1) === 'slow-on-clear') settle('The operation was aborted.', true);
       respond(cmd, { steering: [], followUp: [] });
     }

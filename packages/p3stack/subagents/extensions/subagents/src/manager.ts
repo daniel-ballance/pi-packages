@@ -71,7 +71,7 @@ export interface AgentRecord {
 interface InputDelivery {
   followUp?: string[];
   steering?: string[];
-  removed?: { queue: "followUp" | "steering"; text: string };
+  removed?: { queue: "followUp" | "steering"; text: string; queuedId?: string };
   firstUser?: boolean;
   batch?: boolean;
   lastResult?: Update;
@@ -178,9 +178,9 @@ export class SubagentManager {
           record.hold.detail = "Parent restarted without reliable halt confirmation; process detached. Inspect for orphaned work before explicit release.";
           recoveredHolds.push(record);
         }
-        if (record.assignment?.status === "running") {
+        if (record.assignment && !record.assignment.finishedAt) {
           // Recovery cannot prove completion of a previously active assignment.
-          record.assignment.status = record.status === "failed" ? "failed" : "cancelled";
+          record.assignment.status = record.status === "failed" || record.assignment.status === "failed" ? "failed" : "cancelled";
           record.assignment.finishedAt ??= record.updatedAt;
           record.assignment.resultCursor ??= record.cursor;
           record.resultReview ??= { assignmentId: record.assignment.id, status: "unreviewed" };
@@ -628,16 +628,15 @@ export class SubagentManager {
         record.uiRequests = [];
         this.expireInputNotices(record);
         if (!expected) record.error = error?.message || "Child exited unexpectedly";
+        const update = this.appendUpdate(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
         if (record.assignment?.status === "running") {
-          record.assignment.status = record.hold || expected ? "cancelled" : "failed";
+          record.assignment.status = expected ? "cancelled" : "failed";
           record.assignment.finishedAt = new Date().toISOString();
-          this.appendUpdate(record, "lifecycle", `Assignment ${record.assignment.status} when process exited.`);
-          record.assignment.resultCursor = record.cursor;
+          record.assignment.resultCursor = update.cursor;
           record.resultReview = { assignmentId: record.assignment.id, status: "unreviewed" };
         }
         if (expected && record.error) { record.lastError = record.error; delete record.error; }
-        if (expected) this.update(record, "lifecycle", "Child stopped; conversation saved.");
-        else this.report(record, "error", record.error!, "failure");
+        if (expected || !this.announce(record, "failure", record.error!, update.cursor)) this.persist();
         // Its Children's unread reports were waiting for it; they now go to the root.
         const released = [...this.notices.values()].find(notice => this.records.get(notice.id)?.parentId === record.id);
         if (released) this.notice(released);
@@ -715,22 +714,21 @@ export class SubagentManager {
     const queued = record.queuedAssignments ?? [];
     // The queue snapshots contain the text *after* Pi's input hooks. A steer
     // may even be identical to a follow-up; only the depleted queue identifies it.
-    const match = queued.findIndex(q => q.task === text);
-    const followUp = removed?.text === text ? removed.queue === "followUp" :
-      (delivery.followUp === undefined || (first && !delivery.followUp.includes(text))) && match >= 0;
-    if (followUp) {
-      const next = queued.splice(match < 0 ? 0 : match, 1)[0];
+    const match = removed ? queued.findIndex(q => removed.queue === "followUp" && removed.text === text && q.id === removed.queuedId)
+      : delivery.followUp === undefined ? queued.findIndex(q => q.task === text) : -1;
+    if (match >= 0) {
+      const next = queued.splice(match, 1)[0];
       if (delivery.batch && record.assignment?.status === "running") {
         // Pi's all-at-once mode delivers these together for one assistant answer.
         record.assignment.task += `\n\n${text}`;
         this.persist();
       } else {
         if (record.assignment && !record.assignment.finishedAt) this.finishAssignment(record, delivery.lastResult);
-        delivery.lastResult = undefined;
-        this.beginAssignment(record, text, next?.id, next?.at);
+        delivery.lastResult = undefined; record.error = undefined; record.aborted = false;
+        this.beginAssignment(record, text, next.id, next.at);
         delivery.batch = true;
       }
-    } else if (first && !removed) {
+    } else if (first && !removed && !delivery.lastResult) {
       // The first prompt can be transformed as well, or an extension can
       // actually start a turn for a slash command.
       if (record.assignment?.status !== "running") this.beginAssignment(record, text);
@@ -746,11 +744,13 @@ export class SubagentManager {
     switch (packet.type) {
       case "queue_update":
         // AgentSession removes a delivered user message before message_start.
+        delivery.removed = undefined;
         for (const queue of ["steering", "followUp"] as const) {
           const before = delivery[queue], after: string[] = packet[queue] ?? [];
           if (before?.length === after.length + 1) {
             const index = before.findIndex((text, i) => text !== after[i]);
-            delivery.removed = { queue, text: before[index] };
+            const text = before[index], pending = record.queuedAssignments;
+            delivery.removed = { queue, text, queuedId: (pending?.find(q => q.task === text) ?? pending?.[0])?.id };
           }
           delivery[queue] = after;
         }
@@ -764,8 +764,8 @@ export class SubagentManager {
         const intent = this.abortIntents.get(record.id);
         if (intent?.awaitingStart) { intent.revision = record.runRevision; intent.awaitingStart = false; }
         else this.abortIntents.delete(record.id);
-        delivery.lastResult = undefined;
-        record.aborted = false;
+        delivery.removed = undefined;
+        if (!delivery.lastResult) { record.aborted = false; record.error = undefined; }
         // A prompt accepted before its start event can be closed immediately.
         // Track cancellation identity without reviving the stopping lifecycle.
         if (record.status === "stopping") { this.persist(); break; }
@@ -773,23 +773,29 @@ export class SubagentManager {
           // A prompt accepted just before the hold may start after the first abort.
           queueMicrotask(() => { if (record.hold?.kind === "halt" && this.children.has(record.id) && !this.aborting.has(record.id)) void this.abort(record.id).catch(() => {}); });
         }
-        record.status = "working"; record.error = undefined; record.activity = "Working";
+        record.status = "working"; record.activity = "Working";
         this.persist(); break;
       case "tool_execution_start":
         record.activity = `Tool: ${packet.toolName}`; this.changed(); break;
-      case "message_end": {
+      case "message_start": {
         const message = packet.message;
         if (message?.role === "user") {
           const text = typeof message.content === "string" ? message.content : (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
           this.deliveredInput(record, delivery, text);
           this.peers.received(record.id, text);
         }
+        delivery.removed = undefined;
+        break;
+      }
+      case "message_end": {
+        const message = packet.message;
         if (message?.role === "assistant") record.usage = noteAssistantCacheHit(record.usage, message);
         if (message?.role === "assistant" || message?.role === "toolResult") void this.refreshUsage(record);
         if (message?.role !== "assistant") break;
         delivery.firstUser = false; delivery.batch = false;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
         const terminal = !["toolUse", "error", "aborted"].includes(message.stopReason) && !message.content?.some((c: Packet) => c.type === "toolCall");
+        record.error = undefined; record.aborted = false;
         const update = text ? this.update(record, "assistant", text, terminal) : undefined;
         delivery.lastResult = terminal ? update : undefined;
         const intent = this.abortIntents.get(record.id);
@@ -797,13 +803,9 @@ export class SubagentManager {
         const cancelled = message.stopReason === "aborted" ||
           (message.stopReason === "error" && requestedAbort && isCancellationError(message.errorMessage));
         if (cancelled) {
-          if (record.assignment?.status === "running") record.assignment.status = "cancelled";
-          if (!record.aborted) {
-            record.aborted = true;
-            delivery.lastResult = this.update(record, "aborted", "Work cancelled; child remains available for instructions.");
-          }
+          record.aborted = true;
+          delivery.lastResult = this.update(record, "aborted", "Work cancelled; child remains available for instructions.");
         } else if (message.stopReason === "error") {
-          if (record.assignment?.status === "running") record.assignment.status = "failed";
           record.error = message.errorMessage || "Assistant request failed";
           delivery.lastResult = this.update(record, "error", record.error!);
         }
@@ -833,6 +835,7 @@ export class SubagentManager {
         record.uiRequests = [];
         this.expireInputNotices(record);
         this.finishAssignment(record, delivery.lastResult, humanCancellation);
+        delivery.lastResult = undefined; delivery.removed = undefined;
         void this.refreshUsage(record);
         break;
       }

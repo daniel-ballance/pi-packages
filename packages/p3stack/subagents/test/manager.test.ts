@@ -497,6 +497,45 @@ for (const tasks of [["B original"], ["B original", "C original"]]) {
   });
 }
 
+test("a follow-up delivered by agent.continue before settlement preserves the earlier answer", async () => {
+  const s = await setup();
+  try {
+    const a = await s.spawn("queue-fixture-A");
+    await s.manager.send(a.id, "B", "followUp");
+    await s.manager.send(a.id, "between-runs", "steer");
+    await s.manager.wait([a.id], "all", 2000);
+    assert.deepEqual(s.notices.filter(n => n.kind === "completed").map(n => n.text), ["answer A", "answer B"]);
+  } finally { await s.cleanup(); }
+});
+
+test("a cleared queue removal cannot bind to the next explicit send of identical text", async () => {
+  const s = await setup();
+  try {
+    const a = await s.spawn("queue-fixture-A");
+    await s.manager.send(a.id, "B", "followUp");
+    await s.manager.abort(a.id);
+    await s.manager.send(a.id, "B");
+    await s.manager.wait([a.id], "all", 2000);
+    assert.deepEqual(s.notices.filter(n => n.kind === "completed").map(n => n.text), ["2:B"]);
+  } finally { await s.cleanup(); }
+});
+
+test("assistant errors are provisional until settlement or exit commits the result and notice", async () => {
+  const s = await setup(), incomplete: string[] = [];
+  (s.manager as any).changed = () => {
+    const { agents, pendingNotices } = requireRegistry(s.dir), a = agents[0];
+    if (a?.assignment && a.assignment.status !== "running" && (!a.resultReview || !a.assignment.finishedAt ||
+        !pendingNotices.some((n: Notice) => n.cursor === a.assignment.resultCursor))) incomplete.push(a.assignment.status);
+  };
+  try {
+    const a = await s.spawn("retry-success");
+    await s.manager.wait([a.id], "all", 2000);
+    assert.equal(s.manager.get(a.id).assignment?.status, "completed");
+    assert.deepEqual(incomplete, []);
+    assert.deepEqual(s.notices.map(n => [n.kind, n.text]), [["completed", "successful retry"]]);
+  } finally { await s.cleanup(); }
+});
+
 test("follow-up assignments remain queued until a new run and are not replayed after abort", async () => {
   const s = await setup();
   try {
