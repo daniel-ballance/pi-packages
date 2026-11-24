@@ -85,8 +85,14 @@ function applyTokens(files, owners, rules, expanders, problems) {
       problems.push(`token rule ${rule.id}: unknown source "${rule.source}"`);
       continue;
     }
-    const scope = rule.files ? new RegExp(rule.files) : undefined;
-    const pattern = new RegExp(rule.find.replaceAll("{{skills.names}}", () => skillNames), `g${rule.flags ?? ""}`);
+    let scope, pattern;
+    try {
+      scope = rule.files ? new RegExp(rule.files) : undefined;
+      pattern = new RegExp(rule.find.replaceAll("{{skills.names}}", () => skillNames), `g${rule.flags ?? ""}`);
+    } catch (error) {
+      problems.push(`rules/tokens.json: token rule ${rule.id}: ${error.message}`);
+      continue;
+    }
     let count = 0;
     for (const [path, text] of files) {
       if (typeof text !== "string" || (rule.source !== undefined && owners.get(path) !== rule.source) || (scope && !scope.test(path))) continue;
@@ -95,7 +101,7 @@ function applyTokens(files, owners, rules, expanders, problems) {
       count += matches;
       files.set(path, text.replace(pattern, expanders.get(owners.get(path))(rule.replace, `token rule ${rule.id}`)));
     }
-    if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min}. Upstream reworded or removed its text.`);
+    if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min} after earlier token rewrites (source: ${rule.source ?? "all sources"}; files: ${rule.files ?? "all files"}). Review its scope and upstream text.`);
   }
 }
 

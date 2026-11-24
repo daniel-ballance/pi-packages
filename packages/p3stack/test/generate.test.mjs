@@ -103,10 +103,10 @@ test("source-scoped token rules rewrite only that source and global rules still 
 
 test("a source-scoped token minimum cannot count matches from another source", () => {
   const { root, out, dispose } = twoSources({
-    "rules/tokens.json": JSON.stringify([{ id: "only-other", source: "other", min: 1, find: "Cursor-only", replace: "Pi" }]),
+    "rules/tokens.json": JSON.stringify([{ id: "only-other", source: "other", files: "SKILL\\.md$", min: 1, find: "Cursor-only", replace: "Pi" }]),
   });
   try {
-    assert.throws(() => generate({ packageDir: root, outDir: out }), /only-other: 0 matches, expected at least 1/);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /only-other: 0 matches, expected at least 1.*source: other.*files: SKILL\\\.md\$/);
   } finally { dispose(); }
 });
 
@@ -183,7 +183,7 @@ test("slash command discovery with no emitted skills cannot match a bare slash",
 test("a token rule that stops matching upstream fails with its id", () => {
   const { root, out, dispose } = fixture({ "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\n---\n\n## Subagents\n\nx\n" });
   try {
-    assert.throws(() => generate({ packageDir: root, outDir: out }), /task-tool: 0 matches, expected at least 1/);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /task-tool: 0 matches, expected at least 1.*all sources.*all files/);
   } finally { dispose(); }
 });
 
@@ -705,14 +705,15 @@ pocockCase("6 unrecognized harness wording names the file", ({ run, input }) => 
   assert.match(result.stderr, /skills\/research\/SKILL\.md:\d+: Skill tool/);
 });
 
-pocockCase("7 invalid optional regexes are errors", ({ root, run }) => {
-  const file = join(root, "rules/tokens.json"), rules = JSON.parse(readFileSync(file, "utf8"));
-  const rule = rules.find(({ id, source }) => id === "clear-to-new" && source === "matt-pocock");
-  assert.ok(rule);
-  rule.find = "(";
-  writeFileSync(file, JSON.stringify(rules));
-  assert.match(run().stderr, /Invalid regular expression/);
-});
+for (const field of ["find", "files"]) {
+  test(`a malformed token ${field} regex names the rule, even without a minimum`, t => {
+    const { root, out, dispose } = fixture({
+      "rules/tokens.json": JSON.stringify([{ id: "bad-regex", find: "Task tool", replace: "child", [field]: "(" }]),
+    });
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /rules\/tokens\.json.*bad-regex.*Invalid regular expression/i);
+  });
+}
 
 pocockCase("8 resource collisions fail instead of overwriting", ({ root, run }) => {
   const file = join(root, "rules/manifest.json"), manifest = JSON.parse(readFileSync(file, "utf8"));
