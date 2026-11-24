@@ -161,6 +161,12 @@ for (const invocation of ["model", "user"]) {
 
 const featurePath = "skills/poteto-mode/playbooks/feature.md";
 
+test("mixed LF and CRLF cannot misplace a chain row", t => {
+  const f = fixture(t), outDir = join(f.root, "out");
+  f.write(`extra/${featurePath}`, "# Feature\r\n\n1. Prep.\n2. Implement the sketch.\n3. Ship.\n");
+  assert.throws(() => generate({ packageDir: f.root, outDir }), /feature\.md.*mixed line endings/i);
+});
+
 test("chains surround the whole step, in registry order, without renumbering its neighbors", t => {
   const f = fixture(t), outDir = join(f.root, "out");
   const step = "2. Implement the sketch. Keep this sentence.\n\n   - Keep the nested list.\n\n   Keep this paragraph too.";

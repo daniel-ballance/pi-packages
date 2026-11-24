@@ -77,6 +77,21 @@ function expander(commit, problems) {
   };
 }
 
+// Rewrite only visible Markdown text and inline command spans. Source offsets
+// preserve fence contents, raw HTML, link destinations and all original bytes around them.
+function mapProse(text, rewrite) {
+  let result = "", offset = 0;
+  function visit(node) {
+    if (node.type === "text" || node.type === "inlineCode") {
+      const { start, end } = node.position;
+      result += text.slice(offset, start.offset) + rewrite(text.slice(start.offset, end.offset));
+      offset = end.offset;
+    } else node.children?.forEach(visit);
+  }
+  visit(fromMarkdown(text));
+  return result + text.slice(offset);
+}
+
 function applyTokens(files, owners, rules, expanders, problems, sectionRewrites) {
   const skillNames = [...files.keys()]
     .flatMap(path => /^skills\/([^/]+)\/SKILL\.md$/.exec(path)?.slice(1) ?? [])
@@ -97,12 +112,17 @@ function applyTokens(files, owners, rules, expanders, problems, sectionRewrites)
     let count = 0;
     for (const [path, text] of files) {
       if (typeof text !== "string" || (rule.source !== undefined && owners.get(path) !== rule.source) || (scope && !scope.test(path))) continue;
-      const matches = text.match(pattern)?.length ?? 0;
-      if (matches === 0) continue;
-      count += matches;
+      if (!text.match(pattern)) continue;
       const replacement = expanders.get(owners.get(path))(rule.replace, `token rule ${rule.id}`);
-      files.set(path, text.replace(pattern, replacement));
-      sectionRewrites.get(path)?.push([pattern, replacement]);
+      const rewrite = (input, tally = false) => {
+        const replace = span => {
+          if (tally) count += span.match(pattern)?.length ?? 0;
+          return span.replace(pattern, replacement);
+        };
+        return rule.markdownProse ? mapProse(input, replace) : replace(input);
+      };
+      files.set(path, rewrite(text, true));
+      sectionRewrites.get(path)?.push(rewrite);
     }
     if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min} after earlier token rewrites (source: ${rule.source ?? "all sources"}; files: ${rule.files ?? "all files"}). Review its scope and upstream text.`);
   }
@@ -177,7 +197,7 @@ function applySections(files, upstream, sections, sectionRewrites, overlaysDir, 
       }
       // A sibling can also disappear without becoming a child. Replace only the
       // translation of the raw span we hashed, not surrounding unreviewed text.
-      const translated = sectionRewrites.get(file).reduce((span, [pattern, replacement]) => span.replace(pattern, replacement), sectionText(raw.lines, original));
+      const translated = sectionRewrites.get(file).reduce((span, rewrite) => rewrite(span), sectionText(raw.lines, original));
       if (translated !== sectionText(rewritten.lines, section)) {
         problems.push(`section rule: ${file}: "${heading}" changed boundary during token rewrites. Keep each rewrite inside or outside the reviewed section.`);
         continue;
@@ -204,6 +224,7 @@ function addExtras(dir, put) {
 function renderRegistry(files, { routes, chains }, put) {
   for (const [playbook, rows] of Map.groupBy(chains, row => row.playbook)) {
     const path = `skills/poteto-mode/${playbook}`, text = files.get(path)?.toString() ?? "";
+    if (text.includes("\r\n") && /(?<!\r)\n/.test(text)) throw new Error(`${path}: mixed line endings; normalize before inserting chain rows`);
     const slots = chainSlots(text, rows), newline = text.includes("\r\n") ? "\r\n" : "\n";
     const lines = text.split(newline);
     // Splice backwards so a new step never becomes an anchor or shifts a later slot.
@@ -249,7 +270,7 @@ function applyPatches(patchesDir, outDir, problems) {
   for (const name of walk(patchesDir).filter(file => file.endsWith(".patch"))) {
     const patch = join(patchesDir, name);
     try {
-      const apply = ["-c", "apply.ignoreWhitespace=no", "apply", "--whitespace=nowarn"];
+      const apply = ["-c", "core.autocrlf=false", "-c", "apply.ignoreWhitespace=no", "apply", "--whitespace=nowarn"];
       const options = { cwd: outDir, stdio: "pipe", env: gitEnv() };
       execFileSync("git", [...apply, "--check", patch], options);
       execFileSync("git", [...apply, patch], options);
