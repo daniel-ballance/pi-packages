@@ -59,6 +59,11 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 
 - Replay pull request handles that older t3-agent sessions stored as `owner/repo#number` or as a self-hosted forge URL. They are dropped on replay now, so the ledger and prompt lose a watch T3 still holds. (final re-check, runtime R3)
 
+- List `subagent_spawn` in the catalog only when `subagent_wait` and `subagent_read` can be selected with it, and state the rule in the subagents configuration reference. A policy that allows spawn without them offers a tool no spawn can use. (final re-check, subagents D2)
+- Surface a child's provider error when it is closed or exits before its run settles. The error now waits for settlement, so an early close can lose its text. (final re-check, subagents D3)
+- Test the two subagents checks that have none: the conditions that decide `workStarted: false`, and the step that advances the read cursor after a report is fully paged. (final re-check, subagents D4)
+- Keep slash commands inside fenced text translated. Translation now skips fences to protect literal paths, and one rule patches the single command the plan template carries there; nothing flags the next one. (final re-check, generator D4)
+
 ## A Pi crash seen during this work
 
 Two delegated sessions exited the moment a codemode script's `Promise.all` rejected on a missing file while its other reads were still in flight. An offline reproduction against Pi 1.5.2's codemode executor with a stand-in session did not crash. The cause is not isolated.

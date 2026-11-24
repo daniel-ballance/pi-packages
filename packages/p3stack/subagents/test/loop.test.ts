@@ -124,6 +124,24 @@ test("failed tick delivery ends the loop with its reason and no retry", () => {
   assert.equal(submissions, 1);
 });
 
+test("a tick queued behind a busy parent is still confirmed after the first receipt window", () => {
+  const sent: LoopTick[] = [];
+  const h = harness(loops, tick => { sent.push(tick); });
+  h.controller.start({ task: "x", intervalMs: 60_000 });
+  h.advance(60_000);
+  h.setIdle(false); // compaction or run preparation holds the tick's message_start
+  h.advance(10_000); h.advance(10_000);
+  assert.deepEqual(h.ended, [], "a busy parent has not lost the tick");
+  h.controller.delivered(sent[0]!.id);
+  assert.equal(h.controller.status()?.iteration, 1);
+
+  const lost = harness(loops, tick => { sent.push(tick); });
+  lost.controller.start({ task: "x", intervalMs: 60_000 });
+  lost.advance(60_000);
+  lost.advance(10_000);
+  assert.match(lost.ended[0]!, /could not confirm tick 1 delivery/, "an idle parent that never saw the tick ends the loop");
+});
+
 test("only the outstanding tick's message_start confirms it", () => {
   const sent: LoopTick[] = [];
   const h = harness(loops, tick => { sent.push(tick); });

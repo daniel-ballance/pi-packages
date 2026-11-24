@@ -124,9 +124,17 @@ export class LoopController {
     const id = this.awaiting = randomUUID(), iteration = state.iteration + 1;
     // Pi's void sendMessage swallows asynchronous delivery errors. Arm the
     // receipt deadline before sending: even a synchronous receipt must count.
-    this.timer = this.setTimer(() => {
-      if (this.awaiting === id) this.end(`could not confirm tick ${iteration} delivery: no message_start before timeout`);
-    }, Math.min(10_000, state.deadline - this.clock()));
+    const awaitReceipt = () => {
+      this.timer = this.setTimer(() => {
+        this.timer = undefined;
+        if (this.awaiting !== id) return;
+        // A busy parent has the tick queued behind compaction, run preparation or a run in
+        // progress: it will still be delivered, so keep waiting until the loop's deadline.
+        if (!this.options.idle() && this.clock() < state.deadline) { awaitReceipt(); return; }
+        this.end(`could not confirm tick ${iteration} delivery: no message_start before timeout`);
+      }, Math.max(0, Math.min(10_000, state.deadline - this.clock())));
+    };
+    awaitReceipt();
     try {
       this.options.send({ id, task: state.task, iteration, maxIterations: state.maxIterations, intervalMs: state.intervalMs, deadline: state.deadline });
     } catch (error) {
