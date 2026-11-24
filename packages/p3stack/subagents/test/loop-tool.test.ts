@@ -10,7 +10,7 @@ import { tempRoot } from "./support/temp-root.js";
 const loops = { enabled: true, minIntervalMs: 1000, maxIterations: 2, maxDurationMs: 60_000 };
 
 // The real extension with a fake Pi: a policy file in a private agent directory.
-function harness(policy: Record<string, unknown>, hasUI = true, deliveryError?: string) {
+function harness(policy: Record<string, unknown>, hasUI = true, deliveryError?: string, inventory: { name: string; exposure: string; sourceInfo: { path: string } }[] = []) {
   const agentDir = tempRoot("loop-agent-");
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "p/m:off" }], ...policy }));
   const previous = process.env.PI_CODING_AGENT_DIR;
@@ -32,7 +32,7 @@ function harness(policy: Record<string, unknown>, hasUI = true, deliveryError?: 
       registerCommand(name: string, command: any) { commands.set(name, command); },
       sendMessage(message: any, options: any) { if (deliveryError) throw new Error(deliveryError); sent.push({ message, options }); },
       appendEntry(type: string, data: any) { entries.push({ type, data }); },
-      getAllTools: () => [], getCommands: () => [],
+      getAllTools: () => inventory, getCommands: () => [],
       events: { on: () => () => {} },
     } as unknown as ExtensionAPI);
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
@@ -128,6 +128,8 @@ test("parent features distinguish workflow availability, loop policy and full pe
     [{ tools: ["peer_send"] }, true, false, false],
     [{ tools: ["peer_send"], peerMessageLimit: 2, loops }, true, true, true],
     [{ models: [], loops }, false, true, false],
+    [{ tools: ["parent_send"], alwaysTools: ["parent_send"], parentMessageLimit: 1 }, false, false, false],
+    [{ loops: { ...loops, minIntervalMs: 60_000 } }, true, false, false],
     [{ tools: null }, false, false, false],
   ] as const) {
     const h = harness(policy);
@@ -140,6 +142,15 @@ test("parent features distinguish workflow availability, loop policy and full pe
       assert.equal(catalog.tools.includes("subagent_workflow_start"), false, "not a worker tool");
     } finally { await h.dispose(); }
   }
+});
+
+test("catalog omits hidden tools even when their extension file is selectable", async () => {
+  const inventory = ["custom", "write"].map(name => ({ name, exposure: "hidden", sourceInfo: { path: import.meta.filename } }));
+  const h = harness({ tools: ["custom", "write", "read"], extensions: [import.meta.filename] }, false, undefined, inventory);
+  try {
+    const catalog = JSON.parse(text(await h.tools.get("subagent_catalog").execute("c", {}, undefined, undefined, h.ctx)));
+    assert.deepEqual(catalog.tools, ["read"]);
+  } finally { await h.dispose(); }
 });
 
 test("the catalog states the loop ceilings, or that loops are off", async () => {

@@ -319,7 +319,11 @@ export class SubagentPolicy {
     const spawnEnabled = allows(this.childLimit, 1) && !!models.length && !!workingDirectories.length && !alwaysUnavailable;
     return {
       source: this.source, spawnEnabled,
-      features: { workflows: childDepth === 1 && spawnEnabled, loops: childDepth === 1 && !!config.loops?.enabled, peers: childDepth === 1 && this.peersEnabled },
+      features: {
+        workflows: childDepth === 1 && spawnEnabled && !alwaysTools.includes("parent_send"),
+        loops: childDepth === 1 && !!config.loops?.enabled && Math.ceil(config.loops.minIntervalMs / 1000) * 1000 < config.loops.maxDurationMs,
+        peers: childDepth === 1 && this.peersEnabled,
+      },
       models, tools, toolExtensions, ...resources, alwaysExtensions, alwaysTools, workingDirectories,
       systemPrompt: config.systemPrompt, appendSystemPrompt: config.appendSystemPrompt,
       contextFiles: config.contextFiles, maxChildren: reportedLimit(this.childLimit), peerMessageLimit: config.peerMessageLimit,

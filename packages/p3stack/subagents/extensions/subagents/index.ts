@@ -97,7 +97,13 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     // Undocumented but present in 0.99.2 and 1.2.0; without it the check is skipped.
     extensionProviders: () => (ctx.modelRegistry as { getRegisteredProviderIds?: () => readonly string[] }).getRegisteredProviderIds?.() ?? [],
     toolSources: () => Object.fromEntries(pi.getAllTools().filter(tool => tool.sourceInfo?.path).map(tool => [tool.name, tool.sourceInfo!.path])),
-    tools: () => [...new Set(["read", "bash", "edit", "write", "grep", "find", "ls", ...(process.platform === "win32" ? ["powershell"] : []), ...pi.getAllTools().map(tool => tool.name)])],
+    tools: () => {
+      const names = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", ...(process.platform === "win32" ? ["powershell"] : [])]);
+      for (const tool of pi.getAllTools()) {
+        if (tool.exposure === "hidden") names.delete(tool.name); else names.add(tool.name);
+      }
+      return [...names];
+    },
   });
   let context: ExtensionContext | undefined;
   let footerLabel = "";
