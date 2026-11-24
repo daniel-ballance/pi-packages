@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { DefaultPackageManager, loadSkills, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createRequire } from "node:module";
 import { dirname, join, posix } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { walk } from "../generator/source-paths.mjs";
 
 // Use the skill linter's Markdown parser under both npm and pnpm.
 const { fromMarkdown } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("mdast-util-from-markdown");
 const cwd = dirname(import.meta.dirname);
-const [pack] = Object.values(JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--offline", "--ignore-scripts", "--workspaces=false"], { cwd, encoding: "utf8" })));
+const consumer = mkdtempSync(join(tmpdir(), "p3stack-consumer-")), installed = join(consumer, "node_modules/p3stack");
+after(() => rmSync(consumer, { recursive: true, force: true }));
+const [pack] = JSON.parse(execFileSync("npm", ["pack", "--pack-destination", consumer, "--json", "--offline", "--ignore-scripts", "--workspaces=false"], { cwd, encoding: "utf8" }));
+mkdirSync(installed, { recursive: true });
+execFileSync("tar", ["-xf", join(consumer, pack.filename), "--strip-components=1", "-C", installed]);
+const readInstalled = file => readFileSync(join(installed, file), "utf8");
 const files = new Set(pack.files.map(file => file.path));
 
 function* destinations(node) {
@@ -37,7 +44,7 @@ test("relative Markdown links resolve inside the packed p3stack", () => {
   const missing = [];
   for (const file of files) {
     if (!/\.(?:md|markdown)$/i.test(file)) continue;
-    const tree = fromMarkdown(readFileSync(join(cwd, file), "utf8"));
+    const tree = fromMarkdown(readInstalled(file));
     for (const { url, position } of destinations(tree)) {
       if (/^(?:[a-z][a-z\d+.-]*:|[/?#]|$)/i.test(url)) continue;
       const path = decodeURIComponent(url.split(/[?#]/, 1)[0]);
@@ -51,31 +58,179 @@ test("relative Markdown links resolve inside the packed p3stack", () => {
 
 const registry = JSON.parse(readFileSync(join(cwd, "registry/skills.json"), "utf8"));
 
-test("every reference is packed under its owner's skill, not discoverable as a command", () => {
-  const refs = registry.filter(row => row.action === "reference");
-  assert.equal(refs.length, 43);
-  for (const { name, owner } of refs) {
-    assert.ok(!files.has(`skills/${name}/SKILL.md`), name);
-    assert.ok(files.has(`skills/${owner}/references/${name}.md`), name);
-    const skill = readFileSync(join(cwd, `skills/${owner}/SKILL.md`), "utf8");
-    assert.ok(skill.includes(name.startsWith("principle-") ? "references/principle-<title>.md" : `references/${name}.md`), `${owner}: ${name}`);
+// These operands refer to the maintainer checkout or report a diagnostic, not an installed resource.
+const external = new Map([
+  ["skills/maintain-p3stack/references/failure-classes.md", ["references/missing", "packages/p3stack/generator/check-registry.mjs"]],
+  ["skills/poteto-help/SKILL.md", ["scripts/lint-skill", "./packages/p3stack"]],
+  ["skills/poteto-mode/references/host-terminal.md", ["scripts/lint-skill/lint-skill.mjs"]],
+]);
+
+function* codeNodes(node) {
+  // A link label is not another operand; its destination is checked above.
+  if (["link", "linkReference"].includes(node.type)) return;
+  if (["inlineCode", "code"].includes(node.type)) yield node;
+  for (const child of node.children ?? []) yield* codeNodes(child);
+}
+
+function missingOperands(file, text) {
+  const [base] = linkBases(file), missing = [];
+  const check = (path, line) => {
+    const target = posix.join(base, path);
+    if (!files.has(target) || !statSync(join(installed, target), { throwIfNoEntry: false })?.isFile()) missing.push(`${file}:${line}: ${path}`);
+  };
+  for (const node of codeNodes(fromMarkdown(text))) {
+    if (node.type === "code" && ![undefined, "sh", "shell", "bash", "md", "text"].includes(node.lang)) continue;
+    for (const [i, line] of node.value.split("\n").entries()) {
+      const at = node.position.start.line + i + (node.type === "code" ? 1 : 0);
+      // The generated help index spells out a playbook invocation, not a file link.
+      const play = /^\/skill:([\w-]+) use the ([\w-]+) playbook$/.exec(line);
+      if (play) check(`../${play[1]}/playbooks/${play[2]}.md`, at);
+      if (/\bgit show \S+:(?:pstack\/|packages\/p3stack\/)skills\/[\w-]+\//.test(line)) missing.push(`${file}:${at}: bundled skill read from consumer Git`);
+      const normalized = line.replaceAll("<skill dir>/", "./").replace(/<([\w-]+)(?:-dir| directory)>\/(?=(?:\.\.\/|scripts\/))/g, "../$1/");
+      let previous;
+      for (const word of normalized.match(/"[^"]*"|'[^']*'|\S+/g) ?? []) {
+        const path = word.replace(/^["']|["']$/g, "").replace(/[.,;]$/, "").split(/#|:\d+$/)[0];
+        const script = /^(?:node|bash|sh|python3?)$/.test(previous) && /\.(?:[cm]?js|ts|sh|py)$/.test(path);
+        previous = word;
+        if (!/^[\w./ -]+$/.test(path) || path.endsWith("/") || external.get(file)?.includes(path)) continue;
+        // Maintenance explicitly runs these commands in a pi-packages checkout.
+        if (file.startsWith("skills/maintain-p3stack/") && /^(?:\.\/scripts\/|generator\/)/.test(path)) {
+          const root = path.startsWith("generator/") ? cwd : join(cwd, "../..");
+          assert.ok(statSync(join(root, path), { throwIfNoEntry: false })?.isFile(), `${file}:${at}: ${path}`);
+          continue;
+        }
+        if (line.includes(path + " in the installed skills")) { check("../" + path, at); continue; }
+        // Consumer inputs (e.g. GLOSSARY.md or src/app.ts) aren't bundled. A file beside a
+        // nested reference, however, must still be addressed from the skill root, not that reference.
+        const sibling = node.type === "inlineCode" && path.endsWith(".md") && files.has(posix.join(posix.dirname(file), path));
+        if (script || sibling || /^(?:\.\.?\/|(?:[\w-]+\/)?(?:references|playbooks|scripts|workflows)\/)/.test(path)) check(path, at);
+      }
+    }
   }
+  return missing;
+}
+
+test("concrete read and script operands resolve from the installed skill, not the producer checkout", () => {
+  const pages = [...files].filter(file => /^(?:skills|agents)\/.*\.md$/.test(file));
+  assert.deepEqual(pages.flatMap(file => missingOperands(file, readInstalled(file))), []);
+});
+
+test("missing operands fail even in command examples and generated playbook rows", () => {
+  const file = "skills/poteto-mode/playbooks/babysit.md";
+  const sample = 'Run `node "<poteto-mode-dir>/scripts/gone.mjs"` and read `../why/references/missing.md`.\n```sh\nbash scripts/missing.sh --test\n```\n| Review | `/skill:poteto-mode use the absent playbook` |';
+  assert.deepEqual(missingOperands(file, sample), [":1: ../poteto-mode/scripts/gone.mjs", ":1: ../why/references/missing.md", ":3: scripts/missing.sh", ":5: ../poteto-mode/playbooks/absent.md"].map(s => file + s));
+});
+
+test("the installed reference index expands to the registered owner paths", () => {
+  const file = "skills/poteto-mode/SKILL.md", refs = registry.filter(row => row.action === "reference");
+  const [, template, groups] = /For a reference, read `([^`]+)`: (.+)\.$/m.exec(readInstalled(file));
+  const targets = [];
+  for (const [, owner, list] of groups.matchAll(/([\w-]+) \(([^)]+)\)/g)) {
+    const names = list.split(", ").flatMap(name => name === "principle-*" ? refs.filter(row => row.owner === owner && row.name.startsWith("principle-")).map(row => row.name) : name);
+    for (const name of names) {
+      const path = posix.join(linkBases(file)[0], template.replace("<owner>", owner).replace("<name>", name));
+      assert.ok(files.has(path), path);
+      targets.push(path);
+    }
+  }
+  assert.deepEqual(targets.sort(), refs.map(({ owner, name }) => `skills/${owner}/references/${name}.md`).sort());
+});
+
+async function checkCatalog(root) {
+  const options = { cwd: root, agentDir: dirname(root) };
+  const pm = new DefaultPackageManager({ ...options, settingsManager: SettingsManager.inMemory() });
+  const resources = await pm.resolveExtensionSources([root]);
+  const { skills, diagnostics } = loadSkills({ ...options, includeDefaults: false, skillPaths: resources.skills.filter(r => r.enabled).map(r => r.path) });
+  assert.deepEqual(diagnostics, []);
+  const byName = new Map(skills.map(skill => [skill.name, skill]));
+  assert.deepEqual(new Set(byName.keys()), new Set(registry.filter(r => r.action === "emit").map(r => r.name)));
+  for (const { name, owner } of registry.filter(row => row.action === "reference")) {
+    const skill = byName.get(owner), path = `references/${name}.md`;
+    assert.ok(skill && existsSync(join(skill.baseDir, path)), `${owner}/${path}`);
+    assert.ok(readFileSync(skill.filePath, "utf8").includes(name.startsWith("principle-") ? "references/principle-<title>.md" : path), `${owner}: ${name}`);
+  }
+}
+
+test("Pi discovers the registry's commands and their references in the packed package", async t => {
+  const temp = mkdtempSync(join(tmpdir(), "packed-catalog-")), root = join(temp, "package");
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  for (const path of files) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    copyFileSync(join(cwd, path), join(root, path));
+  }
+  await checkCatalog(root);
+  // An equivalent resource root is fine; a missing reference or leaking terminal-only skills is not.
+  renameSync(join(root, "skills"), join(root, "handbook"));
+  const path = join(root, "package.json"), manifest = JSON.parse(readFileSync(path));
+  manifest.pi.skills = ["handbook/"];
+  writeFileSync(path, JSON.stringify(manifest));
+  await checkCatalog(root);
+  manifest.pi.skills.push("subagents/skills");
+  writeFileSync(path, JSON.stringify(manifest));
+  await assert.rejects(checkCatalog(root), /subagents/);
+  manifest.pi.skills.pop();
+  writeFileSync(path, JSON.stringify(manifest));
+  rmSync(join(root, "handbook/tdd/references/regression-test.md"));
+  await assert.rejects(checkCatalog(root), /tdd\/references\/regression-test\.md/);
+});
+
+function checkLicenses(sources) {
+  for (const { name, vendor, map } of sources) {
+    const licenses = map.filter(({ from }) => posix.basename(from) === "LICENSE");
+    assert.ok(licenses.length, `${name}: no mapped license`);
+    for (const { from } of map) {
+      assert.ok(licenses.some(license => from.startsWith(license.from.slice(0, -"LICENSE".length))), `${name}: ${from} has no mapped license`);
+    }
+    for (const { from, to } of licenses) {
+      assert.ok(files.has(to), to);
+      assert.deepEqual(readFileSync(join(installed, to)), readFileSync(join(cwd, vendor, from)), to);
+    }
+  }
+}
+
+test("the packlist includes a license for each vendored source", () => {
+  const { sources } = JSON.parse(readFileSync(join(cwd, "rules/manifest.json")));
+  checkLicenses(sources);
+});
+
+test("removing a license mapping fails even when the tarball still contains the file", () => {
+  const { sources } = JSON.parse(readFileSync(join(cwd, "rules/manifest.json")));
+  const source = sources.find(s => s.name === "matt-pocock");
+  source.map = source.map.filter(entry => entry.from !== "LICENSE");
+  assert.throws(() => checkLicenses([source]), /matt-pocock.*no mapped license/);
+});
+
+const removedCommands = new Set(registry.filter(row => row.action !== "emit").flatMap(row => {
+  const name = row.name ?? posix.basename(posix.dirname(row.path));
+  return [`/${name}`, `/skill:${name}`];
+}));
+
+function leftoverCommands(line) {
+  // Remove literal path operands before splitting Markdown wrappers. Keep this
+  // scanner independent of the generator so a shared matcher can't hide a miss.
+  const prose = line.replace(/(?:\b(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE|cd|pushd|ls|cat|mkdir|curl|route|path|directory|endpoint)(?: (?:at|under|to|is|-[\w-]*))*\s+|\]\(\s*<?|(?:href|src)=)[`"']*\/[\w-]+(?![:\w-])/g, " ")
+    .replace(/\/[\w-]+[`"']*\s+(?:endpoint|directory|route)\b/g, " ");
+  const words = prose.split(/[\s`"'()[\],;!*<>]+/).map(word => word.replace(/[.?:]$/, ""));
+  return words.filter(word => removedCommands.has(word));
+}
+
+test("the independent leftover scan recognizes wrapped commands but not path segments", () => {
+  for (const [literal, expected] of [["Run `(/skill:unslop)`.", "/skill:unslop"], ["<instruction></teach>", "/teach"], ["Use **/sharpen**!", "/sharpen"]]) {
+    assert.deepEqual(leftoverCommands(literal), [expected], literal);
+  }
+  assert.deepEqual(leftoverCommands("GET /teach HTTP/1.1; cd /sharpen. [path](/teach) docs/teach /teach.md /sharpen/file https://example.test/teach"), []);
 });
 
 test("no emitted file contains a removed command or a path to a retired skill directory", () => {
-  const names = [...registry.filter(row => row.action === "reference").map(row => row.name), "automate-me", "grill-with-docs", "ketchup-video"];
+  const emitted = new Set(registry.filter(row => row.action === "emit").map(row => row.name));
+  const names = registry.filter(row => row.action !== "emit").map(row => row.name ?? posix.basename(posix.dirname(row.path))).filter(name => !emitted.has(name));
   const oldPath = new RegExp(`(?:\\.\\./|\\bskills/)(?:${names.join("|")})/`);
-  const commands = new Set(registry.filter(row => row.action !== "emit").flatMap(row => {
-    const name = row.name ?? posix.basename(posix.dirname(row.path));
-    return [`/${name}`, `/skill:${name}`];
-  }));
   const problems = [];
   for (const root of ["skills", "agents"]) {
     for (const path of walk(join(cwd, root))) {
       const file = join(root, path), text = readFileSync(join(cwd, file), "utf8");
       for (const [i, line] of text.split("\n").entries()) {
-        const words = line.split(/[\s`"'()[\],;!]+/).map(word => word.replace(/[.?:]$/, ""));
-        const hits = words.filter(word => commands.has(word)), pathHit = line.match(oldPath);
+        const hits = leftoverCommands(line), pathHit = line.match(oldPath);
         if (pathHit) hits.push(pathHit[0]);
         for (const hit of hits) problems.push(`${file}:${i + 1}: ${hit}`);
       }

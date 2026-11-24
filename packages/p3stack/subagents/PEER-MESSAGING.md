@@ -6,6 +6,8 @@ Parent-authorized, bidirectional, non-transitive links between children tracked 
 
 ## API and policy
 
+Activate deferred management tools with `subagent_catalog({activate:[name]})` or find them with `tool_search`.
+
 - `peerMessageLimit`: policy ceiling (integer 0–1000, omitted/default 0 disables). `peer_send` must also be allowlisted and explicitly selected by both children.
 - Parent `subagent_connect({a,b,limit})`: create a link with independent allowances in both directions. Reconnecting retains counters and limits; omit limit for reconnect. Repeating a connection never renews it. Optional `introduce:true` sends each child its peer's identity and task; that can start two billable turns, and uncertain delivery is not retried.
 - Parent `subagent_disconnect({a,b})`: reject subsequent sends. Already submitted messages cannot be retracted.

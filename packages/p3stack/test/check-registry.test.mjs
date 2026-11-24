@@ -6,27 +6,53 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { generate } from "../generator/generate.mjs";
-import { sourcePathClassifier } from "../generator/source-paths.mjs";
+import { borrowedNote, sourcePathClassifier } from "../generator/source-paths.mjs";
 
 const cli = fileURLToPath(new URL("../generator/check-registry.mjs", import.meta.url));
 const cache = process.env.P3STACK_FIXTURE_ROOT ?? tmpdir();
 const rows = () => JSON.parse(readFileSync(new URL("../registry/skills.json", import.meta.url), "utf8"));
 
-test("every borrowed upstream idea names an existing upstream path and existing p3stack files", () => {
-  const borrowed = JSON.parse(readFileSync(new URL("../rules/borrowed.json", import.meta.url), "utf8"));
+const borrowed = JSON.parse(readFileSync(new URL("../rules/borrowed.json", import.meta.url), "utf8"));
+
+test("every borrowed upstream idea names an existing upstream path and owner", () => {
   const manifest = JSON.parse(readFileSync(new URL("../rules/manifest.json", import.meta.url), "utf8"));
   assert.ok(borrowed.length > 0);
   for (const row of borrowed) {
     const source = manifest.sources.find(({ name }) => name === row.source);
     assert.ok(source, row.source);
     assert.ok(existsSync(new URL(`../${source.vendor}/${row.path}`, import.meta.url)), `${row.source}/${row.path}`);
-    for (const file of row.by) assert.ok(existsSync(new URL(`../${file}`, import.meta.url)), file);
+    for (const owner of row.by) {
+      const [file, id] = owner.split("#");
+      const url = new URL(`../${file}`, import.meta.url);
+      assert.ok(existsSync(url), file);
+      if (id !== undefined) assert.ok(JSON.parse(readFileSync(url, "utf8")).some(row => row.id === id), owner);
+    }
     assert.ok(row.idea.trim(), row.path);
   }
 });
 
-test("a changed borrowed upstream path is flagged for review in a bump", async () => {
-  const { borrowedNote } = await import("../generator/source-paths.mjs");
+test("a writing-skills bump flags the chain that requires a failing baseline and comparison", () => {
+  const note = borrowedNote(borrowed, "superpowers", "skills/writing-skills/SKILL.md");
+  const owner = /borrowed by (registry\/chains\.json)#([\w-]+)/.exec(note);
+  assert.ok(owner, `no baseline chain in bump note: ${note}`);
+  const chain = JSON.parse(readFileSync(new URL(`../${owner[1]}`, import.meta.url), "utf8")).find(row => row.id === owner[2]);
+  assert.equal(chain.playbook, "playbooks/authoring-a-skill.md");
+  assert.equal(chain.skill, "playbooks/eval.md");
+  assert.match(chain.when, /before editing.*fail.*after editing.*compare/i);
+});
+
+test("the borrowed fix-loop claim distinguishes the local bound from the upstream bound", () => {
+  const row = borrowed.find(row => row.path.endsWith("/fix-loop.md"));
+  const local = readFileSync(new URL(`../${row.by[0]}`, import.meta.url), "utf8");
+  const upstream = readFileSync(new URL(`../vendor/superpowers/${row.path}`, import.meta.url), "utf8");
+  assert.match(upstream, /five rounds maximum per task/i);
+  for (const text of [row.idea, local]) {
+    assert.match(text, /two fix rounds per finding/i);
+    assert.match(text, /park/i);
+  }
+});
+
+test("a changed borrowed upstream path is flagged for review in a bump", () => {
   const borrowed = [{ source: "superpowers", path: "skills/a/SKILL.md", by: ["authored/x.md"], idea: "y" }];
   assert.match(borrowedNote(borrowed, "superpowers", "skills/a/SKILL.md"), /borrowed by authored\/x\.md: review/);
   assert.equal(borrowedNote(borrowed, "superpowers", "skills/b/SKILL.md"), "");
@@ -41,7 +67,7 @@ test("registry admissions match the shipped skills, including narrow and watch-o
   assert.deepEqual(from("agent-skills"), new Set(["constraints", "source-grounding", "security-hardening", "instrumentation"]));
   assert.deepEqual(from("superpowers"), new Set(), "superpowers is watch only");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
-  for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
+  assert.equal(new Set(admitted.map(row => row.reason)).size, admitted.length, "each standalone entry explains its distinct job");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").owner, "implement-spec");
   assert.equal(skills.find(row => row.name === "code-review").invocation, "model");
   assert.equal(skills.find(row => row.name === "interactive-prototype").invocation, "model");
@@ -59,7 +85,7 @@ function fixture(t) {
   write("rules/manifest.json", { registry: true, sources: [{ name: "demo", vendor: "vendor/demo", map: [{ from: "skills/", to: "skills/" }] }] });
   write("vendor/demo/skills/first/SKILL.md", skill("first"));
   write("skills/first/SKILL.md", skill("first"));
-  const skills = [{ source: "demo", path: "skills/first/SKILL.md", action: "emit", name: "first", invocation: "model", phases: ["test"], roles: ["owner"], reason: "Fixture admission." }];
+  const skills = [{ source: "demo", path: "skills/first/SKILL.md", action: "emit", name: "first", invocation: "model", reason: "Fixture admission." }];
   write("registry/skills.json", skills);
   write("registry/routes.json", [{ request: "test", grant: "any", target: "first" }]);
   write("registry/chains.json", [{ id: "first-chain", playbook: "playbooks/feature.md", anchor: "Implement the sketch.", position: "before", skill: "first", when: "Always." }]);
@@ -70,7 +96,7 @@ function fixture(t) {
 
 function referenceFixture(t, owner = "first") {
   const f = fixture(t), outDir = join(f.root, "out"), path = "skills/leaf/SKILL.md";
-  const ref = { source: "demo", path, name: "leaf", action: "reference", owner, reason: "Read during review." };
+  const ref = { source: "demo", path, name: "leaf", action: "reference", owner };
   f.write(`vendor/demo/${path}`, f.skill("leaf"));
   f.write("registry/skills.json", [...f.skills, ref]);
   f.write("registry/chains.json", []);
@@ -138,8 +164,25 @@ test("a moved file's own path in plain prose is rebased, and SKILL.md stays a co
     "Run ../first/references/leaf/scripts/check, then ../first/references/leaf/scripts/check again. Every skill has a SKILL.md.\n");
 });
 
+for (const sample of [
+  "Keep scripts/ small. Most projects have a `scripts/` directory.\n",
+  "In the user's repo:\n\n```sh\necho hi > references/note.md\n```\n",
+  "Example evidence:\n\n```tsv\nphase\tevidence\nbaseline\tscripts/check\n```\n",
+]) {
+  test(`moving a reference preserves the consumer example: ${sample.split("\n")[0]}`, t => {
+    const f = referenceFixture(t);
+    f.write("vendor/demo/skills/leaf/scripts/check", "#!/bin/sh\n");
+    f.write("vendor/demo/skills/leaf/references/note.md", "Note.\n");
+    f.write("vendor/demo/skills/leaf/usage.md", sample);
+    f.build();
+    assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf/usage.md"), "utf8"), sample);
+  });
+}
+
 for (const [form, example, line, resource = "scripts/check"] of [
   ["fence", "```md\n[run](scripts/check)\n```", 3],
+  ["fenced invocation", "~~~sh\necho hi > scripts/check\nbash scripts/check --arg\n~~~", 4],
+  ["fenced copy of own script", "```sh\ncp scripts/check \"$workdir/\"\n```", 3],
   ["HTML attribute", '<a href="./scripts/check">run</a>', 2],
   ["untranslated flag", "Run --file=scripts/check.", 2],
   ["directory href", '<a href="scripts/">scripts</a>', 2, "scripts/"],
@@ -179,11 +222,26 @@ test("the command lint distinguishes dropped commands from resource paths and UR
   const f = referenceFixture(t), path = "skills/retired/SKILL.md";
   f.write("vendor/demo/" + path, f.skill("retired"));
   f.write("registry/skills.json", [...f.skills, f.ref, { source: "demo", path, action: "drop", reason: "Retired." }]);
-  f.write("extra/agents/read.md", "See https://example.test/retired and [app route](/leaf).\n");
+  f.write("extra/agents/read.md", "See https://example.test/retired and [app route](/leaf). GET /leaf HTTP/1.1; cd /retired.\n");
   f.build();
   rmSync(f.outDir, { recursive: true }); // Each generation starts in fresh staging.
   f.write("extra/agents/read.md", "Run /retired.\n");
   assert.throws(f.build, /read.md:1: removed skill command \/retired/);
+});
+
+test("untranslated fenced and indented invocations fail at the installed file and line", t => {
+  const f = fixture(t);
+  f.write("registry/chains.json", []);
+  const examples = [
+    "GET /first HTTP/1.1", "cd /first", '[endpoint](/first)', '<a href="/first">path</a>',
+    "/first the topic", "Then invoke **/first**.",
+  ];
+  f.write("extra/agents/examples.md", ["# Prompts", "", "~~~~md", ...examples, "~~~~", "", "    Run `/first` next.", ""].join("\n"));
+  assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), error => {
+    const hits = error.message.split("\n").filter(line => line.includes("untranslated fenced command"));
+    assert.deepEqual(hits, [8, 9, 12].map(line => `agents/examples.md:${line}: untranslated fenced command /first`));
+    return true;
+  });
 });
 
 test("a reference cannot own another reference", t => {
@@ -296,6 +354,16 @@ test("registry reads resolved YAML aliases and edits invocation at its use site"
   f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
   generate({ packageDir: f.root, outDir });
   assert.equal(readFileSync(join(outDir, path), "utf8"), source);
+});
+
+test("adding an invocation flag does not overlap removal of an indented first field", t => {
+  const f = fixture(t), path = "skills/first/SKILL.md";
+  f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
+  f.write("registry/chains.json", []);
+  f.write(`vendor/demo/${path}`, "---\n  icon: crown\n  name: first\n  description: First.\n---\n");
+  const outDir = join(f.root, "out");
+  generate({ packageDir: f.root, outDir });
+  assert.equal(readFileSync(join(outDir, path), "utf8"), "---\n  disable-model-invocation: true\n  name: first\n  description: First.\n---\n");
 });
 
 for (const invocation of ["model", "user"]) {
@@ -417,10 +485,12 @@ test("generation uses registry drops, renamed directories, and invocation", t =>
   ]);
   f.write("registry/routes.json", []);
   f.write("registry/chains.json", []);
-  f.write("rules/tokens.json", [{ id: "rename", min: 1, find: "name: first", replace: "name: renamed", files: "^skills/renamed/SKILL.md$" }]);
+  const body = "\n```yaml\nname: first\nicon: crown\npaths: [src/**]\n```\n";
+  const kept = "# retained comment\ndescription: >-\n  A fixture\n  skill.\n";
+  f.write("vendor/demo/skills/first/SKILL.md", `---\nname: first # local label\nicon: crown\npaths:\n  - src/**\n${kept}---\n${body}`);
   const outDir = join(f.root, "out");
   generate({ packageDir: f.root, outDir });
-  assert.match(readFileSync(join(outDir, "skills/renamed/SKILL.md"), "utf8"), /disable-model-invocation: true/);
+  assert.equal(readFileSync(join(outDir, "skills/renamed/SKILL.md"), "utf8"), `---\ndisable-model-invocation: true\nname: renamed # local label\n${kept}---\n${body}`);
   assert.equal(existsSync(join(outDir, "skills/first")), false);
   assert.equal(existsSync(join(outDir, "skills/dropped")), false);
 });
@@ -436,7 +506,10 @@ test("generation refuses an unclassified upstream skill before writing", t => {
 test("pstack regression-test and Pocock tdd keep their distinct procedures", () => {
   const read = path => readFileSync(new URL(`../skills/${path}`, import.meta.url), "utf8");
   assert.doesNotMatch(read("tdd/references/regression-test.md"), /^---/);
-  assert.match(read("tdd/references/regression-test.md"), /^# TDD Bug Fix/);
+  const [title, opening] = read("tdd/references/regression-test.md").split("\n\n");
+  assert.equal(title, "# TDD Bug Fix");
+  assert.match(opening, /^[^.]*fail[^.]*fix[^.]*pass[^.]*\. Use only when/i);
+  assert.match(opening, /explicitly asks for TDD.*OR when the bug has an obvious cheap local test target\. Skip when/);
   assert.match(read("tdd/SKILL.md"), /confirm.*user|confirmed seam/i);
   for (const path of ["poteto-help/SKILL.md", "poteto-help/references/recipes.md", "poteto-mode/playbooks/bug-fix.md"]) {
     assert.match(read(path), /regression-test/);
@@ -495,6 +568,22 @@ test("registry check reports emitted, dropped, and zero unclassified skills", t 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), "1 emitted, 0 references, 0 dropped, 0 unclassified");
 });
+
+for (const decision of [
+  { action: "emit", name: "second", invocation: "user" },
+  { action: "drop" },
+  { action: "reference", name: "renamed", owner: "first" },
+  { action: "reference", name: "second", owner: "first", reason: " " },
+]) {
+  test(`registry rejects an unexplained ${decision.action} decision (${decision.name ?? "drop"})`, t => {
+    const f = fixture(t), path = "skills/second/SKILL.md";
+    f.write(`vendor/demo/${path}`, f.skill("second"));
+    f.write("registry/skills.json", [...f.skills, { source: "demo", path, ...decision }]);
+    const result = f.run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /demo\/skills\/second\/SKILL\.md needs a reason/);
+  });
+}
 
 for (const [name, mutate, diagnostic] of [
   ["unclassified skill", f => f.write("vendor/demo/skills/unclassified/SKILL.md", f.skill("unclassified")), /unclassified.*skills\/unclassified\/SKILL.md/i],

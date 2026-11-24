@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { RegistryStore } from "../extensions/subagents/src/registry.js";
 import { JsonlDecoder } from "../extensions/subagents/src/rpc.js";
 import { tempRoot } from "./support/temp-root.js";
 const cli = fileURLToPath(new URL("./bundle/cli.js", import.meta.resolve("@earendil-works/pi-coding-agent")));
@@ -43,8 +44,7 @@ for (const mode of ["read", "collect", "default", "unread", "halt", "kill"]) {
       if (mode === "halt" || mode === "kill") {
         const parentId = readdirSync(join(agentDir, "subagents"))[0];
         const registryPath = join(agentDir, "subagents", parentId, "registry.json");
-        const before = JSON.parse(readFileSync(registryPath, "utf8"));
-        const worker = before.agents[0];
+        const worker = new RegistryStore(registryPath).load()!.agents[0];
         child.stdin.write(JSON.stringify({ type: "prompt", message: `/subagents ${mode} ${worker.id}` }) + "\n");
         if (mode === "kill") {
           await waitFor(() => events.some(e => e.type === "extension_ui_request" && e.method === "confirm"));
@@ -52,10 +52,10 @@ for (const mode of ["read", "collect", "default", "unread", "halt", "kill"]) {
           child.stdin.write(JSON.stringify({ type: "extension_ui_response", id: confirmation.id, confirmed: true }) + "\n");
         }
         await waitFor(() => hasText("REPORT RECEIVED"));
-        await waitFor(() => JSON.parse(readFileSync(registryPath, "utf8")).agents[0].hold?.outcome === "confirmed");
-        const after = JSON.parse(readFileSync(registryPath, "utf8"));
-        assert.equal(after.agents[0].hold.kind, mode);
-        assert.equal(after.agents[0].hold.outcome, "confirmed");
+        await waitFor(() => new RegistryStore(registryPath).load()!.agents[0].hold?.outcome === "confirmed");
+        const after = new RegistryStore(registryPath).load()!;
+        assert.equal(after.agents[0].hold?.kind, mode);
+        assert.equal(after.agents[0].hold?.outcome, "confirmed");
         assert.equal(after.agents[0].status, mode === "kill" ? "stopped" : "idle");
       } else if (mode === "unread") await waitFor(() => hasText("REPORT RECEIVED"));
       await new Promise(resolve => setTimeout(resolve, 350));
@@ -67,10 +67,10 @@ for (const mode of ["read", "collect", "default", "unread", "halt", "kill"]) {
       if (mode === "halt" || mode === "kill") assert.match(reports[0].message.content, /HUMAN SUPERVISION/);
       assert.equal(events.filter(e => e.type === "extension_error").length, 0, stderr);
       const parentId = readdirSync(join(agentDir, "subagents"))[0];
-      const registry = JSON.parse(readFileSync(join(agentDir, "subagents", parentId, "registry.json"), "utf8"));
+      const registry = new RegistryStore(join(agentDir, "subagents", parentId, "registry.json")).load()!;
       assert.deepEqual(registry.pendingNotices, []);
       assert.deepEqual(registry.agents[0].config.coordination, { owns: [join(root, "src")], outputs: [join(root, "report.md")] });
-      if (mode === "collect" || mode === "default") assert.equal(registry.agents[0].resultReview.status, "reviewed");
+      if (mode === "collect" || mode === "default") assert.equal(registry.agents[0].resultReview?.status, "reviewed");
     } finally {
       child.kill("SIGTERM");
       const kill = setTimeout(() => child.kill("SIGKILL"), 4000);

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Append a well-formed row to a show-me-your-work decision log (TSV).
-# Usage: log.sh <logfile> <phase> <decision> <why> <evidence> <result>
+# Usage: log.sh <logfile> <ts> <phase> <decision> <why> <evidence> <result>
 set -euo pipefail
 
-if [ "$#" -ne 6 ]; then
-	printf 'usage: log.sh <logfile> <phase> <decision> <why> <evidence> <result>\n' >&2
+if [ "$#" -ne 7 ]; then
+	printf 'usage: log.sh <logfile> <ts> <phase> <decision> <why> <evidence> <result>\n' >&2
 	exit 1
 fi
 
@@ -22,7 +22,8 @@ if [ ! -s "$logfile" ]; then
 	printf 'ts\tphase\tdecision\twhy\tevidence\tresult\n' >> "$logfile"
 fi
 
-ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+ts="$1"
+shift
 # Strip tabs/newlines/CR so cells stay on one line, and prefix any cell
 # whose first char a spreadsheet would parse as a formula (=, +, -, @)
 # with a single quote. The skill expects this log to be read in
@@ -38,5 +39,5 @@ clean() {
 	esac
 }
 printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-	"$ts" "$(clean "$1")" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "$5")" \
+	"$(clean "$ts")" "$(clean "$1")" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "$5")" \
 	>> "$logfile"

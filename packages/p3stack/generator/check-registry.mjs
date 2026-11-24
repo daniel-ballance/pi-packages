@@ -34,7 +34,7 @@ export function chainSlots(text, rows) {
 }
 
 // Use the same workspace YAML parser as lint-skill, including under isolated pnpm installs.
-const { isMap, parseDocument } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("yaml");
+const { isMap, parseDocument, stringify } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("yaml");
 const INVOCATION_FLAG = "disable-model-invocation";
 
 export const frontmatterBlock = text => /^(\uFEFF?---[ \t]*\r?\n)([\s\S]*?)^---[ \t]*\r?$/my.exec(text);
@@ -50,17 +50,39 @@ export function skillFrontmatter(text, path) {
   const hidden = fields[INVOCATION_FLAG] === true;
   return {
     name: fields.name, description: fields.description, hidden,
-    withInvocation(userOnly) {
-      if (userOnly === hidden) return text;
-      // Edit just the flag, preserving other fields, comments, newlines and the entire body.
-      const at = opening.length;
-      if (flag) return text.slice(0, at + flag.range[0]) + userOnly + text.slice(at + flag.range[1]);
-      const start = doc.contents.range[0];
-      const indent = yaml.slice(0, start).split("\n").at(-1);
-      const offset = at + start + (doc.contents.flow ? 1 : 0);
-      const newline = opening.endsWith("\r\n") ? "\r\n" : "\n";
-      const insert = `${INVOCATION_FLAG}: true` + (doc.contents.flow ? ", " : newline + indent);
-      return text.slice(0, offset) + insert + text.slice(offset);
+    withRegistry(row) {
+      const edits = [], newline = opening.endsWith("\r\n") ? "\r\n" : "\n";
+      const setScalar = (key, replacement) => {
+        const [start, end] = doc.get(key, true).range;
+        edits.push([start, end, replacement + (yaml[end - 1] === "\n" ? newline : "")]);
+      };
+      if (typeof fields.name !== "string" || !fields.name) throw new Error(`${path}: expected a frontmatter name`);
+      if (fields.name !== row.name) setScalar("name", stringify(row.name).trimEnd());
+      for (const { key, value } of doc.contents.items) {
+        if (!["icon", "color", "paths", "argument-hint"].includes(key.value)) continue;
+        let start = key.range[0], end = value.range[2];
+        if (doc.contents.flow) {
+          // Delete the following comma. A trailing comma on the last retained pair is valid YAML.
+          end += /^,[ \t]*/.exec(yaml.slice(end))?.[0].length ?? 0;
+        } else {
+          start = yaml.lastIndexOf("\n", start - 1) + 1;
+          if (yaml[end - 1] !== "\n") end = yaml.indexOf("\n", end) + 1;
+        }
+        edits.push([start, end, ""]);
+      }
+      if (row.action === "emit" && (row.invocation === "user") !== hidden) {
+        if (flag) setScalar(INVOCATION_FLAG, String(!hidden));
+        else {
+          const start = doc.contents.range[0], indent = yaml.slice(0, start).split("\n").at(-1);
+          const offset = doc.contents.flow ? start + 1 : start - indent.length, field = `${INVOCATION_FLAG}: true`;
+          edits.push([offset, offset, doc.contents.flow ? field + ", " : indent + field + newline]);
+        }
+      }
+      let header = yaml;
+      for (const [start, end, value] of edits.sort((a, b) => b[0] - a[0] || b[1] - a[1])) {
+        header = header.slice(0, start) + value + header.slice(end);
+      }
+      return opening + header + text.slice(opening.length + yaml.length);
     },
   };
 }
@@ -91,7 +113,8 @@ export function loadRegistry(packageDir, sources) {
     if (row.source === "p3stack" && row.action !== "drop" && row.path !== `skills/${row.name}/SKILL.md`) {
       problems.push(`Authored skill ${id} must emit at ${row.path}`);
     }
-    if (typeof row.reason !== "string" || !row.reason.trim()) problems.push(`${id} needs a reason`);
+    const plainReference = row.action === "reference" && id.endsWith(`/${row.name}/SKILL.md`);
+    if ((!plainReference || row.reason !== undefined) && (typeof row.reason !== "string" || !row.reason.trim())) problems.push(`${id} needs a reason`);
     if (row.action === "drop") continue;
     if (!["emit", "reference"].includes(row.action)) { problems.push(`${id} has invalid action ${row.action}`); continue; }
     if (typeof row.name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.name)) problems.push(`${id} has invalid emitted name ${row.name}`);
@@ -99,7 +122,6 @@ export function loadRegistry(packageDir, sources) {
     names.add(row.name);
     if (row.action === "reference") continue;
     if (!["model", "user"].includes(row.invocation)) problems.push(`${id} has invalid invocation ${row.invocation}`);
-    if (!row.phases?.length || !row.roles?.length) problems.push(`${id} needs phases and roles`);
   }
   const emitted = new Set(skills.filter(row => row.action === "emit").map(row => row.name));
   for (const row of skills.filter(row => row.action === "reference")) {

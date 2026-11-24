@@ -9,7 +9,7 @@ Each brief stands alone. Keep durable acceptance criteria in the tracker ticket.
 5. **Done:** give the command, expected result and surface to check.
 6. **Report:** specify the deliverable and return channel. Ask for status, base/head, test evidence, assumptions and unresolved concerns.
 
-The brief header shows the session grant. For a different grant, the parent writes `Task grant: <grant>` in each brief; that line sets the task grant, higher or lower. A child never raises its own grant. Operator gates hold under either grant; pause before irreversible actions.
+The brief header defaults to the session grant. For a different grant, the parent writes `Task grant: <grant>` per the host's Delegate instructions; that grant can be higher or lower. A child never raises its own grant. Operator gates hold under either grant; pause before irreversible actions.
 
 In a terminal the writer's header points to the agent recipe and this contract. Give a report-only child the artifact and contract, not an implementation assignment. Under T3 Code, inline what the child needs or cite the commit and repo-relative path. Give an absolute path only into the run store and only to a child on this machine; otherwise collect evidence in the task result.
 

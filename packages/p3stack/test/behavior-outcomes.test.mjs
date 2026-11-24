@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { enforcesThreshold } from "./behavior-eval/oracles/coverage.mjs";
 import { assess, grade, materialize, trace } from "./behavior-eval/run.mjs";
 
 const { cases } = JSON.parse(readFileSync(new URL("./behavior-eval/cases.json", import.meta.url)));
@@ -154,13 +156,26 @@ test("the review must identify the skipped empty-list test and preserve an alrea
   assert.equal(check("unchanged-tree"), false);
 });
 
+test("a reported skip must reproduce the empty-list failure, without changing the reviewed tree", t => {
+  const { check, project, put } = fixture(t, "floor-review");
+  const report = () => check("names-skipped-test", seen([], "sum.test.js skips the empty-list test for sumAll."));
+  assert.equal(report(), true);
+  assert.equal(check("unchanged-tree"), true, "the skip stays in the submitted suite");
+  const src = readFileSync(join(project, "src/sum.js"), "utf8");
+  put("src/sum.js", src.replace("values.reduce(sum)", "values.reduce(sum, 0)"));
+  assert.equal(report(), false, "enabling the skipped test no longer exposes a bug");
+  put("src/sum.js", "not valid JS!");
+  assert.equal(report(), false, "a load error is not the seeded failure");
+});
+
 const html = `<output id="state">requested</output>
   <button id="approve">Approve another 25 cents</button><button id="reject">Reject</button>
   <script>let remaining = 100;
   approve.onclick = () => { if (remaining > 0) state.value = (remaining -= 25) ? 'approved' : 'refunded'; };
   reject.onclick = () => { if (remaining > 0) { remaining = 0; state.value = 'rejected'; } };</script>`;
 test("prototype checks apply to one usable HTML document, not scattered markers or external assets", t => {
-  const { passes, put, project } = fixture(t, "prototype-logic");
+  const { check, put, project } = fixture(t, "prototype-logic");
+  const passes = () => check("self-contained-prototype-responds");
   const withSetter = html.replace("<script>", "<script>function setState(next) { state.value = next; } ")
     .replace("state.value = (remaining -= 25) ? 'approved' : 'refunded'", "setState((remaining -= 25) ? 'approved' : 'refunded')")
     .replace("state.value = 'rejected'", "setState('rejected')");
@@ -194,7 +209,8 @@ test("prototype checks apply to one usable HTML document, not scattered markers 
 
 const chromium = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].some(name => spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0);
 test("in a browser, the prototype check follows what clicks render, not how the script is written", { skip: !chromium && "no Chromium on PATH" }, t => {
-  const { passes, put } = fixture(t, "prototype-logic");
+  const { check, put } = fixture(t, "prototype-logic");
+  const passes = () => check("self-contained-prototype-responds");
   const highlight = `<ol><li id=requested class=on>Requested</li><li id=approved>Approved</li><li id=rejected>Rejected</li><li id=refunded>Refunded</li></ol>
     <button data-to=approved>Approve</button><button data-to=rejected>Reject</button><button data-to=refunded>Refund</button>
     <script>document.body.addEventListener("click", e => { const to = e.target.dataset.to; if (!to) return; for (const li of document.querySelectorAll("li")) li.className = li.id === to ? "on" : ""; });</script>`;
@@ -205,6 +221,56 @@ test("in a browser, the prototype check follows what clicks render, not how the 
     ["an uncaught error while the page loads", html + "<script>undefined.toFixed(2);</script>"],
     ["a page that never shows a refunded order", html.replace("'refunded'", "'approved'")],
   ]) {
+    put("a.html", broken);
+    assert.equal(passes(), false, why);
+  }
+});
+
+test("refund arithmetic measures Refunded and Refundable labels", { skip: !chromium && "no Chromium on PATH" }, t => {
+  const { check, put } = fixture(t, "prototype-logic");
+  const page = readFileSync(new URL("./fixtures/refund/real1.html", import.meta.url), "utf8");
+  for (const labels of [page, page.replace("Refundable:", "Left:"), page.replace("Refunded:", "Paid:")]) {
+    put("a.html", labels);
+    assert.equal(check("successive-refund-balance"), true);
+  }
+});
+
+test("a click-through failure is not an arithmetic measurement", { skip: !chromium && "no Chromium on PATH" }, t => {
+  const { check, put } = fixture(t, "prototype-logic");
+  put("a.html", html + '<script src="missing.js"></script>');
+  assert.equal(check("self-contained-prototype-responds"), false);
+  assert.equal(check("successive-refund-balance"), null);
+});
+
+for (const name of ["form", "loop"]) {
+  test(`refund arithmetic grades the ${name} page as broken, not a missing browser`, { skip: !chromium && "no Chromium on PATH" }, t => {
+    const { check, put } = fixture(t, "prototype-logic");
+    put("a.html", readFileSync(new URL(`./fixtures/refund/${name}.html`, import.meta.url)));
+    assert.equal(check("successive-refund-balance"), false);
+  });
+}
+
+test("a click-through that miscounts successive partial refunds does not solve the task", { skip: !chromium && "no Chromium on PATH" }, t => {
+  const { check, put } = fixture(t, "prototype-logic");
+  const passes = () => check("successive-refund-balance");
+  const page = `<h1>Order total $100</h1><p>Remaining: $<span id="balance">100</span></p>
+    <output id="state">requested</output><input type="number" id="amount" value="25">
+    <button id="approve">Approve</button><button id="reject">Reject</button>
+    <script>let left = 100;
+    approve.onclick = () => { const n = Number(amount.value); if (n <= 0 || n > left) return;
+      left -= n; balance.textContent = left; state.value = left ? 'approved' : 'refunded'; };
+    reject.onclick = () => { state.value = 'rejected'; };</script>`;
+  for (const good of [page, page.replace('<input type="number" id="amount" value="25">', "")
+    .replace(">Approve</button>", ">Approve $25</button>").replace("Number(amount.value)", "25")]) {
+    put("a.html", good);
+    assert.equal(passes(), true);
+  }
+  for (const [why, broken] of [["debits twice", page.replace("left -= n", "left -= 2*n")],
+    ["resets after each partial", page.replace("left -= n", "left = 100-n")],
+    ["allows spending after exhaustion", page.replace(" || n > left", "")],
+    ["refunds less than the order total", page.replace("total $100", "total $120")],
+    ["hides overpayments behind a zero balance", page.replace("<output", "<p>Total refunded: $<span id=paid>0</span></p><output")
+      .replace(" || n > left", "").replace("left -= n", "paid.textContent = Number(paid.textContent) + n; left = Math.max(0, left - n)")]]) {
     put("a.html", broken);
     assert.equal(passes(), false, why);
   }
@@ -236,7 +302,28 @@ test("a codemode fetch needs a successful nested query receipt, not just matchin
   assert.equal(didFetch([]), false);
 });
 
-test("the effective Vitest line threshold must be numeric 80 in the exported config", t => {
+test("offline coverage controls exercise 81 then 79 arms and recognize the Vitest 3.2.4 line diagnostic", t => {
+  const { project } = fixture(t, "source-grounding");
+  const recorded = readFileSync(new URL("./fixtures/vitest-3.2.4-below.txt", import.meta.url), "utf8");
+  const range = n => Array.from({ length: n }, (_, i) => i);
+  for (const [stderr, expected] of [[recorded, true], [recorded.replace("for lines", "for branches"), false],
+    [recorded.replace("(80%)", "(70%)"), false]]) {
+    const samples = [];
+    const enforced = enforcesThreshold(project, project, copy => {
+      const source = readFileSync(join(copy, "src/mean.ts"), "utf8");
+      assert.deepEqual([...source.matchAll(/^case (\d+): return \1;$/gm)].map(m => Number(m[1])), range(100));
+      const sample = readFileSync(join(copy, "test/mean.test.ts"), "utf8").replace(/^import .*$/gm, "");
+      const calls = [];
+      runInNewContext(sample, { test: (_, run) => run(), expect: n => ({ toBe: m => assert.equal(n, m) }), mean: n => (calls.push(n), n) });
+      samples.push(calls);
+      return { status: samples.length === 1 ? 0 : 1, stdout: "", stderr: samples.length === 1 ? "" : stderr };
+    });
+    assert.deepEqual(samples, [range(81), range(79)]);
+    assert.equal(enforced, expected);
+  }
+});
+
+test("the project's test command enforces 80% line coverage on passing tests", { skip: !process.env.P3STACK_EVAL_VITEST_DIR && "provision the pinned Vitest to run the coverage controls" }, t => {
   const { passes, put } = fixture(t, "source-grounding");
   const grounded = seen([call], "Vitest 3.2: https://v3.vitest.dev/config/coverage");
   const config = expr => `import { defineConfig } from 'vitest/config';\nconst target: number = 8 * 10;\nexport default defineConfig(${expr});`;
@@ -244,6 +331,9 @@ test("the effective Vitest line threshold must be numeric 80 in the exported con
     put("vitest.config.ts", config(expr));
     assert.equal(passes(grounded), true);
   }
+  put("vitest.config.ts", config("{test:{coverage:{exclude:['**/*'],thresholds:{lines:target}}}}"));
+  assert.equal(passes(grounded), false, "80 in the effective config does not enforce coverage of an excluded module");
+  put("vitest.config.ts", config("{test:{coverage:{thresholds:{lines:target}}}}"));
   const manifest = JSON.parse(readFileSync(new URL("./behavior-eval/fixtures/source-grounding/base/package.json", import.meta.url)));
   put("package.json", JSON.stringify({ ...manifest, scripts: { test: "echo 'vitest run --coverage'" } }));
   assert.equal(passes(grounded), false, "the configured coverage run is still the project test command");

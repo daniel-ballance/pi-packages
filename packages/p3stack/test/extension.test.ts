@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
-import { ExtensionRunner, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { ExtensionRunner, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionToolContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import p3stack from "../extensions/p3stack/index.ts";
-import type { Context } from "../extensions/p3stack/src/mode.ts";
 import { candidates, DEFAULT_ROLES, family, thinkingFor } from "../extensions/p3stack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
@@ -17,7 +15,7 @@ const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", me
 
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
 type LoadedCommand = { name: string; source: string; sourceInfo: { path: string } };
-function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[], commands: loadedCommands = [] as LoadedCommand[], factory = p3stack } = {}) {
+function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as Awaited<ReturnType<ExtensionToolContext["executeTool"]>>["result"]["structuredContent"], parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[], commands: loadedCommands = [] as LoadedCommand[], factory = p3stack } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-ext-"))), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
@@ -35,7 +33,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   };
   const ctx = {
     cwd, hasUI, mode, model: parent, isProjectTrusted: () => trusted,
-    executeTool: async (name: string, args: unknown): ReturnType<Context["executeTool"]> => {
+    executeTool: async (name: string, args: unknown): ReturnType<ExtensionToolContext["executeTool"]> => {
       assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
       assert.deepEqual(args, {});
       return {
@@ -57,7 +55,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
     appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
     getCommands: () => loadedCommands,
     getAllTools: () => [...tools.values(), ...extraTools, ...subagents ? [{ name: "subagent_catalog" }] : [], ...t3 ? [{ name: "mcp__t3-code__orchestrator_capabilities" }] : []],
-    events: { emit: (channel: string, data: { reply(value: unknown): void }) => { if (channel === "subagents:catalog" && subagents && subagents !== "old") data.reply(subagents); } },
+    events: { on: () => () => {}, emit: (channel: string, data: { reply(value: unknown): void }) => { if (channel === "subagents:catalog" && subagents && subagents !== "old") data.reply(subagents); } },
   } as never);
   const emit = async (name: string, event: any = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); return event; };
   const reminders = async (event: any) => { const out = []; for (const handler of handlers.get("before_agent_start") ?? []) { const result = await handler(event, ctx); if (result?.message) out.push(result.message); } return out; };
@@ -394,12 +392,13 @@ for (const host of ["terminal", "t3"] as const) {
       const foreign = { toolName: delegation[host === "terminal" ? "t3" : "terminal"], input: { task } };
       await h.emit("tool_call", foreign);
       assert.equal(foreign.input.task, task);
-      await h.emit("tool_call", local);
-      assert.match(local.input.task, /Grant: default\./);
+      const [blocked] = await h.results("tool_call", local);
+      if (host === "terminal") assert.match(local.input.task, /Grant: default\./);
+      else { assert.equal(blocked.block, true); assert.equal(local.input.task, task); }
     } finally { h.dispose(); }
   });
 
-  test(`${host} replaces only a leading brief header and uses the current grant`, async () => {
+  if (host === "terminal") test(`${host} replaces only a leading brief header and uses the current grant`, async () => {
     const h = hostHarness(host);
     const task = `\nUpdate the example citing ${join(import.meta.dirname, "../agents/poteto-agent.md")}.\n\nKeep this spacing.\n`;
     const event = { toolName: delegation[host], input: { task } };
@@ -427,14 +426,14 @@ for (const host of ["terminal", "t3"] as const) {
     } finally { h.dispose(); }
   });
 
-  test(`${host} sends the full stance at the limit and blocks with the exact excess above it`, async () => {
+  if (host === "terminal") test(`${host} sends the full stance at the limit and blocks with the exact excess above it`, async () => {
     const h = hostHarness(host);
-    const limit = host === "terminal" ? 30_000 : 120_000;
+    const limit = 30_000;
     try {
       await h.command("p3stack", "on autonomous");
       for (const role of ["implementation", "review"]) {
-        const assignment = host === "t3" ? { role } : { tools: [role === "review" ? "read" : "edit"] };
-        const event = (task: string) => ({ toolName: delegation[host], input: { ...assignment, task } });
+        const assignment = { tools: [role === "review" ? "read" : "edit"] };
+        const event = (task: string) => ({ toolName: delegation.terminal, input: { ...assignment, task } });
         const sample = event("Do it.");
         await h.emit("tool_call", sample);
         const header = sample.input.task.slice(0, -"Do it.".length);
@@ -609,14 +608,78 @@ test("terminal briefs keep the local writer contract or report-only review stanc
   } finally { h.dispose(); }
 });
 
+test("T3 dispatch never changes the task after supervised approval, including inside codemode", async () => {
+  const h = hostHarness("t3", { t3: { providers: [] } });
+  try {
+    await h.command("p3stack", "on autonomous");
+    const event = { type: "tool_call", toolName: delegation.t3, toolCallId: "cm/1", parentToolCallId: "cm",
+      input: { role: "review", task: "Task grant: default\nInspect the importer; send findings only." } };
+    async function dispatch() {
+      const approved = structuredClone(event.input); // The bridge's tool_call handler runs first.
+      const blocked = (await h.results("tool_call", event)).find(result => result.block);
+      if (blocked) return false;
+      assert.deepEqual(event.input, approved, "the bridge must transport exactly what it approved");
+      return true;
+    }
+    assert.equal(await dispatch(), false, "decline an unprepared task instead of rewriting it");
+    const { briefHeaders } = (await h.call("p3stack_roles", {})).structuredContent;
+    event.input.task = briefHeaders.report.replace("Grant: full-autonomy.", "Task grant: default") + "\n\nInspect the importer; send findings only.";
+    assert.equal(await dispatch(), true);
+    assert.doesNotMatch(event.input.task, /full-autonomy/);
+    assert.match(event.input.task, /Task grant: default\b/);
+    event.input.task = briefHeaders.report + "\n\nTask grant: default\nInspect the importer.";
+    assert.equal(await dispatch(), false, "two grant lines cannot reach the child");
+    await h.command("p3stack", "grant default");
+    event.input.task = briefHeaders.report + "\n\nInspect the importer.";
+    assert.equal(await dispatch(), false, "a saved session grant goes stale");
+    event.input.task = event.input.task.replace("Grant: full-autonomy.", "Task grant: full-autonomy");
+    assert.equal(await dispatch(), true, "an explicit task-only raise travels alone");
+  } finally { h.dispose(); }
+});
+
+test("supervised T3 calls beyond the approval preview put task last and send the brief whole", async t => {
+  const prev = process.env.T3_PI_RUNTIME_MODE;
+  t.after(() => { if (prev === undefined) delete process.env.T3_PI_RUNTIME_MODE; else process.env.T3_PI_RUNTIME_MODE = prev; });
+  const h = hostHarness("t3", { t3: { providers: [] } });
+  try {
+    await h.command("p3stack", "on");
+    const { work } = (await h.call("p3stack_roles", {})).structuredContent.briefHeaders;
+    const dispatch = (input: object) => h.results("tool_call", { toolName: delegation.t3, input });
+    const args = { role: "implementation", isolation: "worktree", target: { model: "example" } };
+    const base = work + "\n\nInspect the importer.";
+    const fits = { task: base + "x".repeat(4000 - JSON.stringify({ task: base, ...args }, null, 2).length), ...args };
+    const task = fits.task + "x";
+    for (const mode of ["auto", "approval-required", "auto-accept-edits"]) {
+      process.env.T3_PI_RUNTIME_MODE = mode;
+      assert.deepEqual(await dispatch(fits), [], "at 4,000 characters the whole call is visible");
+      const [blocked] = await dispatch({ task, ...args });
+      assert.equal(blocked?.block, true, mode);
+      assert.match(blocked.reason, /put task last/i);
+      const ordered = { ...args, task: task + "y".repeat(5000) };
+      const sent = structuredClone(ordered);
+      assert.deepEqual(await dispatch(ordered), [], mode);
+      assert.deepEqual(ordered, sent);
+    }
+    process.env.T3_PI_RUNTIME_MODE = "full-access";
+    assert.deepEqual(await dispatch({ task, ...args }), []);
+  } finally { h.dispose(); }
+});
+
 test("T3 briefs are self-contained for every role", async () => {
   const h = hostHarness("t3");
   try {
     await h.command("p3stack", "on autonomous");
+    const { briefHeaders: headers } = (await h.call("p3stack_roles", {})).structuredContent;
     for (const role of ["research", "review", "implementation", "design", "test", "general", undefined]) {
-      const task = (await h.emit("tool_call", { toolName: delegation.t3, input: { role, task: "Inspect the change." } })).input.task;
+      const prefix = headers[role === "review" || role === "research" ? "report" : "work"] + "\n\n";
+      const task = prefix + "Inspect the change.";
+      const dispatch = (task: string) => h.results("tool_call", { toolName: delegation.t3, input: { role, task } });
+      assert.deepEqual(await dispatch(task), []);
+      const limit = prefix + "x".repeat(120_000 - prefix.length);
+      assert.deepEqual(await dispatch(limit), []);
+      assert.match((await dispatch(limit + "x"))[0].reason, /shorten .* by 1 character/i);
       assert.match(task, /Grant: full-autonomy\./);
-      assert.match(task, /Task grant:[^\n]*line[^\n]*sets the grant for this task/i);
+      assert.doesNotMatch(task, /Task grant:/);
       assert.doesNotMatch(task, /poteto|SKILL\.md|\.md\b|read-only|\/[^< ]+\//);
       if (role === "research" || role === "review") {
         assert.match(task, /report-only/i);
@@ -645,16 +708,13 @@ test("doctor is neither advertised nor run in a terminal", async () => {
   } finally { h.dispose(); }
 });
 
-test("doctor records all T3 exposures and bridge provenance, not launch argument order", async () => {
+test("doctor records the T3 inventory without an installed bridge fingerprint", async () => {
   const h = hostHarness("t3", { extraTools: [
     { name: "mcp__t3-code__delegate_task", exposure: "direct" },
     { name: "mcp__t3-code__hidden", exposure: "hidden" },
     { name: "mcp__other__tool", exposure: "codemode" },
   ] });
-  const previous = process.env.T3_PI_MCP_EXTENSION_PATH;
-  const bridge = join(h.root, "bridge.ts"), file = join(h.agentDir, "p3stack", "t3-contract.json");
-  writeFileSync(bridge, "bridge content\n");
-  process.env.T3_PI_MCP_EXTENSION_PATH = bridge;
+  const file = join(h.agentDir, "p3stack", "t3-contract.json");
   try {
     assert.match(h.commands.get("p3stack").description, /doctor/);
     await h.command("p3stack", "doctor extra");
@@ -663,19 +723,9 @@ test("doctor records all T3 exposures and bridge provenance, not launch argument
     await h.command("p3stack", "doctor");
     const report = JSON.parse(readFileSync(file, "utf8"));
     assert.deepEqual(report.tools, [{ name: "mcp__t3-code__delegate_task", exposure: "direct" }, { name: "mcp__t3-code__hidden", exposure: "hidden" }]);
-    assert.deepEqual(report.extension, { path: bridge, sha256: createHash("sha256").update("bridge content\n").digest("hex") });
     assert.equal("claudeSubscriptionBeforeBridge" in report, false);
     assert.deepEqual(report.problems, [], "claude-subscription is optional");
-
-    delete process.env.T3_PI_MCP_EXTENSION_PATH;
-    await h.command("p3stack", "doctor");
-    const missing = JSON.parse(readFileSync(file, "utf8"));
-    assert.equal(missing.extension.sha256, null);
-    assert.match(missing.problems.join("\n"), /T3_PI_MCP_EXTENSION_PATH is not set/);
-  } finally {
-    if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
-    h.dispose();
-  }
+  } finally { h.dispose(); }
 });
 
 

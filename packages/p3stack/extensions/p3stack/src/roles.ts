@@ -1,26 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { detectHost } from "./host.ts";
-import type { Context, Pi } from "./mode.ts";
+import { BUDGETS, JUDGMENT_ROLES, PANEL_ROLES, rolesFor, type Budget, type RoleValue } from "./role-definitions.ts";
+export { BUDGETS, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, type Budget, type RoleValue } from "./role-definitions.ts";
 
-export type RoleValue = string | string[];
-const CODE = "grok-4.7-xhigh-fast", JUDGMENT = "claude-opus-5-5-xhigh";
-export const CODE_ROLES = ["feature, refactoring", "bug-fix", "perf-issue", "hillclimb", "how explorer", "why investigators", "reflect tooling", "swarm workers"];
-export const JUDGMENT_ROLES = ["judgment and prose", "hardest tasks", "how explainer", "why synthesizer", "reflect judgment, divergent, synthesizer"];
-export const PANEL_ROLES = ["arena runners", "arena cross-judge pool", "architect runners", "interrogate reviewers"];
-export const DEFAULT_ROLES: Record<string, RoleValue> = Object.fromEntries([
-  ...CODE_ROLES.map(role => [role, CODE]), ...JUDGMENT_ROLES.map(role => [role, JUDGMENT]), ...PANEL_ROLES.map(role => [role, [JUDGMENT, CODE]]),
-]);
-
-export const BUDGETS = [
-  { label: "unlimited, max thinking", name: "unlimited", level: "max" },
-  { label: "large, xhigh thinking", name: "large", level: "xhigh" },
-  { label: "medium, high thinking", name: "medium", level: "high" },
-  { label: "small, medium thinking", name: "small", level: "medium" },
-] as const;
-export type Budget = typeof BUDGETS[number]["name"];
+export const DEFAULT_ROLES = rolesFor("grok-4.7-xhigh-fast", "claude-opus-5-5-xhigh");
 
 export interface ModelInfo { provider: string; id: string; reasoning?: boolean; thinkingLevelMap?: Record<string, string | null | undefined> }
 const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
@@ -100,7 +86,7 @@ export function resolveRoles(cwd: string, projectTrusted: boolean): Resolved {
   return { source: "default hints", roles, problems: skipped };
 }
 
-export interface Target {
+export type Target = {
   providerInstanceId: string;
   model: string;
   options?: { id: string; value: string }[];
@@ -125,7 +111,7 @@ interface RoleContext {
   isProjectTrusted(): boolean;
   modelRegistry: { getAvailable(): ModelInfo[] };
   model?: { provider: string; id: string };
-  executeTool(name: string, args: Record<string, unknown>, options?: { signal?: AbortSignal }): ReturnType<Context["executeTool"]>;
+  executeTool: ExtensionToolContext["executeTool"];
 }
 
 function terminalCatalog(pi: CatalogApi): Catalog | undefined {
@@ -320,6 +306,7 @@ function choose(hint: string, catalog: LiveCatalog, author?: string, panelFamili
 
 export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?: string, signal?: AbortSignal) {
   const defaults = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
+  const source = { source: defaults.source, ...(defaults.budget !== undefined && { budget: defaults.budget }) };
   const roles: Record<string, string | Target | null | (string | Target | null)[]> = {};
   const problems = [...defaults.problems];
   let catalog: LiveCatalog;
@@ -328,9 +315,9 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
   try { catalog = await selections(pi, ctx, defaults.roles, policy, author, signal); }
   catch (error) {
     t3Catalogs.delete(pi);
-    const source = detectHost() === "t3" ? "T3 catalog" : "catalog";
-    problems.push(`${source} unavailable (${(error as Error).message}). Blocked roles: ${Object.keys(defaults.roles).join("; ")}.`);
-    return { source: defaults.source, budget: defaults.budget, roles, problems };
+    const catalogName = detectHost() === "t3" ? "T3 catalog" : "catalog";
+    problems.push(`${catalogName} unavailable (${(error as Error).message}). Blocked roles: ${Object.keys(defaults.roles).join("; ")}.`);
+    return { ...source, roles, problems };
   }
   const parent = catalog.instances ? catalog.inherited : catalog.choices.find(s =>
     s.provider === ctx.model?.provider && s.model === ctx.model.id && s.level === pi.getThinkingLevel());
@@ -371,16 +358,18 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
     if (seats.length) roles[role] = Array.isArray(value) ? seats : seats[0];
   }
   for (const [message, affected] of notes) problems.push(`${[...affected].join("; ")}: ${message}`);
-  return { source: defaults.source, budget: defaults.budget, roles, problems };
+  return { ...source, roles, problems };
 }
 
 const targetSchema = Type.Object({ providerInstanceId: Type.String(), model: Type.String(), options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), value: Type.String() }))) });
 const selectionSchema = Type.Union([Type.String(), targetSchema, Type.Null()]);
 
-export function registerRoles(pi: Pi) {
+export function registerRoles(pi: ExtensionAPI, briefHeaders?: () => { work: string; report: string } | undefined) {
   if (detectHost() === "t3") {
     const clear = () => { t3Catalogs.delete(pi); };
-    for (const event of ["session_start", "session_tree", "model_select"]) pi.on(event, clear);
+    pi.on("session_start", clear);
+    pi.on("session_tree", clear);
+    pi.on("model_select", clear);
     pi.on("tool_result", event => {
       if (event.toolName === CAPABILITIES && !Object.keys(record(event.input)).length) {
         try { t3Catalogs.set(pi, parseCatalog(event)); } catch { clear(); }
@@ -393,12 +382,15 @@ export function registerRoles(pi: Pi) {
     promptSnippet: "p3stack_roles resolves role models against the live delegation catalog.",
     parameters: Type.Object({ distinctFrom: Type.Optional(Type.String({ description: "The author's model or model family. Reviewers, judges, and adversaries pass it so each role resolves to a different family when the catalog offers one." })) }, { additionalProperties: false }),
     reachesTools: () => detectHost() === "t3" ? [CAPABILITIES] : [],
-    outputSchema: Type.Object({ source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), problems: Type.Array(Type.String()) }),
-    async execute(_call: string, args: { distinctFrom?: string } | undefined, signal: AbortSignal | undefined, _update: unknown, ctx: Context) {
+    outputSchema: Type.Object({ ...(briefHeaders && { briefHeaders: Type.Optional(Type.Object({ work: Type.String(), report: Type.String() })) }), source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), problems: Type.Array(Type.String()) }),
+    async execute(_call, args, signal, _update, ctx) {
       const resolved = await liveRoles(pi, ctx, args?.distinctFrom?.trim() || undefined, signal);
       const lines = Object.entries(resolved.roles).map(([role, value]) => `${role}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
       const head = `Role defaults from ${resolved.source}${resolved.budget ? ` (budget ${resolved.budget})` : ""}.`;
-      return { content: [{ type: "text", text: [head, ...resolved.problems, ...lines].join("\n") }], details: resolved, structuredContent: resolved };
+      const headers = briefHeaders?.();
+      const result = { ...resolved, ...(headers && { briefHeaders: headers }) };
+      if (headers) lines.push(`briefHeaders: ${JSON.stringify(headers)}`);
+      return { content: [{ type: "text", text: [head, ...resolved.problems, ...lines].join("\n") }], details: result, structuredContent: result };
     },
   });
 }

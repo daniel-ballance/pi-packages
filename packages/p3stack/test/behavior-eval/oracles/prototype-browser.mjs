@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Drives a refund prototype in headless Chromium over the DevTools protocol and checks that its
-// controls change what is rendered. Exit 0: it responds. Exit 1: it does not. Exit 3: no browser
-// could be driven, so the caller falls back to the structural check. No dependencies: Node's
-// WebSocket speaks the protocol.
-import { spawn, spawnSync } from "node:child_process";
+// controls change what is rendered. Exit 0: passed. Exit 1: failed page. Exit 3: Chromium
+// could not start. Exit 4: no measurable balance. Node's WebSocket speaks the protocol.
+import { refundArithmetic } from "./refund.mjs";
+import { findBrowser } from "./find-browser.mjs";
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,13 +12,6 @@ import { pathToFileURL } from "node:url";
 
 const WALKS = 8, STEPS = 80, DEADLINE_MS = 45_000;
 const DESTINATIONS = ["approved", "rejected", "refunded"];
-
-function findBrowser() {
-  const named = process.env.P3STACK_EVAL_CHROMIUM;
-  for (const name of named ? [named] : ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]) {
-    if (spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0) return name;
-  }
-}
 
 // Runs in the page. Each step fills empty inputs and clicks one enabled control, then reports which
 // destination states showed up in elements that changed. Odd walks click each chosen control five
@@ -84,12 +78,21 @@ const walk = async (steps, seed, destinations) => {
   return { controls, renderings: renderings.size, reached: [...reached] };
 };
 
-async function drive(browser, file) {
+async function drive(browser, file, arithmetic) {
   const profile = mkdtempSync(join(tmpdir(), "p3stack-prototype-"));
   const child = spawn(browser, ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", "--remote-debugging-port=0",
     `--user-data-dir=${profile}`, "--host-resolver-rules=MAP * ~NOTFOUND", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
   const cleanup = () => { child.kill("SIGKILL"); rmSync(profile, { recursive: true, force: true, maxRetries: 3 }); };
+  let launched = false, timer;
   try {
+    const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("deadline exceeded")), DEADLINE_MS); });
+    return await Promise.race([inspect(), deadline]);
+  } catch (error) {
+    console.log(`Prototype browser check: ${launched ? "fail" : "could not launch"} (${error.message})`);
+    return { exitCode: launched ? 1 : 3 };
+  } finally { clearTimeout(timer); cleanup(); }
+
+  async function inspect() {
     const endpoint = await new Promise((found, failed) => {
       let text = "";
       child.stderr.setEncoding("utf8").on("data", chunk => {
@@ -103,6 +106,7 @@ async function drive(browser, file) {
     });
     const socket = new WebSocket(endpoint);
     await new Promise((open, failed) => { socket.onopen = open; socket.onerror = () => failed(new Error("DevTools connection failed")); });
+    launched = true;
     let next = 0;
     const pending = new Map(), listeners = [];
     socket.onmessage = ({ data }) => {
@@ -138,6 +142,11 @@ async function drive(browser, file) {
       await page("Page.navigate", { url });
       await load;
       await new Promise(done => setTimeout(done, 100));
+      if (arithmetic) {
+        const { result, exceptionDetails } = await page("Runtime.evaluate", { expression: `(${refundArithmetic})()`, awaitPromise: true, returnByValue: true });
+        socket.close();
+        return { balanceError: exceptionDetails?.text ?? result.value, errors, external: [...external] };
+      }
       walking = true;
       const { result, exceptionDetails } = await page("Runtime.evaluate", {
         expression: `try { localStorage.clear(); sessionStorage.clear(); } catch {} (${walk})(${STEPS}, ${seed}, ${JSON.stringify(DESTINATIONS)})`,
@@ -152,23 +161,24 @@ async function drive(browser, file) {
     }
     socket.close();
     return { external: [...external], errors, controls: totals.controls, renderings: totals.renderings, reached: [...totals.reached] };
-  } finally { cleanup(); }
+  }
 }
 
-const file = process.argv[2];
-if (!file) { console.error("Usage: prototype-browser.mjs <file.html>"); process.exit(3); }
+const file = process.argv[2], arithmetic = process.argv[3] === "--arithmetic";
+if (!file) { console.error("Usage: prototype-browser.mjs <file.html> [--arithmetic]"); process.exit(2); }
 const browser = findBrowser();
 if (!browser) { console.log("Prototype browser check: no Chromium found"); process.exit(3); }
-const timer = setTimeout(() => { console.log("Prototype browser check: could not finish in time"); process.exit(3); }, DEADLINE_MS);
-let seen;
-try { seen = await drive(browser, file); }
-catch (error) {
-  // A page that navigates away or breaks the walk is a failed prototype; a browser that would not start is not.
-  const page = /the page left or broke the walk/.test(error.message);
-  console.log(`Prototype browser check: ${page ? "fail" : "could not run"} (${error.message})`);
-  process.exit(page ? 1 : 3);
+const seen = await drive(browser, file, arithmetic);
+if (seen.exitCode) process.exit(seen.exitCode);
+if (arithmetic) {
+  if (seen.balanceError?.unmeasured) {
+    console.log("Refund balance: not graded (no measurable order balance)");
+    process.exit(4);
+  }
+  const problem = seen.balanceError || seen.errors[0] || seen.external[0];
+  console.log(`Refund balance: ${problem || "pass"}`);
+  process.exit(problem ? 1 : 0);
 }
-clearTimeout(timer);
 const problems = [
   seen.external.length && `requests outside the file: ${seen.external.slice(0, 3).join(", ")}`,
   seen.errors.length && `error on load: ${seen.errors[0]}`,

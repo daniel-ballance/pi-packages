@@ -34,7 +34,7 @@ test("each capability links to the same heading on each host", () => {
 test("host selection exposes only the selected host's operations", () => {
   const entry = map("capabilities");
   for (const marker of ["Host: terminal", "Host: t3"]) assert.ok(entry.includes(marker), marker);
-  const check = entry.match(/`(test -n "[^"]*T3_MCP_URL[^"]*")`/)?.[1];
+  const check = entry.match(/`([^`\n]*\bT3_MCP_URL\b[^`\n]*)`/)?.[1];
   assert.ok(check, "missing shell fallback");
   for (const [env, exit] of [[{}, 1], [{ T3_MCP_URL: "" }, 1], [{ T3_MCP_URL: "http://t3.invalid/mcp" }, 0]]) {
     const run = spawnSync("sh", ["-c", check], { env, encoding: "utf8" });
@@ -61,7 +61,7 @@ test("T3 capacity, heartbeat and prototype checks have a permitted action", () =
 test("opening a PR cites the Pull requests section once", () => {
   const opening = readFileSync(new URL("../skills/poteto-mode/playbooks/opening-a-pr.md", import.meta.url), "utf8");
   assert.match(opening, /Pull requests/i);
-  assert.match(opening, /\]\(references\/host-capabilities\.md[#)]/);
+  assert.match(opening, /\]\(\.\.\/poteto-mode\/references\/host-capabilities\.md[#)]/);
 });
 
 test("the workflow gate is a caller feature and the template helper resolves from the installed skill", () => {

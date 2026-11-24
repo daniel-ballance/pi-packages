@@ -57,6 +57,20 @@ test("maxDepth allows delegation tools only for Children above the deepest level
   } finally { dispose(); }
 });
 
+test("the catalog offers spawn only with both report tools, without disabling ordinary children", () => {
+  for (const reportTools of [[], ["subagent_wait"], ["subagent_read"]]) {
+    const { policy: p, dispose } = policy({ ...base, maxDepth: 2, tools: ["subagent_spawn", "read", ...reportTools] });
+    try {
+      const catalog = p.catalog();
+      assert.deepEqual(catalog.tools, ["read", ...reportTools]);
+      for (const missing of ["subagent_wait", "subagent_read"].filter(t => !reportTools.includes(t))) {
+        assert.ok(p.diagnostics.some(d => d.includes("subagent_spawn") && d.includes(missing)));
+      }
+      assert.ok(p.compile(dirname(p), { model: "p/m:off", tools: catalog.tools }));
+    } finally { dispose(); }
+  }
+});
+
 test("maxDepth is bounded and delegation can never be always-on", () => {
   for (const maxDepth of [0, 5, 1.5, "2"]) assert.throws(() => parsePolicy({ ...base, maxDepth }), /maxDepth/);
   assert.throws(() => parsePolicy({ ...base, maxDepth: 2, alwaysTools: ["subagent_spawn"] }), /alwaysTools cannot include delegation tools/);

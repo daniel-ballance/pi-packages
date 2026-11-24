@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
+import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import { cliEnv } from "./host-env.js";
 import { git as runGit } from "./git.js";
 import { tempRoot } from "./support/temp-root.js";
@@ -29,7 +30,7 @@ test("a real parent spawns a child in a new git worktree under .pi/worktrees", {
     event: event => events.push(event), stderr: text => { stderr += text; }, exit: () => {},
   });
   try {
-    await parent.request({ type: "get_state" });
+    const { sessionId } = await parent.request({ type: "get_state" });
     await parent.request({ type: "prompt", message: "WORKTREE SMOKE" });
     for (let i = 0; i < 500 && !existsSync(proof); i++) await new Promise(resolve => setTimeout(resolve, 20));
     assert.ok(existsSync(proof), `${stderr}\n${JSON.stringify(events.slice(-10))}`);
@@ -38,6 +39,11 @@ test("a real parent spawns a child in a new git worktree under .pi/worktrees", {
     assert.match(spawned.worktree.path, new RegExp(`^${repo}/\\.pi/worktrees/worktree-smoke-[0-9a-f]{6}$`));
     assert.equal(spawned.worktree.ignored, true);
     assert.equal(listed.cwd, spawned.worktree.path, "the child runs in the new checkout");
+    const reopened = new SubagentManager(join(agentDir, "subagents", sessionId));
+    try {
+      assert.deepEqual(reopened.summary(spawned.id).worktree, spawned.worktree,
+        "recovery from the saved child needs no spawn receipt");
+    } finally { await reopened.shutdown(); }
     assert.match(git("worktree", "list"), /worktree-smoke-/);
     assert.equal(git("branch", "--list", spawned.worktree.branch).replace(/^[*+ ]+/, ""), spawned.worktree.branch);
   } finally { await parent.stop(); rmSync(root, { recursive: true, force: true }); }

@@ -1,0 +1,17 @@
+<!doctype html><html><body>
+<h1>Refund prototype</h1>
+<p>Order #1001 — Order total: $100.00</p>
+<p>Refunded: $<span id="paid">0.00</span> · Refundable: $<span id="left">100.00</span></p>
+<p>Status: <b id="state">none</b></p>
+<label>Amount <input id="amt" type="number" step="0.01" value="25"></label>
+<button id="req">Request refund</button>
+<button id="ok" disabled>Approve</button>
+<button id="no" disabled>Reject</button>
+<script>
+let paid=0, pending=0; const total=100;
+const render=()=>{paidEl.textContent=paid.toFixed(2); left.textContent=(total-paid).toFixed(2);};
+const paidEl=document.getElementById('paid');
+req.onclick=()=>{const n=Number(amt.value); if(!(n>0)||n>total-paid) return; pending=n; state.textContent='requested'; ok.disabled=no.disabled=false; req.disabled=true;};
+ok.onclick=()=>{paid+=pending; pending=0; state.textContent= paid===total?'refunded':'approved'; ok.disabled=no.disabled=true; req.disabled=paid===total; render();};
+no.onclick=()=>{pending=0; state.textContent='rejected'; ok.disabled=no.disabled=true; req.disabled=false;};
+</script></body></html>

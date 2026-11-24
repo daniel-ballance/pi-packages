@@ -6,7 +6,7 @@
       "authored/skills/p3stack-mode/references/execution-ledger.md",
       "authored/skills/p3stack-mode/references/brief-contract.md"
     ],
-    "idea": "Ledger that survives compaction; rulings, not stalls; briefs and review packages as files; no worker-spawned reviewers."
+    "idea": "Recover from a run ledger, record rulings, and have the parent review the worker's evidence against its brief."
   },
   {
     "source": "superpowers",
@@ -14,7 +14,7 @@
     "by": [
       "authored/skills/p3stack-mode/references/execution-ledger.md"
     ],
-    "idea": "Resume from the ledger and git log, not memory."
+    "idea": "Match the ledger to this run and resume from verified progress rather than redispatching completed work."
   },
   {
     "source": "superpowers",
@@ -22,7 +22,7 @@
     "by": [
       "authored/skills/p3stack-mode/references/review-stance.md"
     ],
-    "idea": "Bounded fix loop; disputes recorded; parked findings."
+    "idea": "Bound fixes and record unresolved findings. Upstream caps five rounds per task; p3stack allows two fix rounds per finding and records the dispute when parking it."
   },
   {
     "source": "superpowers",
@@ -46,7 +46,7 @@
     "by": [
       "authored/skills/p3stack-mode/references/brief-contract.md"
     ],
-    "idea": "Interfaces consumed and produced, global constraints verbatim, review focus, proportion."
+    "idea": "Name the interfaces consumed and produced, quote global constraints verbatim and specify the review focus."
   },
   {
     "source": "superpowers",
@@ -55,6 +55,14 @@
       "authored/skills/p3stack-mode/references/review-stance.md"
     ],
     "idea": "Dispute with evidence rather than performative agreement."
+  },
+  {
+    "source": "superpowers",
+    "path": "skills/writing-skills/SKILL.md",
+    "by": [
+      "registry/chains.json#skill-baseline"
+    ],
+    "idea": "Run the task before changing the skill, record the failure and compare the new behavior against that baseline."
   },
   {
     "source": "superpowers",
@@ -68,9 +76,9 @@
     "source": "superpowers",
     "path": "docs/superpowers/specs/2026-06-10-positive-instruction-redesign-design.md",
     "by": [
-      "authored/skills/p3stack-mode/SKILL.md.tmpl"
+      "authored/skills/p3stack-mode/references/review-stance.md"
     ],
-    "idea": "Which instruction phrasings measurably work; tripwires and recognition tables, positive recipes."
+    "idea": "Give a positive reporting instruction: cite the evidence for each finding, such as file:line."
   },
   {
     "source": "agent-skills",

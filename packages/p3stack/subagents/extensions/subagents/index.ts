@@ -5,13 +5,12 @@ import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { fitUpdateRead } from "./src/read-page.js";
 import { StopUnconfirmedError, SubagentManager, type InputDisposition } from "./src/manager.js";
 import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
-import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
-import { childNews, DEFAULT_WAIT_MODE, messageLatch, waitReport, withCurrentReviews, type ChildNews } from "./src/wait.js";
+import { isSupervisoryNotice, MANAGEMENT_HINT, NoticeScheduler } from "./src/notifications.js";
+import { DEFAULT_WAIT_MODE, messageLatch, waitReport, type ChildNews } from "./src/wait.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { cardsFromDetails, listingLine } from "./src/card.js";
 import { summarizeAgents } from "./src/usage.js";
@@ -76,9 +75,12 @@ export default function subagents(pi: ExtensionAPI) {
 function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext) {
   // The root's own tools also serve proxied calls from Children (nesting.ts).
   const proxiable = new Map<string, ToolDefinition<any, any>>();
+  const direct = new Set(["subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_send", "subagent_close", "subagent_respond"]);
+  const management = new Set<string>();
   function registerTool<P extends TSchema, D>(tool: ToolDefinition<P, D>) {
     if (isProxiedTool(tool.name)) proxiable.set(tool.name, tool);
-    pi.registerTool(tool);
+    if (!direct.has(tool.name)) management.add(tool.name);
+    pi.registerTool(management.has(tool.name) ? { ...tool, exposure: "deferred" } : tool);
   }
   /** Set while a Child's proxied call runs: who is asking. */
   const delegation = new AsyncLocalStorage<{ callerId: string }>();
@@ -140,7 +142,15 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     }
     return manager;
   };
-  const getWorkflows = (ctx: ExtensionContext) => workflows ??= new Workflows(join(get(ctx).directory, "workflows"), managerWorkflowHost(get(ctx), () => getPolicy(ctx)), () => {
+  // Workflow and proxied spawns bypass the root tool_call hook. With no listener
+  // the standalone package dispatches the original assignment unchanged.
+  const prepareBrief = (task: string, tools: string[], parentTask?: string) => {
+    const request = { task, tools, parentTask, error: undefined as string | undefined };
+    pi.events.emit("subagents:prepare-brief", request);
+    if (request.error) throw new Error(request.error);
+    return request.task;
+  };
+  const getWorkflows = (ctx: ExtensionContext) => workflows ??= new Workflows(join(get(ctx).directory, "workflows"), managerWorkflowHost(get(ctx), () => getPolicy(ctx), prepareBrief), () => {
     reportActivity();
     if (context?.hasUI && workflows) {
       const running = runningWorkflows();
@@ -203,6 +213,10 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       throw new Error(`Invalid subagent_${op} arguments: ${errors.join("; ")}`);
     }
     const scoped = manager, args = { ...raw };
+    if (op === "spawn") {
+      const parent = scoped.get(callerId);
+      args.task = prepareBrief(raw.task as string, raw.tools as string[], parent.assignment?.task ?? parent.task);
+    }
     const own = (target: unknown) => {
       if (typeof target !== "string" || !scoped.isDescendant(target, callerId)) throw new Error(`${String(target)} is not one of your Children or their descendants.`);
     };
@@ -350,17 +364,29 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     }
   };
   const render = (action: Parameters<typeof subagentRenderers>[0]) => subagentRenderers(action, displayName);
-  registerWorkflowUI(pi, getWorkflows, result, displayName);
+  registerWorkflowUI({ registerTool, registerCommand: pi.registerCommand }, getWorkflows, result, displayName);
 
   registerTool({
     name: "subagent_catalog", label: "Subagent Catalog",
     ...render("catalog"),
-    ...TOOL_SPECS.subagent_catalog,
-    async execute(_call, _args, _signal, _update, ctx) {
+    description: `${TOOL_SPECS.subagent_catalog.description} ${MANAGEMENT_HINT}`,
+    parameters: Type.Object({
+      activate: Type.Optional(Type.Array(Type.String(), { description: "Without tool search, declare these names from managementTools for the next call." })),
+    }, { additionalProperties: false }),
+    async execute(_call, { activate }, _signal, _update, ctx) {
       const callerId = delegation.getStore()?.callerId;
       const childDepth = callerId ? (get(ctx).get(callerId).depth ?? 1) + 1 : 1;
       const catalog = getPolicy(ctx).catalog(childDepth);
-      return result(callerId ? { ...catalog, delegation: { childDepth, maxDepth: catalog.maxDepth, childrenMayDelegate: childDepth < catalog.maxDepth } } : catalog, ctx);
+      if (callerId) {
+        if (activate?.length) throw new Error("Only the root parent can activate management tools.");
+        return result({ ...catalog, delegation: { childDepth, maxDepth: catalog.maxDepth, childrenMayDelegate: childDepth < catalog.maxDepth } }, ctx);
+      }
+      const managementTools = pi.getAllTools().filter(t => management.has(t.name) && t.exposure === "deferred").map(t => t.name);
+      if (activate?.length) {
+        for (const name of activate) if (!managementTools.includes(name)) throw new Error(`Not an available management tool: ${name}`);
+        pi.setActiveTools([...new Set([...pi.getActiveTools(), ...activate])]);
+      }
+      return result({ ...catalog, managementTools }, ctx);
     },
   });
   registerTool({
@@ -412,14 +438,14 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         const cwd = worktree?.path ?? requested;
         if (worktree) config = policy.compile(cwd, selection, depth);
         const coordination = normalizeCoordination(declared, cwd);
-        const child = await manager.spawn({ name, task, ...config, coordination, ...(parentId ? { parentId } : {}) });
+        const child = await manager.spawn({ name, task, ...config, coordination, worktree, ...(parentId ? { parentId } : {}) });
         accepted = true; // A lost receipt must not remove a live child's checkout.
         if (worktree && creationLock) releaseCreationLock(worktree, creationLock);
         const record = manager.get(child.id);
         const all = coordinationWarnings(coordination, manager.list(), child.id), warnings = visible(all);
         const outside = all.length - warnings.length;
         const receipt: SpawnReceipt = {
-          ...childNews(record),
+          ...manager.inbox.news(child.id),
           disposition: child.lastSubmission?.disposition,
           ...(child.lastSubmission?.workStarted === false ? { workStarted: false } : {}),
           ...(record.model ? { model: record.model } : {}),
@@ -511,13 +537,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const manager = get(ctx);
       const byRoot = !delegation.getStore();
       if (args.page !== undefined && args.since !== undefined) throw new Error("Use page for report text or since for update replay, not both");
-      const page = args.page === undefined ? undefined : manager.readReportPage(args.id, args.page);
-      const data = page?.data ?? fitUpdateRead(manager.read(args.id, args.since, false, true), args.since ?? manager.get(args.id).readCursor);
-      if (page) page.acknowledge(byRoot);
-      else if ("updates" in data) {
-        manager.acknowledgeRead(data, args.since === undefined, byRoot);
-        data.resultReview = structuredClone(manager.get(args.id).resultReview);
-      }
+      const { data, acknowledge } = args.page === undefined
+        ? manager.inbox.prepareRead(args.id, args.since) : manager.inbox.readReportPage(args.id, args.page);
+      acknowledge(byRoot);
       return { content: [{ type: "text", text: JSON.stringify(data) }], details: data };
     },
   });
@@ -532,15 +554,14 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const end = await manager.wait(args.ids ?? [], args.mode ?? DEFAULT_WAIT_MODE,
         args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued, callerId);
       signal?.throwIfAborted();
-      const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId, undefined, args.final ?? false);
+      const { report, acknowledge } = waitReport(manager, end, args.collect ?? true, callerId, undefined, args.final ?? false);
       if (callerId && truncateHead(JSON.stringify(report, null, 2), { maxBytes: 30000, maxLines: 1000 }).truncated) {
         return result({ truncated: true, note: "Wait report too large; narrow ids or use subagent_read for one child." }, ctx);
       }
       const output = result(report, ctx);
       if (output.details !== report) return output;
-      for (const receipt of receipts) manager.acknowledgeRead(receipt, true, !callerId);
       // Acknowledgement only turns unreviewed into reviewed, which is shorter, so this still fits.
-      return result(withCurrentReviews(manager, report), ctx);
+      return result(acknowledge(), ctx);
     },
   });
   registerTool({

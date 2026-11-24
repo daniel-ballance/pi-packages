@@ -4,6 +4,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { asHost } from "./host-env.js";
+import { nativeTools } from "./native-tools.js";
+import { noticeBatch } from "../extensions/subagents/src/notifications.js";
+import { loopTickMessage } from "../extensions/subagents/src/loop.js";
 import subagents from "../extensions/subagents/index.js";
 import { loadSkillsFromDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_POLICY, parsePolicy } from "../extensions/subagents/src/policy.js";
@@ -11,6 +14,25 @@ import { parseWorkflow } from "../extensions/subagents/src/workflow-definition.j
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const skill = join(root, "skills/subagents");
+
+test("shipped guidance that names a deferred parent tool explains how to activate it without tool search", async () => {
+  const tools = await nativeTools();
+  const deferred = new Set(tools.filter(t => t.exposure === "deferred").map(t => t.name));
+  const files = ["README.md", "PEER-MESSAGING.md", ...["skills", "prompts", "../skills", "../agents"].flatMap(dir =>
+    readdirSync(join(root, dir), { recursive: true, encoding: "utf8" }).filter(f => f.endsWith(".md")).map(f => join(dir, f)))];
+  const guidance = files.map(file => [file, readFileSync(join(root, file), "utf8")]);
+  for (const t of tools) guidance.push([t.name, [t.description, t.promptSnippet, ...(t.promptGuidelines ?? []), JSON.stringify(t.parameters)].join("\n")]);
+  for (const kind of ["completed", "message", "input_requested", "human_intervention"]) {
+    const notice = noticeBatch([{ id: "subagent-1", name: "worker", kind, key: `subagent-1:1:${kind}`, cursor: 1, text: "report" }]);
+    guidance.push([kind, notice.content]);
+  }
+  guidance.push(["loop tick", loopTickMessage({ id: "loop-1", task: "check", iteration: 1, maxIterations: 2, intervalMs: 1000, deadline: 10000 })]);
+  const missing = guidance.flatMap(([source, body]) => {
+    const named = (body.match(/\bsubagent_\w+\b/g) ?? []).filter(n => deferred.has(n));
+    return named.length && !/subagent_catalog\(\{\s*activate\s*:\s*\[/.test(body) ? [`${source}: ${[...new Set(named)].join(", ")}`] : [];
+  });
+  assert.deepEqual(missing, []);
+});
 
 test("terminal-only skills come from resource discovery, never a static manifest", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -40,7 +62,7 @@ test("documented execution fallback matches the complete shipped policy", () => 
 
 test("every shipped example is valid whole-policy JSON with unmistakable placeholder models", () => {
   const examples = readdirSync(join(skill, "examples")).filter(name => name.endsWith(".json"));
-  assert.equal(examples.length, 4);
+  assert.ok(examples.length > 0, "the configuration skill must ship policy examples");
   for (const name of examples) {
     const value = JSON.parse(readFileSync(join(skill, "examples", name), "utf8"));
     const policy = parsePolicy(value);

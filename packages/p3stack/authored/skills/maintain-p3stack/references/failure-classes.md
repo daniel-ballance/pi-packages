@@ -4,14 +4,14 @@ Paths here are relative to the package unless prefixed with `packages/p3stack/` 
 
 | Diagnostic | Fix location and action |
 | --- | --- |
-| `Unclassified skill`, `Stale registry row`, or `Missing authored skill` | Classify each new upstream path in `registry/skills.json` with an emit, reference or drop reason. Update renamed or removed paths and their consumers. Restore a missing owned skill in `authored/`, or remove its row and routes together. |
-| Duplicate row or emitted name, invalid action, name, or invocation, or missing reason, phases, or roles | Repair `registry/skills.json`. Keep one row per source path and one owner per emitted name. |
-| `Authored skill ... must emit at`, different frontmatter name or invocation | Align the owned file in `authored/` with `registry/skills.json`. For vendored files, correct the registry and the scoped rename rule in `rules/tokens.json`. |
+| `Unclassified skill`, `Stale registry row`, or `Missing authored skill` | Classify each new upstream path in `registry/skills.json` as an emit, reference or drop. Update renamed or removed paths and their consumers. Restore a missing owned skill in `authored/`, or remove its row and routes together. |
+| Duplicate row or emitted name, invalid action, name, or invocation, or missing reason | Repair `registry/skills.json`. Keep one row per source path and one owner per emitted name. |
+| `Authored skill ... must emit at`, different frontmatter name or invocation | Align the owned file in `authored/` with `registry/skills.json`. For vendored files, correct the registry row: generation writes the name and the invocation setting from it. |
 | `Missing emitted skill`, `Unregistered emitted skill`, or `Registry skill ... is not mapped` | Align `registry/skills.json` with maps in `rules/manifest.json`. Register new owned inputs in `authored/`. Check whether an `extra/` file unintentionally creates a second skill. |
 | `removed skill command`, or upstream prose still names a moved skill without a link | Look up the name in `registry/skills.json`. The generator links standalone command spans, bold names and backticked names for reference rows. For a new spelling or a command inside an example, add a scoped rule in `rules/tokens.json` pointing to `../<owner>/references/<name>.md` from the skill directory. For a drop, replace the instruction with its supported alternative. |
 | `owner ... must be an emitted skill` | The reference cannot live under another reference or a drop. Set its `owner` to an emit row's name in `registry/skills.json`. |
 | `both land at` or `nested SKILL.md would register a reference as a skill` | Two inputs would overwrite one destination, or Pi would discover a companion file as another skill. Inspect both source paths; change the owner's conflicting resource or fix the resource map or exclusion in `rules/manifest.json`. |
-| `reference needs its registered name and description` or `Missing reference` | For bad frontmatter, align the registered name and translated header and supply a description through a scoped token rule. For a missing file, check the source path, map and exclusions: the entry must reach `skills/<name>/SKILL.md` before relocation. |
+| `reference needs its registered name and description` or `Missing reference` | For bad frontmatter, correct the registered name, which generation writes into the header, and supply a missing description through a token rule marked `frontmatter`. For a missing file, check the source path, map and exclusions: the entry must reach `skills/<name>/SKILL.md` before relocation. |
 | `unrebased resource path` | The moved file still points at one of its old resources. At the reported line, trace the operand to the original input; translate it with a scoped rule or patch using the installed path under the owner's references directory. |
 | `token rule <id>: ... matches, expected at least <min>` | Review the new upstream sentence and prior rewrites. Update the scoped `find` in `rules/tokens.json`, or remove a rule whose translation is no longer needed. Preserve its Pi behavior elsewhere if still required. Do not lower `min` to hide a missed match. Record the old and new match in the bump note. |
 | Unknown token source, missing upstream checkout for a commit placeholder, or invalid regular expression | Correct the source, scope, expression, or upstream declaration in `rules/tokens.json` or `rules/manifest.json`. |
@@ -21,7 +21,7 @@ Paths here are relative to the package unless prefixed with `packages/p3stack/` 
 | Coupling lint with `file:line: token` or a lost dependency link | Repair `rules/tokens.json`, `rules/sections.json`, or `patches/` for vendored text. Repair `extra/` or `authored/` for owned text. Keep dependency requirements in `rules/lint.json`. Do not remove a deny token to make a bump pass. |
 | `lint-skill` `references/missing` after an upstream deletion | Repair the dangling cross-skill link through a scoped token in `rules/tokens.json` or a patch in `patches/` on the referencing skill. Replace the link and its description with a deliberate surviving target, or drop the referencing skill in `registry/skills.json` with a reason. Repair owned references in `authored/` or `extra/`. Regenerate and rerun lint. Never edit the referencing file under `vendor/` or `skills/`. |
 | Host lint outside the host map | Move tool details to `host-terminal.md` or `host-t3.md` under `extra/skills/poteto-mode/references/`. Point the caller to that capability in the shared map. |
-| Route missing target, chain missing skill, invalid playbook or position, or chain anchor count other than one | Repair `registry/routes.json` and `registry/chains.json`. Restore or deliberately replace the target through `registry/skills.json`, `rules/`, `overlays/`, or `authored/`. Keep each anchor exact and unique. When removing or re-routing a target, update `packages/p3stack/test/routing-eval/prompts.json`, any fixture or assertion naming that target in `packages/p3stack/test/generate.test.mjs`, `packages/p3stack/test/extension.test.ts`, or another test, and the emitted-count assertion in `packages/p3stack/test/check-registry.test.mjs`. Regenerate and run the routing eval. Before `gh pr create`, `npm test` in `packages/p3stack` must exit 0. After any JSON edit, rerun it. |
+| Route missing target, chain missing skill, invalid playbook or position, or chain anchor count other than one | Repair `registry/routes.json` and `registry/chains.json`. Restore or deliberately replace the target through `registry/skills.json`, `rules/`, `overlays/`, or `authored/`. Keep each anchor exact and unique. When removing or re-routing a target, update `packages/p3stack/test/routing-eval/prompts.json`, any fixture or assertion naming that target in `packages/p3stack/test/generate.test.mjs`, `packages/p3stack/test/extension.test.ts`, or another test, and the emitted-count assertion in `packages/p3stack/test/check-registry.test.mjs`. Regenerate and run the routing eval. The pre-merge root receipt must cover the repaired commit. |
 | `sources ... both emit this path` | Resolve the ownership collision in `registry/skills.json` and the path maps or resource exclusions in `rules/manifest.json`. Use a scoped rename in `rules/tokens.json` when the emitted name changes. Never delete the generated collision by hand. |
 | Upstream symlink unsupported or required upstream file missing | Review the removed or linked resource. Correct the map, exclusion, or required path in `rules/manifest.json`. Add a safe owned replacement in `extra/` only after reviewing its purpose. |
 | Post-merge check fails on `main` at the merge commit | Preserve the verify worktree and receipts. Apply the [revert guard](references/revert.md) before any revert. Read the failure from the receipt before a later retry. The tip guard blocks that candidate SHA until an owner fixes the cause. |
@@ -32,9 +32,9 @@ Paths here are relative to the package unless prefixed with `packages/p3stack/` 
 | README pin markers missing or stale | Restore exactly one marker pair in the package README if needed. Confirm `rules/manifest.json`, then regenerate to refresh all source pins. The README is metadata, not a generated skill repair. |
 | Empty resource check, staged lint failure, or missing resource linter | Inspect `rules/manifest.json` and `rules/lint.json`, then fix links in the owning rule, `extra/`, or `authored/`. Run from the installed repository workspace so its linter exists. Do not disable resource validation. |
 | Output replacement fails, with recovery copies retained | Stop and preserve the printed backup path. Inspect filesystem permissions and recover the prior output before retrying. This is not a prose-rule fix. Do not delete the only recovery copy. |
-| Contract, diagnostic state, or doctor JSON `<path> could not be read` | Correct the supplied input path, permissions, or malformed JSON fixture. Restore valid `rules/t3-pin.json` when it is the failing input. Retry the checker. Keep unreadable inputs visible rather than changing the contract to hide them. |
-| Invalid contract JSON, unsupported prompt return contract, or host map missing a required direct tool | Repair `rules/t3-pin.json`, `extra/skills/poteto-mode/references/host-t3.md`, or the checker in a separate host-contract PR with hermetic fixture tests. Preserve required behavior and regenerate derived skills. |
-| Installed release or bridge hash differs from historical provenance | Record optional diagnostics per the [host check](references/verify-host.md). Equality is not required and a difference alone needs no repair. Verify required capabilities and behavior instead. Keep the installed host and recorded fingerprints unchanged. |
+| Contract, diagnostic state, or doctor JSON `<path> could not be read` | Correct the supplied input path, permissions, or malformed JSON fixture. Restore valid `rules/t3-contract.json` when it is the failing input. Retry the checker. Keep unreadable inputs visible rather than changing the contract to hide them. |
+| Invalid contract, missing or unclassified host map operation | Classify the bare name once in `rules/t3-contract.json` and check its spelling in `extra/skills/poteto-mode/references/host-t3.md`. Repair the owning input in a separate host-contract PR with a hermetic fixture. Preserve required behavior and regenerate derived skills. |
+| Installed release or bridge hash differs from historical provenance | Record optional diagnostics per the [host check](references/verify-host.md). Equality is not required and a difference alone needs no repair. Verify required capabilities and behavior instead. Leave the installed host unchanged. |
 | Doctor missing a required tool or direct exposure, reported problems, or incompatible live arguments, return shape, or behavior | Stop source maintenance. Preserve the live doctor dump and catalog or behavioral evidence. Repair the owning host contract separately, with fixture tests and live verification. Doctor inventories tools but does not prove schemas or behavior. If required behavior cannot be preserved and verified, report the exact command, exit code, and complete output as `BLOCKED`. |
 | Lockfile or installed dependency mismatch | Dispatch the separate procedure in the repository root's `docs/dependency-refresh-2026-10-18.md`. Preserve this skill's no-install bound. Do not mix lockfile refreshes into a source PR. |
 
@@ -42,7 +42,7 @@ Unknown sources, missing checkouts, bad refs, and fetch failures stop before a r
 
 ## Classify an upstream skill
 
-Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every placeholder with the observed source, source-relative skill path, and reviewed decision. Use the existing registry's phase and role vocabulary for an emit row. Use a reference when the procedure belongs under an emitted skill. Choose one row per path.
+Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every placeholder with the observed source, source-relative skill path, and reviewed decision. For an emit, explain what earns a standalone entry. For a reference, the owner suffices unless the name changes; record the reason for a rename or a non-obvious owner. Choose one row per path.
 
 ```json
 {
@@ -51,8 +51,6 @@ Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every 
   "action": "emit",
   "name": "<emitted-name>",
   "invocation": "model",
-  "phases": ["<phase>"],
-  "roles": ["<role>"],
   "reason": "<why this skill belongs in p3stack>"
 }
 ```
@@ -63,8 +61,7 @@ Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every 
   "path": "<path>/SKILL.md",
   "action": "reference",
   "name": "<reference-name>",
-  "owner": "<emitted-skill-name>",
-  "reason": "<when the owner reads this procedure>"
+  "owner": "<emitted-skill-name>"
 }
 ```
 
@@ -77,4 +74,4 @@ Add one of these rows to `packages/p3stack/registry/skills.json`. Replace every 
 }
 ```
 
-Run `node packages/p3stack/generator/check-registry.mjs` from the root. Classification is complete only when every new path has one row and the result reports `0 unclassified`.
+Classification is complete when every new path has one row and the root gate reports `0 unclassified`. For a focused diagnosis, run `node packages/p3stack/generator/check-registry.mjs` from the root.

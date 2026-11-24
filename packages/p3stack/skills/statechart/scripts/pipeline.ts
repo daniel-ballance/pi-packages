@@ -16,7 +16,7 @@ import {
 } from "./ir.ts";
 import { asParents, ask, labelGraph, storiesOf } from "./passes/label.ts";
 import { lift } from "./passes/lift.ts";
-import { loopCheck } from "./passes/cycle-check.ts";
+import { loopCheck } from "./passes/loop-check.ts";
 import { bugs, drawOrder, walk } from "./passes/reach.ts";
 import { regionsLie } from "./passes/region-check.ts";
 import { drawRegions } from "./passes/regions.ts";

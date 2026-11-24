@@ -87,7 +87,7 @@ npm --prefix packages/p3stack/subagents run check
 npm --prefix packages/p3stack/subagents test
 ```
 
-Packaging tests use Pi's real loader and inspect tarball contents. They install `git:github.com/daniel-ballance/pi-packages` from a local bare repository of the tracked files, with production dependencies. npm fixtures use the cache primed by the initial install. pnpm CI also tests a frozen production install and allows npm fixture downloads because the caches are separate.
+Root `npm test` runs the collection packaging and dependency-security fixtures once. Packaging tests use Pi's real loader on terminal and T3 launches and inspect tarball contents. They install `git:github.com/daniel-ballance/pi-packages` from a local bare repository of the tracked files, with production dependencies. npm fixtures use the cache primed by the initial install. pnpm CI also tests a frozen production install and allows npm fixture downloads because the caches are separate.
 
 The explicit security step validates installed SDK dependencies and repairs reviewed vulnerable development copies. It does not change Pi versions, execute lifecycle scripts, patch the global runtime, or repair dependencies during checks. See [`docs/dependency-refresh-2026-10-18.md`](docs/dependency-refresh-2026-10-18.md) for refresh procedure and security floors.
 

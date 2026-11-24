@@ -8,30 +8,9 @@ metadata:
   url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
 ---
 
-Use this template for writing the PR body:
+Follow **Descriptions** in [Opening a PR](../poteto-mode/playbooks/opening-a-pr.md) for the body format. For a wording request, return only the body. Put Summary visuals under Why or What changed, before/after evidence under Verification, and the door judgment and its impact under Blast Radius.
 
-```markdown
-## Summary
-
-<diagram, diff-sketch, or tree>
-
-## Evidence
-
-- **Before:** <screenshot/output/failing test run>
-  **After:** <screenshot/output/passing test run>
-
-## Merge Danger
-
-**Door:** <one-way or two-way>
-
-<optional: description>
-
-**Blast Radius:** <one-word description>
-
-<optional: potential ramifications of merge>
-```
-
-## Sections
+## Supporting material
 
 Skip all preambles and keep prose brief. Use the user's domain language from `GLOSSARY.md`.
 

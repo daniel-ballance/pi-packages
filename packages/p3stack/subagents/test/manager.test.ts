@@ -198,6 +198,17 @@ test("consumed input restores assignment state and does not leave phantom work",
   } finally { await s.cleanup(); }
 });
 
+for (const task of ["HANDLED STREAMING", "HANDLED PENDING"]) test(`${task}: a handled prompt with outstanding work is not a no-run receipt`, async () => {
+  const s = await setup();
+  try {
+    const { id } = await s.spawn("CONSUME");
+    const receipt = await s.manager.send(id, task);
+    assert.equal(receipt.disposition, "handled");
+    assert.equal(receipt.workStarted, undefined);
+    assert.equal(receipt.lastSubmission?.workStarted, undefined);
+  } finally { await s.cleanup(); }
+});
+
 test("idle usage entries refresh authoritative costs without an assistant event", async () => {
   const s = await setup();
   try {
@@ -534,6 +545,31 @@ test("assistant errors are provisional until settlement or exit commits the resu
     assert.equal(s.manager.get(a.id).assignment?.status, "completed");
     assert.deepEqual(incomplete, []);
     assert.deepEqual(s.notices.map(n => [n.kind, n.text]), [["completed", "successful retry"]]);
+  } finally { await s.cleanup(); }
+});
+
+test("a process exit during provider retry reports both the provider failure and exit reason", async () => {
+  const s = await setup();
+  try {
+    const { id } = await s.spawn("exit-during-retry");
+    await s.manager.wait([id], "all", 2000);
+    const report = s.manager.read(id, undefined, false);
+    assert.match(report.error!, /503 provider unavailable.*Child exited: code=2/i);
+    assert.ok(report.updates.some(u => u.kind === "error" && u.text === report.error));
+    assert.deepEqual(s.manager.pendingNotices().map(n => [n.kind, n.text]), [["failure", report.error]]);
+    assert.equal(s.manager.get(id).assignment?.status, "failed");
+  } finally { await s.cleanup(); }
+});
+
+test("closing during retry archives the provider error without a failure wake", async () => {
+  const s = await setup();
+  try {
+    const { id } = await s.spawn("close-during-retry");
+    const closed = await s.manager.close(id);
+    assert.equal(closed.status, "stopped");
+    assert.equal(closed.lastError, "503 provider unavailable");
+    assert.ok(s.manager.read(id).updates.some(u => u.kind === "provider_error" && u.text === closed.lastError));
+    assert.deepEqual(s.notices, []);
   } finally { await s.cleanup(); }
 });
 
@@ -972,8 +1008,8 @@ test("only shortened display copies write report files; a child retains at most 
     await s.manager.wait([id], "all", 2000);
     const files = () => readdirSync(s.dir).filter(f => f.endsWith(".report"));
     assert.deepEqual(files(), []);
-    const r = s.manager.get(id), m = s.manager as any;
-    for (let i = 0; i < 102; i++) m.appendUpdate(r, "assistant", "x".repeat(12001), true);
+    const r = s.manager.get(id);
+    for (let i = 0; i < 102; i++) s.manager.inbox.appendUpdate(r, "assistant", "x".repeat(12001), true);
     assert.equal(files().length, 100);
     assert.equal(r.savedReports!.length, 100);
   } finally { await s.cleanup(); }

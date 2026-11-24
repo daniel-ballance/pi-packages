@@ -1,5 +1,5 @@
 // Shared boundary of the two paid evals. The named agent directory is input, never scratch space.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -77,7 +77,10 @@ export async function runPi({ source, mcp, cwd, args, timeoutSeconds, log, onEve
     writeFileSync(join(dir, "settings.json"), JSON.stringify(source.settings), { mode: 0o600 });
     const env = { ...evalEnv(), PI_CODING_AGENT_DIR: dir };
     for (const key of ["PI_SUBAGENT", "PI_SUBAGENT_POLICY", "PI_SUBAGENT_ALLOWED_TOOLS", "PI_SUBAGENT_PEER_FD", "T3_MCP_URL"]) delete env[key];
-    return await capture({ cwd, env, args, timeoutSeconds, log, onEvent, interruption: interruption.signal });
+    const version = spawnSync("pi", ["--version"], { cwd, env, encoding: "utf8", timeout: 5000 }).stdout?.trim();
+    const piVersion = /^\d+\.\d+\.\d+$/.test(version) ? version : null;
+    try { return { ...await capture({ cwd, env, args, timeoutSeconds, log, onEvent, interruption: interruption.signal }), piVersion }; }
+    catch (error) { error.piVersion = piVersion; throw error; }
   } finally {
     rmSync(dir, { recursive: true, force: true });
     for (const signal of signals) process.off(signal, interrupt);
@@ -151,7 +154,7 @@ function capture({ cwd, env, args, timeoutSeconds, log, onEvent, interruption })
         if (code !== 0 && !(capped && (code === 143 || ["SIGTERM", "SIGKILL"].includes(signal)))) throw new Error(`Pi exited ${code ?? signal}`);
         if (!worked || ((!settled || active.size) && !capped) || modelError) throw new Error(`No completed Pi run (${modelError ?? "empty or incomplete event stream"})`);
         done({ stdout, reason: reason ?? "completed", code, signal });
-      } catch (e) { fail(new Error(`${e.message} (log: ${log})`)); }
+      } catch (e) { fail(Object.assign(new Error(`${e.message} (log: ${log})`), { exit: code, signal, reason: reason ?? "invalid" })); }
     });
   });
 }

@@ -8,13 +8,15 @@ The [source manifest](../packages/p3stack/rules/manifest.json) maps five source 
 
 Git submodule entries pin the upstream commits. The [package README](../packages/p3stack/README.md#license-and-upstreams) mirrors them. The [skill registry](../packages/p3stack/registry/skills.json) records 46 emitted skills, 43 references and the reason for each drop. For example, `/skill:tdd` invokes Pocock's TDD procedure; for a cheap bug reproduction it points to pstack's [regression-test](../packages/p3stack/skills/tdd/references/regression-test.md). Edit the [generator inputs](../packages/p3stack/AGENTS.md), not the generated skills or agent recipes.
 
+A project's app driver and formal checks can cover the same area. `/skill:create-verification-skill` writes `verify-<app>`; `/skill:create-formal-verification-skill` writes `formal-verify-<area>`. Both live under `.pi/skills/`. Existing formal skills keep their names when maintained.
+
 ## How a request reaches a playbook
 
 With routing on, the extension points Pi to [p3stack-mode](../packages/p3stack/skills/p3stack-mode/SKILL.md). The model selects a [route](../packages/p3stack/registry/routes.json) for the request and grant first. A small, fully specified task is done there and then. For every other route it reads poteto-mode in full, then the route's target. The generator inserts each [chain](../packages/p3stack/registry/chains.json) row into its playbook at the named step, marked **p3stack only**, so the model reads a playbook's added steps in place. A bug without a failing reproduction goes to diagnosis first, which stops at a confirmed cause; the Bug fix playbook then implements once. [House policies](adr/0004-house-policies-win-over-vendored-defaults.md) settle conflicts between skills.
 
-The session branch saves the grant. An explicit request for full autonomy can raise it for one task. Without a grant from the extension, the router uses the default grant. See the [operator commands](../packages/p3stack/README.md#choose-who-decides) to change the saved grant. Turning routing off stops new reminders. The skills remain available.
+The session branch saves the grant. An explicit request for full autonomy can raise it for one task. Without a grant from the extension, the router uses the default grant. See the [operator commands](../packages/p3stack/README.md#choose-who-decides) to change the saved grant. Each provider request carries at most the current user request's routing reminder. Turning routing off removes earlier hidden routing reminders from model input without editing the session log. The skills remain available: a direct [`architect`](../packages/p3stack/skills/architect/SKILL.md) design request still ends at the recommendation. Assign it implementation to continue into code.
 
-The [brief hook](adr/0006-mechanical-procedures-become-tools.md) uses the saved grant. For a task-only increase, the parent writes `Task grant: full-autonomy` in the brief.
+The [brief hook](adr/0006-mechanical-procedures-become-tools.md) uses the saved grant unless the parent sets a task grant. In a terminal, put `Task grant: full-autonomy` or `Task grant: default` first in the assignment. Under T3, replace the grant line in the prepared header; the approved task is sent unchanged.
 
 ## What depends on the host
 
@@ -22,7 +24,7 @@ Skills ask for capabilities such as delegation. Read the [shared host map](../pa
 
 `p3stack_roles` reads the first valid role file: `.pi/p3stack.json` in a trusted project, then `p3stack.json` in Pi's agent directory. It resolves roles against the host's catalog and reports substitutions or missing choices. A failed T3 lookup does not fall back to terminal models. [Interactive setup](../packages/p3stack/README.md#install-choices-and-setup) writes the personal file on either host. Without a UI it writes nothing.
 
-The static T3 check uses [the recorded contract](../packages/p3stack/rules/t3-pin.json), not a running host. For inventory and live behavior checks, see [Verify host compatibility](../packages/p3stack/docs/landing/t3-settings.md#verify-host-compatibility).
+The [T3 contract](../packages/p3stack/rules/t3-contract.json) classifies the host map’s bare operation names: `directTools` must have direct exposure, `requiredTools` can have any non-hidden exposure, and `optionalTools` may be absent. This is what p3stack needs, not [t3-agent’s choice of which tools to activate](../packages/t3-agent/extensions/t3-agent/src/loadout.ts). The static check compares the contract with the map. For a thread’s inventory, live behavior checks, or an optional support fingerprint, see [Verify host compatibility](../packages/p3stack/docs/landing/t3-settings.md#verify-host-compatibility).
 
 ## How to verify a change
 

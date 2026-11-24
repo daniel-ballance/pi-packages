@@ -5,7 +5,7 @@
     "anchor": "2. `architect` for parallel design exploration",
     "position": "after",
     "skill": "tdd",
-    "when": "Use the seams architect named, or name them yourself when step 2 skipped architect. Confirm them with the human under the default grant."
+    "when": "Select test seams from the sketch or the existing interface. Under the default grant, confirm them with the human before dispatch; under full autonomy, record the choice. Put the seams in the implementation brief; its owner runs the red-green loop."
   },
   {
     "id": "bug-teardown",
@@ -165,7 +165,7 @@
     "anchor": "Stop at a safe boundary.",
     "position": "after",
     "skill": "p3stack-mode/references/execution-ledger.md",
-    "when": "If this run has a ledger, append the pause point and every open ruling before stopping."
+    "when": "If this run has a ledger, append the pause point and pending gate after saving the work."
   },
   {
     "id": "pickup-ledger",
@@ -173,7 +173,7 @@
     "anchor": "Locate the prior trail.",
     "position": "before",
     "skill": "p3stack-mode/references/execution-ledger.md",
-    "when": "Look for the run's ledger in the store first. When it exists, it and git log outrank the transcript."
+    "when": "Look for the run's ledger in the store first. If it exists, follow its Recovery procedure."
   },
   {
     "id": "hillclimb-workflow",
@@ -197,7 +197,7 @@
     "anchor": "Run it with your own tools.",
     "position": "before",
     "skill": "p3stack-mode/references/execution-ledger.md",
-    "when": "Open the run ledger before dispatch. Keep notes.md beside it in the run directory."
+    "when": "Open the run ledger before dispatch."
   },
   {
     "id": "orchestrate-floor",
@@ -213,7 +213,7 @@
     "anchor": "2. **Spawn one owner per PR, and keep its work where a replacement can find it.**",
     "position": "before",
     "skill": "p3stack-mode/references/execution-ledger.md",
-    "when": "For Autopilot-full and Autopilot-stack, open one queue ledger before dispatch. Keep the run's notes beside it in the run directory."
+    "when": "For Autopilot-full and Autopilot-stack, open one queue ledger before dispatch."
   },
   {
     "id": "autopilot-floor",

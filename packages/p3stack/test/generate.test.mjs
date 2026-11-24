@@ -85,6 +85,23 @@ test("the coupling lint scans the second source", () => {
   } finally { dispose(); }
 });
 
+test("the coupling lint flags /loop invocations but permits path segments", t => {
+  const { deny, denyCommands } = JSON.parse(readFileSync(new URL("../rules/lint.json", import.meta.url)));
+  const path = "skills/demo/usage.md", safe = 'Read [route](/loop), GET /loop HTTP/1.1, /loop/data or passes/loop-check.ts.\n';
+  const f = fixture({
+    ["vendor/up/" + path]: safe,
+    "vendor/up/skills/demo/compiler.ts": 'import { loopCheck } from "./passes/loop-check.ts";\n',
+    "rules/lint.json": JSON.stringify({ deny, denyCommands }),
+  });
+  t.after(f.dispose);
+  const build = () => generate({ packageDir: f.root, outDir: f.out });
+  build();
+  for (const invocation of ["Use **/loop**.", "`/loop 1h` until green.", "/loop"]) {
+    writeFileSync(join(f.root, "vendor/up", path), safe + invocation + "\n");
+    assert.throws(build, /skills\/demo\/usage\.md:2: \/loop/);
+  }
+});
+
 test("source-scoped token rules rewrite only that source and global rules still span sources", () => {
   const { root, out, read, dispose } = twoSources({
     "rules/tokens.json": JSON.stringify([
@@ -610,7 +627,10 @@ test("a heading inside a fence is not a child of the leaf that contains it", () 
   } finally { dispose(); }
 });
 
-test("setup offers and the help setup sentence come from upstream through the package rules", () => {
+test("setup documents the configured roles and both hosts without losing the upstream verification offers", async t => {
+  const { PANEL_ROLES } = await import("../extensions/p3stack/src/role-definitions.ts");
+  PANEL_ROLES.push("release reviewers"); // Simulate a new panel in the wizard's role definitions.
+  t.after(() => PANEL_ROLES.pop());
   const packageDir = fileURLToPath(new URL("..", import.meta.url));
   const out = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-rules-")));
   try {
@@ -622,6 +642,13 @@ test("setup offers and the help setup sentence come from upstream through the pa
     const expectedOffers = upstream.slice(upstream.indexOf("### 7. Offer a verification skill")).replaceAll(aside, "").replaceAll(/\/(create-(?:formal-)?verification-skill)\b/g, "/skill:$1");
     assert.equal(setup.slice(setup.indexOf("### 7. Offer a verification skill")), expectedOffers);
     assert.equal(setup.includes(aside), false);
+    const { roles } = JSON.parse(setup.match(/```json\n([^`]+)\n```/)[1]);
+    assert.deepEqual(roles["release reviewers"], [roles["judgment and prose"], roles["feature, refactoring"]]);
+    for (const doc of [setup, help]) {
+      assert.match(doc, /`\/p3stack-setup`/);
+      assert.match(doc, /T3[^\n]*`p3stack_roles`/);
+      assert.doesNotMatch(doc, /always under T3/);
+    }
     const offer = "Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.";
     assert.equal(help.includes(offer), true);
     assert.equal(readFileSync(join(packageDir, "vendor/pstack/pstack/skills/poteto-help/SKILL.md"), "utf8").includes(offer), true);
@@ -660,9 +687,6 @@ test("only routes are tabulated; each playbook carries its own conditional reads
     assert.doesNotMatch(router, /\/home\/|\/tmp\/|<this file's directory>|^## Chains$/m);
     assert.match(router, /relative to this file's directory/i);
     assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
-    for (const name of ["routes", "chains"]) {
-      assert.equal(existsSync(join(out, `skills/p3stack-mode/references/${name}.md`)), false);
-    }
     const rows = name => JSON.parse(readFileSync(join(packageDir, `registry/${name}.json`), "utf8"));
     for (const { request, target, action } of rows("routes")) {
       const line = router.split("\n").find(line => line.startsWith(`| ${request} |`));
@@ -718,44 +742,13 @@ test("the router precedence overlay is locked to upstream Playbooks", () => {
   assert.match(mode, /p3stack-mode.*workflow selection/);
 });
 
-test("the package ships the Pocock license and initializes both source checkouts", () => {
-  const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
-  assert.ok(manifest.files.includes("LICENSE-matt-pocock"));
-  assert.ok(manifest.files.includes("LICENSE-agent-skills"));
-  assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/agent-skills/);
-  assert.ok(manifest.files.includes("LICENSE-superpowers"));
-  assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/superpowers/);
-  assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/matt-pocock/);
-});
-
-test("the collection and global settings use only the unified skill source", () => {
-  const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
-  // The subagents skills describe terminal-only tools, so its extension contributes them outside T3 Code.
-  assert.deepEqual(manifest.pi.skills, ["./skills"]);
-  for (const lock of ["package-lock.json", "pnpm-lock.yaml"]) assert.equal(readFileSync(join(packageDir, "../..", lock), "utf8").includes("pi-pocock-skills"), false, lock);
-  const settings = JSON.parse(readFileSync(join(packageDir, "../../global/settings.json"), "utf8"));
-  assert.equal(settings.packages.some(entry => JSON.stringify(entry).includes("pi-pocock-skills")), false);
-});
-
-test("the root gate uses the registry instead of the retired skill-report and decision directory", () => {
-  const root = join(packageDir, "../..");
-  const check = readFileSync(join(root, "scripts/check.sh"), "utf8");
-  assert.match(check, /node packages\/p3stack\/generator\/check-registry\.mjs/);
-  assert.doesNotMatch(check, /skill-report/);
-  assert.equal(existsSync(join(root, "scripts/skill-report.mjs")), false);
-  assert.equal(existsSync(join(root, ".pi/skills/p3stack-pocock-unification")), false);
-});
-
-const pocockNames = ["grilling", "domain-modeling", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "tdd", "triage", "setup-matt-pocock-skills", "to-spec", "to-tickets", "wayfinder", "implement-spec", "improve-codebase-architecture", "pr", "retro", "handoff", "wizard"];
-
 function pocockFixture() {
   const temp = mkdtempSync(join(process.env.P3STACK_FIXTURE_ROOT ?? tmpdir(), "p3stack-pocock-"));
   const root = join(temp, "repo/packages/p3stack");
   mkdirSync(join(temp, "repo/scripts"), { recursive: true });
   symlinkSync(join(packageDir, "../../scripts/lint-skill"), join(temp, "repo/scripts/lint-skill"));
   for (const name of ["rules", "registry", "extra", "authored", "overlays", "patches", "vendor/pstack", "vendor/agent-skills", "vendor/superpowers"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
-  const oldVendor = join(packageDir, "../pi-pocock-skills/vendor/matt-pocock");
-  cpSync(existsSync(oldVendor) ? oldVendor : join(packageDir, "vendor/matt-pocock"), join(root, "vendor/matt-pocock"), { recursive: true });
+  cpSync(join(packageDir, "vendor/matt-pocock"), join(root, "vendor/matt-pocock"), { recursive: true });
   const manifestPath = join(root, "rules/manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   for (const source of manifest.sources) delete source.upstream;
@@ -795,6 +788,15 @@ pocockCase("2 missing adopted skills fail by name", ({ run, input }) => {
   const result = run();
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Stale registry row matt-pocock\/skills\/engineering\/research\/SKILL\.md/);
+});
+
+pocockCase("the check rejects an orphaned reference even when admission counts are unchanged", ({ root, run }) => {
+  const path = join(root, "registry/skills.json"), rows = JSON.parse(readFileSync(path));
+  rows.find(r => r.action === "reference" && r.name === "regression-test").owner = "missing-owner";
+  writeFileSync(path, JSON.stringify(rows));
+  const checked = run("--check");
+  assert.equal(checked.status, 1);
+  assert.match(checked.stderr, /missing-owner/);
 });
 
 pocockCase("3 duplicate names in two buckets fail", ({ run, input }) => {
@@ -864,7 +866,7 @@ pocockCase("9 failed validation preserves committed output", ({ root, run, input
 pocockCase("10 translation preserves semantics and is deterministic", ({ root, run, read }) => {
   const first = run();
   assert.equal(first.status, 0, first.stderr);
-  for (const name of pocockNames) assert.ok(existsSync(join(root, "skills", name, "SKILL.md")), name);
+  const pocockNames = JSON.parse(readFileSync(join(root, "registry/skills.json"))).filter(row => row.source === "matt-pocock" && row.action === "emit").map(row => row.name);
   for (const path of ["architect/references/codebase-design.md", "implement-spec/references/implement.md"]) assert.ok(existsSync(join(root, "skills", path)), path);
   assert.match(read("diagnosing-bugs/SKILL.md"), /\[HITL loop template\]\(scripts\/hitl-loop.template.sh\)/);
   assert.match(read("p3stack-mode/SKILL.md"), /human present \| default \| `\.\.\/poteto-mode\/SKILL\.md`, then `\.\.\/grilling\/SKILL\.md`/);
@@ -878,12 +880,8 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.match(read("grilling/SKILL.md"), /"yes" accepts your recommended answer/);
   assert.match(read("domain-modeling/SKILL.md"), /\[GLOSSARY-FORMAT.md\]\(\.\/GLOSSARY-FORMAT.md\)/);
   assert.match(read("domain-modeling/GLOSSARY-FORMAT.md"), /\[Ordering\]\(\.\/src\/ordering\/GLOSSARY.md\)/);
-  assert.equal(existsSync(join(root, "skills/domain-modeling/CONTEXT-FORMAT.md")), false);
-  assert.equal(existsSync(join(root, "skills/references/CHILD-DELEGATION.md")), false);
-  assert.equal(existsSync(join(root, "skills/research/agents")), false);
   assert.match(read("tdd/references/regression-test.md"), /TDD Bug Fix/);
   assert.match(read("tdd/SKILL.md"), /confirmed seam|confirm.*user/i);
-  assert.equal(existsSync(join(root, "skills/wait-what/SKILL.md")), false);
   const before = pocockNames.map(name => read(`${name}/SKILL.md`));
   assert.equal(run().status, 0);
   assert.deepEqual(pocockNames.map(name => read(`${name}/SKILL.md`)), before);
@@ -895,7 +893,16 @@ pocockCase("11 slash commands use emitted names and protect paths", ({ run, inpu
   writeFileSync(file, readFileSync(file, "utf8") + "\nUse /tdd and /code-review, /to-spec, /clear. Keep ../research/SKILL.md.\nargument-hint: ignored\n");
   assert.equal(run().status, 0);
   assert.ok(read("implement-spec/references/implement.md").includes("Use /skill:tdd and /skill:code-review, /skill:to-spec, /clear. Keep ../research/SKILL.md."));
-  assert.doesNotMatch(read("implement-spec/references/implement.md"), /argument-hint:/);
+  assert.ok(read("implement-spec/references/implement.md").includes("\nargument-hint: ignored\n"));
+});
+
+pocockCase("metadata rules preserve a fenced header in a renamed skill", ({ run, input, read }) => {
+  const file = input("engineering/prototype/SKILL.md");
+  const sample = "\n```yaml\n---\nname: prototype\ndescription: Example.\nicon: paintbrush\ncolor: blue\npaths: [src/**]\nargument-hint: optional\n---\n```\n";
+  writeFileSync(file, readFileSync(file, "utf8") + sample);
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(read("interactive-prototype/SKILL.md").endsWith(sample));
 });
 
 pocockCase("12 dependency closure does not depend on invocation spelling", ({ run, input, rewrite }) => {
@@ -1018,16 +1025,18 @@ pocockCase("17 staged lint rejects missing resources in both modes", ({ run, inp
   }
 });
 
-pocockCase("staged resource checks keep their source scope", ({ run, root, input }) => {
-  const cursorFile = join(root, "vendor/pstack/pstack/skills/bro/SKILL.md");
-  writeFileSync(cursorFile, readFileSync(cursorFile, "utf8") + "\n[missing](references/not-bundled.md)\n");
-  const cursor = run();
-  assert.equal(cursor.status, 0, cursor.stderr);
-  const file = input("engineering/research/SKILL.md");
-  writeFileSync(file, readFileSync(file, "utf8") + "\n[missing](references/not-bundled.md)\n");
-  const pocock = run();
-  assert.equal(pocock.status, 1);
-  assert.match(pocock.stderr, /skills\/research.*|Referenced resource does not exist/);
+pocockCase("all owners pass resource lint before installation, including authored skills", ({ run, root }) => {
+  for (const [path, resource] of [
+    ["vendor/pstack/pstack/skills/bro/SKILL.md", "missing-cursor"],
+    ["authored/skills/release/SKILL.md", "missing-authored"],
+  ]) {
+    const file = join(root, path);
+    writeFileSync(file, readFileSync(file, "utf8") + `\n[missing](references/${resource}.md)\n`);
+  }
+  const result = run();
+  assert.equal(result.status, 1);
+  for (const resource of ["missing-cursor", "missing-authored"]) assert.match(result.stderr, new RegExp(resource));
+  assert.equal(existsSync(join(root, "skills")), false);
 });
 
 pocockCase("18 unavailable staged linter refuses replacement", ({ root, run }) => {

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
 import { chainSlots, checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter, targetPath } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
+import { BUDGETS, rolesFor } from "../extensions/p3stack/src/role-definitions.ts";
 import { byName, isLink, referenceMoves, referencePath, sourcePathClassifier, sourcesOf, walk } from "./source-paths.mjs";
 
 function readJson(path, fallback) {
@@ -61,12 +62,23 @@ function expander(commit, problems) {
 
 // Rewrite only visible Markdown text and inline command spans. Source offsets
 // preserve fence contents, raw HTML, link destinations and all original bytes around them.
-function mapProse(text, rewrite) {
+function mapProse(text, pattern, rewrite, skipped) {
   let result = "", offset = 0;
   function visit(node) {
     if (node.type === "text" || node.type === "inlineCode") {
       const { start, end } = node.position;
-      result += text.slice(offset, start.offset) + rewrite(text.slice(start.offset, end.offset));
+      result += text.slice(offset, start.offset);
+      offset = start.offset;
+      // The Markdown node may contain only `/name`; its HTTP method or shell
+      // command can be in the preceding node. Consult the document at the match.
+      for (const hit of text.slice(start.offset, end.offset).matchAll(pattern)) {
+        const at = start.offset + hit.index, next = at + hit[0].length;
+        if (!pathOperand(text.slice(0, at), text.slice(next))) continue;
+        skipped?.(hit[0], at);
+        result += rewrite(text.slice(offset, at)) + hit[0];
+        offset = next;
+      }
+      result += rewrite(text.slice(offset, end.offset));
       offset = end.offset;
     } else node.children?.forEach(visit);
   }
@@ -101,7 +113,18 @@ function applyTokens(files, owners, rules, expanders, problems, sectionRewrites)
           if (tally) count += span.match(pattern)?.length ?? 0;
           return span.replace(pattern, replacement);
         };
-        return rule.markdownProse ? mapProse(input, replace) : replace(input);
+        if (rule.frontmatter) {
+          const header = frontmatterBlock(input)?.[0];
+          return header ? replace(header) + input.slice(header.length) : input;
+        }
+        if (!rule.markdownProse) return replace(input);
+        return mapProse(input, pattern, replace, tally ? (command, at) => {
+          const accepted = rule.allowPaths?.some(({ file, text }) => {
+            const i = text.indexOf(command);
+            return file === path && i >= 0 && at >= i && input.startsWith(text, at - i);
+          });
+          if (!accepted) problems.push(`${path}:${input.slice(0, at).split("\n").length}: untranslated prose command ${command} (treated as a path)`);
+        } : undefined);
       };
       files.set(path, rewrite(text, true));
       sectionRewrites.get(path)?.push(rewrite);
@@ -232,6 +255,15 @@ function renderRegistry(files, { routes, chains }, put) {
   files.delete(template);
 }
 
+function renderSetupExample(files) {
+  const path = "skills/setup-pstack/SKILL.md", text = files.get(path);
+  if (typeof text !== "string") return;
+  const { name, level } = BUDGETS.find(budget => budget.name === "large");
+  const roles = rolesFor(`example/code:${level}`, `example/judge:${level}`);
+  files.set(path, text.replace("{{role-example}}", JSON.stringify({ host: "terminal", budget: `${name} (${level})`, roles }, null, 2))
+    .replace("{{budget-options}}", BUDGETS.map(({ label }) => `- \`${label}\``).join("\n")));
+}
+
 // Keep both user-facing indexes in step with the registry, not a second catalog.
 function renderCatalog(files, { skills, routes }, helpJobs) {
   const help = "skills/poteto-help/SKILL.md", mode = "skills/poteto-mode/SKILL.md";
@@ -275,7 +307,7 @@ function renderCatalog(files, { skills, routes }, helpJobs) {
 }
 
 // Roots replaced wholesale by installGenerated, even if a source stops supplying one.
-const GENERATED_ROOTS = ["LICENSE", "LICENSE-agent-skills", "LICENSE-matt-pocock", "LICENSE-superpowers", "agents", "skills"];
+const GENERATED_ROOTS = ["LICENSE", "LICENSE-agent-skills", "LICENSE-dyl-stack", "LICENSE-matt-pocock", "LICENSE-superpowers", "LICENSE-thermos", "agents", "skills"];
 
 function checkOutputPath(path) {
   const parts = path.split("/");
@@ -396,13 +428,22 @@ function rebaseResources(text, path, output, moves, targets, linkTo) {
   }
   const alternatives = keys => [...keys].map(escapeRegex).join("|");
   const operands = new RegExp("(?<![^\\s`(<'\"])" + `(${alternatives(aliases.keys())})(:\\d+)?` + "(?=$|[\\s`)>#?'\",;]|[.!](?!\\w))", "g");
-  const stale = own.length && new RegExp(`(?<![\\w./-])(?:${alternatives(own)})(?![\\w/-]|\\.\\w)`);
+  const stale = own.length && new RegExp(`(?<![\\w./-])(?:${alternatives(own)})(?![\\w/-]|\\.\\w)`, "g");
   const edits = [];
-  function guard(span, start) {
-    const bad = stale && stale.exec(span);
-    if (bad) {
+  function guard(span, start, type, language) {
+    if (!stale) return;
+    for (const bad of span.matchAll(stale)) {
+      const operand = bad[0], prefix = span.slice(span.lastIndexOf("\n", bad.index - 1) + 1, bad.index);
+      const qualified = operand.startsWith("../") || operand.startsWith(before + "/");
+      const address = /(?:\]\(\s*<?|(?:href|src|--[\w-]+)=)["']?$/i.test(prefix);
+      // "Keep scripts/ small" doesn't address a directory. An href to scripts/ does.
+      if (operand.endsWith("/") && !qualified && !address && type !== "destination") continue;
+      // A shell output operand or a cell in an example log is consumer data. Keep
+      // checking inputs even to unfamiliar commands, and all qualified addresses.
+      const sampleData = />[ \t]*["']?$/.test(prefix) || ["csv", "tsv"].includes(language) || prefix.includes("\t") && !language;
+      if (type === "code" && !qualified && !address && sampleData) continue;
       const line = text.slice(0, start).split("\n").length + span.slice(0, bad.index).split("\n").length - 1;
-      throw new Error(`${output}:${line}: unrebased resource path ${bad[0]}`);
+      throw new Error(`${output}:${line}: unrebased resource path ${operand}`);
     }
   }
   function visit(node) {
@@ -418,14 +459,14 @@ function rebaseResources(text, path, output, moves, targets, linkTo) {
         const at = delimiter && labelEnd + delimiter.index + delimiter[0].length;
         if (at && text.startsWith(node.url, at)) edits.push([at, at + node.url.length, linkTo(target) + (line ? `#L${line}` : fragment)]);
         else guard(span, start.offset);
-      } else guard(node.url, start.offset);
+      } else guard(node.url, start.offset, "destination");
       return; // link labels and titles are not operands
     }
     if (node.type === "linkReference" || node.type === "imageReference") return;
     if (node.children) return node.children.forEach(visit);
     const rewritten = node.type === "inlineCode" || node.type === "text" ? span.replace(operands, (match, operand, line) =>
       (line || operand !== "SKILL.md") ? aliases.get(operand) + (line ?? "") : match) : span;
-    guard(rewritten, start.offset); // includes fences, raw HTML and unhandled shell syntax
+    guard(rewritten, start.offset, node.type, node.lang);
     if (rewritten !== span) edits.push([start.offset, end.offset, rewritten]);
   }
   if (path.endsWith(".md")) visit(fromMarkdown(text));
@@ -474,26 +515,64 @@ export function removedCommandPattern(skills) {
   return new RegExp(`(?:/skill:|(?<![\\w./:-])(?<!\\][(:][ \\t]*<?)/)(?:${[...new Set(names)].map(escapeRegex).join("|")})(?![\\w/-]|[.?#][\\w/])`, "g");
 }
 
-function lint(outDir, deny, problems, removed) {
+// Bare /name is also a valid HTTP or filesystem operand, even inside an example.
+function pathOperand(before, after) {
+  const prefix = before.replace(/[`*"']+$/, ""), suffix = after.replace(/^[`*"']+/, "");
+  return /\b(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE)[ \t]+$/.test(prefix) ||
+    /\b(?:cd|pushd|ls|cat|mkdir|curl)(?:[ \t]+-[\w-]*)*[ \t]+$/.test(prefix) ||
+    /\b(?:route|endpoint|path|directory|mount(?:ed)?)(?: (?:at|under|to|is))?[ \t]+$/i.test(prefix) ||
+    /^(?:[ \t]+HTTP\/\d|[ \t]+(?:endpoint|directory|route)\b)/i.test(suffix) ||
+    /(?:\]\(\s*<?|\b(?:href|src)\s*=\s*)$/i.test(prefix);
+}
+
+function* bareCommands(line, names) {
+  if (!names.size) return;
+  for (const hit of line.matchAll(/(?<![\w./:-])\/([\w-]+)(?![\w/-]|[.?#][\w/])/g)) {
+    if (names.has(hit[1]) && !pathOperand(line.slice(0, hit.index), line.slice(hit.index + hit[0].length))) yield hit[0];
+  }
+}
+
+function lintFencedCommands(text, path, names, problems) {
+  function visit(node) {
+    if (node.type !== "code") return node.children?.forEach(visit);
+    const start = node.position.start;
+    const fenced = /^(?:`{3,}|~{3,})/.test(text.slice(start.offset));
+    node.value.split("\n").forEach((line, i) => {
+      for (const command of bareCommands(line, names)) problems.push(`${path}:${start.line + Number(fenced) + i}: untranslated fenced command ${command}`);
+    });
+  }
+  visit(fromMarkdown(text));
+}
+
+function lint(outDir, checks, problems, skills) {
+  const removed = skills && removedCommandPattern(skills), deniedCommands = new Set(checks.denyCommands);
+  const upstream = new Set(skills?.filter(row => row.source !== "p3stack").flatMap(row => [row.name, posix.basename(posix.dirname(row.path))]));
   for (const path of walk(outDir)) {
     const text = decode(readFileSync(join(outDir, path)));
     if (text === undefined) continue;
+    if (upstream.size && path.endsWith(".md")) lintFencedCommands(text, path, upstream, problems);
     text.split("\n").forEach((line, index) => {
-      for (const command of removed ? line.match(removed) ?? [] : []) problems.push(`${path}:${index + 1}: removed skill command ${command}`);
-      for (const token of deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
+      for (const hit of removed ? line.matchAll(removed) : []) {
+        if (hit[0].startsWith("/skill:") || !pathOperand(line.slice(0, hit.index), line.slice(hit.index + hit[0].length))) {
+          problems.push(`${path}:${index + 1}: removed skill command ${hit[0]}`);
+        }
+      }
+      for (const command of bareCommands(line, deniedCommands)) problems.push(`${path}:${index + 1}: ${command}`);
+      for (const token of checks.deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
     });
   }
 }
 
-function lintResources(packageDir, outDir, owners, sources, rows = []) {
+function lintResources(packageDir, outDir) {
   const skills = join(outDir, "skills");
-  const referenceOwners = new Set(rows.filter(row => row.action === "reference" && sources.includes(row.source)).map(row => row.owner));
   const directories = readdirSync(skills, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && (referenceOwners.has(entry.name) || sources.includes(owners.get(`skills/${entry.name}/SKILL.md`))))
+    .filter(entry => entry.isDirectory() && existsSync(join(skills, entry.name, "SKILL.md")))
     .map(entry => join(skills, entry.name)).sort();
   if (!directories.length) throw new Error("No generated skills found; refusing an empty resource check.");
   try {
-    execFileSync(process.execPath, [join(packageDir, "../../scripts/lint-skill/lint-skill.mjs"), "--resource-root", skills, ...directories], { stdio: "pipe" });
+    const report = execFileSync(process.execPath, [join(packageDir, "../../scripts/lint-skill/lint-skill.mjs"), "--resource-root", skills, ...directories], { encoding: "utf8" });
+    // Keep warnings visible without listing every resolved dependency.
+    process.stdout.write(report.split("\n").filter(line => !/^\s+(exists|Dependencies:)/.test(line)).join("\n"));
   } catch (error) {
     throw new Error(`Staged skills failed lint-skill.\n${String(error.stdout ?? "")}\n${String(error.stderr ?? error.message)}`);
   }
@@ -514,10 +593,10 @@ export function generate({ packageDir, outDir }) {
   applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems, sectionRewrites);
   applySections(files, upstream, sections, sectionRewrites, join(packageDir, "overlays"), expand, problems);
   if (registry) {
-    for (const row of registry.skills.filter(row => row.action === "emit" && row.source !== "p3stack")) {
+    for (const row of registry.skills.filter(row => row.action !== "drop" && row.source !== "p3stack")) {
       const path = `skills/${row.name}/SKILL.md`, text = files.get(path);
       if (typeof text !== "string") { problems.push(`Registry skill ${row.name} is not mapped to ${path}`); continue; }
-      files.set(path, skillFrontmatter(text, path).withInvocation(row.invocation === "user"));
+      files.set(path, skillFrontmatter(text, path).withRegistry(row));
     }
   }
   const put = by => (path, contents, executable = false) => {
@@ -535,6 +614,7 @@ export function generate({ packageDir, outDir }) {
   if (registry) renderRegistry(files, registry, put("registry"));
   if (problems.length) throw new Error(problems.join("\n"));
   if (registry) renderCatalog(files, registry, readJson(join(rules, "help-jobs.json"), {}));
+  renderSetupExample(files);
   writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));
@@ -545,7 +625,7 @@ export function generate({ packageDir, outDir }) {
     chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
   }
   const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
-  lint(outDir, checks.deny, lintProblems, registry && removedCommandPattern(registry.skills));
+  lint(outDir, checks, lintProblems, registry?.skills);
   for (const { file, contains } of checks.require ?? []) {
     const text = existsSync(join(outDir, file)) ? readFileSync(join(outDir, file), "utf8") : "";
     for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);
@@ -554,7 +634,7 @@ export function generate({ packageDir, outDir }) {
   const hostProblems = lintHosts(outDir);
   if (hostProblems.length) throw new Error(`Host lint failed. Keep tool names in the host map.\n${hostProblems.join("\n")}`);
   if (registry) checkRegistry({ packageDir, outDir, registry });
-  if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources, registry?.skills);
+  if (checks.resources) lintResources(packageDir, outDir);
   return infos;
 }
 

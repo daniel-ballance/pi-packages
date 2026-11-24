@@ -1,10 +1,16 @@
 import { Type } from "typebox";
-import type { Context, Pi } from "./mode.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+// Opt-in: a person may answer hours later, and a host such as T3 holds the question open until then.
+function rpcDeadline() {
+  const ms = Number(process.env.P3STACK_ASK_TIMEOUT_MS);
+  return Number.isSafeInteger(ms) && ms > 0 && ms <= 2_147_483_647 ? AbortSignal.timeout(ms) : undefined;
+}
 
 const OTHER = "Other (type an answer)";
-const text = (body: string) => ({ content: [{ type: "text", text: body }], details: {} });
+const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: {} });
 
-export function registerAsk(pi: Pi) {
+export function registerAsk(pi: ExtensionAPI) {
   pi.registerTool({
     name: "ask_user", label: "Ask the human",
     description: "Ask the human a product or preference question that no experiment can settle, with choices or free text. Without an interactive UI, apply the default you state and say so.",
@@ -16,23 +22,25 @@ export function registerAsk(pi: Pi) {
       allowOther: Type.Optional(Type.Boolean({ description: "Also offer a free-text answer beside the options." })),
       default: Type.Optional(Type.String({ maxLength: 500, description: "What you will do if nobody answers." })),
     }, { additionalProperties: false }),
-    async execute(_call: string, args: { question: string; options?: string[]; allowOther?: boolean; default?: string }, signal: AbortSignal | undefined, _update: unknown, ctx: Context) {
+    async execute(_call, args, signal, _update, ctx) {
       signal?.throwIfAborted();
       const fallback = args.default?.trim()
         ? `Apply your default (${args.default}) and say so in your reply.`
         : "Do not treat silence as approval. Take the option that changes least, or stop and say what is needed.";
       if (!ctx.hasUI) return text(`No one can be asked because this session has no interactive UI. ${fallback}`);
-      const dismissed = `The human dismissed the question. ${fallback}`;
+      const deadline = ctx.mode === "rpc" ? rpcDeadline() : undefined;
+      const dialog = { signal: deadline && signal ? AbortSignal.any([deadline, signal]) : deadline ?? signal };
+      const noAnswer = () => text(`${deadline?.aborted ? "No RPC answer arrived before the deadline." : "The human dismissed the question."} ${fallback}`);
       if (args.options) {
         const options = args.allowOther && !args.options.includes(OTHER) ? [...args.options, OTHER] : args.options;
-        const choice = await ctx.ui.select(args.question, options, { signal });
+        const choice = await ctx.ui.select(args.question, options, dialog);
         signal?.throwIfAborted();
-        if (choice === undefined) return text(dismissed);
+        if (choice === undefined) return noAnswer();
         if (!args.allowOther || choice !== OTHER) return text(`The human chose: ${choice}`);
       }
-      const answer = await ctx.ui.input(args.question, undefined, { signal });
+      const answer = await ctx.ui.input(args.question, undefined, dialog);
       signal?.throwIfAborted();
-      return text(answer?.trim() ? `The human answered: ${answer}` : dismissed);
+      return answer?.trim() ? text(`The human answered: ${answer}`) : noAnswer();
     },
   });
 }

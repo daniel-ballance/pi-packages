@@ -71,5 +71,23 @@
     "heading": "### 1. Pin the fixed point",
     "overlay": "code-review/capture-input.md",
     "upstream": "f4a615d42acf"
+  },
+  {
+    "file": "skills/poteto-help/SKILL.md",
+    "heading": "## Get set up",
+    "overlay": "poteto-help/get-set-up.md",
+    "upstream": "2aa90cd5f117"
+  },
+  {
+    "file": "skills/show-me-your-work/SKILL.md",
+    "heading": "## Logging a row",
+    "overlay": "show-me-your-work/export-row.md",
+    "upstream": "67ce08b5d2c3"
+  },
+  {
+    "file": "skills/show-me-your-work/SKILL.md",
+    "heading": "## Audit the log against the transcript",
+    "overlay": "show-me-your-work/audit-ledger.md",
+    "upstream": "cc1cf2339235"
   }
 ]

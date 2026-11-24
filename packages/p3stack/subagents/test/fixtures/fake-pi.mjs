@@ -45,6 +45,11 @@ process.stdin.on('data', chunk => {
         respond(cmd, { disposition: 'handled' });
         continue;
       }
+      if (cmd.message === 'HANDLED STREAMING' || cmd.message === 'HANDLED PENDING') {
+        if (cmd.message === 'HANDLED STREAMING') working = true;
+        else followUps.push('waiting for delivery');
+        respond(cmd, { disposition: 'handled' }); continue;
+      }
       if (cmd.message === 'CONSUME' || cmd.message === 'IDLE USAGE') {
         respond(cmd, { disposition: 'handled' });
         if (cmd.message === 'IDLE USAGE') setTimeout(() => {
@@ -86,6 +91,14 @@ process.stdin.on('data', chunk => {
           working = true; emit({ type: 'agent_start' });
           timer = setTimeout(() => settle('late start finished'), 50);
         }, 80);
+        continue;
+      }
+      if (cmd.message === 'exit-during-retry' || cmd.message === 'close-during-retry') {
+        emit({ type: 'agent_start' }); user(cmd.message);
+        emit({ type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'error', errorMessage: '503 provider unavailable' } });
+        emit({ type: 'agent_end' }); // A retry can follow; there is no agent_settled yet.
+        respond(cmd);
+        if (cmd.message === 'exit-during-retry') process.exit(2);
         continue;
       }
       working = true; emit({ type: 'agent_start' }); user(cmd.message); respond(cmd);

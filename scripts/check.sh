@@ -29,7 +29,8 @@ node scripts/root-package.mjs --check
 
 printf '\n%s\n' '== shared modules =='
 node scripts/sync-shared.mjs --check
-node --test shared/*.test.ts scripts/*.test.mjs
+printf '\n%s\n' '== repository tests =='
+"$PACKAGE_MANAGER" run test
 
 if [[ -f "$ROOT/.pi/subagents.json" ]]; then
   printf '%s\n' '== project subagent policy =='
@@ -48,7 +49,6 @@ fi
 printf '\n%s\n' '== global Pi configuration =='
 python3 -B -m unittest discover -s global/tests
 node packages/p3stack/generator/check-registry.mjs
-node packages/p3stack/generator/check-t3-pin.mjs
 node packages/p3stack/generator/lint-hosts.mjs
 (
   cd "$ROOT/packages/p3stack/subagents"

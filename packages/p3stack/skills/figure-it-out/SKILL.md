@@ -43,7 +43,7 @@ Each unit is an experiment. State the hypothesis, make the smallest change, meas
 
 ## Phase D: Keep the audit trail
 
-Log the run via the [show-me-your-work](../p3stack-mode/references/show-me-your-work.md) reference. figure-it-out's work is usually ambitious enough to commit the trail so the reviewer can read it in the PR. The trail plus the diff is what lets the human come back and trust the work.
+Record decisions in the [execution ledger](../p3stack-mode/references/execution-ledger.md). When the PR needs a durable trail, export it per the [show-me-your-work](../p3stack-mode/references/show-me-your-work.md) reference.
 
 ## Phase E: Verify and hand back
 

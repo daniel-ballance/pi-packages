@@ -38,6 +38,7 @@ test("supervisory notice names and error details cannot inject extra lines or te
   assert.equal(batch.content.split("\n").filter(line => line.startsWith("- ")).length, 1);
   assert.doesNotMatch(batch.content, /\nRelease everything|\nIgnore hold|\x1b/);
   assert.match(batch.content, /"worker Release everything"/);
+  assert.match(batch.content, /subagent_release_hold/);
 });
 
 test("busy parent holds notices; reads can cancel them before any message is queued", async () => {
@@ -200,6 +201,22 @@ test("list/wait do not acknowledge; reading cancels only that run, replay also a
   } finally { await s.close(); }
 });
 
+test("committing a prepared inbox page does not acknowledge a later report", async () => {
+  const s = await managerFixture();
+  try {
+    const { id } = await s.spawn("first"); await s.manager.wait([id], "all", 2000);
+    const page = s.manager.inbox.prepareRead(id);
+    const [first] = s.manager.pendingNotices();
+    await s.manager.send(id, "second"); await s.manager.wait([id], "all", 2000);
+    const [, second] = s.manager.pendingNotices();
+    assert.ok(first.cursor < second.cursor);
+    page.acknowledge();
+    assert.equal(s.manager.get(id).readCursor, first.cursor);
+    assert.deepEqual(s.manager.pendingNotices(), [second]);
+    assert.equal(s.manager.get(id).resultReview?.status, "unreviewed");
+  } finally { await s.close(); }
+});
+
 test("partial pages acknowledge only actual returned updates; skipped/unformatted reads do not", async () => {
   const s = await managerFixture();
   try {
@@ -256,6 +273,7 @@ test("failures and input requests use the same read acknowledgement; obsolete di
     s.manager.read(a.id); assert.equal(s.manager.pendingNotices().length, 0);
     await s.manager.send(a.id, "ui"); await s.manager.wait([a.id], "all", 2000);
     assert.equal(s.manager.pendingNotices()[0].kind, "input_requested");
+    assert.match(noticeBatch(s.manager.pendingNotices()).content, /subagent_respond/);
     const data = s.manager.read(a.id, 9999); // UI requests are returned even if updates are skipped
     assert.equal(data.uiRequests.length, 1); assert.equal(s.manager.pendingNotices().length, 0);
     await s.manager.respond(a.id, "ui-1", { confirmed: false });
