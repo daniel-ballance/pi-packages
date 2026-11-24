@@ -9,6 +9,7 @@ import { SubagentManager, type Notice } from "../extensions/subagents/src/manage
 import { cardsFromDetails, listingLine } from "../extensions/subagents/src/card.js";
 import { JsonlDecoder, RpcChild } from "../extensions/subagents/src/rpc.js";
 import { managerWorkflowHost, type AgentJob } from "../extensions/subagents/src/workflow-host.js";
+import { candidateDirectory, snapshot } from "../extensions/subagents/src/workflow-artifacts.js";
 import type { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 import { tempRoot } from "./support/temp-root.js";
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
@@ -847,6 +848,23 @@ function workflowJobs(directory: string): AgentJob[] {
 function workflowPolicy(): SubagentPolicy {
   return { compile: (cwd: string) => ({ cwd, executable: process.execPath, executableArgs: [fixture] }) } as unknown as SubagentPolicy;
 }
+
+test("workflow response.md and validator inputs include the end of a long final answer", async () => {
+  const s = await setup();
+  try {
+    const host = managerWorkflowHost(s.manager, workflowPolicy);
+    const [writer, validator] = workflowJobs(s.dir);
+    writer.instructions = "文".repeat(14000) + "END-VERDICT";
+    const signal = new AbortController().signal;
+    const [reply] = await host.agents([writer], [], signal);
+    candidateDirectory(writer.candidate);
+    const artifact = snapshot(writer.candidate, join(s.dir, "artifact"), reply);
+    assert.ok((await readFile(join(artifact.path, "response.md"), "utf8")).includes("END-VERDICT"));
+    validator.inputs = { candidate: artifact };
+    const [echo] = await host.agents([validator], [], signal);
+    assert.ok(echo.includes("END-VERDICT"), "the validator's actual prompt includes the tail");
+  } finally { await s.cleanup(); }
+});
 
 test("workflow group reservation blocks a manual spawn between sequential members", async () => {
   const s = await setup(parseChildLimit(2));

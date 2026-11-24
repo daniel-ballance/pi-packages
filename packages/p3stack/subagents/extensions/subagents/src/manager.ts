@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
@@ -28,7 +28,13 @@ export interface SpawnOptions {
   parentId?: string;
   coordination?: { owns?: string[]; outputs?: string[] };
 }
-export interface Update { cursor: number; kind: string; text: string; time: string }
+type ReadArgs = { id: string; since: number };
+export interface Update { cursor: number; kind: string; text: string; time: string; truncated?: true; fullLength?: number; readFull?: ReadArgs; assignmentId?: string }
+/** Page cursors occupy the otherwise unused interval [firstPage, updateCursor). */
+interface SavedReport { assignmentId?: string; firstPage: number; updateCursor: number; fullLength: number; readThrough?: number; file: string }
+const DISPLAY_CHARS = 12_000;
+// Even worst-case JSON escaping fits a page inside both tool and private-pipe limits.
+const PAGE_CHARS = 4_000;
 export type InterventionKind = "halt" | "kill";
 export interface HumanHold { kind: InterventionKind; at: string; outcome: "pending" | "confirmed" | "failed"; detail?: string }
 export interface Assignment { id: string; task: string; status: "running" | "completed" | "failed" | "cancelled"; at: string; finishedAt?: string; resultCursor?: number }
@@ -46,6 +52,7 @@ export interface AgentRecord {
   usage?: unknown; updates: Update[]; cursor: number; readCursor: number;
   lastSubmission?: { disposition: InputDisposition; at: string };
   uiRequests: Packet[]; hadEnvOverrides: boolean;
+  savedReports?: SavedReport[];
   runStartCursor?: number; aborted?: boolean; runRevision?: number;
   observedCursors?: number[];
   hold?: HumanHold; assignment?: Assignment; resultReview?: ResultReview;
@@ -204,13 +211,24 @@ export class SubagentManager {
     enforcePrivatePath(this.registry, 0o600, false);
     this.changed();
   }
-  private appendUpdate(record: AgentRecord, kind: string, text: string) {
+  private appendUpdate(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
     record.updatedAt = new Date().toISOString();
-    record.updates.push({ cursor: ++record.cursor, kind, text: text.slice(0, 12000), time: record.updatedAt });
+    const truncated = text.length > DISPLAY_CHARS, assignmentId = record.assignment?.id;
+    let readFull: ReadArgs | undefined;
+    if (finalAnswer || (truncated && REPORT_KINDS.has(kind))) {
+      const firstPage = record.cursor + 1, pages = Math.max(1, Math.ceil(text.length / PAGE_CHARS));
+      const file = join(this.directory, `${randomUUID()}.report`);
+      writeFileSync(file, text, { encoding: "utf16le", mode: 0o600, flag: "wx" });
+      record.cursor += pages;
+      (record.savedReports ??= []).push({ file, assignmentId, firstPage, updateCursor: record.cursor + 1, fullLength: text.length });
+      readFull = { id: record.id, since: firstPage };
+    }
+    record.updates.push({ cursor: ++record.cursor, kind, text: text.slice(0, DISPLAY_CHARS), time: record.updatedAt,
+      ...(truncated ? { truncated: true, fullLength: text.length } : {}), ...(readFull ? { assignmentId, readFull } : {}) });
     record.updates = record.updates.slice(-100);
   }
-  private update(record: AgentRecord, kind: string, text: string) {
-    this.appendUpdate(record, kind, text);
+  private update(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
+    this.appendUpdate(record, kind, text, finalAnswer);
     this.persist();
   }
   private log(path: string, text: string) {
@@ -274,11 +292,13 @@ export class SubagentManager {
       if (notice.id === record.id && notice.requestId && requests.has(notice.requestId)) cursors.push(notice.cursor);
     }
     this.observe(record, cursors, !byRoot);
-    if (record.assignment?.resultCursor && cursors.includes(record.assignment.resultCursor) && record.resultReview?.assignmentId === record.assignment.id && record.resultReview.status === "unreviewed") {
-      record.resultReview = { assignmentId: record.assignment.id, status: "reviewed", at: new Date().toISOString() };
-    }
+    if (receipt.updates.some(u => u.cursor === record.assignment?.resultCursor && !u.truncated)) this.review(record);
     if (advanceCursor) record.readCursor = Math.max(record.readCursor, receipt.nextCursor);
     this.persist();
+  }
+  private review(record: AgentRecord) {
+    if (record.resultReview?.status === "unreviewed" && record.resultReview.assignmentId === record.assignment?.id)
+      record.resultReview = { ...record.resultReview, status: "reviewed", at: new Date().toISOString() };
   }
   private expireInputNotices(record: AgentRecord) {
     const live = new Set(record.uiRequests.map(request => request.id));
@@ -304,7 +324,7 @@ export class SubagentManager {
     return child;
   }
   list(includeRejected = false) {
-    return [...this.records.values()].filter(record => includeRejected || !record.rejected).map(({ updates, config, runStartCursor, runRevision, observedCursors, ...record }) => {
+    return [...this.records.values()].filter(record => includeRejected || !record.rejected).map(({ updates, config, runStartCursor, runRevision, observedCursors, savedReports, ...record }) => {
       const unreadUpdates = updates.filter(u => u.cursor > record.readCursor);
       // Tool-facing snapshots must not retain nested references to live records.
       return structuredClone({
@@ -365,6 +385,42 @@ export class SubagentManager {
     if ((checked.cliArgs ?? []).some(arg => RESERVED.has(arg.split("=")[0]))) throw new Error("cliArgs cannot override manager-owned RPC mode/session flags, print/export modes, or contain --");
     return checked;
   }
+  private savedFinal(record: AgentRecord) {
+    return record.savedReports?.findLast(r => r.updateCursor === record.assignment?.resultCursor && r.assignmentId === record.assignment?.id);
+  }
+  finalAnswer(id: string) {
+    const saved = this.savedFinal(this.get(id));
+    return saved && readFileSync(saved.file, "utf16le");
+  }
+  /** Explicit subagent_read replay. Page handles remain valid across assignments, retention and reload. */
+  readReportPage(id: string, since: number) {
+    const record = this.get(id);
+    const saved = record.savedReports?.find(r => r.firstPage <= since && since < r.updateCursor);
+    if (!saved) return;
+    const offset = (since - saved.firstPage) * PAGE_CHARS;
+    // Fixed-width storage lets a page seek straight to its text. Include the
+    // adjacent code units so neither end of a page splits a surrogate pair.
+    const from = Math.max(0, offset - 1), to = Math.min(saved.fullLength, offset + PAGE_CHARS + 1);
+    const bytes = Buffer.alloc((to - from) * 2);
+    const fd = openSync(saved.file, "r");
+    try {
+      if (readSync(fd, bytes, 0, bytes.length, from * 2) !== bytes.length) throw new Error("Incomplete saved report");
+    } finally { closeSync(fd); }
+    const window = bytes.toString("utf16le");
+    const boundary = (n: number) => /[\uD800-\uDBFF]/.test(window.charAt(n - 1)) && /[\uDC00-\uDFFF]/.test(window.charAt(n)) ? n + 1 : n;
+    const start = boundary(offset - from), text = window.slice(start, boundary(offset - from + PAGE_CHARS));
+    const data = { id, assignmentId: saved.assignmentId, text, offset: from + start, fullLength: saved.fullLength, truncated: text.length < saved.fullLength,
+      nextRead: since + 1 < saved.updateCursor ? { id, since: since + 1 } : undefined };
+    return { data, acknowledge: () => {
+      if ((saved.readThrough ?? saved.firstPage - 1) !== since - 1) return;
+      saved.readThrough = since;
+      if (since + 1 === saved.updateCursor) {
+        this.observe(record, [saved.updateCursor]);
+        if (record.assignment?.resultCursor === saved.updateCursor) this.review(record);
+      }
+      this.persist();
+    } };
+  }
   read(id: string, since?: number, acknowledge = true) {
     const record = this.get(id);
     const cursor = since ?? record.readCursor;
@@ -375,10 +431,12 @@ export class SubagentManager {
       updates.push(update); size += update.text.length;
     }
     const nextCursor = updates.at(-1)?.cursor ?? cursor;
+    const saved = this.savedFinal(record);
     const result = {
       id, name: record.name, status: record.status, activity: record.activity,
       model: record.model, thinking: record.thinking,
       updates, nextCursor, hasMore: record.cursor > nextCursor,
+      ...(saved ? { readFull: { id, since: saved.firstPage }, fullLength: saved.fullLength } : {}),
       gap: record.updates.length > 0 && cursor < record.updates[0].cursor - 1,
       uiRequests: record.uiRequests, sessionFile: record.sessionFile,
       logFile: record.logFile, stderrFile: record.stderrFile, error: record.error,
@@ -626,7 +684,7 @@ export class SubagentManager {
         if (message?.role === "assistant" || message?.role === "toolResult") void this.refreshUsage(record);
         if (message?.role !== "assistant") break;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
-        if (text) this.update(record, "assistant", text);
+        if (text) this.update(record, "assistant", text, !["toolUse", "error", "aborted"].includes(message.stopReason));
         const intent = this.abortIntents.get(record.id);
         const requestedAbort = intent && !intent.awaitingStart && intent.revision === (record.runRevision ?? 0);
         const cancelled = message.stopReason === "aborted" ||
@@ -675,7 +733,7 @@ export class SubagentManager {
         if (record.assignment && !record.assignment.finishedAt) {
           record.assignment.finishedAt = new Date().toISOString();
           record.assignment.resultCursor = last?.cursor ?? record.cursor;
-          record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) ? "reviewed" : "unreviewed" };
+          record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last?.truncated || this.savedFinal(record)?.readThrough === last.cursor - 1) ? "reviewed" : "unreviewed" };
         }
         // announce commits the result and its wake notice together, before calling
         // the scheduler. A suppressed notice still needs the settlement committed.

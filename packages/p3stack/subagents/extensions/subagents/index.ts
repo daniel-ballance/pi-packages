@@ -477,7 +477,22 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     ...TOOL_SPECS.subagent_read,
     async execute(_call, args, _signal, _update, ctx) {
       const manager = get(ctx);
+      const page = args.since === undefined ? undefined : manager.readReportPage(args.id, args.since);
+      if (page) {
+        const output = result(page.data, ctx);
+        if (output.details === page.data) page.acknowledge();
+        return output;
+      }
       const data = manager.read(args.id, args.since, false);
+      // A large task, dialog or multibyte preview can overflow even a single
+      // read. Return a callable result handle, not a path requiring file tools.
+      if (truncateHead(JSON.stringify(data, null, 2), { maxBytes: 30000, maxLines: 1000 }).truncated) {
+        const update = data.updates.find(u => u.readFull);
+        if (update || data.readFull) return result({ id: data.id, truncated: true, resultReview: data.resultReview,
+          fullLength: update ? update.fullLength ?? update.text.length : data.fullLength, readFull: update?.readFull ?? data.readFull,
+          nextCursor: data.nextCursor, note: "Read the complete report with subagent_read(readFull). This preview acknowledges nothing." }, ctx);
+        if (delegation.getStore()) return result({ truncated: true, note: "Read page too large; replay from a later since cursor.", nextCursor: data.nextCursor }, ctx);
+      }
       const output = result(data, ctx);
       // If the formatter spills to disk, don't claim unseen updates were read.
       if (output.details === data) manager.acknowledgeRead(data, args.since === undefined, !delegation.getStore());
@@ -496,6 +511,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued, callerId);
       signal?.throwIfAborted();
       const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId, undefined, args.final ?? false);
+      if (callerId && truncateHead(JSON.stringify(report, null, 2), { maxBytes: 30000, maxLines: 1000 }).truncated) {
+        return result({ truncated: true, note: "Wait report too large; narrow ids or use subagent_read for one child." }, ctx);
+      }
       const output = result(report, ctx);
       if (output.details !== report) return output;
       for (const receipt of receipts) manager.acknowledgeRead(receipt, true, !callerId);
