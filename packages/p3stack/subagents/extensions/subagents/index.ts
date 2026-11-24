@@ -6,6 +6,7 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { StopUnconfirmedError, SubagentManager, type InputDisposition } from "./src/manager.js";
+import { ensurePrivateDirectory } from "./src/registry.js";
 import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
@@ -243,7 +244,8 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     const text = JSON.stringify(data, null, 2);
     const truncated = truncateHead(text, { maxBytes: 30000, maxLines: 1000 });
     if (!truncated.truncated) return { content: [{ type: "text" as const, text }], details: data };
-    const path = join(get(ctx).directory, `result-${randomUUID()}.json`);
+    const directory = get(ctx).directory, path = join(directory, `result-${randomUUID()}.json`);
+    ensurePrivateDirectory(directory);
     writeFileSync(path, text, { mode: 0o600 });
     return { content: [{ type: "text" as const, text: `${truncated.content}\n[Truncated. Full result: ${path}]` }], details: { fullResult: path } };
   };

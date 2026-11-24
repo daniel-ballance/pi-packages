@@ -100,7 +100,8 @@ test("one child's turn does not rewrite archived children's history", async t =>
   });
   syncBuiltinESMExports();
   try {
-    const seed = new SubagentManager(join(root, "seed"));
+    const seedDir = join(root, "seed"); fs.mkdirSync(seedDir);
+    const seed = new SubagentManager(seedDir);
     let legacy: string, oldId: string;
     try {
       const { id } = await spawn(seed, "z".repeat(1000));

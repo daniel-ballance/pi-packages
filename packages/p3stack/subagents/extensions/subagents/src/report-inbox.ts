@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import type { AgentRecord } from "./manager.js";
 import type { Packet } from "./rpc.js";
 import { fitUpdateRead, reportPage, REPORT_KINDS, updateWindow, type ReadArgs } from "./read-page.js";
+import { ensurePrivateDirectory } from "./registry.js";
 import { fitWaitUpdates, type ChildNews, type ReportLimits } from "./wait.js";
 
 export interface Update { cursor: number; kind: string; text: string; time: string; truncated?: true; fullLength?: number; readFull?: ReadArgs; assignmentId?: string; consumed?: true }
@@ -70,6 +71,7 @@ export class ReportInbox {
       const saved: SavedReport = { assignmentId, updateCursor: cursor, fullLength: text.length };
       if (truncated) {
         saved.file = join(this.options.directory, `${randomUUID()}.report`);
+        ensurePrivateDirectory(this.options.directory);
         writeFileSync(saved.file, text, { encoding: "utf16le", mode: 0o600, flag: "wx" });
       } else saved.text = text;
       (record.savedReports ??= []).push(saved);
