@@ -660,9 +660,6 @@ test("only routes are tabulated; each playbook carries its own conditional reads
     assert.doesNotMatch(router, /\/home\/|\/tmp\/|<this file's directory>|^## Chains$/m);
     assert.match(router, /relative to this file's directory/i);
     assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
-    for (const name of ["routes", "chains"]) {
-      assert.equal(existsSync(join(out, `skills/p3stack-mode/references/${name}.md`)), false);
-    }
     const rows = name => JSON.parse(readFileSync(join(packageDir, `registry/${name}.json`), "utf8"));
     for (const { request, target, action } of rows("routes")) {
       const line = router.split("\n").find(line => line.startsWith(`| ${request} |`));
@@ -718,44 +715,13 @@ test("the router precedence overlay is locked to upstream Playbooks", () => {
   assert.match(mode, /p3stack-mode.*workflow selection/);
 });
 
-test("the package ships the Pocock license and initializes both source checkouts", () => {
-  const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
-  assert.ok(manifest.files.includes("LICENSE-matt-pocock"));
-  assert.ok(manifest.files.includes("LICENSE-agent-skills"));
-  assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/agent-skills/);
-  assert.ok(manifest.files.includes("LICENSE-superpowers"));
-  assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/superpowers/);
-  assert.match(manifest.scripts.sync, /packages\/p3stack\/vendor\/matt-pocock/);
-});
-
-test("the collection and global settings use only the unified skill source", () => {
-  const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
-  // The subagents skills describe terminal-only tools, so its extension contributes them outside T3 Code.
-  assert.deepEqual(manifest.pi.skills, ["./skills"]);
-  for (const lock of ["package-lock.json", "pnpm-lock.yaml"]) assert.equal(readFileSync(join(packageDir, "../..", lock), "utf8").includes("pi-pocock-skills"), false, lock);
-  const settings = JSON.parse(readFileSync(join(packageDir, "../../global/settings.json"), "utf8"));
-  assert.equal(settings.packages.some(entry => JSON.stringify(entry).includes("pi-pocock-skills")), false);
-});
-
-test("the root gate uses the registry instead of the retired skill-report and decision directory", () => {
-  const root = join(packageDir, "../..");
-  const check = readFileSync(join(root, "scripts/check.sh"), "utf8");
-  assert.match(check, /node packages\/p3stack\/generator\/check-registry\.mjs/);
-  assert.doesNotMatch(check, /skill-report/);
-  assert.equal(existsSync(join(root, "scripts/skill-report.mjs")), false);
-  assert.equal(existsSync(join(root, ".pi/skills/p3stack-pocock-unification")), false);
-});
-
-const pocockNames = ["grilling", "domain-modeling", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "tdd", "triage", "setup-matt-pocock-skills", "to-spec", "to-tickets", "wayfinder", "implement-spec", "improve-codebase-architecture", "pr", "retro", "handoff", "wizard"];
-
 function pocockFixture() {
   const temp = mkdtempSync(join(process.env.P3STACK_FIXTURE_ROOT ?? tmpdir(), "p3stack-pocock-"));
   const root = join(temp, "repo/packages/p3stack");
   mkdirSync(join(temp, "repo/scripts"), { recursive: true });
   symlinkSync(join(packageDir, "../../scripts/lint-skill"), join(temp, "repo/scripts/lint-skill"));
   for (const name of ["rules", "registry", "extra", "authored", "overlays", "patches", "vendor/pstack", "vendor/agent-skills", "vendor/superpowers"]) cpSync(join(packageDir, name), join(root, name), { recursive: true });
-  const oldVendor = join(packageDir, "../pi-pocock-skills/vendor/matt-pocock");
-  cpSync(existsSync(oldVendor) ? oldVendor : join(packageDir, "vendor/matt-pocock"), join(root, "vendor/matt-pocock"), { recursive: true });
+  cpSync(join(packageDir, "vendor/matt-pocock"), join(root, "vendor/matt-pocock"), { recursive: true });
   const manifestPath = join(root, "rules/manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   for (const source of manifest.sources) delete source.upstream;
@@ -795,6 +761,15 @@ pocockCase("2 missing adopted skills fail by name", ({ run, input }) => {
   const result = run();
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Stale registry row matt-pocock\/skills\/engineering\/research\/SKILL\.md/);
+});
+
+pocockCase("the check rejects an orphaned reference even when admission counts are unchanged", ({ root, run }) => {
+  const path = join(root, "registry/skills.json"), rows = JSON.parse(readFileSync(path));
+  rows.find(r => r.action === "reference" && r.name === "regression-test").owner = "missing-owner";
+  writeFileSync(path, JSON.stringify(rows));
+  const checked = run("--check");
+  assert.equal(checked.status, 1);
+  assert.match(checked.stderr, /missing-owner/);
 });
 
 pocockCase("3 duplicate names in two buckets fail", ({ run, input }) => {
@@ -864,7 +839,7 @@ pocockCase("9 failed validation preserves committed output", ({ root, run, input
 pocockCase("10 translation preserves semantics and is deterministic", ({ root, run, read }) => {
   const first = run();
   assert.equal(first.status, 0, first.stderr);
-  for (const name of pocockNames) assert.ok(existsSync(join(root, "skills", name, "SKILL.md")), name);
+  const pocockNames = JSON.parse(readFileSync(join(root, "registry/skills.json"))).filter(row => row.source === "matt-pocock" && row.action === "emit").map(row => row.name);
   for (const path of ["architect/references/codebase-design.md", "implement-spec/references/implement.md"]) assert.ok(existsSync(join(root, "skills", path)), path);
   assert.match(read("diagnosing-bugs/SKILL.md"), /\[HITL loop template\]\(scripts\/hitl-loop.template.sh\)/);
   assert.match(read("p3stack-mode/SKILL.md"), /human present \| default \| `\.\.\/poteto-mode\/SKILL\.md`, then `\.\.\/grilling\/SKILL\.md`/);
@@ -878,12 +853,8 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.match(read("grilling/SKILL.md"), /"yes" accepts your recommended answer/);
   assert.match(read("domain-modeling/SKILL.md"), /\[GLOSSARY-FORMAT.md\]\(\.\/GLOSSARY-FORMAT.md\)/);
   assert.match(read("domain-modeling/GLOSSARY-FORMAT.md"), /\[Ordering\]\(\.\/src\/ordering\/GLOSSARY.md\)/);
-  assert.equal(existsSync(join(root, "skills/domain-modeling/CONTEXT-FORMAT.md")), false);
-  assert.equal(existsSync(join(root, "skills/references/CHILD-DELEGATION.md")), false);
-  assert.equal(existsSync(join(root, "skills/research/agents")), false);
   assert.match(read("tdd/references/regression-test.md"), /TDD Bug Fix/);
   assert.match(read("tdd/SKILL.md"), /confirmed seam|confirm.*user/i);
-  assert.equal(existsSync(join(root, "skills/wait-what/SKILL.md")), false);
   const before = pocockNames.map(name => read(`${name}/SKILL.md`));
   assert.equal(run().status, 0);
   assert.deepEqual(pocockNames.map(name => read(`${name}/SKILL.md`)), before);

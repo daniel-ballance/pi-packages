@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { evaluate, index, modelInvokedSkills, stem, tokens } from "./static-routing/run.mjs";
+import { evaluate, index, modelInvokedSkills } from "./static-routing/run.mjs";
 
 const skills = [
   { name: "pr", text: "Use when writing a pull request description." },
@@ -19,9 +19,14 @@ const suite = {
   }),
 };
 
-test("tokens drop stop words and stem plural and -ing forms", () => {
-  assert.deepEqual(tokens("Writing the tests for releases"), ["writ", "test", "releas"]);
-  assert.equal(stem("libraries"), "library");
+test("stop words supply no evidence and inflected vocabulary matches its owner", () => {
+  const scorer = index([{ name: "docs", text: "Catalog the libraries" }, { name: "check", text: "Tests the code" }]);
+  assert.ok(scorer.rank("the").every(r => r.score === 0));
+  for (const [prompt, owner] of [["library", "docs"], ["testing", "check"]]) {
+    const [first, next] = scorer.rank(prompt);
+    assert.equal(first.name, owner);
+    assert.ok(first.score > next.score);
+  }
 });
 
 test("ranking puts the matching description first", () => {
