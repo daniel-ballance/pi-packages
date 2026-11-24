@@ -8,6 +8,8 @@ The [source manifest](../packages/p3stack/rules/manifest.json) maps five source 
 
 Git submodule entries pin the upstream commits. The [package README](../packages/p3stack/README.md#license-and-upstreams) mirrors them. The [skill registry](../packages/p3stack/registry/skills.json) records 46 emitted skills, 43 references and the reason for each drop. For example, `/skill:tdd` invokes Pocock's TDD procedure; for a cheap bug reproduction it points to pstack's [regression-test](../packages/p3stack/skills/tdd/references/regression-test.md). Edit the [generator inputs](../packages/p3stack/AGENTS.md), not the generated skills or agent recipes.
 
+A project's app driver and formal checks can cover the same area. `/skill:create-verification-skill` writes `verify-<app>`; `/skill:create-formal-verification-skill` writes `formal-verify-<area>`. Both live under `.pi/skills/`. Existing formal skills keep their names when maintained.
+
 ## How a request reaches a playbook
 
 With routing on, the extension points Pi to [p3stack-mode](../packages/p3stack/skills/p3stack-mode/SKILL.md). The model selects a [route](../packages/p3stack/registry/routes.json) for the request and grant first. A small, fully specified task is done there and then. For every other route it reads poteto-mode in full, then the route's target. The generator inserts each [chain](../packages/p3stack/registry/chains.json) row into its playbook at the named step, marked **p3stack only**, so the model reads a playbook's added steps in place. A bug without a failing reproduction goes to diagnosis first, which stops at a confirmed cause; the Bug fix playbook then implements once. [House policies](adr/0004-house-policies-win-over-vendored-defaults.md) settle conflicts between skills.

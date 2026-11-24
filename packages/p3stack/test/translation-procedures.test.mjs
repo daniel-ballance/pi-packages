@@ -313,6 +313,16 @@ test("review helpers preserve the caller's report and evidence without an extra 
   for (const review of reviews) assert.doesNotMatch(read(`agents/${review}-subagent.md`), /Calibrate severity honestly|Be direct and high-conviction/i);
 });
 
+test("app and formal verification register distinct skills for the same project name", () => {
+  const outputs = ["create-verification-skill", "create-formal-verification-skill"].map(name => {
+    const instructions = skill(name).replaceAll(/<(?:app|area)>/g, "checkout");
+    const directory = instructions.match(/`\.pi\/skills\/([^/`]+)\/SKILL\.md`/)[1];
+    return { instructions, directory };
+  });
+  assert.notEqual(outputs[0].directory, outputs[1].directory);
+  for (const { instructions, directory } of outputs) assert.ok(instructions.includes(`\`name: ${directory}\``), directory);
+});
+
 test("domain setup pairs the interview with domain-modeling", () => {
   assert.match(read("skills/setup-matt-pocock-skills/domain.md"), /(?:alongside|together with) `\/skill:grilling`/);
 });
