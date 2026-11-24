@@ -43,17 +43,22 @@ export function materialize(fixture, root) {
 /** Parses Pi JSON-mode events into the trace the grader reads. */
 export function trace(jsonl) {
   const calls = new Map(), order = [];
-  let final = "";
+  let final = "", position = 0;
   for (const line of jsonl.split("\n")) {
     if (!line.trim()) continue;
     let event;
     try { event = JSON.parse(line); } catch { continue; }
+    position++;
     if (event.type === "tool_execution_start") {
-      const call = { tool: event.toolName, args: event.args ?? {}, ok: undefined };
+      const call = { tool: event.toolName, args: event.args ?? {}, start: position, ok: undefined };
       calls.set(event.toolCallId, call);
       order.push(call);
     }
-    if (event.type === "tool_execution_end" && calls.has(event.toolCallId)) calls.get(event.toolCallId).ok = !event.isError;
+    if (event.type === "tool_execution_end" && calls.has(event.toolCallId)) {
+      const call = calls.get(event.toolCallId);
+      call.ok = event.isError === false && !event.result?.isError;
+      call.end = position;
+    }
     if (event.type === "message_end" && event.message?.role === "assistant") {
       const text = (event.message.content ?? []).filter(part => part.type === "text").map(part => part.text).join("\n");
       if (text.trim()) final = text;
@@ -66,11 +71,11 @@ const argText = call => JSON.stringify(call.args);
 const pathOf = call => String(call.args.path ?? call.args.file_path ?? "");
 function matches(step, calls) {
   const pattern = new RegExp(step.pattern, "i");
-  return calls.findIndex(call =>
+  return calls.findIndex(call => call.ok === true && (
     step.kind === "bash" ? call.tool === "bash" && pattern.test(String(call.args.command ?? "")) :
     step.kind === "read" ? call.tool === "read" && pattern.test(pathOf(call)) :
     step.kind === "edit" ? ["edit", "write"].includes(call.tool) && pattern.test(pathOf(call)) :
-    step.kind === "tool" ? pattern.test(call.tool) && (!step.args || new RegExp(step.args, "i").test(argText(call))) : false);
+    step.kind === "tool" ? pattern.test(call.tool) && (!step.args || new RegExp(step.args, "i").test(argText(call))) : false));
 }
 
 /** Grades one expectation against the trace and the project directory after the run. */
@@ -81,11 +86,12 @@ export function grade(check, { calls, final }, project) {
     case "any": return check.of.some(step => grade(step, { calls, final }, project));
     case "order": {
       const first = matches(check.first, calls), before = matches(check.before, calls);
-      return first >= 0 && (before < 0 || first < before);
+      return first >= 0 && before >= 0 && (calls[first].end ?? first) < (calls[before].start ?? before);
     }
     case "file": {
       const files = walk(project).filter(path => new RegExp(check.pattern).test(path));
-      if (!files.length) return false;
+      if (check.count !== undefined && files.length !== check.count) return false;
+      if (!check.contains && !check.absent) return check.count !== undefined || files.length > 0;
       return files.some(path => {
         const text = readFileSync(join(project, path), "utf8");
         return (!check.contains || text.includes(check.contains)) && (!check.absent || !new RegExp(check.absent).test(text));

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,10 +11,13 @@ const events = [
   { type: "tool_execution_start", toolCallId: "1", toolName: "read", args: { path: "/x/skills/diagnosing-bugs/SKILL.md" } },
   { type: "tool_execution_end", toolCallId: "1", isError: false },
   { type: "tool_execution_start", toolCallId: "2", toolName: "bash", args: { command: "node --test" } },
+  { type: "tool_execution_end", toolCallId: "2", isError: false },
   { type: "tool_execution_start", toolCallId: "3", toolName: "edit", args: { path: "src/split.js" } },
+  { type: "tool_execution_end", toolCallId: "3", isError: false },
   { type: "tool_execution_start", toolCallId: "4", toolName: "mcp__context7__query_docs", args: { libraryId: "/vitest-dev/vitest/v3_2_4" } },
+  { type: "tool_execution_end", toolCallId: "4", isError: false },
   { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Fixed; see https://vitest.dev/config/coverage" }] } },
-].map(event => JSON.stringify(event)).join("\n") + "\nnot json\n";
+].map(event => JSON.stringify(event)).join("\n") + "\n";
 
 test("trace keeps tool calls in order and the last assistant text", () => {
   const seen = trace(events);
@@ -31,6 +34,35 @@ test("grade checks reads, order, tools with arguments, any-of, and the final rep
   assert.equal(grade({ kind: "tool", pattern: "^mcp__context7__query_docs$", args: "3[._]2" }, seen), true);
   assert.equal(grade({ kind: "any", of: [{ kind: "tool", pattern: "^web_search$" }, { kind: "final", pattern: "https?://\\S*vitest" }] }, seen), true);
   assert.equal(grade({ kind: "final", pattern: "skip" }, seen), false);
+});
+
+test("a matching tool must finish successfully, even inside any/order", () => {
+  const read = { kind: "read", pattern: "SKILL" }, edit = { kind: "edit", pattern: "src" };
+  const pair = { kind: "order", first: read, before: edit };
+  const good = trace(events);
+  assert.equal(grade(pair, good), true);
+  for (const ok of [false, undefined]) {
+    const bad = trace(events);
+    bad.calls[0].ok = ok;
+    assert.equal(grade({ kind: "any", of: [read] }, bad), false);
+    assert.equal(grade(pair, bad), false);
+  }
+  assert.equal(grade(pair, { ...good, calls: good.calls.slice(0, 1) }), false);
+  assert.equal(grade(pair, { ...good, calls: good.calls.slice(2) }), false);
+  const lines = events.trim().split("\n"), [endRead] = lines.splice(1, 1);
+  lines.splice(4, 0, endRead); // The edit started while the read was still in flight.
+  assert.equal(grade(pair, trace(lines.join("\n"))), false);
+});
+
+test("file count is for matching paths, not just files with desirable content", t => {
+  const root = mkdtempSync(join(tmpdir(), "count-html-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const seen = { calls: [], final: "" }, check = { kind: "file", pattern: "\\.html$", count: 1, contains: "<button" };
+  assert.equal(grade(check, seen, root), false);
+  writeFileSync(join(root, "a.html"), "<button>Inert</button>");
+  assert.equal(grade(check, seen, root), true);
+  writeFileSync(join(root, "b.html"), "<!-- refunded -->");
+  assert.equal(grade(check, seen, root), false);
 });
 
 test("every case's fixture materializes as a committed base with the change left uncommitted, and file and command checks read it", t => {
