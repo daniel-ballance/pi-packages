@@ -1,6 +1,6 @@
 --- a/skills/poteto-mode/scripts/worktree-audit.sh
 +++ b/skills/poteto-mode/scripts/worktree-audit.sh
-@@ -1,8 +1,8 @@
+@@ -1,10 +1,10 @@
  #!/usr/bin/env bash
 -# Read-only worktree prune audit. Classifies every git worktree by size, merge
 -# state, uncommitted work, remote/PR state, and the most recent chat that
@@ -11,9 +11,32 @@
 +# and the most recent chat that operated in it. Emits a table sorted by size.
 +# Never deletes a worktree; deletion stays a human-gated step in the playbook.
  #
- # Usage: worktree-audit.sh [-b|--base <ref>] [repo-path]
+-# Usage: worktree-audit.sh [-b|--base <ref>] [repo-path]
++# Usage: worktree-audit.sh [-b|--base <ref>] [--session-dir <dir>] [repo-path]
  #   repo-path defaults to the current repo.
-@@ -24,11 +24,15 @@
+ #   -b sets the ref the MERGED column checks against (e.g. origin/integration).
+ #   Without it the base is origin/HEAD, then origin/main, then origin/master.
+@@ -12,10 +12,19 @@
+ #   merge into; pass -b when they differ.
+ set -u
+ 
++# A caller (including a Git hook) may have selected a different repo or index.
++unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
++  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_SHALLOW_FILE \
++  GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_PREFIX GIT_CEILING_DIRECTORIES \
++  GIT_CONFIG GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
++
+ base=""
++session_args=()
+ while [ $# -gt 0 ]; do
+ 	case "$1" in
+ 	-b|--base) [ $# -ge 2 ] || { echo "error: $1 needs a ref" >&2; exit 2; }; base="$2"; shift 2 ;;
++	--session-dir) [ -n "${2:-}" ] || { echo "error: $1 needs a directory" >&2; exit 2; }
++		case "$2" in /*|\~*) session_args=(--session-dir "$2") ;; *) session_args=(--session-dir "$PWD/$2") ;; esac; shift 2 ;;
+ 	-h|--help) sed -n '2,/^set -u/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+ 	-*) echo "error: unknown option: $1" >&2; exit 2 ;;
+ 	*) break ;;
+@@ -24,11 +33,15 @@
  
  repo="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
  [ -z "$repo" ] && { echo "not in a git repo; pass a repo path" >&2; exit 1; }
@@ -31,7 +54,7 @@
  
  if [ -z "$base" ]; then
  	for cand in "$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" origin/main origin/master; do
-@@ -38,27 +42,25 @@
+@@ -38,27 +51,25 @@
  	echo "warn: no -b given; MERGED checks against $base" >&2
  fi
  
@@ -67,7 +90,7 @@
  if command -v origin >/dev/null 2>&1 \
  	&& raw=$(origin pr list --author "@me" --state all --limit 1000 \
  		--json number,status,headRef 2>/dev/null); then
-@@ -67,68 +69,82 @@
+@@ -67,68 +78,89 @@
  	--json number,state,headRefName 2>/dev/null); then
  	printf '%s' "$raw" | jq '[.[] | {number, state: (.state | ascii_downcase), head: .headRefName}]' > "$prs" 2>/dev/null
  fi
@@ -128,6 +151,25 @@
 +	if [ "$base_current" = yes ] && [ -n "$head" ]; then
 +		git merge-base --is-ancestor "$head" "$base" 2>/dev/null
 +		case $? in 0) merged=YES ;; 1) merged=no ;; esac
++	fi
++
++	# Porcelain v1 quotes embedded newlines. Count records, never split a path.
++	dirty=unknown; ignored="?"
++	if top=$(git -C "$wt" rev-parse --show-toplevel) && [ "$top" -ef "$wt" ] \
++		&& flags=$(git -C "$wt" ls-files -v) \
++		&& porcelain=$(git -C "$wt" status --porcelain=v1 --untracked-files=all --ignored --ignore-submodules=none); then
++		wip=0; untracked=0; ignored=0
++		while IFS= read -r entry; do
++			case "$entry" in [a-zS]' '*) ((wip++)) ;; esac
++		done <<< "$flags"
++		while IFS= read -r entry; do
++			case "$entry" in '') ;; '?? '*) ((untracked++)) ;; '!! '*) ((ignored++)) ;; *) ((wip++)) ;; esac
++		done <<< "$porcelain"
++		dirty=clean
++		if [ "$untracked" -gt 0 ]; then
++			dirty="untracked:$untracked"
++			[ "$wip" -eq 0 ] || dirty="$dirty,wip:$wip"
++		elif [ "$wip" -gt 0 ]; then dirty="wip:$wip"; fi
  	fi
 -	recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
  
@@ -137,20 +179,6 @@
 -			elif [ "$merged" = YES ] || [ "$pr" != "-" ]; then bucket=safe
 -			else bucket=review; fi ;;
 -		esac ;;
-+	# Porcelain v1 quotes embedded newlines. Count records, never split a path.
-+	dirty=unknown
-+	if porcelain=$(git -C "$wt" status --porcelain=v1 --untracked-files=all --ignored --ignore-submodules=none); then
-+		wip=0; untracked=0
-+		while IFS= read -r entry; do
-+			case "$entry" in '') ;; '?? '*|'!! '*) ((untracked++)) ;; *) ((wip++)) ;; esac
-+		done <<< "$porcelain"
-+		dirty=clean
-+		if [ "$untracked" -gt 0 ]; then
-+			dirty="untracked:$untracked"
-+			[ "$wip" -eq 0 ] || dirty="$dirty,wip:$wip"
-+		elif [ "$wip" -gt 0 ]; then dirty="wip:$wip"; fi
-+	fi
-+
 +	branch=$(git -C "$wt" symbolic-ref --quiet --short HEAD 2>/dev/null)
 +	case $? in
 +	1) remote=detached ;;
@@ -162,6 +190,9 @@
 +	*) remote="?" ;;
  	esac
  
+-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+-		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$wt"
+-done | sort -t$'\t' -k1,1 -rh
 +	pr="-"
 +	if [ -n "$branch" ]; then
 +		if [ -s "$prs" ] && matches=$(jq -r --arg b "$branch" \
@@ -169,9 +200,10 @@
 +			[ -z "$matches" ] || pr=${matches%%$'\n'*}
 +		else pr="?"; fi
 +	fi
-+
+ 
+-rm -f "$prs"
 +	last="-"; recent=no
-+	if last_ts=$(node "$script_dir/worktree-session-activity.mjs" "$main_wt" "$wt"); then
++	if last_ts=$(node "$script_dir/worktree-session-activity.mjs" "$main_wt" "$wt" ${session_args[@]+"${session_args[@]}"}); then
 +		if [ "$last_ts" -gt 0 ]; then
 +			last=$(fmt_day "$last_ts") || last="?"
 +			[ $(( (now - last_ts) / 86400 )) -gt 4 ] || recent=yes
@@ -190,23 +222,26 @@
 +	    esac ;;
 +	esac
 +
++	[ "$last" != "?" ] || bucket=unknown
++
 +	# Preserve a single display row even for names containing control characters.
 +	[[ "$wt" != *[[:cntrl:]]* ]] || printf -v wt '%q' "$wt"
- 	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
- 		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$wt"
--done | sort -t$'\t' -k1,1 -rh
--
--rm -f "$prs"
++	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
++		"$size" "$age" "$merged" "$dirty,ignored:$ignored" "$remote" "$pr" "$last" "$bucket" "$wt"
 +done < "$tmp/worktrees" | sort -t$'\t' -k1,1 -rh
 --- /dev/null
 +++ b/skills/poteto-mode/scripts/worktree-session-activity.mjs
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,66 @@
 +// Print the newest matching Pi session mtime (epoch seconds), or zero if none.
-+import { open, readdir, stat } from "node:fs/promises";
++import { open, readdir, readFile, stat } from "node:fs/promises";
 +import { homedir } from "node:os";
-+import { join } from "node:path";
++import { join, resolve } from "node:path";
 +
-+const [main, wt] = process.argv.slice(2);
++import { parseArgs } from "node:util";
++
++const { positionals: [main, wt], values } = parseArgs({
++  allowPositionals: true, options: { "session-dir": { type: "string" } },
++});
 +const encoded = path => `--${path.replace(/^\//, "").replace(/[/\\:]/g, "-")}--`;
 +const below = (cwd, root) => cwd === root || cwd.startsWith(root + "/");
 +const needle = JSON.stringify(wt).slice(1, -1);
@@ -230,17 +265,25 @@
 +  } finally { await handle.close(); }
 +}
 +
-+const custom = process.env.PI_CODING_AGENT_SESSION_DIR;
-+const defaultRoot = join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi/agent"), "sessions");
-+const mainDir = encoded(main), worktreeDir = encoded(wt), nestedPrefix = worktreeDir.slice(0, -2) + "-";
++async function configuredDir(file) {
++  try { return JSON.parse(await readFile(file, "utf8")).sessionDir; }
++  catch (error) { if (error.code !== "ENOENT") throw error; }
++}
++const absolute = path => resolve(path.replace(/^~(?=\/|$)/, () => homedir()));
++const agent = absolute(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi/agent"));
++const selected = values["session-dir"] || process.env.PI_CODING_AGENT_SESSION_DIR
++  || await configuredDir(".pi/settings.json") || await configuredDir(join(agent, "settings.json"));
++const custom = selected && absolute(selected);
++const defaultRoot = join(agent, "sessions");
++const prefixes = [encoded(main), encoded(wt)].map(bin => bin.slice(0, -2) + "-");
 +const dirs = new Set();
 +for (const root of new Set([defaultRoot, custom].filter(Boolean))) {
 +  let entries;
 +  try { entries = await readdir(root, { withFileTypes: true }); }
-+  catch (error) { if (error.code === "ENOENT") continue; throw error; }
++  catch (error) { if (error.code === "ENOENT" && root !== custom) continue; throw error; }
 +  if (root === custom) dirs.add(root); // Explicit session directories can be flat.
 +  for (const { name } of entries) {
-+    if (name === mainDir || name === worktreeDir || (name.startsWith(nestedPrefix) && name.endsWith("--"))) {
++    if (name.endsWith("--") && prefixes.some(prefix => name.startsWith(prefix))) {
 +      dirs.add(join(root, name));
 +    }
 +  }

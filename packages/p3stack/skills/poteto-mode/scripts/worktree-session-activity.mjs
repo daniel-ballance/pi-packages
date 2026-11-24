@@ -1,9 +1,13 @@
 // Print the newest matching Pi session mtime (epoch seconds), or zero if none.
-import { open, readdir, stat } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
-const [main, wt] = process.argv.slice(2);
+import { parseArgs } from "node:util";
+
+const { positionals: [main, wt], values } = parseArgs({
+  allowPositionals: true, options: { "session-dir": { type: "string" } },
+});
 const encoded = path => `--${path.replace(/^\//, "").replace(/[/\\:]/g, "-")}--`;
 const below = (cwd, root) => cwd === root || cwd.startsWith(root + "/");
 const needle = JSON.stringify(wt).slice(1, -1);
@@ -27,17 +31,25 @@ async function touched(file) {
   } finally { await handle.close(); }
 }
 
-const custom = process.env.PI_CODING_AGENT_SESSION_DIR;
-const defaultRoot = join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi/agent"), "sessions");
-const mainDir = encoded(main), worktreeDir = encoded(wt), nestedPrefix = worktreeDir.slice(0, -2) + "-";
+async function configuredDir(file) {
+  try { return JSON.parse(await readFile(file, "utf8")).sessionDir; }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+}
+const absolute = path => resolve(path.replace(/^~(?=\/|$)/, () => homedir()));
+const agent = absolute(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi/agent"));
+const selected = values["session-dir"] || process.env.PI_CODING_AGENT_SESSION_DIR
+  || await configuredDir(".pi/settings.json") || await configuredDir(join(agent, "settings.json"));
+const custom = selected && absolute(selected);
+const defaultRoot = join(agent, "sessions");
+const prefixes = [encoded(main), encoded(wt)].map(bin => bin.slice(0, -2) + "-");
 const dirs = new Set();
 for (const root of new Set([defaultRoot, custom].filter(Boolean))) {
   let entries;
   try { entries = await readdir(root, { withFileTypes: true }); }
-  catch (error) { if (error.code === "ENOENT") continue; throw error; }
+  catch (error) { if (error.code === "ENOENT" && root !== custom) continue; throw error; }
   if (root === custom) dirs.add(root); // Explicit session directories can be flat.
   for (const { name } of entries) {
-    if (name === mainDir || name === worktreeDir || (name.startsWith(nestedPrefix) && name.endsWith("--"))) {
+    if (name.endsWith("--") && prefixes.some(prefix => name.startsWith(prefix))) {
       dirs.add(join(root, name));
     }
   }

@@ -4,7 +4,7 @@
 # and the most recent chat that operated in it. Emits a table sorted by size.
 # Never deletes a worktree; deletion stays a human-gated step in the playbook.
 #
-# Usage: worktree-audit.sh [-b|--base <ref>] [repo-path]
+# Usage: worktree-audit.sh [-b|--base <ref>] [--session-dir <dir>] [repo-path]
 #   repo-path defaults to the current repo.
 #   -b sets the ref the MERGED column checks against (e.g. origin/integration).
 #   Without it the base is origin/HEAD, then origin/main, then origin/master.
@@ -12,10 +12,19 @@
 #   merge into; pass -b when they differ.
 set -u
 
+# A caller (including a Git hook) may have selected a different repo or index.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_SHALLOW_FILE \
+  GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_PREFIX GIT_CEILING_DIRECTORIES \
+  GIT_CONFIG GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+
 base=""
+session_args=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 	-b|--base) [ $# -ge 2 ] || { echo "error: $1 needs a ref" >&2; exit 2; }; base="$2"; shift 2 ;;
+	--session-dir) [ -n "${2:-}" ] || { echo "error: $1 needs a directory" >&2; exit 2; }
+		case "$2" in /*|\~*) session_args=(--session-dir "$2") ;; *) session_args=(--session-dir "$PWD/$2") ;; esac; shift 2 ;;
 	-h|--help) sed -n '2,/^set -u/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
 	-*) echo "error: unknown option: $1" >&2; exit 2 ;;
 	*) break ;;
@@ -91,11 +100,16 @@ while IFS= read -r -d '' field; do
 	fi
 
 	# Porcelain v1 quotes embedded newlines. Count records, never split a path.
-	dirty=unknown
-	if porcelain=$(git -C "$wt" status --porcelain=v1 --untracked-files=all --ignored --ignore-submodules=none); then
-		wip=0; untracked=0
+	dirty=unknown; ignored="?"
+	if top=$(git -C "$wt" rev-parse --show-toplevel) && [ "$top" -ef "$wt" ] \
+		&& flags=$(git -C "$wt" ls-files -v) \
+		&& porcelain=$(git -C "$wt" status --porcelain=v1 --untracked-files=all --ignored --ignore-submodules=none); then
+		wip=0; untracked=0; ignored=0
 		while IFS= read -r entry; do
-			case "$entry" in '') ;; '?? '*|'!! '*) ((untracked++)) ;; *) ((wip++)) ;; esac
+			case "$entry" in [a-zS]' '*) ((wip++)) ;; esac
+		done <<< "$flags"
+		while IFS= read -r entry; do
+			case "$entry" in '') ;; '?? '*) ((untracked++)) ;; '!! '*) ((ignored++)) ;; *) ((wip++)) ;; esac
 		done <<< "$porcelain"
 		dirty=clean
 		if [ "$untracked" -gt 0 ]; then
@@ -124,7 +138,7 @@ while IFS= read -r -d '' field; do
 	fi
 
 	last="-"; recent=no
-	if last_ts=$(node "$script_dir/worktree-session-activity.mjs" "$main_wt" "$wt"); then
+	if last_ts=$(node "$script_dir/worktree-session-activity.mjs" "$main_wt" "$wt" ${session_args[@]+"${session_args[@]}"}); then
 		if [ "$last_ts" -gt 0 ]; then
 			last=$(fmt_day "$last_ts") || last="?"
 			[ $(( (now - last_ts) / 86400 )) -gt 4 ] || recent=yes
@@ -143,8 +157,10 @@ while IFS= read -r -d '' field; do
 	    esac ;;
 	esac
 
+	[ "$last" != "?" ] || bucket=unknown
+
 	# Preserve a single display row even for names containing control characters.
 	[[ "$wt" != *[[:cntrl:]]* ]] || printf -v wt '%q' "$wt"
 	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$wt"
+		"$size" "$age" "$merged" "$dirty,ignored:$ignored" "$remote" "$pr" "$last" "$bucket" "$wt"
 done < "$tmp/worktrees" | sort -t$'\t' -k1,1 -rh
