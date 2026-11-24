@@ -6,27 +6,53 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { generate } from "../generator/generate.mjs";
-import { sourcePathClassifier } from "../generator/source-paths.mjs";
+import { borrowedNote, sourcePathClassifier } from "../generator/source-paths.mjs";
 
 const cli = fileURLToPath(new URL("../generator/check-registry.mjs", import.meta.url));
 const cache = process.env.P3STACK_FIXTURE_ROOT ?? tmpdir();
 const rows = () => JSON.parse(readFileSync(new URL("../registry/skills.json", import.meta.url), "utf8"));
 
-test("every borrowed upstream idea names an existing upstream path and existing p3stack files", () => {
-  const borrowed = JSON.parse(readFileSync(new URL("../rules/borrowed.json", import.meta.url), "utf8"));
+const borrowed = JSON.parse(readFileSync(new URL("../rules/borrowed.json", import.meta.url), "utf8"));
+
+test("every borrowed upstream idea names an existing upstream path and owner", () => {
   const manifest = JSON.parse(readFileSync(new URL("../rules/manifest.json", import.meta.url), "utf8"));
   assert.ok(borrowed.length > 0);
   for (const row of borrowed) {
     const source = manifest.sources.find(({ name }) => name === row.source);
     assert.ok(source, row.source);
     assert.ok(existsSync(new URL(`../${source.vendor}/${row.path}`, import.meta.url)), `${row.source}/${row.path}`);
-    for (const file of row.by) assert.ok(existsSync(new URL(`../${file}`, import.meta.url)), file);
+    for (const owner of row.by) {
+      const [file, id] = owner.split("#");
+      const url = new URL(`../${file}`, import.meta.url);
+      assert.ok(existsSync(url), file);
+      if (id !== undefined) assert.ok(JSON.parse(readFileSync(url, "utf8")).some(row => row.id === id), owner);
+    }
     assert.ok(row.idea.trim(), row.path);
   }
 });
 
-test("a changed borrowed upstream path is flagged for review in a bump", async () => {
-  const { borrowedNote } = await import("../generator/source-paths.mjs");
+test("a writing-skills bump flags the chain that requires a failing baseline and comparison", () => {
+  const note = borrowedNote(borrowed, "superpowers", "skills/writing-skills/SKILL.md");
+  const owner = /borrowed by (registry\/chains\.json)#([\w-]+)/.exec(note);
+  assert.ok(owner, `no baseline chain in bump note: ${note}`);
+  const chain = JSON.parse(readFileSync(new URL(`../${owner[1]}`, import.meta.url), "utf8")).find(row => row.id === owner[2]);
+  assert.equal(chain.playbook, "playbooks/authoring-a-skill.md");
+  assert.equal(chain.skill, "playbooks/eval.md");
+  assert.match(chain.when, /before editing.*fail.*after editing.*compare/i);
+});
+
+test("the borrowed fix-loop claim distinguishes the local bound from the upstream bound", () => {
+  const row = borrowed.find(row => row.path.endsWith("/fix-loop.md"));
+  const local = readFileSync(new URL(`../${row.by[0]}`, import.meta.url), "utf8");
+  const upstream = readFileSync(new URL(`../vendor/superpowers/${row.path}`, import.meta.url), "utf8");
+  assert.match(upstream, /five rounds maximum per task/i);
+  for (const text of [row.idea, local]) {
+    assert.match(text, /two fix rounds per finding/i);
+    assert.match(text, /park/i);
+  }
+});
+
+test("a changed borrowed upstream path is flagged for review in a bump", () => {
   const borrowed = [{ source: "superpowers", path: "skills/a/SKILL.md", by: ["authored/x.md"], idea: "y" }];
   assert.match(borrowedNote(borrowed, "superpowers", "skills/a/SKILL.md"), /borrowed by authored\/x\.md: review/);
   assert.equal(borrowedNote(borrowed, "superpowers", "skills/b/SKILL.md"), "");
