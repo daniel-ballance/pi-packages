@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -16,7 +16,7 @@ type Packet = Record<string, any>;
 function pi(root: string, session: string) {
   const child = spawn(process.execPath, [cli, "--offline", "--mode", "rpc", "--session", session, "--no-extensions", "--no-skills",
     "--no-themes", "--no-prompt-templates", "--no-context-files", "--approve", "-e", extension, "-e", provider, "--model", "todo-test/stub"], {
-    cwd: root, env: { PATH: process.env.PATH, HOME: root, PI_CODING_AGENT_DIR: join(root, "agent"), PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" },
+    cwd: root, env: { PATH: process.env.PATH, HOME: root, PI_CODING_AGENT_DIR: join(root, "agent"), PI_OFFLINE: "1", PI_TEST_REQUESTS: join(root, "requests.jsonl"), PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" },
   });
   const events: Packet[] = [];
   let stderr = "";
@@ -28,11 +28,16 @@ function pi(root: string, session: string) {
     }
   };
   let id = 0;
+  async function prompt(message: string) {
+    const from = events.length;
+    child.stdin.write(JSON.stringify({ id: String(++id), type: "prompt", message }) + "\n");
+    await until(event => event.type === "agent_settled", from);
+    return from;
+  }
   return {
+    prompt,
     async call(args: unknown) {
-      const from = events.length;
-      child.stdin.write(JSON.stringify({ id: String(++id), type: "prompt", message: `CALL ${JSON.stringify(args)}` }) + "\n");
-      await until(event => event.type === "agent_settled", from);
+      const from = await prompt(`CALL ${JSON.stringify(args)}`);
       const result = events.slice(from).find(event => event.type === "tool_execution_end" && event.toolName === "todo");
       assert.ok(result, `no todo call\n${stderr}`);
       return { text: result.result.content.map((part: Packet) => part.text).join("\n") as string, isError: result.isError === true };
@@ -40,6 +45,28 @@ function pi(root: string, session: string) {
     stop: () => new Promise<void>(resolve => { child.once("exit", () => resolve()); child.kill(); }),
   };
 }
+
+// Count streamSimple invocations, not just settle events. The file (not the todo
+// state or the model's reply) tells us whether the open item was actually finished.
+for (const scenario of ["forgotten update", "waiting on user", "already current"]) test(`settle turn cost: ${scenario}`, async () => {
+  const root = mkdtempSync(join(tmpdir(), "todo-settle-")), session = join(root, "session.jsonl");
+  const client = pi(root, session);
+  try {
+    const waiting = scenario === "waiting on user";
+    const set = { op: "set", items: [waiting ? "Collect the user's signed receipt" : "Write receipt.txt"] };
+    const work = waiting ? { name: "ls", arguments: { path: "." } } : { name: "write", arguments: { path: "receipt.txt", content: "received" } };
+    const update = { op: "update", id: 1, state: "done" };
+    const steps = scenario === "already current" ? [set, work, update, null] : [set, work, null, waiting ? null : update];
+    await client.prompt(`RUN ${JSON.stringify(steps)}`);
+    assert.equal(existsSync(join(root, "receipt.txt")), !waiting);
+    const entries = readFileSync(session, "utf8").trim().split("\n").map(line => JSON.parse(line));
+    assert.equal(entries.filter(e => e.customType === "todo").at(-1).data.items[0].state, waiting ? "pending" : "done");
+    const requests = readFileSync(join(root, "requests.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+    const extra = requests.filter(({ messages }) => messages.some((m: Packet) => m.role === "user" && JSON.stringify(m.content).includes("The run is ending with")));
+    assert.equal(extra.length, scenario === "already current" ? 0 : waiting ? 1 : 2);
+    assert.equal(requests.length - extra.length, scenario === "already current" ? 4 : 3);
+  } finally { await client.stop(); rmSync(root, { recursive: true, force: true }); }
+});
 
 test("a real Pi session keeps the list across a restart of the same session", { timeout: 60000, skip: process.platform === "win32" }, async () => {
   const root = mkdtempSync(join(tmpdir(), "todo-real-pi-"));
