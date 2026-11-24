@@ -61,12 +61,17 @@ export function candidates(budget: Budget, models: ModelInfo[], catalog?: string
 
 export const agentDir = getAgentDir;
 
-export interface Resolved { source: string; budget?: string; roles: Record<string, { value: RoleValue; fromFile: boolean }>; problems: string[] }
+type FileHost = "terminal" | "t3";
+export const roleHost = (): FileHost => detectHost() === "cli" ? "terminal" : "t3";
+type FilePolicy = "pin" | "foreign" | "legacy";
+
+export interface Resolved { source: string; host?: FileHost; budget?: string; roles: Record<string, { value: RoleValue; fromFile: boolean }>; problems: string[] }
 
 function problemsIn(data: unknown): string[] {
   if (!data || typeof data !== "object" || Array.isArray(data)) return ["must be an object with budget and roles"];
-  const { budget, roles, ...rest } = data as Record<string, unknown>;
+  const { host, budget, roles, ...rest } = data as Record<string, unknown>;
   const problems = Object.keys(rest).map(key => `unknown field "${key}"`);
+  if (host !== undefined && host !== "terminal" && host !== "t3") problems.push('host must be "terminal" or "t3"');
   if (budget !== undefined && typeof budget !== "string") problems.push("budget must be text");
   if (roles !== undefined && (!roles || typeof roles !== "object" || Array.isArray(roles))) return [...problems, "roles must be an object"];
   for (const [role, value] of Object.entries((roles ?? {}) as Record<string, unknown>)) {
@@ -88,9 +93,9 @@ export function resolveRoles(cwd: string, projectTrusted: boolean): Resolved {
     catch (error) { skipped.push(`ignored ${path}: ${(error as Error).message}`); continue; }
     const problems = problemsIn(data);
     if (problems.length) { skipped.push(...problems.map(problem => `ignored ${path}: ${problem}`)); continue; }
-    const file = data as { budget?: string; roles?: Record<string, RoleValue> };
+    const file = data as { host?: FileHost; budget?: string; roles?: Record<string, RoleValue> };
     for (const [role, value] of Object.entries(file.roles ?? {})) roles[role] = { value, fromFile: true };
-    return { source: path, budget: file.budget, roles, problems: skipped };
+    return { source: path, host: file.host, budget: file.budget, roles, problems: skipped };
   }
   return { source: "default hints", roles, problems: skipped };
 }
@@ -186,7 +191,7 @@ export function setupCatalog(pi: CatalogApi): string[] | undefined {
   return catalog.choices.filter(s => s.level).map(identity);
 }
 
-async function selections(pi: CatalogApi, ctx: RoleContext, pins: string[], signal?: AbortSignal): Promise<LiveCatalog> {
+async function selections(pi: CatalogApi, ctx: RoleContext, pins: string[], policy: FilePolicy, signal?: AbortSignal): Promise<LiveCatalog> {
   if (detectHost() === "t3") {
     const query = async (args: { search?: string }) => {
       const { result, isError } = await ctx.executeTool(CAPABILITIES, args, { signal });
@@ -195,8 +200,12 @@ async function selections(pi: CatalogApi, ctx: RoleContext, pins: string[], sign
     };
     const catalog = t3Catalogs.get(pi) ?? await query({});
     for (const pin of pins) {
-      const { name } = hintParts(pin), slash = name.indexOf("/");
-      if (slash < 0 || catalog.choices.some(s => nameOf(s) === name || (!catalog.instances.has(name.slice(0, slash)) && s.model === name))) continue;
+      const { name } = pinParts(pin), slash = name.indexOf("/");
+      if (slash < 0) continue;
+      const instanceListed = catalog.instances.has(name.slice(0, slash));
+      if (policy === "pin" && !instanceListed) continue;
+      const foreign = policy === "foreign" || (policy === "legacy" && !instanceListed);
+      if (catalog.choices.some(s => foreign ? foreignModel(s, name) : nameOf(s) === name || nameOf(s) === pin)) continue;
       // A short listing isn't a refusal. Search once per missing pinned model,
       // retaining only exact model ids, not unrelated hits from the search.
       const search = name.slice(slash + 1);
@@ -222,6 +231,10 @@ async function selections(pi: CatalogApi, ctx: RoleContext, pins: string[], sign
   return { choices };
 }
 
+const pinParts = (pin: string) => {
+  const at = pin.lastIndexOf(":");
+  return at >= 0 && LEVELS.includes(pin.slice(at + 1)) ? { name: pin.slice(0, at), level: pin.slice(at + 1) } : { name: pin, level: undefined };
+};
 const hintParts = (hint: string) => {
   const match = /^(.*?)(?::|-)(off|minimal|low|medium|high|xhigh|max)(?:-fast)?$/.exec(hint);
   return { name: match?.[1] ?? hint, level: match?.[2] };
@@ -244,36 +257,41 @@ const prefer = (choices: Selection[], test: (s: Selection) => boolean) => {
   return matches.length ? matches : choices;
 };
 
-function scopedChoices(name: string, catalog: LiveCatalog): Selection[] {
-  const slash = name.indexOf("/");
-  if (!catalog.instances || slash < 0) return catalog.choices;
-  const prefix = name.slice(0, slash);
-  if (catalog.instances.has(prefix)) return catalog.choices.filter(s => s.provider === prefix);
-  // A foreign Pi identity must match the model namespace on a single instance.
-  // Never strip an unknown instance and redirect its pin to a bare model id.
-  const foreign = catalog.choices.filter(s => s.model === name || (s.model.startsWith(prefix + "/") && modelFamily(s.model) === family(name)));
-  const matches = prefer(foreign, s => s.model === name);
-  return new Set(matches.map(s => s.provider)).size === 1 ? matches : [];
+const modelPart = (name: string) => name.slice(name.indexOf("/") + 1);
+const foreignModel = (s: Selection, name: string) => s.model === name || s.model === modelPart(name) || nameOf(s) === modelPart(name);
+
+function fileChoice(value: string, policy: FilePolicy, catalog: LiveCatalog, author?: string) {
+  const { choices } = catalog;
+  // Try the literal model id before interpreting any part of it as effort.
+  const literal = choices.some(s => (policy !== "foreign" && nameOf(s) === value) || (policy !== "pin" && foreignModel(s, value)));
+  const { name, level } = literal ? { name: value, level: undefined } : policy === "legacy" ? hintParts(value) : pinParts(value);
+  const eligible = choices.filter(s => !level || s.level === level);
+  const exact = eligible.filter(s => nameOf(s) === name);
+  const best = (matches: Selection[]) => matches.sort((a, b) => rank(b.level) - rank(a.level))[0];
+  if (policy === "pin" || (policy === "legacy" && exact.length)) return { found: best(exact), substituted: false, avoid: author };
+
+  const family = modelFamily(modelPart(name));
+  const matches = eligible.filter(s => foreignModel(s, name) || modelFamily(s.model) === family);
+  const preferred = prefer(matches, s => foreignModel(s, name));
+  // A foreign spelling doesn't identify a provider account on this host.
+  const ambiguous = catalog.instances && new Set(preferred.map(s => s.provider)).size > 1;
+  return { found: ambiguous ? undefined : best(preferred), substituted: true, avoid: author };
 }
 
-function choose(hint: string, fromFile: boolean, catalog: LiveCatalog, author?: string, panelFamilies?: string[], fallbackAuthor?: string) {
+function choose(hint: string, catalog: LiveCatalog, author?: string, panelFamilies?: string[], fallbackAuthor?: string) {
   const { name, level } = hintParts(hint), wantedFamily = family(hint);
   function match(s: Selection): number {
     if (nameOf(s) === name) return 3; // exact (instance, whole model id) wins
-    if (!catalog.instances && name.slice(name.indexOf("/") + 1) === nameOf(s)) return 2; // foreign T3 pin
     if (s.model === name || (!name.includes("/") && s.model.split("/").at(-1) === name)) return 2;
     return modelFamily(s.model) === wantedFamily ? 1 : 0;
   }
-  let choices = scopedChoices(name, catalog).filter(s => !level || (s.level && rank(s.level) <= rank(level)));
-  const avoid = author ?? (!fromFile && !choices.some(match) ? fallbackAuthor : undefined);
-  if (fromFile) choices = choices.filter(match);
-  else {
-    if (author) choices = prefer(choices, s => independent(modelFamily(s.model), author));
-    if (panelFamilies) choices = prefer(choices, s => KNOWN_FAMILY.test(s.model) && panelFamilies.every(f => independent(modelFamily(s.model), f)));
-    if (!author && avoid) choices = prefer(choices, s => independent(modelFamily(s.model), avoid));
-  }
+  let choices = catalog.choices.filter(s => !level || (s.level && rank(s.level) <= rank(level)));
+  const avoid = author ?? (!choices.some(match) ? fallbackAuthor : undefined);
+  if (author) choices = prefer(choices, s => independent(modelFamily(s.model), author));
+  if (panelFamilies) choices = prefer(choices, s => KNOWN_FAMILY.test(s.model) && panelFamilies.every(f => independent(modelFamily(s.model), f)));
+  if (!author && avoid) choices = prefer(choices, s => independent(modelFamily(s.model), avoid));
   const found = choices.sort((a, b) => match(b) - match(a) || rank(b.level) - rank(a.level))[0];
-  const substituted = found && (match(found) < (fromFile ? 3 : 2) || (level && level !== found.level));
+  const substituted = found && (match(found) < 2 || (level && level !== found.level));
   return { found, substituted, avoid };
 }
 
@@ -283,7 +301,8 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
   const problems = [...defaults.problems];
   let catalog: LiveCatalog;
   const pins = Object.values(defaults.roles).flatMap(r => r.fromFile ? r.value : []);
-  try { catalog = await selections(pi, ctx, pins, signal); }
+  const policy = defaults.host === undefined ? "legacy" : defaults.host === roleHost() ? "pin" : "foreign";
+  try { catalog = await selections(pi, ctx, pins, policy, signal); }
   catch (error) {
     t3Catalogs.delete(pi);
     const source = detectHost() === "t3" ? "T3 catalog" : "catalog";
@@ -306,9 +325,9 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
     for (const hint of Array.isArray(value) ? value : [value]) {
       const inherit = hint === "auto" || hint === "inherit-parent";
       const { found, substituted, avoid } = inherit ? { found: parent, substituted: false, avoid: author }
-        : choose(hint, fromFile, catalog, author, Array.isArray(value) ? used : undefined, fallbackAuthor);
+        : fromFile ? fileChoice(hint, policy, catalog, author) : choose(hint, catalog, author, Array.isArray(value) ? used : undefined, fallbackAuthor);
       if (!found) {
-        note(role, `no live catalog selection for ${hint} in the returned list at the requested level or below. Check the role default or allowlist.`);
+        note(role, `no live catalog selection for ${hint} in the returned list${fromFile ? "" : " at the requested level or below"}. Check the role default or allowlist.`);
         continue;
       }
       const f = modelFamily(found.model);

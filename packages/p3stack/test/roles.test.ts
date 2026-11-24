@@ -24,10 +24,10 @@ function directories(t: TestContext) {
   return { cwd, personal: join(personal, "p3stack.json"), project: join(cwd, ".pi", "p3stack.json") };
 }
 
-function lookup(t: TestContext, host: "cli" | "t3", { models = [] as string[], t3 = undefined as unknown, pins = {} as Record<string, RoleValue>, parent = undefined as { provider: string; id: string } | undefined } = {}) {
+function lookup(t: TestContext, host: "cli" | "t3", { fileHost = undefined as "terminal" | "t3" | undefined, models = [] as string[], t3 = undefined as unknown, pins = {} as Record<string, RoleValue>, parent = undefined as { provider: string; id: string } | undefined } = {}) {
   env("T3_MCP_URL", host === "t3" ? "http://127.0.0.1:1/mcp" : undefined);
   const { cwd, personal } = directories(t);
-  if (Object.keys(pins).length) writeFileSync(personal, JSON.stringify({ roles: pins }));
+  if (Object.keys(pins).length) writeFileSync(personal, JSON.stringify({ host: fileHost, roles: pins }));
   const calls: string[] = [];
   const pi = {
     getThinkingLevel: () => "high",
@@ -77,6 +77,58 @@ test("a T3 pin selects the named instance and the entire model id before any ali
   assert.ok(problems.some(p => p.includes("gone/gpt-6:high")));
 });
 
+test("a wizard pin is unavailable when its instance disappears, even if its identity is another instance's model id", async t => {
+  const own = provider("codex", t3Model("gpt-demo", "medium", "high"));
+  const catalog = { providers: [own, provider("pi", t3Model("codex/gpt-demo", "medium", "high"))] };
+  const h = lookup(t, "t3", { t3: catalog }), w = wizard(h, options => options.find(s => s.startsWith("codex/"))!);
+  await h.resolve();
+  await w.run();
+  assert.deepEqual((await h.resolve()).roles["bug-fix"], target("codex", "gpt-demo", "medium"));
+  catalog.providers.shift();
+  w.emit("model_select");
+  const missing = await h.resolve();
+  assert.equal(missing.roles["bug-fix"], undefined);
+  assert.ok(missing.problems.some(p => p.includes("codex/gpt-demo:medium") && /no live catalog/.test(p)));
+});
+
+test("a literal model ending in -max wins over the shorter model, including when the literal id needs lookup", async t => {
+  const id = "gpt-5.1-codex-max";
+  for (const fileHost of ["t3", undefined] as const) {
+    const h = lookup(t, "t3", { fileHost, pins: { "bug-fix": `work/${id}` }, t3: ({ search }: { search?: string }) => ({
+      providers: [provider("work", t3Model("gpt-5.1-codex", "max"), ...search === id ? [t3Model(id, "high")] : [])],
+    }) });
+    assert.deepEqual((await h.resolve()).roles["bug-fix"], target("work", id, "high"));
+  }
+});
+
+for (const fileHost of ["terminal", "t3"] as const) {
+  test(`${fileHost} pins cannot switch provider, model or explicit level on their own host`, async t => {
+    const h = lookup(t, fileHost === "terminal" ? "cli" : "t3", { fileHost,
+      pins: { "bug-fix": "work/gpt-demo:high", hillclimb: "work/gpt-demo2:high", "perf-issue": "work/gpt-demo:medium" },
+      models: ["work/gpt-demo:medium", "other/gpt-demo:high"],
+      t3: { providers: [provider("work", t3Model("gpt-demo", "medium")), provider("other", t3Model("gpt-demo", "high"))] },
+    });
+    const { roles, problems } = await h.resolve();
+    assert.equal(roles["bug-fix"], undefined);
+    assert.equal(roles.hillclimb, undefined);
+    assert.ok(problems.some(p => p.includes("work/gpt-demo2:high")));
+    assert.deepEqual(roles["perf-issue"], fileHost === "terminal" ? "work/gpt-demo:medium" : target("work", "gpt-demo", "medium"));
+  });
+}
+
+test("foreign files and nonmatching legacy values use this host's family and level, with a substitution notice", async t => {
+  const pin = "anthropic/claude-opus-5-5:xhigh";
+  for (const fileHost of ["terminal", undefined] as const) {
+    const h = lookup(t, "t3", { fileHost, pins: { "judgment and prose": pin },
+      t3: { providers: [provider("claudeAgent", t3Model("claude-opus-5-5", "xhigh"))] } });
+    const { roles, problems } = await h.resolve();
+    assert.deepEqual(roles["judgment and prose"], target("claudeAgent", "claude-opus-5-5", "xhigh"));
+    assert.ok(problems.some(p => p.includes(`substituted claudeAgent/claude-opus-5-5:xhigh for ${pin}`)));
+  }
+  const h = lookup(t, "cli", { fileHost: "t3", pins: { "bug-fix": pin }, models: [pin] });
+  assert.ok((await h.resolve()).problems.some(p => p.includes(`substituted ${pin} for ${pin}`)), "even matching spellings are foreign hints");
+});
+
 test("T3 selects the closest advertised level below the hint and names the downgrade", async t => {
   const h = lookup(t, "t3", { t3: { providers: [provider("pi", t3Model("xai/grok-4.7", "low", "max", "high", "medium"))] } });
   const { roles, problems } = await h.resolve();
@@ -122,19 +174,22 @@ test("default hints use the offered family, then another usable model, and name 
   assert.ok(problems.some(p => p.includes("api/gpt-6:xhigh") && p.includes("grok-4.7-xhigh-fast")));
 });
 
-test("operator pins stay exact or in-family even when asked for diversity", async t => {
+test("exact legacy identities stay pinned and missing ones become family and level hints, even under distinctFrom", async t => {
   const h = lookup(t, "t3", { t3: { providers: [provider("other", t3Model("claude-opus", "xhigh")), provider("account", t3Model("claude-sonnet", "high"), t3Model("gpt-6", "xhigh"))] },
     pins: { "bug-fix": "account/claude-opus:xhigh", "perf-issue": "account/claude-sonnet:high", hillclimb: "account/grok-4:high" } });
   const { roles, problems } = await h.resolve("claude");
-  for (const role of ["bug-fix", "perf-issue"]) assert.deepEqual(roles[role], target("account", "claude-sonnet", "high"));
+  assert.deepEqual(roles["bug-fix"], target("other", "claude-opus", "xhigh"));
+  assert.deepEqual(roles["perf-issue"], target("account", "claude-sonnet", "high"));
   assert.equal(roles.hillclimb, undefined);
-  assert.ok(problems.some(p => p.includes("account/claude-opus:xhigh") && p.includes("account/claude-sonnet:high")));
+  assert.ok(problems.some(p => p.includes("account/claude-opus:xhigh") && p.includes("other/claude-opus:xhigh")));
   assert.ok(problems.some(p => p.includes("account/grok-4:high")));
 });
 
 test("other-host pins are hints; an ambiguous Pi identity cannot select a T3 account", async t => {
-  const cli = lookup(t, "cli", { pins: { "bug-fix": "pi-main/xai/grok-4.6:medium" }, models: ["xai/grok-4.7:low"] });
-  assert.equal((await cli.resolve()).roles["bug-fix"], "xai/grok-4.7:low");
+  const cli = lookup(t, "cli", { fileHost: "t3", pins: { "bug-fix": "pi-main/xai/grok-4.6:medium", hillclimb: "pi-main/xai/grok-4.6:low" }, models: ["xai/grok-4.7:low"] });
+  const { roles } = await cli.resolve();
+  assert.equal(roles["bug-fix"], undefined, "no model in the family at the requested level");
+  assert.equal(roles.hillclimb, "xai/grok-4.7:low");
   const models = [t3Model("xai/grok-4.7", "high")];
   const t3 = lookup(t, "t3", { pins: { "bug-fix": "xai/grok-4.6:high", hillclimb: "xai/grok-4.7:high" },
     t3: { providers: [provider("account", ...models), provider("another", ...models)] } });
@@ -244,6 +299,7 @@ test("setup states the budget, actual judgment level and panel it wrote when no 
   const w = wizard(h);
   await w.run();
   const written = JSON.parse(readFileSync(h.personal, "utf8"));
+  assert.equal(written.host, "terminal");
   assert.deepEqual(written.roles["arena runners"], ["api/coder:low", "api/coder:low"]);
   const notice = w.notices.at(-1)!;
   assert.match(notice, /no offered model.*high thinking/i);
@@ -268,6 +324,7 @@ test("T3 setup consumes this session's catalog; its choices round trip to ready 
   await w.run(); // command context has no executeTool
   assert.ok(existsSync(h.personal), `setup did not write: ${w.notices}`);
   const written = JSON.parse(readFileSync(h.personal, "utf8"));
+  assert.equal(written.host, "t3");
   assert.deepEqual(written.roles["arena runners"], ["personal/xai/grok-4.7:high", "personal/xai/grok-4.7:medium"]);
   assert.ok(w.notices.at(-1)!.includes("personal/xai/grok-4.7:high"));
   assert.deepEqual((await h.resolve()).roles["bug-fix"], target("personal", model.id, "medium"));
@@ -313,7 +370,7 @@ test("the agent directory follows Pi for empty, tilde and explicit overrides", (
 test("an invalid trusted role file is reported without masking personal defaults", t => {
   const { cwd, project, personal } = directories(t);
   writeFileSync(personal, JSON.stringify({ roles: { "bug-fix": "pi/gpt-6:medium" } }));
-  for (const invalid of ["{", JSON.stringify({ roles: [] })]) {
+  for (const invalid of ["{", JSON.stringify({ roles: [] }), JSON.stringify({ host: "cli" })]) {
     writeFileSync(project, invalid);
     const result = resolveRoles(cwd, true);
     assert.equal(result.source, personal);
