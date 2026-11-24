@@ -7,7 +7,6 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 - Decide whether to reduce the 92 skills to about 46 entry points. A cheaper first step is to ship the 24 principle skills as poteto-mode references. Both changes affect public `/skill:` names and links. (catalog.md, Decision and §7)
 - Decide when a route actually needs poteto-mode. Only the small-task row skips its full read today; making the read conditional elsewhere would save context but change which rules an agent sees. (router.md §2)
 - Trial shorter descriptions for model-invoked skills, and decide which still need to be advertised. Check discovery with routing off before making a skill explicit-only. (catalog.md §8)
-- Authorize the model, cases, repetitions, and spend for live routing and behavior evals on this branch. Compare base and branch with the same parent and tools; a green offline suite is not a measured change in task success. Test T3 separately from the terminal runners. (evals.md §3)
 - Decide whether nightly maintenance should land every changed tip or report unconsumed changes without a PR. A read-only candidate classifier would separate finding a new commit from adopting it. (generator.md §5)
 - Measure searches avoided by T3's `standard` loadout against the cost of declaring its tools before choosing `lean` as a default. (t3.md §7)
 - Decide whether externally consumed or persisted data warrants a routed migration procedure. The dropped upstream skill covers consumer notice and retirement criteria that the one-wave versus expand–contract rule does not. (catalog.md §10 and “Reachability, merges and upstream admissions”)
@@ -15,6 +14,8 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 ## Decided
 
 - Multi-PR plans keep their ten mandatory live verification lanes per PR. The owner chose to leave the template and `check-plan.mjs` as they are (2026-11-24).
+
+- The live evals ran on this branch on 2026-11-24 (results in [the eval decision log](evals/README.md#decision-log)). Still unmeasured: routing on the parent models the owner uses day to day, and anything under T3 Code. The runs used `gpt-6-luna` at low and medium thinking in a terminal.
 
 ## Larger changes worth doing
 
@@ -28,7 +29,7 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 - Own the Pi-specific setup and help text in small blocks and generate model examples from the role definitions. Preserve the upstream verification offers without maintaining a second role schema. (generator.md, “What to delete or merge” §2; router.md §10)
 - Stage resource lint for all shipped skills, then remove redundant checks only where coverage matches. The staged `resources` list currently covers Pocock; the package-wide skill lint runs after generation. (generator.md, “What to delete or merge” §5)
 - Check concrete script operands, code-span paths, and generated indexes from a consumer's installed skill directory. The packlist test checks Markdown links, not whether a command in a playbook resolves. (catalog.md §11; generator.md §3)
-- Make the remaining behavior checks exercise the product: drive successive partial refunds, run above- and below-threshold coverage with the pinned Vitest, and reproduce the skipped empty-list case on a grader copy. A structural HTML check, a loaded config, and matching review text cannot establish those outcomes. (evals.md §1)
+- Make the remaining behavior checks exercise the product: run above- and below-threshold coverage with the pinned Vitest, reproduce the skipped empty-list case on a grader copy, and check refund arithmetic in the prototype (successive partial approvals up to the order total). The prototype is now driven in a browser, which shows that controls change the page, not that the sums are right. (evals.md §1)
 - Add a scrubbed receipt with revision, actual model and effort, prompt identity, usage, and a reviewable artifact for each live attempt. Raw transcripts and requested model names alone are poor evidence for comparing two revisions. (evals.md §§2–3)
 - Add a human-only reconciliation path for a detached child with uncertain prompt acceptance. A retained slot prevents duplicate work but the Manager cannot confirm a dead process after restart. (subagents.md §1)
 - Separate high-frequency usage updates from durable holds, report receipts, and wake notices. The Manager still serializes archived children in synchronous `registry.json` rewrites. Measure writes before changing the store format. (subagents.md §6)

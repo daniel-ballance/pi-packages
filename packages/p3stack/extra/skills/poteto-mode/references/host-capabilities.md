@@ -82,6 +82,8 @@ Search for the symbol or path, then read the matching file and relevant callers.
 
 Use the project's verification skill or harness. For a prototype, check walkthroughs and free-play controls or each UI variant and its switcher through a permitted driver. Hand back the actual file path or URL; distinguish what you exercised from what remains unverified.
 
+Without a browser driver, still open a local HTML file in an installed headless browser and read its console: `chromium --headless --enable-logging=stderr --dump-dom "file://<absolute path>" 2>&1 >/dev/null | grep -i uncaught`. An uncaught error is a failed demo. Running the page's script outside a browser does not show that the page loads; say so if that is all you could do.
+
 - [Terminal](../poteto-mode/references/host-terminal.md#drive-the-app)
 - [T3 Code](../poteto-mode/references/host-t3.md#drive-the-app)
 
