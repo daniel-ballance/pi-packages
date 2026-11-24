@@ -77,3 +77,36 @@ test("each newly unblocked ticket gets a private brief against the assigned revi
   assert.match(contract, /acceptance criteria in the tracker ticket/i);
   assert.match(contract, /at dispatch[^\n]*signatures[^\n]*paths[^\n]*done command[^\n]*brief/i);
 });
+
+const ledgerPath = "p3stack-mode/references/execution-ledger.md";
+
+test("the audit trail reviews ledger rows; a shareable TSV is an export, not a second journal", () => {
+  const ledger = read(ledgerPath), trail = read("p3stack-mode/references/show-me-your-work.md");
+  const row = ledger.split("\n").find(line => line.includes("unit | attempt"));
+  for (const field of ["decision", "why", "evidence", "result", "head SHA", "pending gate"]) assert.ok(row.includes(field), field);
+  assert.ok(trail.includes(`(../${ledgerPath})`));
+  assert.match(trail, /export[^\n]*ledger rows/i);
+  assert.match(trail, /reviewer[^\n]*return[^\n]*coordinator/i);
+  assert.doesNotMatch(trail, /without proof in the transcript/);
+  assert.match(skill("figure-it-out"), /execution-ledger\.md[^\n]*export/i);
+  assert.doesNotMatch(trail, /a new chat starts a new run|first row has phase .start.|at .decisions\.tsv. in the work dir/i);
+});
+
+test("coordinators record worker reports once, including iterative and autonomous work", () => {
+  const orchestration = playbook("orchestrate"), autopilot = playbook("autopilot-full");
+  for (const doc of [orchestration, autopilot, playbook("hillclimb"), playbook("autonomous-run")]) {
+    assert.ok(doc.includes(`(../${ledgerPath})`));
+    assert.doesNotMatch(doc, /start a decision trail|a `decision\.tsv`|pasted in full/i);
+  }
+  assert.match(orchestration, /notes\.md[^\n]*(?:pointer|link) to the ledger/i);
+  assert.match(autopilot, /send[^\n]*coordinator[^\n]*ledger/i);
+});
+
+test("pause points into the ledger and pickup verifies the evidence before routing", () => {
+  const pause = playbook("pause-safely"), pickup = playbook("session-pickup");
+  assert.match(pause, /resume note[^\n]*only[^\n]*ledger[^\n]*row/i);
+  assert.match(pickup, /ledger[^\n]*Recovery/i);
+  const verify = pickup.indexOf("Verify the inherited claims"), route = pickup.indexOf("Route the remaining work");
+  assert.ok(verify >= 0 && verify < route, "the next playbook inherits verified state");
+  assert.doesNotMatch(pickup, /prior trail is authoritative|do not re-run the prior repro/i);
+});
