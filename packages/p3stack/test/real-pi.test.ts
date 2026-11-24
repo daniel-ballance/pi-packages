@@ -121,6 +121,13 @@ for (const route of ["nested", "workflow"]) test(`native ${route} initial delive
   }
   let from = pi.send({ type: "prompt", message: "/p3stack on autonomous" });
   await pi.wait(from, e => e.type === "response" && e.success);
+  if (route === "workflow") {
+    // Workflow tools are declared on demand: an ordinary parent names the one it needs first.
+    from = pi.send({ type: "prompt", message: call("subagent_catalog", { activate: ["subagent_workflow_start"] }) });
+    const activated = await pi.wait(from, e => e.type === "tool_execution_end");
+    assert.ok(!activated.isError, JSON.stringify(activated.result));
+    await pi.wait(from, e => e.type === "agent_settled");
+  }
   from = pi.send({ type: "prompt", message: prompt });
   const result = await pi.wait(from, e => e.type === "tool_execution_end");
   assert.ok(!result.isError, JSON.stringify(result.result));
