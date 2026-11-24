@@ -118,7 +118,8 @@ test("with a subagents catalog, only its identities are offered, at the highest 
   assert.deepEqual(candidates("unlimited", [], catalog), ["xai/grok-4.7:high", "p/deep:xhigh"]);
 });
 
-test("p3stack_roles answers with the role table as text, from the file or the default hints", async () => {
+test("p3stack_roles answers with the role table as text, from the file or the default hints", async t => {
+  t.after(asHost("cli"));
   const h = harness({ files: { "agent/p3stack.json": { budget: "large (xhigh)", roles: { "swarm workers": "xai/grok-4.7:xhigh" } } } });
   try {
     const result = await h.call("p3stack_roles", {});
@@ -130,7 +131,8 @@ test("p3stack_roles answers with the role table as text, from the file or the de
   } finally { h.dispose(); }
 });
 
-test("a trusted project's file wins over the personal one, and a broken file is reported, not used", async () => {
+test("a trusted project's file wins over the personal one, and a broken file is reported, not used", async t => {
+  t.after(asHost("cli"));
   const project = harness({ trusted: true, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "xai/grok-4.7:low" } }, "agent/p3stack.json": { roles: { "bug-fix": "xai/grok-4.7:high" } } } });
   try { assert.match(text(await project.call("p3stack_roles", {})), /bug-fix: xai\/grok-4\.7:low/); } finally { project.dispose(); }
   const untrusted = harness({ trusted: false, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "a/b:low" } } } });
@@ -147,7 +149,8 @@ test("a trusted project's file wins over the personal one, and a broken file is 
   } finally { broken.dispose(); }
 });
 
-test("roles resolve against the live allowlist, clamp thinking down, and report missing selections", async () => {
+test("roles resolve against the live allowlist, clamp thinking down, and name substitutions", async t => {
+  t.after(asHost("cli"));
   const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude/claude-opus-5-5:xhigh"] };
   const h = harness({ subagents: catalog });
   try {
@@ -158,12 +161,13 @@ test("roles resolve against the live allowlist, clamp thinking down, and report 
     catalog.models = ["xai/grok-4.7:low"];
     const second = (await h.call("p3stack_roles", {})).structuredContent;
     assert.equal(second.roles["swarm workers"], "xai/grok-4.7:low");
-    assert.equal(second.roles["judgment and prose"], undefined);
-    assert.match(second.problems.join("\n"), /judgment and prose.*no live catalog selection/);
+    assert.equal(second.roles["judgment and prose"], "xai/grok-4.7:low");
+    assert.match(second.problems.join("\n"), /judgment and prose.*substituted xai\/grok-4\.7:low for claude-opus-5-5-xhigh/);
   } finally { h.dispose(); }
 });
 
-test("distinctFrom moves each role off the author's family when the catalog offers another, and says so", async () => {
+test("distinctFrom moves each role off the author's family when the catalog offers another, and says so", async t => {
+  t.after(asHost("cli"));
   assert.equal(family("claude/claude-opus-5-5:xhigh"), "claude");
   assert.equal(family("xai/grok-4.7"), "grok");
   assert.equal(family("openai-codex/gpt-6-astra"), "gpt");
@@ -177,15 +181,16 @@ test("distinctFrom moves each role off the author's family when the catalog offe
     assert.equal(roles["judgment and prose"], "openai-codex/gpt-6-astra:xhigh", "the closest level outside the family");
     assert.equal(roles["swarm workers"], "xai/grok-4.7:high", "already outside the family");
     assert.deepEqual(roles["interrogate reviewers"], ["openai-codex/gpt-6-astra:xhigh", "xai/grok-4.7:high"]);
-    assert.match(text(result), /judgment and prose: substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude\//);
+    assert.match(text(result), /judgment and prose.*substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude\//);
     catalog.models = ["claude/claude-opus-5-5:xhigh"];
     const only = await h.call("p3stack_roles", { distinctFrom: "claude" });
     assert.equal(only.structuredContent.roles["judgment and prose"], "claude/claude-opus-5-5:xhigh");
-    assert.match(text(only), /judgment and prose: no model outside the claude family is offered/);
+    assert.match(text(only), /judgment and prose.*no model outside the claude family is offered/);
   } finally { h.dispose(); }
 });
 
-test("a registered T3 catalog takes precedence and returns ready targets with advertised thinking options", async () => {
+test("under T3, roles return ready targets with advertised thinking options", async t => {
+  t.after(asHost("t3"));
   const h = harness({ subagents: { spawnEnabled: true, models: [] }, t3: { providers: [
     { providerInstanceId: "pi-main", canRunChildTask: true, models: [
       { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "low" }, { id: "high" }] }] },
@@ -200,19 +205,21 @@ test("a registered T3 catalog takes precedence and returns ready targets with ad
   } finally { h.dispose(); }
 });
 
-test("T3 bridge MCP envelopes resolve roles and preserve the inherited target without guessing options", async () => {
+test("T3 bridge MCP envelopes distinguish inheriting the parent from requesting an unoffered level", async t => {
+  t.after(asHost("t3"));
   const h = harness({ t3: { content: [], structuredContent: {
     inheritedProviderInstanceId: "pi-main", inheritedModel: "claude/claude-opus-5-5",
     providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude/claude-opus-5-5" }] }],
   } }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
   try {
     const roles = (await h.call("p3stack_roles", {})).structuredContent.roles;
-    assert.deepEqual(roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5" });
-    assert.deepEqual(roles["bug-fix"], roles["judgment and prose"]);
+    assert.equal(roles["judgment and prose"], undefined);
+    assert.equal(roles["bug-fix"], null, "omit target to inherit, including the parent's settings");
   } finally { h.dispose(); }
 });
 
-test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or text", async () => {
+test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or text", async t => {
+  t.after(asHost("t3"));
   const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [
     { id: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
     { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "high" }] }] },
@@ -232,12 +239,13 @@ test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or te
       const result = await h.call("p3stack_roles", {});
       assert.deepEqual(result.structuredContent.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
       assert.equal(Object.keys(result.structuredContent.roles).length, 17);
-      assert.deepEqual(result.structuredContent.problems, []);
+      assert.match(result.structuredContent.problems.join("\n"), /grok-4\.7:high.*grok-4\.7-xhigh-fast/);
     } finally { h.dispose(); }
   }
 });
 
-test("a failed Pi tool-call outcome reports the T3 failure and resolves the subagents allowlist", async () => {
+test("a failed T3 catalog call blocks every role even with a registered subagents allowlist", async t => {
+  t.after(asHost("t3"));
   const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude/claude-opus-5-5" }] }] };
   const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: ["claude/claude-opus-5-5:low", "xai/grok-4.7:low"] } });
   h.ctx.executeTool = async (name, args) => {
@@ -251,15 +259,14 @@ test("a failed Pi tool-call outcome reports the T3 failure and resolves the suba
   };
   try {
     const result = await h.call("p3stack_roles", {});
-    assert.equal(result.structuredContent.roles["judgment and prose"], "claude/claude-opus-5-5:low");
-    assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:low");
-    assert.equal(Object.keys(result.structuredContent.roles).length, 17);
-    assert.equal(result.structuredContent.problems.length, 1);
-    assert.match(text(result), /T3 catalog call failed/);
+    assert.deepEqual(result.structuredContent.roles, {});
+    assert.match(text(result), /T3 catalog unavailable/);
+    for (const role of Object.keys(DEFAULT_ROLES)) assert.ok(text(result).includes(role));
   } finally { h.dispose(); }
 });
 
-test("inherit-parent resolves to an exact permitted identity and disabled catalogs never invent a model", async () => {
+test("inherit-parent resolves to an exact permitted identity and disabled catalogs never invent a model", async t => {
+  t.after(asHost("cli"));
   const h = harness({ parent: { provider: "claude", id: "claude-opus-5-5" }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
   try { assert.equal((await h.call("p3stack_roles", {})).structuredContent.roles["bug-fix"], "claude/claude-opus-5-5:xhigh"); } finally { h.dispose(); }
   for (const subagents of ["old", { spawnEnabled: false, models: ["xai/grok-4.7:xhigh"] }] as Subagents[]) {
@@ -723,11 +730,12 @@ test("ask_user sends the tool's abort signal to every dialog and propagates canc
   } finally { h.dispose(); }
 });
 
-function asTerminal() {
+function asHost(host: "cli" | "t3") {
   const previous = process.env.T3_MCP_URL;
-  delete process.env.T3_MCP_URL;
-  return () => { if (previous !== undefined) process.env.T3_MCP_URL = previous; };
+  if (host === "cli") delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+  return () => { if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; };
 }
+const asTerminal = () => asHost("cli");
 
 test("/p3stack-setup maps a budget and two models onto every role and writes the file", async () => {
   const restore = asTerminal();
@@ -752,19 +760,18 @@ test("/p3stack-setup keeps review and prose roles at high thinking or above on t
     assert.equal(written.roles["swarm workers"], "xai/grok-4.7:medium");
     assert.equal(written.roles["interrogate reviewers"][0], "claude/claude-opus-5-5:high");
     assert.match(h.asked.find(question => question.startsWith("Model for judgment"))!, /claude-opus-5-5:high/);
-    assert.match(h.notices.at(-1)![0], /Review and prose roles stay at high thinking or above/);
+    assert.match(h.notices.at(-1)![0], /Judgment roles: claude\/claude-opus-5-5:high/);
   } finally { h.dispose(); restore(); }
 });
 
-test("/p3stack-setup defers to the skill under T3 and does nothing without a UI", async () => {
-  const previous = process.env.T3_MCP_URL;
-  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+test("/p3stack-setup needs a T3 catalog receipt and never prompts without UI", async t => {
+  t.after(asHost("t3"));
   const h = harness();
   try {
     await h.command("p3stack-setup");
-    assert.match(h.notices.at(-1)![0], /\/skill:setup-pstack/);
+    assert.match(h.notices.at(-1)![0], /No T3 catalog.*p3stack_roles.*rerun \/p3stack-setup/s);
     assert.deepEqual(h.asked, []);
-  } finally { h.dispose(); if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
+  } finally { h.dispose(); }
   const headless = harness({ hasUI: false });
   try { await headless.command("p3stack-setup"); } finally { headless.dispose(); }
 });

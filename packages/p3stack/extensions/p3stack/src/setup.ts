@@ -1,44 +1,44 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { detectHost } from "./host.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Pi } from "./mode.ts";
-import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, readCatalog } from "./roles.ts";
+import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, setupCatalog } from "./roles.ts";
 
-export function registerSetup(pi: Pi) {
+export function registerSetup(pi: Pi & Partial<Pick<ExtensionAPI, "sendMessage">>) {
   pi.registerCommand("p3stack-setup", {
-    description: "Choose a thinking budget, a code model and a judgment model, and write ~/.pi/agent/p3stack.json for every p3stack role",
+    description: "Choose a thinking budget, a code model and a judgment model, and write personal defaults for every p3stack role",
     handler: async (_args, ctx) => {
-      if (!ctx.hasUI) return;
-      if (detectHost() === "t3") { ctx.ui.notify("Under T3 Code, run /skill:setup-pstack to read T3's model catalog.", "info"); return; }
-      const withSubagents = pi.getAllTools().some(tool => tool.name === "subagent_catalog");
-      const catalog = withSubagents ? readCatalog(pi) : undefined;
-      if (withSubagents) {
-        if (!catalog) { ctx.ui.notify("This subagents version cannot share its catalog with a command. Run /skill:setup-pstack to read subagent_catalog.", "info"); return; }
-        if (!catalog.spawnEnabled) { ctx.ui.notify("Your subagents policy does not permit spawning, so no role can run. Check subagent_catalog or /subagents diagnostics.", "warning"); return; }
+      const path = join(agentDir(), "p3stack.json");
+      if (!ctx.hasUI) {
+        pi.sendMessage?.({ customType: "p3stack-setup", content: `No UI to choose role models. Nothing written to ${path}.`, display: true });
+        return;
       }
-      const models = ctx.modelRegistry.getAvailable();
-      if (!catalog && !models.length) { ctx.ui.notify("No models are available to Pi. Configure one first.", "warning"); return; }
+      let catalog: string[] | undefined;
+      try { catalog = setupCatalog(pi); } catch (error) { ctx.ui.notify((error as Error).message, "warning"); return; }
+      const models = catalog ? [] : ctx.modelRegistry.getAvailable();
+      if (!(catalog ?? models).length) { ctx.ui.notify("No models with advertised thinking levels are available. Nothing written.", "warning"); return; }
       const budgetLabel = await ctx.ui.select("Thinking budget for p3stack roles", BUDGETS.map(budget => budget.label));
       const budget = BUDGETS.find(entry => entry.label === budgetLabel);
       if (!budget) { ctx.ui.notify("Setup cancelled. Nothing written.", "info"); return; }
-      const names = candidates(budget.name, models, catalog?.models);
-      if (!names.length) { ctx.ui.notify(`No ${catalog ? "permitted " : ""}model offers thinking at or below ${budget.level}. Choose a larger budget${catalog ? " or permit more models in subagents.json" : ""}.`, "warning"); return; }
+      const names = candidates(budget.name, models, catalog);
+      if (!names.length) { ctx.ui.notify(`No permitted model offers thinking at or below ${budget.level}. Choose a larger budget or change the catalog. Nothing written.`, "warning"); return; }
       const code = await ctx.ui.select("Model for code roles (feature, bug-fix, swarm workers, explorers)", names);
-      // Review and prose roles keep at least high thinking: a cheaper reviewer that takes more turns costs more (turn count beats token price).
-      const judgmentBudget = budget.name === "small" ? "medium" : budget.name;
-      const judgmentNames = candidates(judgmentBudget, models, catalog?.models);
-      const judgment = code && await ctx.ui.select("Model for judgment, review and prose roles (a different family suits review panels; never below high thinking)", judgmentNames.length ? judgmentNames : names);
-      if (!code || !judgment) { ctx.ui.notify("Setup cancelled. Nothing written.", "info"); return; }
+      if (!code || !names.includes(code)) { ctx.ui.notify("Setup cancelled. Nothing written.", "info"); return; }
+      const judgment = candidates(budget.name === "small" ? "medium" : budget.name, models, catalog);
+      const atFloor = judgment.filter(name => /:(high|xhigh|max)$/.test(name));
+      const gap = atFloor.length ? "" : "No offered model reaches high thinking for judgment within this budget.";
+      const choices = atFloor.length ? atFloor : judgment;
+      const judge = await ctx.ui.select(`Model for judgment, review and prose roles. ${gap ? `${gap} Choose a lower level or cancel.` : "A different family suits review panels."}`, choices);
+      if (!judge || !choices.includes(judge)) { ctx.ui.notify("Setup cancelled. Nothing written.", "info"); return; }
       const roles = Object.fromEntries([
-        ...CODE_ROLES.map(role => [role, code]), ...JUDGMENT_ROLES.map(role => [role, judgment]),
-        ...PANEL_ROLES.map(role => [role, [judgment, code]]),
+        ...CODE_ROLES.map(role => [role, code]), ...JUDGMENT_ROLES.map(role => [role, judge]),
+        ...PANEL_ROLES.map(role => [role, [judge, code]]),
       ]);
-      const path = join(agentDir(), "p3stack.json");
+      const label = `${budget.name} (${budget.level})`;
       if (existsSync(path) && !await ctx.ui.confirm("Replace the role defaults?", `${path} exists. Setup rewrites it whole.`)) { ctx.ui.notify("Kept the existing file.", "info"); return; }
       mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, JSON.stringify({ budget: `${budget.name} (${budget.level})`, roles }, null, 2) + "\n");
-      const floor = judgmentBudget !== budget.name ? " Review and prose roles stay at high thinking or above." : "";
-      ctx.ui.notify(`Wrote ${path}. Code roles use ${code}, judgment roles use ${judgment}.${floor}${catalog ? " Both are permitted by your subagents policy." : ""}`, "info");
+      writeFileSync(path, JSON.stringify({ budget: label, roles }, null, 2) + "\n");
+      ctx.ui.notify(`Wrote ${path}. Budget: ${label}. Code roles: ${code}. Judgment roles: ${judge}. Panels: [${judge}, ${code}].${gap ? ` ${gap}` : ""}`, "info");
     },
   });
 }
