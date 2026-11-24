@@ -13,7 +13,7 @@
     "anchor": "Reproduce it yourself on the matching surface via the control skill (Non-negotiables), even when a debug or instrumentation protocol says to ask the user to reproduce.",
     "position": "before",
     "skill": "diagnosing-bugs",
-    "when": "No failing reproduction exists yet. Then continue Bug fix from the plan step."
+    "when": "Only without a failing reproduction: stop at a reproduced failure and confirmed cause, before diagnosis fixes anything. Resume at step 3 for the only implementation."
   },
   {
     "id": "feature-source-grounding",

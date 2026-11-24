@@ -6,13 +6,15 @@ disable-model-invocation: true
 
 # p3stack mode
 
-Choose the route for the request and grant first. Then read `poteto-mode/SKILL.md` in full, then the selected target, before any other tool call. This router wins where their rules differ.
+Choose the route by deliverable and grant before using tools. Follow the small-task row here: no poteto-mode read or playbook. On every other route, read `poteto-mode/SKILL.md` in full, then the selected target, before any other tool call. This router wins where their rules differ.
 
 Resolve Read paths from the skills directory (the one containing `p3stack-mode/`). For example, if this file is `<package>/skills/p3stack-mode/SKILL.md`, read poteto-mode at `<package>/skills/poteto-mode/SKILL.md`.
 
 ## Grants
 
-Use the grant the extension states in the system prompt ("Grant: default" or "Grant: full-autonomy"). An explicit request for full autonomy in the user's message raises it for that task. Without the extension's line, infer it from the request. Full autonomy selects full-autonomy rows, not default rows. Under full autonomy, design starts with sharpen, then architect. Replace grill-with-docs and grilling with that sequence. Infer covered choices from repository evidence and report them. Under the default grant, use the interview skills and ask the human about product choices. Explicit operator gates and irreversible actions still pause.
+Use the session grant in the system prompt (`Grant: default` or `Grant: full-autonomy`); if absent, use `default`. An explicit request for full autonomy in the user's message raises it for this task only. Write `Task grant: full-autonomy` in each delegation brief for that task: its header shows the session grant.
+
+Match `any` or the effective grant. Under full autonomy, replace design interviews (grill-with-docs and grilling) with sharpen, then architect. Infer covered choices from repository evidence and report them. Under default, use the interview skills for product choices. Explicit operator gates and irreversible actions still pause.
 
 ## House policies
 
@@ -29,10 +31,11 @@ These settle conflicts between the routed skills, and they win over any of them.
 
 ## Routes
 
-Playbooks carry p3stack's added steps inline; read each marked link when its condition holds. For a bug without a failing reproduction, the first target is `diagnosing-bugs/SKILL.md`; then continue Bug fix. Review my change runs floor-check per `p3stack-mode/references/floor.md` before no-comments.
+Playbooks carry p3stack's added steps inline; read each marked link when its condition holds. Without a failing reproduction, stop diagnosing-bugs at a reproduced failure and confirmed cause, before its fix and cleanup. Implement once, starting at step 3 (plan and delegate the fix) of `poteto-mode/playbooks/bug-fix.md`. Review my change runs floor-check per `p3stack-mode/references/floor.md` before no-comments.
 
-| Request | Grant | Read |
+| Request | Grant | Read or do |
 | --- | --- | --- |
+| Small task: the exact edit in a named file, or one fact answered by reading one function | any | Use the normal route for an unclear cause, more than one file, new behavior, or any risk. Otherwise inspect, edit only if asked, run the nearest existing check, and reply. |
 | Understand an existing subsystem | any | `poteto-mode/playbooks/investigation.md` |
 | Find a fact outside the repository | any | `research/SKILL.md` |
 | Align on a design with the human present | default | `grill-with-docs/SKILL.md` |
@@ -42,9 +45,15 @@ Playbooks carry p3stack's added steps inline; read each marked link when its con
 | Publish a tracker spec | default | `to-spec/SKILL.md` |
 | Split a spec into tracker tickets | default | `to-tickets/SKILL.md` |
 | Plan a program of PRs | any | `poteto-mode/playbooks/multi-phase-plan.md` |
+| Execute an approved multi-PR plan with authority to merge | any | `poteto-mode/playbooks/autopilot-full.md` |
+| Execute an approved multi-PR plan through verification; the operator lands the PRs | any | `poteto-mode/playbooks/autopilot-stack.md` |
 | Prototype a design to compare, try, or show someone | any | `poteto-mode/playbooks/prototype.md` |
+| Match an existing UI pixel for pixel | any | `poteto-mode/playbooks/visual-parity.md` |
 | Build new or changed behavior | any | `poteto-mode/playbooks/feature.md` |
-| Fix a reported bug | any | `poteto-mode/playbooks/bug-fix.md` |
+| Fix a reported bug without a failing reproduction | any | `diagnosing-bugs/SKILL.md` |
+| Fix a bug with a failing reproduction | any | `poteto-mode/playbooks/bug-fix.md` |
+| Diagnose a recorded trace, profile, or heap snapshot | any | `poteto-mode/playbooks/trace-forensics.md` |
+| Diagnose a running process by capturing a live profile or trace | any | `poteto-mode/playbooks/runtime-forensics.md` |
 | Investigate measured slowness when a timing or throughput number is given | any | `poteto-mode/playbooks/perf-issue.md` |
 | Improve one measured metric repeatedly | any | `poteto-mode/playbooks/hillclimb.md` |
 | Restructure code without changing behavior | any | `poteto-mode/playbooks/refactoring.md` |
@@ -59,6 +68,7 @@ Playbooks carry p3stack's added steps inline; read each marked link when its con
 | Add telemetry, metrics, or alerts | any | `instrumentation/SKILL.md` |
 | Survey codebase health | any | `improve-codebase-architecture/SKILL.md` |
 | Implement a tracker ticket graph | any | `implement-spec/SKILL.md` |
+| Run one job until a checkable condition holds | any | `poteto-mode/playbooks/autonomous-run.md` |
 | Run a standing program of PRs | any | `poteto-mode/playbooks/orchestrate.md` |
 | Hand work to another tool or person | any | `handoff/SKILL.md` |
 | Pause the current session | any | `poteto-mode/playbooks/pause-safely.md` |
@@ -66,10 +76,12 @@ Playbooks carry p3stack's added steps inline; read each marked link when its con
 | Review the session's environment | any | `retro/SKILL.md` |
 | Write or change a skill | any | `poteto-mode/playbooks/authoring-a-skill.md` |
 | Prepare steps only a human can perform | any | `wizard/SKILL.md` |
-| Handle a task with no matching playbook | any | `figure-it-out/SKILL.md` |
+| Audit and clean up stale worktrees or simulator data | any | `poteto-mode/playbooks/worktree-cleanup.md` |
+| Evaluate an agent or instruction change in a blinded experiment | any | `poteto-mode/playbooks/eval.md` |
 | Cut a release | any | `release/SKILL.md` |
 | Onboard to an existing repository | any | `p3stack-mode/playbooks/onboard-brownfield.md` |
 | Audit p3stack pins, refresh its upstream sources, or revert a p3stack maintenance PR | any | `maintain-p3stack/SKILL.md` |
+| Handle a task with no matching playbook | any | `figure-it-out/SKILL.md` |
 
 ## Seams and context
 

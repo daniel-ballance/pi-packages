@@ -129,7 +129,9 @@ export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
     const key = JSON.stringify([row.request, row.grant]);
     if (routeKeys.has(key)) problems.push(`Duplicate route ${row.request} (${row.grant})`);
     routeKeys.add(key);
-    if (!targetExists(row.target)) problems.push(`Route ${row.request} has missing target ${row.target}`);
+    if ("action" in row) {
+      if ("target" in row || typeof row.action !== "string" || !row.action.trim()) problems.push(`Route ${row.request} needs either a target or a nonempty inline action`);
+    } else if (!targetExists(row.target)) problems.push(`Route ${row.request} has missing target ${row.target}`);
   }
   for (const row of chains) {
     if (chainIds.has(row.id)) problems.push(`Duplicate chain id ${row.id}`);

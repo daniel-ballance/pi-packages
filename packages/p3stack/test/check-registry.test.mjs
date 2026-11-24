@@ -330,6 +330,8 @@ for (const [name, mutate, diagnostic] of [
     const chain = JSON.parse(readFileSync(join(f.root, "registry/chains.json"), "utf8"))[0];
     f.write("registry/chains.json", [chain, { ...chain, position: "after" }]);
   }, /duplicate chain.*first-chain/i],
+  ["route with both an action and a target", f => f.write("registry/routes.json", [{ request: "ambiguous", grant: "any", action: "Stay here.", target: "first" }]), /route.*ambiguous.*target.*action/i],
+  ["blank route action", f => f.write("registry/routes.json", [{ request: "blank", grant: "any", action: " " }]), /route.*blank.*action/i],
   ["missing route target", f => f.write("registry/routes.json", [{ request: "broken", grant: "any", target: "absent" }]), /route.*broken.*absent/i],
   ["doubled anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the sketch.\nImplement the sketch.\n"), /chain.*first-chain.*anchor.*2/i],
   ["missing anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the revised sketch.\n"), /chain.*first-chain.*anchor.*0/i],

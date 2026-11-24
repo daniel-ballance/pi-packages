@@ -661,9 +661,10 @@ test("only routes are tabulated; each playbook carries its own conditional reads
       assert.equal(existsSync(join(out, `skills/p3stack-mode/references/${name}.md`)), false);
     }
     const rows = name => JSON.parse(readFileSync(join(packageDir, `registry/${name}.json`), "utf8"));
-    for (const { request, target } of rows("routes")) {
+    for (const { request, target, action } of rows("routes")) {
       const line = router.split("\n").find(line => line.startsWith(`| ${request} |`));
       assert.ok(line, request);
+      if (action) { assert.ok(line.includes(action), request); continue; }
       const path = line.match(/`([^`]+)` \|$/)?.[1];
       assert.equal(path, target.startsWith("playbooks/") ? `poteto-mode/${target}` : target.includes("/") ? target : `${target}/SKILL.md`, request);
       assert.ok(existsSync(join(out, "skills", path)), path);

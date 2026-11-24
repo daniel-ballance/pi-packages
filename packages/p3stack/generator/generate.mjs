@@ -220,8 +220,8 @@ function renderRegistry(files, { routes, chains }, put) {
   const template = "skills/p3stack-mode/SKILL.md.tmpl";
   if (!files.has(template)) return;
   const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
-  const table = ["| Request | Grant | Read |", "| --- | --- | --- |", ...routes.map(({ request, grant, target }) =>
-    `| ${cell(request)} | ${cell(grant)} | \`${targetPath(target)}\` |`)];
+  const table = ["| Request | Grant | Read or do |", "| --- | --- | --- |", ...routes.map(({ request, grant, target, action }) =>
+    `| ${cell(request)} | ${cell(grant)} | ${typeof target === "string" ? `\`${targetPath(target)}\`` : cell(action)} |`)];
   put("skills/p3stack-mode/SKILL.md", files.get(template).toString().replace("{{routes}}", () => table.join("\n")));
   files.delete(template);
 }
