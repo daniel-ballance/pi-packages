@@ -14,9 +14,9 @@ test("other extensions read the usable models over the event bus, synchronously"
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const handlers = new Map<string, Function[]>(), bus = new Map<string, Function>();
   const ctx = {
-    cwd: agentDir, mode: "print", hasUI: false, isIdle: () => true, isProjectTrusted: () => false,
+    cwd: agentDir, mode: "rpc", hasUI: false, isIdle: () => true, isProjectTrusted: () => false,
     modelRegistry: { getAvailable: () => [{ provider: "p", id: "m", reasoning: true, input: ["text"], contextWindow: 1000, maxTokens: 100, cost: {} }] },
-    ui: { notify() {}, setStatus() {} }, sessionManager: { getEntries: () => [] },
+    ui: { notify() {}, setStatus() {} }, sessionManager: { getEntries: () => [], getSessionId: () => "s" },
   };
   try {
     asHost("cli", () => {

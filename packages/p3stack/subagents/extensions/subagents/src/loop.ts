@@ -64,7 +64,7 @@ export class LoopController {
     const maxDurationMs = request.maxDurationMs ?? policy.maxDurationMs;
     if (!Number.isInteger(maxDurationMs) || maxDurationMs < 1 || maxDurationMs > policy.maxDurationMs) throw new Error(`maxDurationMs must be at most ${policy.maxDurationMs}.`);
     // Also keeps every timer delay within Node's range (policy durations cap at 7 days).
-    if (request.intervalMs > maxDurationMs) throw new Error(`The interval must be no longer than the run (${maxDurationMs} ms).`);
+    if (request.intervalMs >= maxDurationMs) throw new Error(`The interval must be shorter than the run (${maxDurationMs} ms).`);
     const startedAt = this.clock();
     this.state = { task, intervalMs: request.intervalMs, iteration: 0, maxIterations, startedAt, deadline: startedAt + maxDurationMs, nextAt: startedAt + request.intervalMs, due: false };
     this.schedule();
@@ -118,7 +118,12 @@ export class LoopController {
     this.timer = undefined;
     state.due = false;
     state.iteration++;
-    this.options.send({ task: state.task, iteration: state.iteration, maxIterations: state.maxIterations, intervalMs: state.intervalMs, deadline: state.deadline });
+    try {
+      this.options.send({ task: state.task, iteration: state.iteration, maxIterations: state.maxIterations, intervalMs: state.intervalMs, deadline: state.deadline });
+    } catch (error) {
+      this.end(`could not confirm tick ${state.iteration} delivery: ${error}`);
+      return;
+    }
     if (state.iteration >= state.maxIterations) { this.end(`reached ${state.maxIterations} ticks`); return; }
     state.nextAt = this.clock() + state.intervalMs;
     this.schedule();

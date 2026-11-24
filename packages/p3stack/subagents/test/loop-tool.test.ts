@@ -10,18 +10,19 @@ import { tempRoot } from "./support/temp-root.js";
 const loops = { enabled: true, minIntervalMs: 1000, maxIterations: 2, maxDurationMs: 60_000 };
 
 // The real extension with a fake Pi: a policy file in a private agent directory.
-function harness(policy: Record<string, unknown>, hasUI = true) {
+function harness(policy: Record<string, unknown>, hasUI = true, deliveryError?: string, inventory: { name: string; exposure: string; sourceInfo: { path: string } }[] = []) {
   const agentDir = tempRoot("loop-agent-");
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({ version: 1, models: [{ id: "p/m:off" }], ...policy }));
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const tools = new Map<string, any>(), commands = new Map<string, any>(), handlers = new Map<string, Function[]>();
+  const entries: { type: string; data: any }[] = [];
   const sent: { message: any; options: any }[] = [], notices: string[] = [], statuses: [string, string | undefined][] = [];
   const ctx = {
-    cwd: agentDir, mode: "print", hasUI, isIdle: () => true, isProjectTrusted: () => false,
-    modelRegistry: { getAvailable: () => [] },
+    cwd: agentDir, mode: "rpc", hasUI, isIdle: () => true, isProjectTrusted: () => false,
+    modelRegistry: { getAvailable: () => [{ provider: "p", id: "m", input: ["text"], reasoning: false }] },
     ui: { notify: (text: string) => notices.push(text), setStatus: (key: string, text?: string) => statuses.push([key, text]) },
-    sessionManager: { getEntries: () => [] },
+    sessionManager: { getEntries: () => [], getSessionId: () => "s" },
   };
   asHost("cli", () => {
     subagents({
@@ -29,8 +30,9 @@ function harness(policy: Record<string, unknown>, hasUI = true) {
       on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
       registerTool(tool: any) { tools.set(tool.name, tool); },
       registerCommand(name: string, command: any) { commands.set(name, command); },
-      sendMessage(message: any, options: any) { sent.push({ message, options }); },
-      getAllTools: () => [], getCommands: () => [],
+      sendMessage(message: any, options: any) { if (deliveryError) throw new Error(deliveryError); sent.push({ message, options }); },
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      getAllTools: () => inventory, getCommands: () => [],
       events: { on: () => () => {} },
     } as unknown as ExtensionAPI);
     for (const handler of handlers.get("session_start") ?? []) handler({}, ctx);
@@ -42,7 +44,7 @@ function harness(policy: Record<string, unknown>, hasUI = true) {
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
     rmSync(agentDir, { recursive: true, force: true });
   };
-  return { tools, commands, call, emit, sent, notices, statuses, ctx, dispose };
+  return { tools, commands, call, emit, sent, entries, notices, statuses, ctx, dispose };
 }
 
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
@@ -88,6 +90,18 @@ test("a loop that reaches its bound says so in the transcript without starting a
   } finally { await h.dispose(); }
 });
 
+test("a closed delivery queue leaves a loop-end record even when its notice cannot be sent", async t => {
+  const h = harness({ loops }, false, "queue closed");
+  try {
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    await h.call({ op: "start", task: "check CI", intervalSeconds: 1 });
+    t.mock.timers.tick(1000);
+    assert.match(text(await h.call({ op: "status" })), /no loop is running/i);
+    assert.equal(h.entries.at(-1)?.type, "subagent-loop-end");
+    assert.match(h.entries.at(-1)?.data.reason, /tick.*queue closed/i);
+  } finally { await h.dispose(); }
+});
+
 test("/loop starts, reports and stops a loop, and stays silent on UI without one", async () => {
   const h = harness({ loops });
   try {
@@ -102,9 +116,41 @@ test("/loop starts, reports and stops a loop, and stays silent on UI without one
   } finally { await h.dispose(); }
   const headless = harness({ loops }, false);
   try {
-    await headless.call({ op: "start", task: "check CI", intervalSeconds: 60 });
+    await headless.call({ op: "start", task: "check CI", intervalSeconds: 30 });
     assert.deepEqual(headless.statuses, []);
   } finally { await headless.dispose(); }
+});
+
+test("parent features distinguish workflow availability, loop policy and full peer opt-in", async () => {
+  for (const [policy, workflows, canLoop, peers] of [
+    [{}, true, false, false],
+    [{ peerMessageLimit: 2 }, true, false, false],
+    [{ tools: ["peer_send"] }, true, false, false],
+    [{ tools: ["peer_send"], peerMessageLimit: 2, loops }, true, true, true],
+    [{ models: [], loops }, false, true, false],
+    [{ tools: ["parent_send"], alwaysTools: ["parent_send"], parentMessageLimit: 1 }, false, false, false],
+    [{ loops: { ...loops, minIntervalMs: 60_000 } }, true, false, false],
+    [{ tools: null }, false, false, false],
+  ] as const) {
+    const h = harness(policy);
+    try {
+      const catalog = JSON.parse(text(await h.tools.get("subagent_catalog").execute("c", {}, undefined, undefined, h.ctx)));
+      for (const tool of ["connect", "disconnect", "renew", "peers"]) {
+        assert.equal(h.tools.has(`subagent_${tool}`), peers, tool);
+      }
+      assert.deepEqual(catalog.features, { workflows, loops: canLoop, peers });
+      assert.equal(catalog.tools.includes("subagent_workflow_start"), false, "not a worker tool");
+    } finally { await h.dispose(); }
+  }
+});
+
+test("catalog omits hidden tools even when their extension file is selectable", async () => {
+  const inventory = ["custom", "write"].map(name => ({ name, exposure: "hidden", sourceInfo: { path: import.meta.filename } }));
+  const h = harness({ tools: ["custom", "write", "read"], extensions: [import.meta.filename] }, false, undefined, inventory);
+  try {
+    const catalog = JSON.parse(text(await h.tools.get("subagent_catalog").execute("c", {}, undefined, undefined, h.ctx)));
+    assert.deepEqual(catalog.tools, ["read"]);
+  } finally { await h.dispose(); }
 });
 
 test("the catalog states the loop ceilings, or that loops are off", async () => {

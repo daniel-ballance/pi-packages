@@ -90,14 +90,15 @@ function resolveLoaded(loaded: LoadedExtensions, name: string): string {
   return files[0]!;
 }
 export function builtInPolicy(loaded: LoadedExtensions = new Map()): PolicyFile {
-  if (loaded.get("claude-subscription")?.length !== 1) return DEFAULT_POLICY;
+  const policy = loaded.get("todo")?.length === 1 ? { ...DEFAULT_POLICY, extensions: [`${LOADED}todo`] } : DEFAULT_POLICY;
+  if (loaded.get("claude-subscription")?.length !== 1) return policy;
   const claudeSubscription = `${LOADED}claude-subscription`;
   return {
     ...DEFAULT_POLICY,
     models: [...MENU,
       { id: "claude/claude-opus-5-5:high", description: "Judgment and prose. Claude stops at high (Claude subscription)." },
       { id: "claude/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer (Claude subscription)." }],
-    extensions: [claudeSubscription],
+    extensions: [...policy.extensions, claudeSubscription],
     providerExtensions: { "claude": claudeSubscription },
   };
 }
@@ -142,16 +143,17 @@ export function parsePolicy(value: unknown): PolicyConfig {
   if (typeof peerMessageLimit !== "number" || !Number.isInteger(peerMessageLimit) || peerMessageLimit < 0 || peerMessageLimit > 1000) throw new Error("peerMessageLimit must be an integer from 0 to 1000");
   const parentMessageLimit = v.parentMessageLimit === undefined ? 0 : v.parentMessageLimit;
   if (typeof parentMessageLimit !== "number" || !Number.isInteger(parentMessageLimit) || parentMessageLimit < 0 || parentMessageLimit > 1000) throw new Error("parentMessageLimit must be an integer from 0 to 1000");
-  const extensions = references("extensions", strings(v.extensions ?? [], "extensions"), true);
+  const list = (key: string, fallback: string[] = []) => strings(v[key] === undefined ? fallback : v[key], key);
+  const extensions = references("extensions", list("extensions"), true);
   for (const extension of extensions) if (extension.startsWith("builtin:") && !BUILTINS.includes(extension as Builtin)) throw new Error(`Forbidden or unknown built-in extension: ${extension}`);
-  const tools = strings(v.tools ?? [], "tools");
-  const alwaysExtensions = strings(v.alwaysExtensions ?? [], "alwaysExtensions");
+  const tools = list("tools");
+  const alwaysExtensions = list("alwaysExtensions");
   for (const extension of alwaysExtensions) if (!extensions.includes(extension)) throw new Error(`alwaysExtensions entry must also be listed in extensions: ${extension}`);
-  const alwaysTools = strings(v.alwaysTools ?? [], "alwaysTools");
+  const alwaysTools = list("alwaysTools");
   for (const tool of alwaysTools) if (!tools.includes(tool)) throw new Error(`alwaysTools entry must also be listed in tools: ${tool}`);
   // Delegation is chosen per Child; a leaf at maxDepth must never receive it.
   for (const tool of alwaysTools) if (isProxiedTool(tool)) throw new Error(`alwaysTools cannot include delegation tools: ${tool}`);
-  const maxDepth = v.maxDepth ?? 1;
+  const maxDepth = v.maxDepth === undefined ? 1 : v.maxDepth;
   if (typeof maxDepth !== "number" || !Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > 4) throw new Error("maxDepth must be an integer from 1 to 4");
   let providerExtensions: Record<string, string> = {};
   if (v.providerExtensions !== undefined) {
@@ -162,14 +164,14 @@ export function parsePolicy(value: unknown): PolicyConfig {
   }
   return {
     version: 1, models, tools, alwaysTools,
-    extensions, alwaysExtensions, skills: references("skills", strings(v.skills ?? [], "skills"), false),
+    extensions, alwaysExtensions, skills: references("skills", list("skills"), false),
     providerExtensions, childSettings: parseChildSettings(v.childSettings), mcp: parseMcpPolicy(v.mcp),
     ...(v.loops === undefined ? {} : { loops: parseLoopPolicy(v.loops) }),
     ...(v.maxDepth === undefined ? {} : { maxDepth }),
-    promptTemplates: references("promptTemplates", strings(v.promptTemplates ?? [], "promptTemplates"), false),
-    themes: references("themes", strings(v.themes ?? [], "themes"), false),
+    promptTemplates: references("promptTemplates", list("promptTemplates"), false),
+    themes: references("themes", list("themes"), false),
     systemPrompt: flags.systemPrompt, appendSystemPrompt: flags.appendSystemPrompt, contextFiles: flags.contextFiles,
-    maxChildren, workingDirectories: references("workingDirectories", strings(v.workingDirectories ?? ["."], "workingDirectories"), false), peerMessageLimit, parentMessageLimit,
+    maxChildren, workingDirectories: references("workingDirectories", list("workingDirectories", ["."]), false), peerMessageLimit, parentMessageLimit,
   };
 }
 export interface PolicyEnvironment {
@@ -205,11 +207,31 @@ export class SubagentPolicy {
     if (value.startsWith(LOADED)) return resolveLoaded(this.environment.loadedExtensions?.() ?? new Map(), value.slice(LOADED.length));
     return realpathSync(resolve(base, value.startsWith("~/") ? resolve(homedir(), value.slice(2)) : value));
   }
-  catalog() {
+  /** Source the child guard must see, plus the explicit resource (if any) that supplies it. */
+  private toolGrant(tool: string, parentSources: Record<string, string>, extensions: string[]): { source?: string; extension?: string } {
+    const guard = this.environment.guardPath;
+    if (isProxiedTool(tool) || tool === "peer_send" || tool === "parent_send") return { source: guard };
+    const managed = tool === "codemode" ? "builtin:codemode" : tool === "tool_search" ? "builtin:tool-search" : undefined;
+    if (managed && extensions.includes(managed)) return { source: guard, extension: managed };
+    const source = parentSources[tool];
+    if (!source) return {};
+    if (source.startsWith("builtin:")) {
+      if (source === `builtin:${tool}` && ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"].includes(tool)) return { source };
+      throw new Error(`Tool ${tool} requires its managed built-in selection`);
+    }
+    const file = this.path(source);
+    if (!extensions.includes(file)) throw new Error(`Tool ${tool} requires selecting provider extension ${file}`);
+    return { source: file, extension: file };
+  }
+  get peersEnabled(): boolean {
+    return !!this.config && this.config.peerMessageLimit > 0 && this.config.tools.includes("peer_send");
+  }
+  catalog(childDepth = 1) {
     this.diagnostics = this.ignoredProject ? [this.ignoredProject] : [];
+    const toolExtensions: Record<string, string> = Object.create(null);
     if (!this.config) {
       this.diagnostics.push(`${this.source}: ${this.error}`);
-      return { source: this.source, spawnEnabled: false, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: reportedLimit(this.childLimit), peerMessageLimit: 0, parentMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
+      return { source: this.source, spawnEnabled: false, features: { workflows: false, loops: false, peers: false }, error: "Invalid subagent policy. User can inspect /subagents diagnostics; fix and /reload.", models: [], tools: [] as string[], toolExtensions, extensions: [] as string[], skills: [] as string[], promptTemplates: [] as string[], themes: [] as string[], alwaysExtensions: [] as string[], alwaysTools: [] as string[], workingDirectories: [] as string[], maxChildren: reportedLimit(this.childLimit), peerMessageLimit: 0, parentMessageLimit: 0, systemPrompt: false, appendSystemPrompt: false, contextFiles: false, loops: { enabled: false }, maxDepth: 1 };
     }
     const config = this.config;
     const available = this.environment.models();
@@ -239,6 +261,16 @@ export class SubagentPolicy {
       return [{ ...entry, input: model.input, contextWindow: model.contextWindow, maxTokens: model.maxTokens, cost: model.cost,
         ...(fromExtension ? { requiresExtension: "Its provider comes from an extension: select that extension in extensions, or map the provider in providerExtensions." } : {}) }];
     });
+    const resources = Object.fromEntries(RESOURCES.map(key => [key, config[key].flatMap(value => {
+      try {
+        if (key === "extensions" && BUILTINS.includes(value as Builtin)) return [value];
+        const path = this.path(value);
+        // Exact files, not packages/globs/directories that can expand permissions.
+        if (!statSync(path).isFile()) throw new Error("must be an explicit resource file");
+        return [path];
+      } catch (error) { this.diagnostics.push(`${key}: ${value}: ${error}`); return []; }
+    })])) as Record<typeof RESOURCES[number], string[]>;
+    const parentSources = this.environment.toolSources?.() ?? {};
     const knownTools = new Set(this.environment.tools());
     if (config.extensions.includes("builtin:codemode")) knownTools.add("codemode");
     if (config.extensions.includes("builtin:tool-search")) knownTools.add("tool_search");
@@ -252,22 +284,18 @@ export class SubagentPolicy {
         this.diagnostics.push("parent_send requires a positive parentMessageLimit (ignored)"); return false;
       }
       if (tool.startsWith("subagent_")) {
-        if (isProxiedTool(tool) && (config.maxDepth ?? 1) > 1) return true;
+        if (isProxiedTool(tool) && (config.maxDepth ?? 1) > childDepth) return true;
+        if (isProxiedTool(tool) && childDepth > 1) return false;
         this.diagnostics.push(isProxiedTool(tool) ? `Forbidden recursive tool (ignored; delegation needs maxDepth above 1): ${tool}` : `Forbidden recursive tool (ignored): ${tool}`);
         return false;
       }
       if (!knownTools.has(tool)) { this.diagnostics.push(`Tool not locally known (ignored): ${tool}`); return false; }
-      return true;
-    });
-    const resources = Object.fromEntries(RESOURCES.map(key => [key, config[key].flatMap(value => {
       try {
-        if (key === "extensions" && BUILTINS.includes(value as Builtin)) return [value];
-        const path = this.path(value);
-        // Exact files, not packages/globs/directories that can expand permissions.
-        if (!statSync(path).isFile()) throw new Error("must be an explicit resource file");
-        return [path];
-      } catch (error) { this.diagnostics.push(`${key}: ${value}: ${error}`); return []; }
-    })])) as Record<typeof RESOURCES[number], string[]>;
+        const { extension } = this.toolGrant(tool, parentSources, resources.extensions);
+        if (extension) toolExtensions[tool] = extension;
+        return true;
+      } catch (error) { this.diagnostics.push(`${tool}: ${error}`); return false; }
+    });
     // Missing always-on entries disable spawning rather than silently composing children without them.
     let alwaysUnavailable = false;
     const alwaysExtensions = config.alwaysExtensions.flatMap(value => {
@@ -288,9 +316,15 @@ export class SubagentPolicy {
         return [path];
       } catch (error) { this.diagnostics.push(`workingDirectories: ${value}: ${error}`); return []; }
     });
+    const spawnEnabled = allows(this.childLimit, 1) && !!models.length && !!workingDirectories.length && !alwaysUnavailable;
     return {
-      source: this.source, spawnEnabled: allows(this.childLimit, 1) && !!models.length && !!workingDirectories.length && !alwaysUnavailable,
-      models, tools, ...resources, alwaysExtensions, alwaysTools, workingDirectories,
+      source: this.source, spawnEnabled,
+      features: {
+        workflows: childDepth === 1 && spawnEnabled && !alwaysTools.includes("parent_send"),
+        loops: childDepth === 1 && !!config.loops?.enabled && Math.ceil(config.loops.minIntervalMs / 1000) * 1000 < config.loops.maxDurationMs,
+        peers: childDepth === 1 && this.peersEnabled,
+      },
+      models, tools, toolExtensions, ...resources, alwaysExtensions, alwaysTools, workingDirectories,
       systemPrompt: config.systemPrompt, appendSystemPrompt: config.appendSystemPrompt,
       contextFiles: config.contextFiles, maxChildren: reportedLimit(this.childLimit), peerMessageLimit: config.peerMessageLimit,
       parentMessageLimit: config.parentMessageLimit,
@@ -402,16 +436,8 @@ export class SubagentPolicy {
     const toolSources: Record<string, string> = {};
     const parentSources = this.environment.toolSources?.() ?? {};
     for (const tool of selection.tools) {
-      const builtin = ({ codemode: "builtin:codemode", tool_search: "builtin:tool-search" } as Record<string, Builtin>)[tool];
-      // The mandatory guard registers the proxied delegation tools inside the Child.
-      let source = (builtin && builtins.includes(builtin)) || isProxiedTool(tool) ? this.environment.guardPath : parentSources[tool];
-      if (source && source !== this.environment.guardPath && !source.startsWith("builtin:")) source = this.path(source);
-      if (builtin && this.config!.extensions.includes(builtin) && !builtins.includes(builtin)) throw new Error(`${tool} requires selecting ${builtin}`);
-      if (source && source !== this.environment.guardPath) {
-        if (source.startsWith("builtin:")) {
-          if (!["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"].includes(tool) || source !== `builtin:${tool}`) throw new Error(`Tool ${tool} requires its managed built-in selection`);
-        } else if (!(selection.extensions ?? []).includes(source)) throw new Error(`Tool ${tool} requires selecting provider extension ${source}`);
-      }
+      const { source, extension } = this.toolGrant(tool, parentSources, catalog.extensions);
+      if (extension && !selection.extensions?.includes(extension)) throw new Error(`Tool ${tool} requires selecting ${extension}`);
       if (source) toolSources[tool] = source;
     }
     const providerFile = this.config!.providerExtensions?.[splitModel(selection.model).provider];

@@ -334,7 +334,8 @@ export class Workflows {
       // Retrying a previously passed peer sibling must not invalidate completed dependents.
       for (const s of run.definition.steps) if (dependencies(s).some(dep => retryIds.has(dep)) && run.steps[s.id].status !== "pending" && !retryIds.has(s.id)) throw new Error("Retry would invalidate completed downstream work; start a new workflow");
       retryIds.forEach(id => { run.steps[id].status = "pending"; delete run.steps[id].output; });
-      if (Date.now() >= run.deadline || run.usedAttempts >= run.definition.limits.maxAttempts) { run.status = "exhausted"; run.reason = "Original run allowance exhausted; resume does not replenish it"; this.notify(run); }
+      const needsAttempt = Object.values(run.steps).some(s => s.status !== "passed");
+      if (Date.now() >= run.deadline || (needsAttempt && run.usedAttempts >= run.definition.limits.maxAttempts)) { run.status = "exhausted"; run.reason = "Original run allowance exhausted; resume does not replenish it"; this.notify(run); }
       else { run.status = "running"; delete run.reason; this.save(run); this.launch(run); }
     } else if (action === "pause") {
       if (run.status !== "running") throw new Error("Workflow is not running");
