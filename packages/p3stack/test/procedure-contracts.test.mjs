@@ -38,6 +38,7 @@ test("a body-only request uses the same format as PR delivery without publishing
   const pr = skill("pr"), opening = playbook("opening-a-pr");
   assert.match(pr, /Descriptions[^\n]*opening-a-pr\.md/i);
   assert.match(pr, /return (?:just|only) the body/i);
+  assert.match(pr, /visuals[^.\n]*Why[^.\n]*What changed[^.\n]*evidence[^.\n]*Verification[^.\n]*door[^.\n]*Blast Radius/i);
   assert.doesNotMatch(pr, /^## (?:Summary|Evidence|Merge Danger)$/m);
   assert.match(opening, /repository[^\n]*PR template[^\n]*(?:otherwise|absence|without one)/i);
   assert.match(opening, /## Verification/);
@@ -51,7 +52,7 @@ test("an integration queue opens a draft, links it, and promotes the reviewed he
   assert.match(opening, /integration (?:draft|queue)[^\n]*(?:--draft|draft: true)/i);
   assert.match(opening, /ready for review[^\n]*draft: false/i);
   assert.match(opening, /host integration[^\n]*draft/i);
-  assert.match(opening, /before (?:opening|marking)[^\n]*ready[^\n]*verdict on the changed diff/i);
+  assert.match(opening, /before opening a ready PR,? or marking a draft ready:[^\n]*verdict on the changed diff/i);
   assert.doesNotMatch(opening, /open every PR ready|draft: false` on every creation|if a PR still opens as a draft/i);
 });
 
