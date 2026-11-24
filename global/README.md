@@ -2,7 +2,7 @@
 
 This directory owns the nonsecret global configuration of the Omarchy machine. There, the five files in `~/.pi/agent/` link to the stable checkout at `~/Code/pi-packages/global/`, not to a worktree. The Mac does not link them. See [Set up the Mac](#set-up-the-mac).
 
-Pi and Omarchy can write those files while running. Read the main checkout's `git diff global/` before changing repository copies. Commit intended changes through a worktree and preserve unrelated live edits.
+Pi and Omarchy can write those files while running. Read the main checkout's `git diff global/` before changing repository copies. Commit intended changes through a worktree and preserve unrelated live edits. The live `settings.json` also holds `deviceId`, the installation identifier Pi uses for ChatGPT sign-in and leaves out of its own bug reports. This repository is public, so that line stays uncommitted in the main checkout: never add it to the repository copy, and keep it when you restore the live file.
 
 ## Ownership and scope
 
