@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "../generator/git-env.mjs";
@@ -30,7 +30,7 @@ function auditFixture(t, name = "worker") {
     GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" });
   const git = (...args) => execFileSync("git", args, { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   git("init", "-q", "-b", "main", repo);
-  writeFileSync(join(repo, ".gitignore"), "build/\n");
+  writeFileSync(join(repo, ".gitignore"), "node_modules/\nbuild output/\n.env\n*.log\n");
   git("-C", repo, "add", ".");
   git("-C", repo, "-c", "user.name=Fixture", "-c", "user.email=test@example.org", "commit", "-qm", "base");
   git("-C", repo, "worktree", "add", "--detach", wt, "HEAD");
@@ -70,15 +70,23 @@ for (const flag of ["--skip-worktree", "--assume-unchanged"]) {
   });
 }
 
-for (const [file, description, bucket, ignored] of [["new-module.ts", "only copy of new source", "hold-untracked", 0], ["build/output", "ignored build output", "safe", 1]]) {
-  test(`audit counts ${description}, even when user settings hide untracked files`, t => {
+for (const [files, bucket, ignoredDirs] of [
+  [["new-module.ts"], "hold-untracked", 0],
+  [[".env"], "hold-ignored", 0],
+  [["node_modules/pkg/a", "node_modules/pkg/b"], "safe", 1],
+  [["build output/a"], "safe", 1],
+  [["logs/stray.log", "new-module.ts", "node_modules/lib"], "hold-ignored", 1],
+]) {
+  test(`audit rates ${files.join(", ")} even when user settings hide untracked files`, t => {
     const { wt, git, rows } = auditFixture(t);
     git("-C", wt, "config", "status.showUntrackedFiles", "no");
-    mkdirSync(join(wt, "build"));
-    writeFileSync(join(wt, file), "only copy\n");
+    for (const file of files) {
+      mkdirSync(dirname(join(wt, file)), { recursive: true });
+      writeFileSync(join(wt, file), "only copy\n");
+    }
     const row = rows()[0];
     assert.equal(row[7], bucket);
-    assert.match(row[3], new RegExp(`ignored:${ignored}\\b`));
+    assert.match(row[3], new RegExp(`ignored-dirs:${ignoredDirs}\\b`));
   });
 }
 
@@ -141,8 +149,14 @@ test("audit help discloses the fetch rather than promising a read-only operation
 
 test("cleanup requires approval for the named non-versioned files and holds unknown owners", () => {
   const text = playbook("worktree-cleanup");
-  assert.match(text, /hold-untracked/);
-  assert.match(text, /list[^\n]*untracked[^\n]*operator[^\n]*approv/i);
+  const list = text.split("\n").find(line => line.startsWith("4."));
+  const remove = text.split("\n").find(line => line.startsWith("5."));
+  for (const bucket of ["hold-untracked", "hold-ignored"]) {
+    assert.ok(list.includes(bucket));
+    assert.ok(remove.includes(bucket));
+  }
+  assert.match(list, /list[^\n]*untracked[^\n]*ignored[^\n]*--ignored=matching/i);
+  assert.match(remove, /operator[^\n]*approv[^\n]*worktree paths[^\n]*named files/i);
   assert.match(text, /owner you cannot establish counts as in use/);
   assert.doesNotMatch(text, /throwaway|rm -rf|remove --force|delete all/i);
 });

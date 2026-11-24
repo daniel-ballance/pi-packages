@@ -39,8 +39,14 @@ test("a delegate wave can finish dispatch before yielding to completion wakes", 
   }
 });
 
-test("without both watch tools babysit stops with an observation, not a watch", () => {
-  for (const doc of [skill, prompt("babysit")]) assert.match(doc, /if either[^\n]*(?:unavailable|absent)[^\n]*current forge status and stop/i);
+test("babysit fixes failures and answers comments before falling back to a forge report", () => {
+  const standalone = prompt("babysit").split("Without that reminder:")[1]!;
+  for (const doc of [standalone, skill]) {
+    const fix = doc.search(/fix (?:verified failures|failing checks)[^\n]*comments/i);
+    const fallback = doc.search(/if\b[^\n]*?\beither[^\n]*(?:unavailable|absent)[^\n]*forge status[^\n]*stop/i);
+    assert.ok(fix >= 0 && fallback > fix, "a missing watch must not skip the fix pass");
+  }
+  assert.match(standalone, /call `watch_pull_request` and end the turn/i);
 });
 
 test("review pins a default base and orders severity within each axis", () => {

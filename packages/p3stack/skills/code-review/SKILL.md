@@ -16,7 +16,7 @@ Both axes run as **parallel subagents** so they don't pollute each other's conte
 
 ### 1. Pin the fixed point and capture the review input
 
-Reuse the caller's pinned base and captured input. If no base is pinned, use `git merge-base <fixed-point> HEAD` with the supplied ref; ask for a ref only if it is missing. Record base and head SHAs. For input not yet captured, use the caller's paths as separate arguments after `--` (`.` for a whole-branch review). Set `GIT_OPTIONAL_LOCKS=0` for Git queries.
+Reuse the caller's pinned base and captured input. If no base is pinned, use `git merge-base <fixed-point> HEAD` with the supplied ref; ask for a ref only if it is missing. Record base and head SHAs. Run capture commands from the repository root (`git rev-parse --show-toplevel`). For input not yet captured, pass the caller's paths relative to that root as separate arguments after `--` (`:/` for a whole-branch review). Set `GIT_OPTIONAL_LOCKS=0` for Git queries.
 
 - **Committed range requested, or scoped status clean** (`git status --porcelain=v1 --untracked-files=all -- <paths>`): use `git diff <base> HEAD -- <paths>`.
 - **Work in progress:** label `git diff --cached <base> -- <paths>` and `git diff -- <paths>` separately. Enumerate untracked paths with `git ls-files --others --exclude-standard -z -- <paths>`. An untracked file counts even if both patches are empty.

@@ -26,11 +26,11 @@ function withBriefHeader(input: { task: string; tools?: unknown; role?: unknown 
       ? `You are a report-only delegate in a poteto-mode run. Answer only this brief. Do not read the poteto-mode skill, start a playbook, or delegate. Prove each claim with non-mutating commands where they settle it and cite file:line evidence. ${REVIEW_STANCE} The full review stance is at ${join(references, "review-stance.md")}. Report in the shape the brief asks, plainly and briefly.`
       : `Before any work, read ${agentRecipe} and follow it. The poteto-mode skill is at ${modeSkill}. ${BRIEF_CONTRACT} The full brief contract is at ${join(references, "brief-contract.md")}.`;
   }
-  const grantLine = `${OPEN}Grant: ${grantToken(grant)}.`;
-  const minimal = `${grantLine}${CLOSE}\n\n`, full = `${grantLine}\n${stance}\n${CLOSE}\n\n`;
-  const available = LIMIT[host] - body.length;
-  if (minimal.length > available) return { block: true, reason: `Shorten the task by ${minimal.length - available} characters to fit the required p3stack grant.` };
-  return (full.length <= available ? full : minimal) + body;
+  const taskGrant = host === "t3" ? ' A "Task grant:" line in the brief sets the grant for this task.' : "";
+  const header = `${OPEN}Grant: ${grantToken(grant)}.${taskGrant}\n${stance}\n${CLOSE}\n\n`;
+  const excess = header.length + body.length - LIMIT[host];
+  if (excess > 0) return { block: true, reason: `Shorten the task by ${excess} character${excess === 1 ? "" : "s"} to fit the full p3stack brief header.` };
+  return header + body;
 }
 
 export function registerBrief(pi: Pi, isOn: (() => boolean) & { grant(): Grant }, modeSkill: string, agentRecipe: string) {

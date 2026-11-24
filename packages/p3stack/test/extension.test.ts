@@ -427,24 +427,30 @@ for (const host of ["terminal", "t3"] as const) {
     } finally { h.dispose(); }
   });
 
-  test(`${host} never enlarges the task beyond its backend limit`, async () => {
+  test(`${host} sends the full stance at the limit and blocks with the exact excess above it`, async () => {
     const h = hostHarness(host);
-    const decorate = async (task: string) => (await h.emit("tool_call", { toolName: delegation[host], input: { task } })).input.task as string;
     const limit = host === "terminal" ? 30_000 : 120_000;
     try {
-      await h.command("p3stack", "on");
-      const near = "x".repeat(limit - 100);
-      const short = await decorate(near);
-      assert.ok(short.length <= limit && short.endsWith(near));
-      assert.equal(short.slice(0, -near.length), "<p3stack-brief>Grant: default.</p3stack-brief>\n\n");
-      await h.command("p3stack", "grant autonomous");
-      assert.ok((await decorate(short)) === short.replace("Grant: default.", "Grant: full-autonomy."));
-      const min = "<p3stack-brief>Grant: full-autonomy.</p3stack-brief>\n\n";
-      const noRoom = { toolName: delegation[host], input: { task: "x".repeat(limit) } };
-      const [blocked] = await h.results("tool_call", noRoom);
-      assert.equal(blocked?.block, true);
-      assert.match(blocked.reason, new RegExp(`shorten .* by ${min.length} characters`, "i"));
-      assert.equal(await decorate(noRoom.input.task.slice(min.length)), min + noRoom.input.task.slice(min.length));
+      await h.command("p3stack", "on autonomous");
+      for (const role of ["implementation", "review"]) {
+        const assignment = host === "t3" ? { role } : { tools: [role === "review" ? "read" : "edit"] };
+        const event = (task: string) => ({ toolName: delegation[host], input: { ...assignment, task } });
+        const sample = event("Do it.");
+        await h.emit("tool_call", sample);
+        const header = sample.input.task.slice(0, -"Do it.".length);
+        assert.match(header, role === "review" ? /report-only/ : /assigned unit|brief contract/);
+        const body = "x".repeat(limit - header.length);
+        const fits = event(body);
+        assert.deepEqual(await h.results("tool_call", fits), []);
+        assert.equal(fits.input.task, header + body);
+        for (const excess of [1, header.length]) {
+          const raw = body + "x".repeat(excess), over = event(raw);
+          const [blocked] = await h.results("tool_call", over);
+          assert.equal(blocked?.block, true);
+          assert.match(blocked.reason, new RegExp(`shorten .* by ${excess} characters?\\b`, "i"));
+          assert.equal(over.input.task, raw);
+        }
+      }
     } finally { h.dispose(); }
   });
 
@@ -610,6 +616,7 @@ test("T3 briefs are self-contained for every role", async () => {
     for (const role of ["research", "review", "implementation", "design", "test", "general", undefined]) {
       const task = (await h.emit("tool_call", { toolName: delegation.t3, input: { role, task: "Inspect the change." } })).input.task;
       assert.match(task, /Grant: full-autonomy\./);
+      assert.match(task, /Task grant:[^\n]*line[^\n]*sets the grant for this task/i);
       assert.doesNotMatch(task, /poteto|SKILL\.md|\.md\b|read-only|\/[^< ]+\//);
       if (role === "research" || role === "review") {
         assert.match(task, /report-only/i);

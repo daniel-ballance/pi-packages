@@ -43,6 +43,7 @@ test("a missing reproduction changes the first target, not the owner of the fix"
   const diagnosis = /reproduc(?:ed|e) (?:the )?failure.*confirm(?:ed)? (?:its |the )?cause/i;
   assert.match(router, diagnosis);
   assert.match(router, /before its fix[^\n]*debug tag[^\n]*probe paths[^\n]*step 3/i);
+  assert.match(router, /bug-fix\.md[^\n]*step 3[^\n]*(?:through|to the end)[^\n]*(?:delivery|opening a PR)/i);
   const bug = read("poteto-mode/playbooks/bug-fix.md");
   const afterFix = bug.split("3. Plan the fix.")[1].split("[floor]")[0];
   assert.match(afterFix, /remove[^\n]*tagged[^\n]*throwaway probes[^\n]*rerun the original repro/i);
@@ -86,7 +87,10 @@ test("local review checks the same artifact throughout and returns only findings
   assert.match(review, /return the report in your reply/i);
   assert.match(review, /merge-base/);
   assert.match(review, /staged.*unstaged.*untracked/i);
-  assert.match(review, /--base <base>/);
+  const scan = review.split("**Scan the floor.**")[1].split("\n")[0];
+  assert.match(scan, /--base <base>/);
+  assert.match(scan, /submodule[^\n]*gitlink[^\n]*parent[^\n]*base/i);
+  assert.match(scan, /report the gap/i);
   const floor = review.indexOf("floor-check"), reviewSkill = review.indexOf("](../code-review/SKILL.md)");
   const baseline = review.indexOf("checkout-fingerprint.mjs");
   assert.ok(baseline >= 0 && baseline < floor && floor < reviewSkill);

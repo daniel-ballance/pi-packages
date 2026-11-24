@@ -52,7 +52,12 @@ test("red evidence is a completed assertion failure before the first source edit
   const red = run();
   assert.equal(red[1].isError, true);
   assert.match(red[1].result.content[0].text, /ERR_ASSERTION/);
-  assert.equal(grade(check, eventTrace([...red, ...edit])), true);
+  for (const [command, expected] of [["node --test", true], ["timeout 60 node --test", true],
+    ["npx --no-install node --test", true], ["timeout 60 echo node --test", false]]) {
+    const start = { ...red[0], args: { command } };
+    assert.equal(grade(check, eventTrace([start, red[1], ...edit])), expected, command);
+    assert.equal(grade(check, eventTrace([start, green[1], ...edit])), false, "green: " + command);
+  }
   for (const events of [[...green, ...edit], [...edit, ...red], [red[0], ...edit, red[1]],
     [...bashEvents(project, "node --test absent.js"), ...edit]]) {
     assert.equal(grade(check, eventTrace(events)), false);
@@ -110,16 +115,25 @@ test("regression replay must not overwrite a source directory linked out of the 
 test("the review must identify the skipped empty-list test and preserve an already dirty fixture", t => {
   const { check, project, put } = fixture(t, "floor-review");
   const report = text => check("names-skipped-test", seen([], text));
-  assert.equal(report('test/sum.test.js skips “sumAll of an empty list is zero”; sumAll([]) actually throws.'), true);
+  for (const claim of [
+    'test/sum.test.js skips “sumAll of an empty list is zero”; sumAll([]) actually throws.',
+    "The empty-list case for sumAll can't run because it is skipped at sum.test.js:13.",
+    "I didn't edit anything: sum.test.js:13 skips the sumAll empty-list test.",
+    "Coverage of sumAll([]) is not exercised because the test at sum.test.js:13 is skipped.",
+    "Nothing in the diff fixes this: sum.test.js:13 still skips the empty-list test.",
+    "Nothing in the diff explains why the empty-list test for sumAll is skipped.",
+  ]) assert.equal(report(claim), true, claim);
   assert.equal(report("No tests were skipped."), false);
   assert.equal(report("There is a skipped test in this repo."), false);
   assert.equal(report("No tests were skipped. sumAll([]) works."), false);
   assert.equal(report("The test for sumAll([]) is not skipped."), false);
   assert.equal(report("The test for sumAll([]) does not use test.skip."), false);
-  for (const denial of ["isn't skipped", "was never actually skipped", "is no longer disabled"]) {
+  for (const denial of ["isn't skipped", "was never actually skipped", "is no longer disabled", "wasn’t deliberately disabled"]) {
     assert.equal(report(`The empty-list test for sumAll ${denial}.`), false);
   }
   assert.equal(report("Nothing in sum.test.js for sumAll on an empty list is skipped anymore."), false);
+  assert.equal(report("None of the empty-list tests at sum.test.js:13 were disabled."), false);
+  assert.equal(report("No tests were actually skipped at sum.test.js:13."), false);
   assert.equal(check("unchanged-tree"), true);
   put("notes.txt", "unrequested\n");
   assert.equal(check("unchanged-tree"), false);
