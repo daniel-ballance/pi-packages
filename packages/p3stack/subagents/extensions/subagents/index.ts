@@ -23,7 +23,7 @@ import { showInspector, type InspectorPanel } from "./src/inspector.js";
 import { HerdrStatus } from "./src/herdr.js";
 import { detectHost } from "./src/host.js";
 import { describeLoop, formatInterval, LoopController, loopTickMessage, parseInterval, type LoopState } from "./src/loop.js";
-import { createWorktree, planWorktree, removeWorktree, type Worktree } from "./src/worktree.js";
+import { createWorktree, planWorktree, releaseCreationLock, removeWorktree, type Worktree } from "./src/worktree.js";
 import { SHARED_SCHEMAS, TOOL_SPECS } from "./src/tool-schemas.js";
 import { fitDelegatedReply, isProxiedTool } from "./src/nesting.js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -394,14 +394,16 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const plan = wanted ? planWorktree({ cwd: requested, name, ...(typeof wanted === "object" ? wanted : {}) }) : undefined;
       if (plan) policy.newDirectory(plan.path);
       normalizeCoordination(declared, plan?.path ?? requested);
+      const creationLock = plan ? `pending subagent spawn ${randomUUID()}` : undefined;
       let worktree: Worktree | undefined, accepted = false;
       try {
-        if (plan) worktree = createWorktree(plan);
+        if (plan) worktree = createWorktree(plan, creationLock);
         const cwd = worktree?.path ?? requested;
         if (worktree) config = policy.compile(cwd, selection, depth);
         const coordination = normalizeCoordination(declared, cwd);
         const child = await manager.spawn({ name, task, ...config, coordination, ...(parentId ? { parentId } : {}) });
         accepted = true; // A lost receipt must not remove a live child's checkout.
+        if (worktree && creationLock) releaseCreationLock(worktree, creationLock);
         const record = manager.get(child.id);
         const all = coordinationWarnings(coordination, manager.list(), child.id), warnings = visible(all);
         const outside = all.length - warnings.length;
@@ -416,7 +418,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         };
         return result(receipt, ctx);
       } catch (error) {
-        if (worktree && !accepted) removeWorktree(worktree, error);
+        if (worktree && !accepted) removeWorktree(worktree, error, creationLock);
         throw error;
       }
     },

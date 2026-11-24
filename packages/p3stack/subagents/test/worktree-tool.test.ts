@@ -74,12 +74,30 @@ test("a failed launch reports its error and any checkout it could not safely rem
   });
 });
 
+test("a reused checkout at the original path is never rolled back on launch failure", async t => {
+  await withSpawnTool(["."], async (spawn, repo, git) => {
+    let path = "";
+    t.mock.method(SubagentManager.prototype, "spawn", async ({ cwd }: SpawnOptions) => {
+      path = cwd;
+      git("worktree", "remove", "--force", "--force", path);
+      git("worktree", "add", path, "reused");
+      throw new Error("launch interrupted");
+    });
+    await assert.rejects(spawn({ name: "race", task: "x", cwd: repo, model: "p/m:off", tools: [], worktree: { branch: "reused" } }), (error: Error) => {
+      assert.ok(path && error.message.includes(path) && error.message.includes("launch interrupted"));
+      return true;
+    });
+    assert.ok(git("worktree", "list").includes(path));
+  });
+});
+
 test("a failure reporting an accepted spawn does not roll back the live child's checkout", async t => {
   await withSpawnTool(["."], async (spawn, repo, git) => {
     // Acceptance succeeds; the subsequent lookup for the receipt fails.
     t.mock.method(SubagentManager.prototype, "spawn", async () => ({ id: "missing-receipt" }));
     await assert.rejects(spawn({ name: "accepted", task: "x", cwd: repo, model: "p/m:off", tools: [], worktree: { branch: "keep-live" } }), /missing-receipt/);
     assert.match(git("worktree", "list"), /keep-live/);
+    assert.doesNotMatch(git("worktree", "list", "--porcelain"), /locked /);
   });
 });
 
