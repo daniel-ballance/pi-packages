@@ -36,6 +36,13 @@ test("every playbook is selectable before the fallback, with or without merge au
   assert.equal(rows.at(-1), route("figure-it-out/SKILL.md"));
 });
 
+test("design selects the interview or the synthesis by grant", () => {
+  assert.equal(route("grilling/SKILL.md")?.grant, "default");
+  assert.deepEqual(rows.filter(row => row.grant === "full-autonomy"), [route("architect/SKILL.md")]);
+  assert.match(router, /grilling[^\n]*record settled terms and decisions[^\n]*domain-modeling/i);
+  assert.match(read("architect/SKILL.md"), /no human[^\n]*sharpen\.md[^\n]*design synthesis/i);
+});
+
 test("a missing reproduction changes the first target, not the owner of the fix", () => {
   assert.match(route("diagnosing-bugs/SKILL.md")?.request ?? "", /without.*failing repro/i);
   assert.match(route("poteto-mode/playbooks/bug-fix.md").request, /with a failing repro/i);
@@ -74,7 +81,7 @@ test("a stakeholder demo replaces the generic build and stops before either prod
 test("local review checks the same artifact throughout and returns only findings", () => {
   const path = "p3stack-mode/playbooks/review-local.md";
   assert.equal(route(path)?.request, "Review my change");
-  assert.match(route("no-comments/SKILL.md").request, /clean.*comments/i);
+  assert.match(route("code-review/references/no-comments.md").request, /clean.*comments/i);
   const review = read(path);
   const triggers = read("poteto-mode/SKILL.md").split("## Principles")[0];
   for (const action of ["Before review", "Broken skill mid-task"]) {

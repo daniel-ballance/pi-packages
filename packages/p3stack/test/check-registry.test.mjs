@@ -42,7 +42,7 @@ test("registry admissions match the shipped skills, including narrow and watch-o
   assert.deepEqual(from("superpowers"), new Set(), "superpowers is watch only");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
   for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
-  assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").invocation, "user");
+  assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").owner, "implement-spec");
   assert.equal(skills.find(row => row.name === "code-review").invocation, "model");
   assert.equal(skills.find(row => row.name === "interactive-prototype").invocation, "model");
 });
@@ -95,8 +95,8 @@ for (const heading of ["# Leaf", ""]) {
     f.build();
     const read = path => readFileSync(join(f.outDir, path), "utf8");
     assert.equal(existsSync(join(f.outDir, root)), false);
-    assert.equal(read("skills/" + target), `${heading || "# leaf"}\n\nA fixture skill.\n\nKeep [note](references/leaf/references/note.md#use), \`references/leaf/scripts/check --all\`, and [other](../first/SKILL.md).\n`);
-    assert.equal(read("skills/first/references/leaf/references/note.md"), "Read [leaf](references/leaf.md).\n");
+    assert.equal(read("skills/" + target), `${heading || "# leaf"}\n\nA fixture skill.\n\nKeep [note](../first/references/leaf/references/note.md#use), \`../first/references/leaf/scripts/check --all\`, and [other](../first/SKILL.md).\n`);
+    assert.equal(read("skills/first/references/leaf/references/note.md"), "Read [leaf](../first/references/leaf.md).\n");
     assert.ok(statSync(join(f.outDir, "skills/first/references/leaf/scripts/check")).mode & 0o111);
     assert.match(read("skills/first/more.md"), /\((?:\.\.\/first\/)?references\/leaf.md\).*`(?:\.\.\/first\/)?references\/leaf\/references\/note.md`/);
     assert.equal(read("agents/reader.md"), `Read \`../skills/${target}\`.\n`);
@@ -105,13 +105,31 @@ for (const heading of ["# Leaf", ""]) {
   });
 }
 
-for (const command of ["/leaf", "/skill:leaf"]) {
+for (const command of ["/leaf", "/skill:leaf", "/leaf?"]) {
   test(`a leftover ${command} command fails generation by file and line`, t => {
     const f = referenceFixture(t);
     f.write("extra/agents/read.md", `Review.\nRun ${command}.\n`);
     assert.throws(f.build, new RegExp(`agents/read.md:2:.*${command}`));
   });
 }
+
+test("the command lint distinguishes dropped commands from resource paths and URLs", t => {
+  const f = referenceFixture(t), path = "skills/retired/SKILL.md";
+  f.write("vendor/demo/" + path, f.skill("retired"));
+  f.write("registry/skills.json", [...f.skills, f.ref, { source: "demo", path, action: "drop", reason: "Retired." }]);
+  f.write("extra/agents/read.md", "See https://example.test/retired and [app route](/leaf).\n");
+  f.build();
+  rmSync(f.outDir, { recursive: true }); // Each generation starts in fresh staging.
+  f.write("extra/agents/read.md", "Run /retired.\n");
+  assert.throws(f.build, /read.md:1: removed skill command \/retired/);
+});
+
+test("a reference cannot own another reference", t => {
+  const f = referenceFixture(t, "middle"), path = "skills/middle/SKILL.md";
+  f.write("vendor/demo/" + path, f.skill("middle"));
+  f.write("registry/skills.json", [...f.skills, f.ref, { ...f.ref, name: "middle", path, owner: "first" }]);
+  assert.match(f.run().stderr, /leaf.*owner middle must be an emitted skill/);
+});
 
 for (const owner of ["missing", "leaf"]) {
   test(`registry rejects non-emitted reference owner ${owner}`, t => {
@@ -319,8 +337,10 @@ test("scope reports distinguish registry drops and unclassified skills", () => {
   const classify = sourcePathClassifier({ name: "demo", map: [{ from: "skills/", to: "skills/" }] }, [
     { source: "demo", path: "skills/first/SKILL.md", action: "emit", name: "renamed" },
     { source: "demo", path: "skills/dropped/SKILL.md", action: "drop" },
+    { source: "demo", path: "skills/ref/SKILL.md", name: "ref", action: "reference", owner: "renamed" },
   ]);
   assert.deepEqual(classify("skills/first/resource.md"), { kind: "emitted", output: "skills/renamed/resource.md" });
+  assert.deepEqual(classify("skills/ref/doc.md"), { kind: "reference", output: "skills/ref/doc.md", installed: "skills/renamed/references/ref/doc.md" });
   assert.deepEqual(classify("skills/dropped/resource.md"), { kind: "dropped" });
   assert.deepEqual(classify("skills/new/SKILL.md"), { kind: "unclassified" });
 });
@@ -353,12 +373,12 @@ test("generation refuses an unclassified upstream skill before writing", t => {
 
 test("pstack regression-test and Pocock tdd keep their distinct procedures", () => {
   const read = path => readFileSync(new URL(`../skills/${path}`, import.meta.url), "utf8");
-  assert.match(read("regression-test/SKILL.md"), /^name: regression-test$/m);
-  assert.match(read("regression-test/SKILL.md"), /# TDD Bug Fix/);
+  assert.doesNotMatch(read("tdd/references/regression-test.md"), /^---/);
+  assert.match(read("tdd/references/regression-test.md"), /^# TDD Bug Fix/);
   assert.match(read("tdd/SKILL.md"), /confirm.*user|confirmed seam/i);
   for (const path of ["poteto-help/SKILL.md", "poteto-help/references/recipes.md", "poteto-mode/playbooks/bug-fix.md"]) {
     assert.match(read(path), /regression-test/);
-    assert.doesNotMatch(read(path), /(?:\/tdd|\/skill:tdd)\b/);
+    assert.doesNotMatch(read(path), /(?:\/skill:regression-test|\.\.\/regression-test\/SKILL\.md)/);
   }
 });
 

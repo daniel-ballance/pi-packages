@@ -690,7 +690,7 @@ test("Feature and Bug fix scan the final diff before independent review", () => 
   for (const name of ["feature", "bug-fix"]) {
     const text = readFileSync(join(packageDir, `skills/poteto-mode/playbooks/${name}.md`), "utf8");
     const links = [...text.matchAll(/\]\(([^)]+)\)/g)].map(match => match[1]);
-    const review = ["../no-comments/SKILL.md", "../p3stack-mode/references/floor.md", "../p3stack-mode/references/review-stance.md", "../code-review/SKILL.md"];
+    const review = ["../code-review/references/no-comments.md", "../p3stack-mode/references/floor.md", "../p3stack-mode/references/review-stance.md", "../code-review/SKILL.md"];
     assert.deepEqual(links.filter(path => review.includes(path)), review, name);
     assert.match(text, /rerun affected checks[^\n]*floor-check/i);
     assert.match(text, /verdict[^\n]*base and head/i);
@@ -746,7 +746,7 @@ test("the root gate uses the registry instead of the retired skill-report and de
   assert.equal(existsSync(join(root, ".pi/skills/p3stack-pocock-unification")), false);
 });
 
-const pocockNames = ["grilling", "domain-modeling", "codebase-design", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "tdd", "implement", "triage", "setup-matt-pocock-skills", "to-spec", "to-tickets", "wayfinder", "implement-spec", "improve-codebase-architecture", "pr", "retro", "handoff", "wizard"];
+const pocockNames = ["grilling", "domain-modeling", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "tdd", "triage", "setup-matt-pocock-skills", "to-spec", "to-tickets", "wayfinder", "implement-spec", "improve-codebase-architecture", "pr", "retro", "handoff", "wizard"];
 
 function pocockFixture() {
   const temp = mkdtempSync(join(process.env.P3STACK_FIXTURE_ROOT ?? tmpdir(), "p3stack-pocock-"));
@@ -821,7 +821,7 @@ pocockCase("5 tracker prerequisites survive and review collection retains its dr
   assert.doesNotMatch(setup, /CONTEXT(?:-MAP)?\.md/);
   assert.match(read("setup-matt-pocock-skills/issue-tracker-github.md"), /File issues only into the user\x27s own repo/);
   assert.match(read("setup-matt-pocock-skills/issue-tracker-gitlab.md"), /glab mr list -O json/);
-  assert.match(read("implement/SKILL.md"), /fetch it from the issue tracker and state its title/);
+  assert.match(read("implement-spec/references/implement.md"), /fetch it from the issue tracker and state its title/);
   rewrite("engineering/code-review/SKILL.md", "in the foreground", "upstream changed this wording");
   assert.match(run().stderr, /subagent-review-collect: 0 matches/);
 });
@@ -865,12 +865,13 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   const first = run();
   assert.equal(first.status, 0, first.stderr);
   for (const name of pocockNames) assert.ok(existsSync(join(root, "skills", name, "SKILL.md")), name);
+  for (const path of ["architect/references/codebase-design.md", "implement-spec/references/implement.md"]) assert.ok(existsSync(join(root, "skills", path)), path);
   assert.match(read("diagnosing-bugs/SKILL.md"), /\[HITL loop template\]\(scripts\/hitl-loop.template.sh\)/);
   assert.match(read("p3stack-mode/SKILL.md"), /human present \| default \| `\.\.\/poteto-mode\/SKILL\.md`, then `\.\.\/grilling\/SKILL\.md`/);
   assert.match(read("research/SKILL.md"), /\[child delegation guidance\]\(\.\.\/poteto-mode\/references\/host-capabilities.md\)/);
-  assert.match(read("implement/SKILL.md"), /\[tdd\]\(\.\.\/tdd\/SKILL.md\)/);
-  assert.match(read("implement/SKILL.md"), /\[code-review\]\(\.\.\/code-review\/SKILL.md\)/);
-  assert.match(read("implement/SKILL.md"), /fetch it from the issue tracker and state its title/);
+  assert.match(read("implement-spec/references/implement.md"), /\[tdd\]\(\.\.\/tdd\/SKILL.md\)/);
+  assert.match(read("implement-spec/references/implement.md"), /\[code-review\]\(\.\.\/code-review\/SKILL.md\)/);
+  assert.match(read("implement-spec/references/implement.md"), /fetch it from the issue tracker and state its title/);
   assert.match(read("code-review/SKILL.md"), /collect and verify both reports before aggregating/);
   assert.match(read("code-review/SKILL.md"), /Search the repo for every file/);
   assert.match(read("diagnosing-bugs/SKILL.md"), /prove the mutation landed/);
@@ -880,7 +881,7 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.equal(existsSync(join(root, "skills/domain-modeling/CONTEXT-FORMAT.md")), false);
   assert.equal(existsSync(join(root, "skills/references/CHILD-DELEGATION.md")), false);
   assert.equal(existsSync(join(root, "skills/research/agents")), false);
-  assert.match(read("regression-test/SKILL.md"), /TDD Bug Fix/);
+  assert.match(read("tdd/references/regression-test.md"), /TDD Bug Fix/);
   assert.match(read("tdd/SKILL.md"), /confirmed seam|confirm.*user/i);
   assert.equal(existsSync(join(root, "skills/wait-what/SKILL.md")), false);
   const before = pocockNames.map(name => read(`${name}/SKILL.md`));
@@ -893,8 +894,8 @@ pocockCase("11 slash commands use emitted names and protect paths", ({ run, inpu
   const file = input("engineering/implement/SKILL.md");
   writeFileSync(file, readFileSync(file, "utf8") + "\nUse /tdd and /code-review, /to-spec, /clear. Keep ../research/SKILL.md.\nargument-hint: ignored\n");
   assert.equal(run().status, 0);
-  assert.ok(read("implement/SKILL.md").includes("Use /skill:tdd and /skill:code-review, /skill:to-spec, /clear. Keep ../research/SKILL.md."));
-  assert.doesNotMatch(read("implement/SKILL.md"), /argument-hint:/);
+  assert.ok(read("implement-spec/references/implement.md").includes("Use /skill:tdd and /skill:code-review, /skill:to-spec, /clear. Keep ../research/SKILL.md."));
+  assert.doesNotMatch(read("implement-spec/references/implement.md"), /argument-hint:/);
 });
 
 pocockCase("12 dependency closure does not depend on invocation spelling", ({ run, input, rewrite }) => {
@@ -903,7 +904,7 @@ pocockCase("12 dependency closure does not depend on invocation spelling", ({ ru
   writeFileSync(file, readFileSync(file, "utf8") + '\nCall the Skill tool with "tdd".\n');
   const result = run();
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /skills\/implement\/SKILL.md.*tdd.*dependency/);
+  assert.match(result.stderr, /skills\/implement-spec\/references\/implement\.md.*tdd.*dependency/);
 });
 
 pocockCase("13 a final-root install failure restores every old root", ({ root, run }) => {

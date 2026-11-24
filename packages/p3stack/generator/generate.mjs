@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
 import { chainSlots, checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter, targetPath } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
-import { isLink, referenceMoves, sourcePathClassifier, sourcesOf, walk } from "./source-paths.mjs";
+import { byName, isLink, referenceMoves, referencePath, sourcePathClassifier, sourcesOf, walk } from "./source-paths.mjs";
 
 function readJson(path, fallback) {
   if (!existsSync(path)) return fallback;
@@ -231,6 +231,30 @@ function renderRegistry(files, { routes, chains }, put) {
   files.delete(template);
 }
 
+// Keep both user-facing indexes in step with the registry, not a second catalog.
+function renderCatalog(files, skills) {
+  const help = "skills/poteto-help/SKILL.md", mode = "skills/poteto-mode/SKILL.md";
+  const grouped = Map.groupBy(skills.filter(row => row.action === "reference").sort(byName), row => row.owner);
+  const labels = (owner, link) => [...new Set((grouped.get(owner) ?? []).map(row => {
+    if (row.name.startsWith("principle-") && owner === "poteto-mode") return link ? "[principle-*](../poteto-mode/SKILL.md#principles)" : "principle-*";
+    return link ? `[${row.name}](../${referencePath(row)})` : row.name;
+  }))].join(", ");
+  const modeText = files.get(mode)?.toString();
+  if (modeText?.includes("{{reference-index}}")) {
+    const owners = [...grouped.keys()].sort().map(owner => `${owner} (${labels(owner, false)})`);
+    files.set(mode, modeText.replace("{{reference-index}}", () => owners.join("; ")));
+  }
+  const helpText = files.get(help)?.toString();
+  if (helpText?.includes("{{skill-catalog}}")) {
+    const rows = skills.filter(row => row.action === "emit").sort(byName).map(({ name }) => {
+      const path = `${name}/SKILL.md`, { description } = skillFrontmatter(files.get(`skills/${path}`).toString(), path);
+      const summary = description.split(/(?<=[.!?])\s+/)[0].replaceAll("|", "\\|");
+      return `| [\`/skill:${name}\`](../${path}) | ${summary} | ${labels(name, true)} |`;
+    });
+    files.set(help, helpText.replace("{{skill-catalog}}", () => rows.join("\n")));
+  }
+}
+
 // Roots replaced wholesale by installGenerated, even if a source stops supplying one.
 const GENERATED_ROOTS = ["LICENSE", "LICENSE-agent-skills", "LICENSE-matt-pocock", "LICENSE-superpowers", "agents", "skills"];
 
@@ -266,7 +290,7 @@ function applyPatches(patchesDir, outDir, problems) {
 
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-function referenceBody(text, path, name) {
+function referenceBody(text, path, name, owner) {
   const { description, name: declared } = skillFrontmatter(text, path);
   if (declared !== name || typeof description !== "string" || !description.trim()) throw new Error(`${path}: reference needs its registered name and description`);
   const body = text.slice(frontmatterBlock(text)[0].length).replace(/^(?:\r?\n)+/, "");
@@ -274,18 +298,19 @@ function referenceBody(text, path, name) {
   const heading = fromMarkdown(body).children.find(node => node.type === "heading" && node.depth === 1);
   const title = heading ? body.slice(heading.position.start.offset, heading.position.end.offset) : `# ${name}`;
   const rest = heading ? body.slice(0, heading.position.start.offset) + body.slice(heading.position.end.offset) : body;
-  return title + newline.repeat(2) + description.trim() + newline.repeat(2) + rest.replace(/^(?:\r?\n)+/, "");
+  const trigger = description.trim().replace(new RegExp(`/skill:${escapeRegex(name)}(?![\\w-])`, "g"), `/skill:${owner} ${name}`);
+  return title + newline.repeat(2) + trigger + newline.repeat(2) + rest.replace(/^(?:\r?\n)+/, "");
 }
 
 // Translate command spans the upstream slash rule recognized, not command examples in
 // fences or longer shell snippets. A rule must settle those in context or lint fails.
-function linkReferenceCommands(text, moves, base) {
+function linkReferenceCommands(text, moves, linkTo, output) {
   if (!text.includes("/skill:")) return text;
   const edits = [];
   function visit(node, parent) {
     if (node.type === "inlineCode" && node.value.startsWith("/skill:")) {
       const name = node.value.slice(7), target = moves.get(`skills/${name}/SKILL.md`);
-      if (target) edits.push([node.position, parent.type === "link" ? name : `[${name}](${posix.relative(base, target)})`]);
+      if (target) edits.push([node.position, parent.type === "link" || parent.type === "linkReference" || target === output ? name : `[${name}](${linkTo(target)})`]);
     } else node.children?.forEach(child => visit(child, node));
   }
   visit(fromMarkdown(text));
@@ -293,13 +318,17 @@ function linkReferenceCommands(text, moves, base) {
   return text;
 }
 
+const linkBase = path => path.startsWith("skills/") ? path.split("/").slice(0, 2).join("/") : posix.dirname(path);
+
 function relocateReferences(outDir, skills, owners) {
   const paths = walk(outDir).map(path => path.split(sep).join("/")), moves = referenceMoves(paths, skills);
   if (!moves.size) return;
   for (const path of paths) {
     const output = moves.get(path) ?? path, oldFile = join(outDir, path), file = join(outDir, output);
-    const baseOf = path => path.startsWith("skills/") ? path.split("/").slice(0, 2).join("/") : posix.dirname(path);
-    const before = baseOf(path), after = baseOf(output);
+    const before = linkBase(path), after = linkBase(output);
+    // A reference can be reached from a sibling skill. Qualify its links so
+    // they resolve from either that reader or the owner.
+    const linkTo = dest => moves.has(path) ? "../" + dest.slice("skills/".length) : posix.relative(after, dest);
     const contents = decode(readFileSync(oldFile));
     if (file !== oldFile) {
       mkdirSync(dirname(file), { recursive: true });
@@ -308,22 +337,29 @@ function relocateReferences(outDir, skills, owners) {
     if (contents === undefined) continue;
     let text = contents;
     if (path !== output && path.endsWith("/SKILL.md")) {
-      const name = posix.basename(before);
-      text = referenceBody(text, path, name).replaceAll(new RegExp(`/skill:${escapeRegex(name)}(?![\\w-])`, "g"), name);
+      text = referenceBody(text, path, posix.basename(before), posix.basename(after));
     }
     // Match only staged resources. A similarly named example, URL or consumer-repo
     // path isn't part of this move. Both link destinations and code spans (including
     // commands with arguments) use the enclosing skill root as their working directory.
     const aliases = new Map();
     for (const [old, dest] of moves) {
-      const operand = posix.relative(before, old), replacement = posix.relative(after, dest);
+      const operand = posix.relative(before, old), replacement = linkTo(dest);
       aliases.set(operand, replacement);
-      if (!operand.startsWith("../")) aliases.set("./" + operand, replacement);
+      if (!operand.startsWith("../")) {
+        aliases.set("./" + operand, replacement);
+        aliases.set("../" + old.slice("skills/".length), replacement);
+      }
     }
     const pathsInSpan = new RegExp("(?<![^\\s`(<'\"])" + `(?:${[...aliases.keys()].map(escapeRegex).join("|")})` + "(?=$|[\\s`)>#?'\"])", "g");
-    text = text.replace(/`[^`\n]+`|\]\([^\n)]*\)|^\s*\[[^\]\n]+\]:\s*.*$/gm, span => span.replace(pathsInSpan, operand => aliases.get(operand)));
+    text = text.replace(/`[^`\n]+`|\]\([^\n)]*\)|^\s*\[[^\]\n]+\]:\s*.*$/gm, span => span.replace(pathsInSpan, operand => {
+      // In prose `SKILL.md` can name the convention (e.g. a transcript read of
+      // any skill). A link destination or explicit `./SKILL.md` names this file.
+      if (operand === "SKILL.md" && span.startsWith("`")) return operand;
+      return aliases.get(operand);
+    }));
     if (owners.has(path) && !["extra", "authored", "registry"].includes(owners.get(path)) && path.endsWith(".md")) {
-      text = linkReferenceCommands(text, moves, after);
+      text = linkReferenceCommands(text, moves, linkTo, output);
     }
     if (text !== contents) writeFileSync(file, text);
   }
@@ -335,7 +371,7 @@ export function removedCommandPattern(skills) {
   const names = skills.map(row => row.name ?? posix.basename(posix.dirname(row.path))).filter(name => !emitted.has(name));
   if (!names.length) return undefined;
   // A whole command token, not a segment of a URL, route or filename.
-  return new RegExp(`(?<![\\w./:-])/(?:skill:)?(?:${[...new Set(names)].map(escapeRegex).join("|")})(?![\\w/#?-]|\\.[\\w/])`, "g");
+  return new RegExp(`(?:/skill:|(?<![\\w./:-])(?<!\\][(:][ \\t]*<?)/)(?:${[...new Set(names)].map(escapeRegex).join("|")})(?![\\w/-]|[.?#][\\w/])`, "g");
 }
 
 function lint(outDir, deny, problems, removed) {
@@ -349,10 +385,11 @@ function lint(outDir, deny, problems, removed) {
   }
 }
 
-function lintResources(packageDir, outDir, owners, sources) {
+function lintResources(packageDir, outDir, owners, sources, rows = []) {
   const skills = join(outDir, "skills");
+  const referenceOwners = new Set(rows.filter(row => row.action === "reference" && sources.includes(row.source)).map(row => row.owner));
   const directories = readdirSync(skills, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && sources.includes(owners.get(`skills/${entry.name}/SKILL.md`)))
+    .filter(entry => entry.isDirectory() && (referenceOwners.has(entry.name) || sources.includes(owners.get(`skills/${entry.name}/SKILL.md`))))
     .map(entry => join(skills, entry.name)).sort();
   if (!directories.length) throw new Error("No generated skills found; refusing an empty resource check.");
   try {
@@ -397,6 +434,7 @@ export function generate({ packageDir, outDir }) {
   for (const dir of ["extra", "authored"]) addExtras(join(packageDir, dir), put(dir));
   if (registry) renderRegistry(files, registry, put("registry"));
   if (problems.length) throw new Error(problems.join("\n"));
+  if (registry) renderCatalog(files, registry.skills);
   writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));
@@ -416,7 +454,7 @@ export function generate({ packageDir, outDir }) {
   const hostProblems = lintHosts(outDir);
   if (hostProblems.length) throw new Error(`Host lint failed. Keep tool names in the host map.\n${hostProblems.join("\n")}`);
   if (registry) checkRegistry({ packageDir, outDir, registry });
-  if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources);
+  if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources, registry?.skills);
   return infos;
 }
 

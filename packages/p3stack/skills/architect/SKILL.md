@@ -10,6 +10,8 @@ Sketch types, function signatures, class shapes, and module boundaries with `not
 
 ## Start
 
+With no human to interview, rewrite the request per [sharpen](references/sharpen.md) before designing; for a design request, stop at the design synthesis and return the recommendation.
+
 Open a todolist with one entry per phase before starting.
 
 1. Ground
@@ -26,6 +28,8 @@ Skip Phase A only when the work is genuinely greenfield with no surrounding syst
 
 ## Phase B: Sketch
 
+When sketching TypeScript types or signatures, read [typescript-best-practices](references/typescript-best-practices.md).
+
 Run the **arena** skill with the design-sketch task and the Phase A grounding artifacts. Pass `references/runner-prompt.md` as each runner's prompt.
 
 Take the runners from the `architect runners` role in the role defaults, in place of the `arena runners` role. If no role default is set, use `claude-opus-5-5-xhigh` and `grok-4.7-xhigh-fast`. Alias and rejected entries follow the runner rules in the **arena** skill's Phase A.
@@ -34,7 +38,7 @@ Design it twice. Require at least two structurally distinct candidates before sy
 
 Screen every candidate against [`references/design-red-flags.md`](references/design-red-flags.md) before synthesis. Assume the next contributor is an agent that sees only the files it opened, copies the nearest example, and takes the shortest path that compiles. Prefer the design where a change that looks right from one file is right for the whole repo.
 
-Compare viable candidates on interface depth. Prefer the design that hides more complexity behind a smaller, simpler public surface. A rich interface can keep call chains short by concentrating capability instead of scattering it across layers.
+When comparing candidates on interface depth, read [codebase-design](references/codebase-design.md). Prefer the design that hides more complexity behind a smaller, simpler public surface. A rich interface can keep call chains short by concentrating capability instead of scattering it across layers.
 
 Arena returns one synthesized design package. Its synthesis decision fills the rationale's "Synthesis decision" section.
 

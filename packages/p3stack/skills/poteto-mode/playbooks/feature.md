@@ -24,7 +24,7 @@
 6. Rebase into small, ordered commits. Stack follow-ups.
    Use the **sequence-verifiable-units** principle skill, building, verifying, and committing each small unit before the next.
 
-> **p3stack only:** [no-comments](../no-comments/SKILL.md) — When the code is complete, clean up comments before the floor scan.
+> **p3stack only:** [no-comments](../code-review/references/no-comments.md) — When the code is complete, clean up comments before the floor scan.
 
 > **p3stack only:** [floor](../p3stack-mode/references/floor.md) — Commit any cleanup edits and rerun affected checks. Run floor-check on the final diff; explain or remove every finding.
 

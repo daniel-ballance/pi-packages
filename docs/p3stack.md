@@ -6,7 +6,7 @@ p3stack is one of the [six packages in the root install](../README.md#included-r
 
 The [source manifest](../packages/p3stack/rules/manifest.json) maps five source names to four upstream checkouts. Two names share the Cursor checkout. Cursor, Matt Pocock, and Addy Osmani supply skills. Superpowers is [watch only](adr/0005-vendor-narrowly-or-watch-only.md). p3stack also supplies its own skills and router.
 
-Git submodule entries pin the upstream commits. The [package README](../packages/p3stack/README.md#license-and-upstreams) mirrors them. The [skill registry](../packages/p3stack/registry/skills.json) records each emitted name or drop reason. For example, Pocock's `tdd` keeps its name and pstack's emits as `regression-test`. Edit the [generator inputs](../packages/p3stack/AGENTS.md), not the generated skills or agent recipes.
+Git submodule entries pin the upstream commits. The [package README](../packages/p3stack/README.md#license-and-upstreams) mirrors them. The [skill registry](../packages/p3stack/registry/skills.json) records 46 emitted skills, 43 references and the reason for each drop. For example, `/skill:tdd` invokes Pocock's TDD procedure; for a cheap bug reproduction it points to pstack's [regression-test](../packages/p3stack/skills/tdd/references/regression-test.md). Edit the [generator inputs](../packages/p3stack/AGENTS.md), not the generated skills or agent recipes.
 
 ## How a request reaches a playbook
 

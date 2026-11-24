@@ -9,7 +9,7 @@ You are a **delegated child**. The parent agent already collected git output and
 
 ## Rubric
 
-1. Read the [thermo-nuclear-review rubric](../skills/thermo-nuclear-review/SKILL.md) supplied by the parent and follow it exactly: scope (only added/modified code), breaking functionality and devex, feature leaks, intended breakage, over-reporting, final response / PR discussion rules, critical rules.
+1. Read the [thermo-nuclear-review rubric](../skills/dyl-review/references/thermo-nuclear-review.md) supplied by the parent and follow it exactly: scope (only added/modified code), breaking functionality and devex, feature leaks, intended breakage, over-reporting, final response / PR discussion rules, critical rules.
 2. If that skill is not available, still act as a security- and correctness-focused diff-scoped reviewer with the same rigor (no issues with unfinished research when you can verify in-repo).
 
 ## Work

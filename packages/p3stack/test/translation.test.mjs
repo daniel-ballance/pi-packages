@@ -59,7 +59,7 @@ for (const [path, input, sibling] of [
 }
 
 test("the review and design instructions resolve delegation through the host map", () => {
-  for (const path of ["code-review/SKILL.md", "codebase-design/SKILL.md", "codebase-design/DESIGN-IT-TWICE.md"]) {
+  for (const path of ["code-review/SKILL.md", "architect/references/codebase-design.md", "architect/references/codebase-design/DESIGN-IT-TWICE.md"]) {
     const skill = read("skills/" + path);
     assert.doesNotMatch(skill, /\b(?:subagent_|mcp__t3)/, path);
     assert.match(skill, /\[Delegate\]\(\.\.\/poteto-mode\/references\/host-capabilities\.md#delegate\)/, path);
@@ -211,5 +211,5 @@ test("both code-review briefs receive the captured input, without a prerequisite
   assert.match(review, /caller[^\n]*contract[^\n]*spec/i);
   assert.doesNotMatch(review, /tell the user to run/);
   assert.match(review, /report[^\n]*(?:unavailable|inaccessible|could not)/i);
-  assert.doesNotMatch(read("skills/implement/SKILL.md"), /uncommitted changes would be missed/);
+  assert.doesNotMatch(read("skills/implement-spec/references/implement.md"), /uncommitted changes would be missed/);
 });

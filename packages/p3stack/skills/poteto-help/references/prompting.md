@@ -21,7 +21,7 @@ A prompt states the intent and the check for done. The playbook supplies the ste
 - For a noisy report, ask the agent to restate the underlying issue in its own words and in plain English before it does anything else. A misreading shows up before any code exists.
 - In a fresh chat, `/skill:recall` earlier work on the topic. Old chats hold context that the new agent lacks.
 - Before a change to unfamiliar code, ask `/skill:how` for the mechanics and `/skill:why` for the reasons. An agent with no traced model fixes the symptom at the first plausible spot.
-- Ask `/skill:teach` to make the case for a choice, as in "convince me it fixes the cause and not the symptom". A case is easier to check than a summary.
+- Ask `/skill:how` for the teach walkthrough to make the case for a choice, as in "convince me it fixes the cause and not the symptom". A case is easier to check than a summary.
 
 ## Design before the plan
 

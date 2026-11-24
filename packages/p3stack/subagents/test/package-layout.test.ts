@@ -212,7 +212,10 @@ test("the packed p3stack loads alone: its three extensions and its skills, with 
     const result = await load([packed], packed);
     assert.deepEqual(result.extensions, ["extensions/p3stack/index.ts", "subagents/extensions/subagents/index.ts", "todo/extensions/todo/index.ts"]);
     assert.deepEqual(result.skills, expectedSkills);
+    assert.equal(p3stackSkills.length, 46);
     assert.equal(result.skillPaths.tdd, "skills/tdd/SKILL.md");
+    assert.equal(result.skillPaths["regression-test"], undefined);
+    assert.ok(existsSync(join(packed, "skills/tdd/references/regression-test.md")));
     assert.deepEqual(result.skillDiagnostics, []);
   } finally {
     await rm(temp, { recursive: true, force: true });
