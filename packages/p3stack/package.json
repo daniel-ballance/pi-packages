@@ -62,14 +62,7 @@
       "./todo/extensions/todo/index.ts"
     ],
     "skills": [
-      "./skills",
-      "./subagents/skills"
-    ],
-    "prompts": [
-      "./prompts/**/*.md"
-    ],
-    "themes": [
-      "./themes/**/*.json"
+      "./skills"
     ]
   },
   "p3stack": {

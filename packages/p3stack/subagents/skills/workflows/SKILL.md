@@ -1,12 +1,14 @@
 ---
 name: workflows
 description: >
-  Author and supervise bounded Pi subagent workflows: task DAGs, fan-out/fan-in, deterministic or agent/human validation, repair and improvement loops, peer task groups, observability and explicit recovery. Use for autonomous multi-step work or repeated candidate/evaluate/keep-discard experiments.
+  Author and supervise bounded workflows in a terminal Pi parent: task DAGs, fan-out/fan-in, deterministic or agent/human validation, repair and improvement loops, peer task groups, observability and explicit recovery. Use for autonomous multi-step work or repeated candidate/evaluate/keep-discard experiments.
 ---
 
 # Author and supervise workflows
 
-Read [the workflow contract](../../WORKFLOWS.md) before creating a definition. Use the examples ([investigate](examples/investigate.json), [repair](examples/repair.json), [improve](examples/improve.json)) as shapes, not runnable configurations: model IDs and paths are placeholders.
+Use this in a terminal Pi parent with `subagent_catalog.features.workflows` true. Under T3 Code, delegate and supervise tasks with T3's tools instead; they do not run this JSON scheduler.
+
+Read [the workflow contract](reference/contract.md) before creating a definition. Use the examples ([investigate](examples/investigate.json), [repair](examples/repair.json), [improve](examples/improve.json)) as shapes, not runnable configurations: model IDs and paths are placeholders.
 
 1. Establish the outcome, inputs, actual acceptance criteria and permitted actions with the user. Prefer deterministic evaluation where meaningful; use an independent agent rubric or human checkpoint where necessary. Do not invent a numerical metric just to have one.
 2. Consult `subagent_catalog`. Choose explicit worker compositions from it. No worker automatically inherits this conversation, tools, resources or other workers' authority. Provide enough context, source paths and expected outputs in instructions.

@@ -52,6 +52,9 @@ export const FOOTER_CHANNEL = "subagents:footer";
 export default function subagents(pi: ExtensionAPI) {
   // Explicitly loading this package in a child still does not enable recursion.
   if (process.env.PI_SUBAGENT === "1") return;
+  if (detectHost() !== "t3") pi.on("resources_discover", () => ({
+    skillPaths: [fileURLToPath(new URL("../../skills", import.meta.url))],
+  }));
   pi.registerFlag("disable-native-subagents", {
     description: "Disable native subagent tools, managers, workflows and notifications for this launch",
     type: "boolean", default: false,

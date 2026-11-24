@@ -36,7 +36,6 @@
     "skills": [
       "./packages/claude-subscription/skills",
       "./packages/p3stack/skills",
-      "./packages/p3stack/subagents/skills",
       "./packages/computer-use/skills",
       "./packages/self-reload/skills",
       "./packages/web-search/skills",
@@ -44,7 +43,6 @@
     ],
     "prompts": [
       "./packages/claude-subscription/prompts/**/*.md",
-      "./packages/p3stack/prompts/**/*.md",
       "./packages/computer-use/prompts/**/*.md",
       "./packages/self-reload/prompts/**/*.md",
       "./packages/web-search/prompts/**/*.md",
@@ -52,7 +50,6 @@
     ],
     "themes": [
       "./packages/claude-subscription/themes/**/*.json",
-      "./packages/p3stack/themes/**/*.json",
       "./packages/computer-use/themes/**/*.json",
       "./packages/self-reload/themes/**/*.json",
       "./packages/web-search/themes/**/*.json",

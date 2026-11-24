@@ -37,7 +37,7 @@ wake-ups and the subagent UI. This package is for running Pi directly.
 
 ## Bundled setup and execution skill
 
-Installation also exposes `/skill:subagents` (unless skills are filtered out in your Pi package settings). Use it to choose policy scope, configure exact providers/models/tools/resources, diagnose unavailable compositions, and operate persistent children. The [skill](skills/subagents/SKILL.md) includes [complete example policies](skills/subagents/reference/configuration.md).
+Outside T3 Code, resource discovery also exposes `/skill:subagents` (unless skills are filtered out in your Pi package settings). Use it to choose policy scope, configure exact providers/models/tools/resources, diagnose unavailable compositions, and operate persistent children. The [skill](skills/subagents/SKILL.md) includes [complete example policies](skills/subagents/reference/configuration.md).
 
 This is parent-side guidance, not automatic configuration or child resource inheritance. It does not overwrite user policies or grant permissions. Example model IDs are placeholders and must be replaced with exact available Pi identities. Model-selection research and analysis tooling are maintained separately in Pareto; they are not shipped or required by this execution package.
 
@@ -45,7 +45,7 @@ This is parent-side guidance, not automatic configuration or child resource inhe
 
 The bundled `/skill:workflows` helps the parent author and supervise JSON workflows using the same manager: task DAGs with explicit fan-out/all-input fan-in, command/agent/human checks, bounded repair and improvement loops, and optional peer task groups. The runtime schedules authorized work without manual parent relaying, retains artifact/validation history, and reports completion or exceptions rather than routine worker chatter.
 
-See [WORKFLOWS.md](WORKFLOWS.md) for the contract, examples, observability, limits and explicit recovery. Start/inspect/control tools are `subagent_workflow_start`, `subagent_workflow_inspect`, `subagent_workflow_control`; `/workflows` is the human interface. These remain parent-only under the existing non-recursion guard. No new daemon or workflow permission schema: workers use current subagent policy; deterministic commands additionally require its `bash` permission. Each run explicitly sets concurrency, total attempts and a wall-clock deadline. Candidate paths/digest checks are not an OS sandbox.
+See the [workflow contract](skills/workflows/reference/contract.md) for the format, observability, limits and explicit recovery. Start/inspect/control tools are `subagent_workflow_start`, `subagent_workflow_inspect`, `subagent_workflow_control`; `/workflows` is the human interface. These remain parent-only under the existing non-recursion guard. No new daemon or workflow permission schema: workers use current subagent policy; deterministic commands additionally require its `bash` permission. Each run explicitly sets concurrency, total attempts and a wall-clock deadline. Candidate paths/digest checks are not an OS sandbox.
 
 ## Allowlist: `subagents.json`
 

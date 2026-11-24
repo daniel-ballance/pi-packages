@@ -1,11 +1,11 @@
 ---
 name: subagents
-description: Set up and operate persistent Pi children. Use when configuring subagents.json, choosing global versus project policy, composing exact model/thinking, tool and resource selections, diagnosing unavailable compositions, or supervising child execution.
+description: Set up and operate persistent children in terminal Pi. Use when configuring subagents.json, choosing global versus project policy, composing exact model/thinking, tool and resource selections, diagnosing unavailable compositions, or supervising child execution.
 ---
 
 # Subagents: setup, composition and execution
 
-Use this skill in the **parent** Pi session. This package manages persistent children; it does not define fixed agent profiles. Children delegate further only when the policy's `maxDepth` allows it and you select delegation tools for them.
+Use this skill in a **terminal Pi parent** (TUI or RPC). Under T3 Code use T3's delegation tools, not the native manager. This package manages persistent children; it does not define fixed agent profiles. Children delegate further only when the policy's `maxDepth` allows it and you select delegation tools for them.
 
 Resolve file links relative to this skill directory, not the working directory. Read only the references relevant to the task:
 

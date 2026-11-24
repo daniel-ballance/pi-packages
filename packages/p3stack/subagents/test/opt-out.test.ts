@@ -21,7 +21,7 @@ test("parsed opt-out prevents all native initialization, not just tool exposure"
   for (const handler of hooks.get("session_start") ?? []) handler({}, context);
   assert.deepEqual(tools, []);
   assert.deepEqual(commands, []);
-  assert.deepEqual([...hooks.keys()], ["session_start"]); // No notifications, workflow or shutdown hooks.
+  assert.deepEqual([...hooks.keys()].filter(name => name !== "resources_discover"), ["session_start"]); // No manager hooks.
 });
 
 test("a T3-launched session prevents native initialization without the flag", () => {
