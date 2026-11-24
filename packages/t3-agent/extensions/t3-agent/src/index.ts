@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_CONFIG, LOADOUTS, readConfig, type Config, type Loadout } from "./config.ts";
 import { detectHost } from "./host.ts";
 import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, trackRunTab, type Handle } from "./ledger.ts";
@@ -142,7 +142,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     if (tool === undefined || event.isError) return undefined;
     const result = resultPayload(event.content, event.structuredContent);
     trackRunTab(openedThisRun, tool, event.input, result);
-    const updates = observe(tool, event.input, result);
+    const updates = observe(tool, event.input, result, ledger);
     if (updates.length === 0) return undefined;
     for (const update of updates) {
       ledger.apply(update);
@@ -153,7 +153,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     return undefined;
   });
 
-  const flush = (): SessionBoundaryDraft[] => {
+  const flush = () => {
     const drafts = pending.map(data => ({ type: "custom" as const, customType: ENTRY_TYPE, data }));
     pending = [];
     return drafts;
@@ -215,6 +215,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
           notify("Usage: /t3-agent forget <id|all>. Nothing open matched.", "warning");
           return;
         }
+        for (const draft of flush()) pi.appendEntry(draft.customType, draft.data);
         for (const close of closing) pi.appendEntry(ENTRY_TYPE, close);
         applyLoadout(ctx);
         refreshStatus(ctx);

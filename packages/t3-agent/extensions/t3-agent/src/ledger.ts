@@ -137,8 +137,8 @@ export function trackRunTab(opened: Set<string>, tool: string, input: Json, resu
     // Current bridges reuse by default and do not always return a reused flag.
     const fresh = !input.tabId && (result?.reused === false || (result?.reused === undefined && input.reuseExistingTab === false));
     if (result?.available !== false && owned && fresh) opened.add(id);
-    else opened.delete(id);
-  } else if (id && control && !owned) {
+  }
+  if (id && (control?.ownedByCaller === false || control?.owner === "human" || control?.owner === "unclaimed")) {
     opened.delete(id);
   }
   // Status can also report a takeover of another tab, not just the current one.
@@ -156,11 +156,11 @@ function prKey(input: Json, result?: Json) {
 }
 
 /** Translate one successful T3 tool call into ledger updates. Pure, so it is easy to test. */
-export function observe(tool: string, input: Json, result: Json | undefined): Handle[] {
-  return observations(tool, input, result).flatMap(raw => receipt(raw) ?? []);
+export function observe(tool: string, input: Json, result: Json | undefined, ledger?: Ledger): Handle[] {
+  return observations(tool, input, result, ledger).flatMap(raw => receipt(raw) ?? []);
 }
 
-function observations(tool: string, input: Json, result: Json | undefined): Json[] {
+function observations(tool: string, input: Json, result: Json | undefined, ledger?: Ledger): Json[] {
   switch (tool) {
     case "delegate_task":
     case "t3_thread_send": // Only a send that started a fresh child task returns a taskId.
@@ -220,7 +220,9 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       const device = record(result?.device);
       const id = device?.id ?? result?.deviceId ?? input.deviceId;
       const hostId = device?.hostId ?? result?.hostId ?? input.hostId;
-      return id ? [{ kind: "device", id, hostId, open: tool === "device_open" }] : [];
+      if (tool === "device_open") return id ? [{ kind: "device", id, hostId, open: true }] : [];
+      return (ledger?.open("device") ?? []).filter(h => (id === undefined || h.id === id) && (hostId === undefined || h.hostId === hostId))
+        .map(h => ({ kind: "device", id: h.id, hostId: h.hostId, open: false }));
     }
     default:
       return [];

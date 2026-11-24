@@ -204,7 +204,7 @@ test("PR watches and unwatches share a verified forge key across spellings and r
 test("devices use the reported host and id, including on an argument-less close", () => {
   const ledger = new Ledger();
   const apply = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) =>
-    observe(tool, input, result).forEach(update => ledger.apply(update));
+    observe(tool, input, result, ledger).forEach(update => ledger.apply(update));
   apply("device_open", { platform: "ios" }, { device: { id: "sim", hostId: "mac-1" } });
   apply("device_open", { hostId: "mac-2", deviceId: "sim" }, {});
   assert.equal(ledger.open("device").length, 2);

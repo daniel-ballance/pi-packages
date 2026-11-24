@@ -271,12 +271,13 @@ test("a new caller-owned preview tab left open gets one automated reminder befor
   await startTurn(f);
   await toolResult(f, "preview_open", { reuseExistingTab: false }, { tabId: "tab-9", control: { owner: "agent", ownedByCaller: true } });
   assert.ok(f.active().includes("mcp__t3-code__t3_preview_close"), "the close tool is declared while a tab is open");
+  await toolResult(f, "preview_open", { tabId: "tab-9" }, { tabId: "tab-9", control: { owner: "agent", ownedByCaller: true } });
   const first = await f.emit("agent_before_settle", { entries: [], continue: false, outcome: "completed" });
   assert.equal(first.continue, true);
   assert.equal(first.entries[0].customType, ENTRY_TYPE);
-  assert.equal(first.entries[1].customType, REMINDER_TYPE);
-  assert.match(first.entries[1].content, /automated note from the t3-agent extension, not from the user/i);
-  assert.match(first.entries[1].content, /tab `tab-9`/);
+  assert.equal(first.entries.at(-1).customType, REMINDER_TYPE);
+  assert.match(first.entries.at(-1).content, /automated note from the t3-agent extension, not from the user/i);
+  assert.match(first.entries.at(-1).content, /tab `tab-9`/);
   assert.equal(await f.emit("agent_before_settle", { entries: [], continue: false, outcome: "completed" }), undefined);
 
   // A tab closed in the same turn needs no reminder, and its close tool is withdrawn.
@@ -355,6 +356,39 @@ test("/t3-agent forget closes ledger entries without touching T3", async () => {
   assert.deepEqual(f.appended.at(-1), [ENTRY_TYPE, { kind: "pr", id, open: false }]);
   await command.handler(`forget ${id}`, f.ctx);
   assert.match(String(f.notices.at(-1)![0]), /Nothing open matched/);
+});
+
+test("forget before turn_end stays forgotten on replay", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  await toolResult(f, "schedule_task", { prompt: "Check" }, { scheduledTaskId: "s", enabled: true });
+  await f.commands.get("t3-agent").handler("forget s", f.ctx);
+  const boundary = await f.emit("turn_end", { entries: [] });
+  const restart = fixture(T3, { branch: [...f.ctx.sessionManager.getBranch(), ...boundary?.entries ?? []] });
+  await restart.emit("session_start");
+  await restart.commands.get("t3-agent").handler("ledger", restart.ctx);
+  assert.match(String(restart.notices.at(-1)![0]), /No open T3 handles/);
+});
+
+test("device_close with T3's empty result closes every and only matching host/id pair on replay", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  for (const [hostId, id] of [["local", "A"], ["local", "B"], ["remote", "A"], ["remote", "C"]]) {
+    await toolResult(f, "device_open", { deviceId: id, hostId }, { device: { id, hostId } });
+  }
+  const branch = f.ctx.sessionManager.getBranch();
+  async function close(input: Record<string, string>) {
+    await toolResult(f, "device_close", input, {});
+    const boundary = await f.emit("turn_end", { entries: [] });
+    branch.push(...boundary?.entries ?? []);
+    const restart = fixture(T3, { branch });
+    await restart.emit("session_start");
+    await restart.commands.get("t3-agent").handler("ledger", restart.ctx);
+    return String(restart.notices.at(-1)![0]);
+  }
+  assert.equal(await close({ deviceId: "A" }), "- device deviceId=B on hostId=local\n- device deviceId=C on hostId=remote");
+  assert.equal(await close({ hostId: "local" }), "- device deviceId=C on hostId=remote");
+  assert.match(await close({}), /No open T3 handles/);
 });
 
 test("forget can address a device by host/id and its close survives replay", async () => {
