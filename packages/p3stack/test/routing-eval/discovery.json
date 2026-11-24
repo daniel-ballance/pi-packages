@@ -1,0 +1,264 @@
+{
+  "model": "openai-codex/gpt-6-luna:low",
+  "arm": "off",
+  "runs": 3,
+  "minRate": 0.66,
+  "prompts": [
+    {
+      "id": "code-review-example",
+      "prompt": "Review my branch against main before I open the PR.",
+      "expected": [
+        "code-review/SKILL.md"
+      ]
+    },
+    {
+      "id": "diagnosing-bugs-example",
+      "prompt": "The nightly import keeps failing with a timeout, debug this.",
+      "expected": [
+        "diagnosing-bugs/SKILL.md"
+      ]
+    },
+    {
+      "id": "domain-modeling-example",
+      "prompt": "We keep saying 'account' for two different things, sort out the terminology.",
+      "expected": [
+        "domain-modeling/SKILL.md"
+      ]
+    },
+    {
+      "id": "grilling-example",
+      "prompt": "Grill me on this plan before I commit to it.",
+      "expected": [
+        "grilling/SKILL.md"
+      ]
+    },
+    {
+      "id": "pr-example",
+      "prompt": "Write the PR body for this change.",
+      "expected": [
+        "pr/SKILL.md"
+      ]
+    },
+    {
+      "id": "research-example",
+      "prompt": "Research which OAuth flows the provider supports and cite primary sources.",
+      "expected": [
+        "research/SKILL.md"
+      ]
+    },
+    {
+      "id": "tdd-example",
+      "prompt": "Build the discount feature test-first.",
+      "expected": [
+        "tdd/SKILL.md"
+      ]
+    },
+    {
+      "id": "wizard-example",
+      "prompt": "Generate a bash wizard that walks me through setting up the CI secrets.",
+      "expected": [
+        "wizard/SKILL.md"
+      ]
+    },
+    {
+      "id": "writing-for-agents-example",
+      "prompt": "Edit this skill so agents follow it more reliably.",
+      "expected": [
+        "writing-for-agents/SKILL.md"
+      ]
+    },
+    {
+      "id": "setup-pstack-example",
+      "prompt": "Configure pstack models for each role.",
+      "expected": [
+        "setup-pstack/SKILL.md"
+      ]
+    },
+    {
+      "id": "release-example",
+      "prompt": "Cut a release.",
+      "expected": [
+        "release/SKILL.md"
+      ]
+    },
+    {
+      "id": "onboard-brownfield-example",
+      "prompt": "Onboard me to this existing repository.",
+      "expected": [
+        "onboard-brownfield/SKILL.md"
+      ]
+    },
+    {
+      "id": "maintain-p3stack-example",
+      "prompt": "Audit p3stack's source pins.",
+      "expected": [
+        "maintain-p3stack/SKILL.md"
+      ]
+    },
+    {
+      "id": "interactive-prototype-example",
+      "prompt": "Make something the PM can click through to judge the refund states.",
+      "expected": [
+        "interactive-prototype/SKILL.md"
+      ]
+    },
+    {
+      "id": "source-grounding-example",
+      "prompt": "Implement the form with the official docs for the framework version we use, and cite them.",
+      "expected": [
+        "source-grounding/SKILL.md"
+      ]
+    },
+    {
+      "id": "subagents-example",
+      "prompt": "Set up subagents.json so my children can use the Claude model.",
+      "expected": [
+        "subagents/SKILL.md"
+      ]
+    },
+    {
+      "id": "workflows-example",
+      "prompt": "Write a workflow that fans out three workers and validates their results.",
+      "expected": [
+        "workflows/SKILL.md"
+      ]
+    },
+    {
+      "id": "code-review-held-out",
+      "prompt": "Could you look over the patch for mistakes before I send it to my teammate?",
+      "expected": [
+        "code-review/SKILL.md"
+      ]
+    },
+    {
+      "id": "diagnosing-bugs-held-out",
+      "prompt": "Twice today our importer silently dropped the last invoice. What makes that happen?",
+      "expected": [
+        "diagnosing-bugs/SKILL.md"
+      ]
+    },
+    {
+      "id": "domain-modeling-held-out",
+      "prompt": "Sales and Engineering both say 'customer' and mean different people. Can we agree what to call each?",
+      "expected": [
+        "domain-modeling/SKILL.md"
+      ]
+    },
+    {
+      "id": "grilling-held-out",
+      "prompt": "Act as a skeptical interviewer and poke holes in my rollout proposal, one question at a time.",
+      "expected": [
+        "grilling/SKILL.md"
+      ]
+    },
+    {
+      "id": "pr-held-out",
+      "prompt": "I need a couple of paragraphs for the pull request explaining this change to reviewers.",
+      "expected": [
+        "pr/SKILL.md"
+      ]
+    },
+    {
+      "id": "research-held-out",
+      "prompt": "Compare the published limits of three hosted runners, with links and a short memo I can keep.",
+      "expected": [
+        "research/SKILL.md"
+      ]
+    },
+    {
+      "id": "tdd-held-out",
+      "prompt": "Start with a test that fails, then make it pass with the smallest change.",
+      "expected": [
+        "tdd/SKILL.md"
+      ]
+    },
+    {
+      "id": "wizard-held-out",
+      "prompt": "Only I can click the admin console. Write a script that pauses after each step for me to confirm.",
+      "expected": [
+        "wizard/SKILL.md"
+      ]
+    },
+    {
+      "id": "writing-for-agents-held-out",
+      "prompt": "Fix the repo instructions that Pi reads: it keeps running the wrong test suite.",
+      "expected": [
+        "writing-for-agents/SKILL.md"
+      ]
+    },
+    {
+      "id": "setup-pstack-held-out",
+      "prompt": "Switch our review role to a cheaper model; keep the architect on the expensive one.",
+      "expected": [
+        "setup-pstack/SKILL.md"
+      ]
+    },
+    {
+      "id": "release-held-out",
+      "prompt": "Get 1.4 ready: update the changelog and the package version.",
+      "expected": [
+        "release/SKILL.md"
+      ]
+    },
+    {
+      "id": "onboard-brownfield-held-out",
+      "prompt": "First day here. Give me a tour of where a request enters and where the data lives. No edits.",
+      "expected": [
+        "onboard-brownfield/SKILL.md"
+      ]
+    },
+    {
+      "id": "maintain-p3stack-held-out",
+      "prompt": "Bring the vendored pstack copy forward and reconcile our translations.",
+      "expected": [
+        "maintain-p3stack/SKILL.md"
+      ]
+    },
+    {
+      "id": "interactive-prototype-held-out",
+      "prompt": "Let the PM play with the refund flow in her browser before we commit to building it.",
+      "expected": [
+        "interactive-prototype/SKILL.md"
+      ]
+    },
+    {
+      "id": "source-grounding-held-out",
+      "prompt": "Confirm that my installed version of the SDK supports this option in the official docs before coding.",
+      "expected": [
+        "source-grounding/SKILL.md"
+      ]
+    },
+    {
+      "id": "subagents-held-out",
+      "prompt": "I want my helper to inspect the repository but not edit it. Where do I set that up?",
+      "expected": [
+        "subagents/SKILL.md"
+      ]
+    },
+    {
+      "id": "workflows-held-out",
+      "prompt": "Give two workers the same brief, check both proposals, and repeat with the better candidate.",
+      "expected": [
+        "workflows/SKILL.md"
+      ]
+    },
+    {
+      "id": "none-fact",
+      "prompt": "In cli.mjs, what does the CLI print when it gets no command?",
+      "expected": [],
+      "none": true
+    },
+    {
+      "id": "none-edit",
+      "prompt": "In cli.mjs, change the usage text from \"Usage: cli.mjs export\" to \"Usage: cli.mjs export <file>\".",
+      "expected": [],
+      "none": true
+    },
+    {
+      "id": "none-explain",
+      "prompt": "What does the export command in cli.mjs write, and where?",
+      "expected": [],
+      "none": true
+    }
+  ]
+}
