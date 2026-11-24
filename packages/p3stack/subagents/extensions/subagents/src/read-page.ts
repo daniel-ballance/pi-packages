@@ -1,6 +1,20 @@
-import { reportPage, REPORT_KINDS, type SubagentManager } from "./manager.js";
+import type { ReportInbox, Update } from "./report-inbox.js";
 
-type Read = ReturnType<SubagentManager["read"]>;
+export type ReadArgs = { id: string; page: string };
+export const reportPage = (id: string, cursor: number, offset = 0): ReadArgs => ({ id, page: `${cursor}:${offset}` });
+export const REPORT_KINDS: ReadonlySet<string> = new Set(["assistant", "message", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
+
+export function updateWindow(candidates: Update[]) {
+  const updates: Update[] = [];
+  let size = 0;
+  for (const update of candidates) {
+    if (size + update.text.length > 24000 && updates.length) break;
+    updates.push(update); size += update.text.length;
+  }
+  return updates;
+}
+
+type Read = ReturnType<ReportInbox["read"]>;
 // A compact one-line reply has no line-budget overhead. Leave room for the acknowledgement timestamp.
 const fitsRead = (value: unknown) => Buffer.byteLength(JSON.stringify(value)) <= 29_800;
 

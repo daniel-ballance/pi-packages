@@ -1,6 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Static } from "typebox";
-import { BUSY, REPORT_KINDS, type AgentRecord, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
+import type { HumanHold, ReadReceipt, ResultReview, Status, SubagentManager, Update } from "./manager.js";
+import { REPORT_KINDS, updateWindow } from "./read-page.js";
+export const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
 import type { TOOL_SPECS } from "./tool-schemas.js";
 import { MANAGE_TIMEOUT_MS } from "./peer-transport.js";
 
@@ -101,22 +103,8 @@ const reportCost = (report: Report) => {
   return { bytes: bytes + lines * REPORT_INDENT_BYTES + REPORT_SEPARATOR_BYTES, lines };
 };
 
-const reviewOf = (record: AgentRecord) => record.resultReview && { status: record.resultReview.status };
-
 export const withCurrentReviews = (manager: SubagentManager, report: WaitReport): WaitReport =>
-  ({ ...report, agents: report.agents.map(news => ({ ...news, resultReview: reviewOf(manager.get(news.id)) })) });
-
-export function childNews(record: AgentRecord): ChildNews {
-  return {
-    id: record.id, name: record.name, status: record.status, activity: record.activity, error: record.error,
-    unread: record.updates.filter(update => update.cursor > record.readCursor && !update.consumed && REPORT_KINDS.has(update.kind)).length,
-    hold: record.hold && { kind: record.hold.kind, outcome: record.hold.outcome, detail: record.hold.detail },
-    uiRequests: record.uiRequests.length ? record.uiRequests.map(({ id, method, title }) => ({ id, method, title })) : undefined,
-    depth: record.depth, parentId: record.parentId,
-    resultReview: reviewOf(record),
-  };
-}
-
+  ({ ...report, agents: report.agents.map(news => ({ ...news, resultReview: manager.inbox.reviewStatus(news.id) })) });
 const FINAL_TERMINAL = new Set(["error", "failure", "input_requested", "human_intervention"]);
 type ReportPlan = { mode: "prefix" } | { mode: "skip" } | { mode: "one"; cursor?: number };
 
@@ -166,35 +154,29 @@ function takePage(updates: readonly Update[], plan: Exclude<ReportPlan, { mode: 
   return { prefix, reports };
 }
 
+export function fitWaitUpdates(unread: Update[], final: boolean, status: Status, budget: ReportLimits) {
+  const plan = reportPlan(unread, final, status);
+  if (plan.mode === "skip") return;
+  // A chosen final may be past the ordinary update window.
+  return takePage(plan.mode === "one" && plan.cursor !== undefined ? unread : updateWindow(unread), plan, budget);
+}
+
 export function waitReport(manager: SubagentManager, end: WaitEnd, collect: boolean, callerId?: string,
-  limits: ReportLimits = { bytes: 24_000, lines: 750 }, final = false): { readonly report: WaitReport; readonly receipts: readonly ReadReceipt[] } {
-  const statuses = end.ids.map(id => childNews(manager.get(id)));
-  if (!collect) return { report: { wake: end.wake, agents: statuses }, receipts: [] };
+  limits: ReportLimits = { bytes: 24_000, lines: 750 }, final = false) {
+  const statuses = end.ids.map(id => manager.inbox.news(id));
   const used = printed({ wake: end.wake, agents: statuses });
   const budget = { bytes: limits.bytes - used.bytes, lines: limits.lines - used.lines };
   const receipts: ReadReceipt[] = [];
-  const agents = statuses.map(news => {
-    if (manager.reportsDrainedBy(news.id) !== callerId) return news;
-    const record = manager.get(news.id);
-    const plan = reportPlan(record.updates.filter(update => update.cursor > record.readCursor && !update.consumed), final, news.status);
-    if (plan.mode === "skip") return news;
-    const chosen = plan.mode === "one" ? plan.cursor : undefined;
-    const page = manager.read(news.id, chosen === undefined ? undefined : chosen - 1, false);
-    let updates = page.updates;
-    if (chosen !== undefined && page.updates.length) {
-      const start = page.updates[0].cursor;
-      const end = page.updates[page.updates.length - 1].cursor;
-      updates = [
-        ...record.updates.filter(update => !update.consumed && update.cursor > record.readCursor && update.cursor < start),
-        ...page.updates.filter(update => !update.consumed),
-        ...record.updates.filter(update => update.cursor > end && !update.consumed),
-      ];
-    }
-    const { prefix, reports } = takePage(updates, plan, budget);
-    if (!prefix.length && !page.uiRequests.length) return news;
-    receipts.push({ id: news.id, updates: prefix, nextCursor: prefix.at(-1)?.cursor ?? record.readCursor, uiRequests: page.uiRequests });
-    const acknowledged = prefix.filter(update => REPORT_KINDS.has(update.kind)).length;
-    return { ...news, unread: news.unread - acknowledged, reports: reports.length ? reports : undefined };
+  const agents = !collect ? statuses : statuses.map(news => {
+    const page = manager.inbox.prepareWaitPage(news.id, callerId, final, budget);
+    if (!page) return news;
+    receipts.push(page.receipt);
+    const acknowledged = page.receipt.updates.filter(update => REPORT_KINDS.has(update.kind)).length;
+    return { ...news, unread: news.unread - acknowledged, reports: page.reports.length ? page.reports : undefined };
   });
-  return { report: { wake: end.wake, agents }, receipts };
+  const report: WaitReport = { wake: end.wake, agents };
+  return { report, receipts, acknowledge() {
+    for (const receipt of receipts) manager.inbox.acknowledgeRead(receipt, true, !callerId);
+    return withCurrentReviews(manager, report);
+  } };
 }
