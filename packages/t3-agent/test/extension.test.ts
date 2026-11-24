@@ -211,6 +211,27 @@ test("a new caller-owned preview tab left open gets one automated reminder befor
   assert.equal(settled.continue, undefined);
 });
 
+test("the ledger command lists every handle, including threads omitted by the bounded prompt", async () => {
+  const data = [
+    ...Array.from({ length: 27 }, (_, i) => ({ kind: "delegate", id: `d-${i}`, open: true })),
+    ...Array.from({ length: 8 }, (_, i) => ({ kind: "thread", id: `t-${i}`, open: true })),
+  ];
+  const f = fixture(T3, { branch: data.map(data => ({ type: "custom", customType: ENTRY_TYPE, data })) });
+  await f.emit("session_start");
+  await f.commands.get("t3-agent").handler("ledger", f.ctx);
+  const listing = f.notices.map(([message]) => message).join("\n");
+  for (const { id } of data) assert.match(listing, new RegExp(`\\b${id}\\b`));
+  assert.doesNotMatch(listing, /run \/t3-agent ledger/);
+  assert.match((await startTurn(f)).t3_agent!, /11 more; run \/t3-agent ledger/);
+
+  const threads = fixture(T3, { branch: data.slice(27).map(data => ({ type: "custom", customType: ENTRY_TYPE, data })) });
+  await threads.emit("session_start");
+  const section = (await startTurn(threads)).t3_agent!;
+  assert.match(section, /3 more; run \/t3-agent ledger/);
+  assert.doesNotMatch(section, /thread t-2\b/);
+  assert.match(section, /thread t-7\b/);
+});
+
 test("both boundaries append to earlier entries and preserve an earlier continuation", async () => {
   const f = fixture(T3);
   await f.emit("session_start");

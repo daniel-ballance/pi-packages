@@ -76,8 +76,16 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
   apply("unwatch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: "{}" }]);
   apply("t3_preview_close", { tabId: "tab-1" }, [{ type: "text", text: "{}" }]);
   assert.deepEqual(ledger.open().map(handle => handle.kind), ["thread"]);
-  assert.equal(ledger.forget("all"), 1);
+  assert.deepEqual(ledger.forget("all"), [{ kind: "thread", id: "t-1", open: false }]);
   assert.equal(ledger.render(), undefined);
+});
+
+test("closing a handle discards its details before an id is reused", () => {
+  const ledger = new Ledger();
+  ledger.apply({ kind: "schedule", id: "s", open: true, title: "Obsolete title" });
+  ledger.apply({ kind: "schedule", id: "s", open: false });
+  ledger.apply({ kind: "schedule", id: "s", open: true });
+  assert.doesNotMatch(ledger.render()!, /Obsolete/);
 });
 
 test("a running delegate stays open until its result is read or it is cancelled", () => {

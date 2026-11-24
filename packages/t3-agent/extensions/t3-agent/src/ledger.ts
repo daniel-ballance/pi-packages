@@ -213,56 +213,62 @@ export class Ledger {
   apply(update: Handle): void {
     const key = `${update.kind}:${scopedId(update)}`;
     const previous = this.handles.get(key);
-    const next = { ...previous, ...update };
-    // Re-insert so iteration order is most recent last.
+    // Re-insert open receipts so iteration order is most recent last. Closed IDs need no cache.
     this.handles.delete(key);
-    this.handles.set(key, next);
+    if (update.open) this.handles.set(key, { ...previous, ...update });
   }
 
   clear(): void {
     this.handles.clear();
   }
 
-  all(): Handle[] {
-    return [...this.handles.values()];
-  }
-
   open(kind?: HandleKind): Handle[] {
-    return this.all().filter(handle => handle.open && (kind === undefined || handle.kind === kind));
+    return [...this.handles.values()].filter(handle => kind === undefined || handle.kind === kind);
   }
 
-  /** Close one handle by id, or every handle with `all`. Returns how many closed. */
-  forget(id: string): number {
-    let count = 0;
-    for (const handle of this.handles.values()) {
-      if (handle.open && (id === "all" || handle.id === id)) {
-        handle.open = false;
-        count++;
-      }
-    }
-    return count;
+  /** Drop matching handles locally; the caller persists just their closing receipts. */
+  forget(target: string): Handle[] {
+    const closing = this.open().filter(handle => target === "all" || scopedId(handle) === target)
+      .map(({ kind, id, hostId }) => ({ kind, id, ...(hostId && { hostId }), open: false }));
+    for (const update of closing) this.apply(update);
+    return closing;
   }
 
   /** Compact text for the system prompt, or undefined when nothing is open. */
   render(): string | undefined {
+    const open = this.open();
     const threads = this.open("thread").slice(-MAX_THREADS);
-    const lines = [
-      ...this.open("delegate").map(handle => `- delegate${quote(handle.title)} taskId=${handle.id}${part("status", handle.status)}${handle.link ? ` link ${handle.link}` : ""}`),
-      ...this.open("schedule").map(handle => `- schedule${quote(handle.title)} scheduledTaskId=${handle.id}${part("status", handle.status)}`),
-      ...this.open("pr").map(handle => `- watching PR ${handle.id}`),
-      ...this.open("preview").map(handle => `- preview tab tabId=${handle.id}`),
-      ...this.open("device").map(handle => `- device deviceId=${handle.id}${handle.hostId ? ` on hostId=${handle.hostId}` : ""}`),
-      ...threads.map(handle => `- thread${quote(handle.title)} ${handle.link ?? handle.id}`),
-    ];
-    if (lines.length === 0) return undefined;
-    const shown = lines.slice(0, MAX_LINES);
-    if (lines.length > shown.length) shown.push(`- … ${lines.length - shown.length} more; run /t3-agent ledger`);
-    return shown.join("\n");
+    const shown = [...open.filter(handle => handle.kind !== "thread"), ...threads].slice(0, MAX_LINES).map(handleLine);
+    const omitted = open.length - shown.length;
+    if (omitted) shown.push(`- … ${omitted} more; run /t3-agent ledger`);
+    return shown.join("\n") || undefined;
+  }
+
+  /** Human listing: page the output, not the underlying set of handles. */
+  pages(): string[] {
+    const open = this.open();
+    const pages: string[] = [];
+    for (let i = 0; i < open.length; i += MAX_LINES) {
+      const header = open.length > MAX_LINES ? `T3 handles (${1 + i / MAX_LINES}/${Math.ceil(open.length / MAX_LINES)})\n` : "";
+      pages.push(header + open.slice(i, i + MAX_LINES).map(handleLine).join("\n"));
+    }
+    return pages;
   }
 }
 
-const quote = (title: string | undefined) => title ? ` "${title.replaceAll("\"", "'")}"` : "";
-const part = (label: string, value: string | undefined) => value ? `, ${label} ${value}` : "";
+function handleLine(handle: Handle): string {
+  const { kind, title, id, status, link, hostId } = handle;
+  const label = title ? ` "${title}"` : "";
+  const state = status ? `, status ${status}` : "";
+  switch (kind) {
+    case "delegate": return `- delegate${label} taskId=${id}${state}${link ? ` link ${link}` : ""}`;
+    case "schedule": return `- schedule${label} scheduledTaskId=${id}${state}`;
+    case "pr": return `- watching PR ${id}`;
+    case "preview": return `- preview tab tabId=${id}`;
+    case "device": return `- device deviceId=${id}${hostId ? ` on hostId=${hostId}` : ""}`;
+    case "thread": return `- thread${label} ${link ?? id}`;
+  }
+}
 
 /** Rebuild from the custom entries on the current branch. */
 export function rebuild(ledger: Ledger, entries: ReadonlyArray<{ type: string; customType?: string; data?: unknown }>): void {

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_CONFIG, LOADOUTS, readConfig, type Config, type Loadout } from "./config.ts";
 import { detectHost } from "./host.ts";
-import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, scopedId, trackRunTab, type Handle } from "./ledger.ts";
+import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, trackRunTab, type Handle } from "./ledger.ts";
 import { desiredTools, nextActive } from "./loadout.ts";
 import { buildSection, SECTION } from "./prompt.ts";
 import { modeLabel, runtimeMode, t3ToolName, T3_PREFIX, type Environment } from "./runtime.ts";
@@ -190,24 +190,20 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
         return;
       }
       if (verb === "forget") {
-        const target = value ?? "";
-        const closing = ledger.open().filter(handle => target === "all" || scopedId(handle) === target);
+        const closing = ledger.forget(value ?? "");
         if (closing.length === 0) {
           ctx.ui.notify("Usage: /t3-agent forget <id|all>. Nothing open matched.", "warning");
           return;
         }
-        for (const handle of closing) {
-          const close = { kind: handle.kind, id: handle.id, ...(handle.hostId && { hostId: handle.hostId }), open: false };
-          ledger.apply(close);
-          pi.appendEntry(ENTRY_TYPE, close);
-        }
+        for (const close of closing) pi.appendEntry(ENTRY_TYPE, close);
         applyLoadout();
         refreshStatus(ctx);
         ctx.ui.notify(`Forgot ${closing.length} T3 handle${closing.length === 1 ? "" : "s"}. This closes nothing in T3.`, "info");
         return;
       }
       if (verb === "ledger") {
-        ctx.ui.notify(ledger.render() ?? "No open T3 handles in this session.", "info");
+        const pages = ledger.pages();
+        for (const page of pages.length ? pages : ["No open T3 handles in this session."]) ctx.ui.notify(page, "info");
         return;
       }
       if (verb !== "status") {
