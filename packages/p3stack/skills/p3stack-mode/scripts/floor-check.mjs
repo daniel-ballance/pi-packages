@@ -88,14 +88,19 @@ const NUMBER = /-?\d+(?:\.\d+)?/g;
 const shape = text => text.replace(NUMBER, "#").replace(/\s+/g, "").replace(/,(?=$|[}\]])/g, "");
 
 // Only words/operators leading up to this number can set its direction.
-function thresholds(text) {
-  let start = 0;
+function thresholds(text, eslint) {
+  let start = 0, arrayKey = "";
+  const namedDirection = key => MAXIMUM.test(key) ? "max" : MINIMUM.test(key) ? "min" : undefined;
   return [...text.matchAll(NUMBER)].map(match => {
-    const clause = text.slice(start, match.index).split(/[|,;]/).at(-1);
+    const prefix = text.slice(start, match.index);
+    // A lint rule's options inherit its key across the comma after the severity.
+    if (prefix.includes("]")) arrayKey = "";
+    if (eslint && prefix.includes("[")) arrayKey = prefix.match(/(?:^|[^\w-])([\w-]+)["']?\s*:\s*\[[^\[\]]*$/)?.[1] ?? arrayKey;
+    const clause = prefix.split(/[|,;]/).at(-1);
     start = match.index + match[0].length;
     const op = clause.match(/(?:>=|≥|<=|≤)\s*$/)?.[0].trim();
     const direction = op ? (/^[>≥]/.test(op) ? "min" : "max")
-      : MAXIMUM.test(clause) ? "max" : MINIMUM.test(clause) ? "min" : undefined;
+      : namedDirection(clause) ?? namedDirection(arrayKey);
     return { value: Number(match[0]), direction };
   });
 }
@@ -129,7 +134,7 @@ function checkThresholds(path, hunk, isConstraints, report) {
       report("weakened-threshold", path, old.line, `removed setting: ${old.text.trim()}`, "");
       continue;
     }
-    const before = thresholds(old.text);
+    const before = thresholds(old.text, /eslint/.test(path));
     if (!old.text.trim() || (!isConstraints && !before.some(n => n.direction))) continue;
     const next = added.get(shape(old.text))?.shift();
     if (!next) {
