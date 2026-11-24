@@ -1,5 +1,7 @@
 # Pi 0.99.2: managed built-ins (design before implementation)
 
+Historical proposal. [Managed Pi built-ins](../skills/subagents/reference/builtins.md) is the current contract.
+
 ## Scope
 
 Use Pi's built-in codemode, tool-search and MCP implementations. Do not extend or remove `packages/mcp-client` in this change. No personal policy edits, paid providers or real credentials. Initially pushes were excluded; the user subsequently authorized completion, verification, push, merge to main and local cleanup. Child policies are capability controls inside cooperative Pi processes, **not a sandbox**.

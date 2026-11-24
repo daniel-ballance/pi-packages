@@ -24,7 +24,7 @@ Infer the need from the message and the conversation. A named situation, such as
 
 Check the state that changes the answer, and mention it only when it does:
 
-- No role defaults file (`~/.pi/agent/p3stack.json` or a trusted `.pi/p3stack.json`) means `/skill:setup-pstack` hasn't run for this user, so every role uses its default model.
+- Without a valid [role defaults file](../poteto-mode/references/host-capabilities.md#models-and-role-defaults), p3stack resolves each skill's model hint against the available catalog.
 - No `verify-*` skill or other app harness in the project means agents have no scripted way to drive the app. Mention `/skill:create-verification-skill` when the question is about proving a change works.
 - No formal verification skill in the project means no property is checked past what tests reach. Mention `/skill:create-formal-verification-skill` when the question is about a race, an invariant, or another case tests rarely hit. When one exists and the code it covers changed after the commit it records as last in sync, mention `/skill:maintain-formal-verification-skill` if the question touches that code.
 
@@ -36,7 +36,7 @@ When the role defaults file is missing and it matters, ask whether the user want
 ## Get set up
 
 1. The collection installs p3stack with `subagents` and `todo`. To install p3stack alone, run `pi install` with its path or git URL, then `/reload`.
-2. Run [`/skill:setup-pstack`](../setup-pstack/SKILL.md). It asks for a thinking budget, maps a model to each role, and writes `~/.pi/agent/p3stack.json`. Skills read it on their next delegation. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
+2. Run [`/skill:setup-pstack`](../setup-pstack/SKILL.md). It asks for a thinking budget and writes your choices to the [role defaults file](../poteto-mode/references/host-capabilities.md#models-and-role-defaults). Skills use them on their next delegation. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
 3. Type `/p3stack on`, then send a goal and a check that can pass or fail.
 
 Pi can select model-visible skills from the request even with the router off. Use `/skill:<name>` to request any installed skill explicitly. The [README](../../README.md) has the details, and upstream's [guide page 1](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/01-setup.md) explains the ideas (written for Cursor). Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).

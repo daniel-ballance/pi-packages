@@ -165,10 +165,11 @@ identifies T3 by its nonempty `T3_MCP_URL`.
 _Avoid_: mode (Pi's `--mode rpc` is a transport; T3 also runs Pi over RPC), platform
 
 **Contract**:
-The capability a skill asks for, such as delegating or asking the human. The
-[host map](packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md)
-describes how to use it on each host.
+The capability a skill asks for, such as delegating or asking the human.
 _Avoid_: interface, API
+
+**Host map**:
+The [shared capability reference](packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md) and its two host-specific files. A skill reads the shared entry and follows only its own host's link for the operation or fallback.
 
 **Backend**:
 The host-native tool that satisfies a Contract on one Host, such as `subagent_spawn`
@@ -177,57 +178,40 @@ backend on one host.
 _Avoid_: adapter, driver, provider (Pi uses that word for model providers)
 
 **Duplicated primitive**:
-A package tool whose capability T3 supplies. For example, todo uses `deferred`
-exposure under T3 if it finds a counterpart: still callable, but absent from the
-prompt. Subagents is a separate delegation system and registers no tools under T3.
+A package tool whose capability T3 also supplies. Native subagents registers no delegation tools under T3, whereas `todo` stays direct on both hosts.
 _Avoid_: hidden, disabled (both mean unreachable, which deferred is not)
 
 **Loadout**:
-The set of T3 tools t3-agent declares to the model beyond the three the bridge
-declares (`lean`, `standard` or `full`), plus the tools its open Handles make
-relevant. Declaring a tool activates one the bridge registered `deferred`; it does
-not change its exposure.
+The tools t3-agent activates for a session, based on the chosen preset and open Handles. It tracks its own additions separately from the bridge's active tools.
 _Avoid_: toolset, profile
 
 **Handle**:
-A T3 object a session created and must still act on or clean up: a delegated task,
-a schedule, a watched pull request, a launched thread, a preview tab, a device.
-t3-agent records Handles from T3 tool results so their ids survive compaction.
+A T3 object identified in a tool result, such as a delegated task, schedule, watched pull request, thread, preview tab, or device. A recorded tab is not necessarily the caller's to close.
 _Avoid_: resource (Pi uses that word for skills, prompts and themes), task (one kind of Handle)
 
 **Role default**:
-The model, with thinking level, that one p3stack role uses unless the skill or the
-human says otherwise, kept in the role file `p3stack.json`. A hint for choosing a Composition's
-model, not a Composition: tools, resources and directories are still chosen per
-Child, and the Allowlist still bounds the model.
+The model and thinking level requested for a p3stack role, from a role file or a built-in hint. It guides model selection, not the whole Composition, and remains subject to the host's catalog.
 _Avoid_: profile, preset (see Composition)
 
 ### Routing
 
 **Route**:
-A row in `registry/routes.json` that tells the router where to start after poteto-mode,
-given the request and Grant.
+A row that matches the requested deliverable and Grant to a first read or an inline action.
 _Avoid_: mapping, dispatch
 
 **Chain**:
-A row in `registry/chains.json` that tells the model what to read at an anchor
-in a playbook. The generator renders this instruction in a table. It does not
-edit that playbook or execute the read.
+A conditional read that the generator inserts before or after a named playbook step. The model follows the **p3stack only** instruction when its condition holds.
 _Avoid_: hook, step (the playbook's own numbered items are steps)
 
 **Grant**:
-Who decides covered product choices: the human under `default`, or the agent
-under `full-autonomy`. The session branch saves the grant. A user can raise it
-explicitly for one task. Operator gates and irreversible actions pause under both.
-While the mode is on, the [brief hook](docs/adr/0006-mechanical-procedures-become-tools.md)
-passes the saved grant on a parent's spawn or delegate call, not to workflow workers
-or children of children.
+Who decides covered product choices: the human under `default`, or the agent under `full-autonomy`, with operator gates intact. An explicit request can raise the Grant for one task without changing the session branch's saved Grant.
 _Avoid_: mode (the mode is on or off), autonomy level
 
+**Brief**:
+A parent's instructions for one delegated assignment, including scope, limits, and the evidence to return. The [brief header](docs/adr/0006-mechanical-procedures-become-tools.md) carries the saved Grant; the parent states any task-only increase in the brief itself.
+
 **House policy**:
-One of the router's numbered rules that settles a conflict between routed skills
-(authority, questions, validation, migration, testing, review independence,
-context, style). It wins over any routed skill.
+One of the router's numbered rules that takes precedence over a routed skill, for example the rule that a review ends at a report.
 
 **Floor**:
 The part of the quality bar that holds with no setup and under every Grant: no new
@@ -236,9 +220,11 @@ thresholds. `floor-check.mjs` checks it; `floor-ok: <reason>` explains a line.
 _Avoid_: quality gate (that is a project's whole `CONSTRAINTS.md` bar)
 
 **Ledger**:
-The append-only recovery file for a run that delegates more than one unit of
-work. It records dispatches, completions, rulings, and parked findings.
+The [execution ledger](packages/p3stack/skills/p3stack-mode/references/execution-ledger.md) is the coordinator's private, append-only record of attempts, checkouts, commit IDs, evidence, and pending gates for a long-running unit or multi-unit plan. The T3 handle ledger instead records the last observed state of Handles on a session branch.
 _Avoid_: decision trail (that is the audit record `show-me-your-work` keeps)
+
+**Description lint**:
+An offline vocabulary check that ranks example prompts against the names and descriptions of model-invoked skills. A passing rank is not an observed routing decision.
 
 **Interactive prototype**:
 A prototype a human tries and judges: a single shareable HTML file around a
