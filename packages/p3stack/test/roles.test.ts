@@ -36,9 +36,10 @@ function lookup(t: TestContext, host: "cli" | "t3", { models = [] as string[], t
   };
   const ctx = {
     cwd, model: parent, isProjectTrusted: () => false, modelRegistry: { getAvailable: () => [] },
-    executeTool: async (name: string) => {
+    executeTool: async (name: string, args: Record<string, unknown>) => {
       calls.push(name);
-      return { toolCall: { type: "toolCall" as const, id: "1", name, arguments: {} }, result: { content: [], structuredContent: t3, details: {} }, isError: !t3 };
+      const data = typeof t3 === "function" ? t3(args) : t3;
+      return { toolCall: { type: "toolCall" as const, id: "1", name, arguments: args }, result: { content: [], structuredContent: data, details: {} }, isError: !data };
     },
   };
   return { pi, ctx, personal, calls, resolve: (distinctFrom?: string) => liveRoles(pi, ctx, distinctFrom) };
@@ -81,6 +82,21 @@ test("T3 selects the closest advertised level below the hint and names the downg
   const { roles, problems } = await h.resolve();
   assert.deepEqual(roles["swarm workers"], target("pi", "xai/grok-4.7", "high"));
   assert.ok(problems.some(p => p.includes("grok-4.7-xhigh-fast") && p.includes("pi/xai/grok-4.7:high")));
+});
+
+test("a setup pin outside T3's short list gets an exact lookup before any family substitution", async t => {
+  const queries: unknown[] = [], id = "org/gpt-6-long", pin = `work/${id}:high`;
+  const short = { providers: [provider("work", t3Model("gpt-5", "high")), provider("personal", t3Model(id, "high"))] };
+  const h = lookup(t, "t3", { pins: { "bug-fix": pin, hillclimb: pin }, t3: (args: { search?: string }) => {
+    queries.push(args);
+    return args.search === id ? { providers: [provider("work", t3Model(id, "high"))] } : short;
+  } });
+  for (let i = 0; i < 2; i++) {
+    const { roles } = await h.resolve();
+    assert.deepEqual(roles["bug-fix"], target("work", id, "high"));
+    assert.deepEqual(roles.hillclimb, roles["bug-fix"]);
+  }
+  assert.deepEqual(queries, [{}, { search: id }]);
 });
 
 test("T3 cannot satisfy a thinking pin with unadvertised or higher effort", async t => {

@@ -134,7 +134,7 @@ function terminalCatalog(pi: CatalogApi): Catalog | undefined {
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
-function t3Selections(data: unknown): LiveCatalog {
+function t3Selections(data: unknown) {
   const catalog = record(data);
   if (!Array.isArray(catalog.providers)) throw new Error("no providers in capabilities response");
   const instances = new Set<string>();
@@ -155,24 +155,21 @@ function t3Selections(data: unknown): LiveCatalog {
       for (const level of levels) choices.push({ ...base, level, option: String(thinking!.id) });
     }
   }
-  return { choices, instances, inherited };
+  return { choices, instances, inherited, searched: new Set<string>() };
 }
 
 const CAPABILITIES = "mcp__t3-code__orchestrator_capabilities";
 
 // The extension API belongs to one loaded extension. Both the command and the
 // tool use its last unfiltered, local T3 catalog; commands cannot execute tools.
-const t3Catalogs = new WeakMap<CatalogApi, LiveCatalog>();
+const t3Catalogs = new WeakMap<CatalogApi, ReturnType<typeof t3Selections>>();
 
-function rememberCatalog(pi: CatalogApi, result: { structuredContent?: unknown; content: unknown; isError?: boolean }) {
-  t3Catalogs.delete(pi);
+function parseCatalog(result: { structuredContent?: unknown; content: unknown; isError?: boolean }) {
   const payload = record(result.structuredContent);
   if (result.isError || payload.isError) throw new Error("capabilities call failed");
   const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
   const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
-  const catalog = t3Selections(data);
-  t3Catalogs.set(pi, catalog);
-  return catalog;
+  return t3Selections(data);
 }
 
 export function setupCatalog(pi: CatalogApi): string[] | undefined {
@@ -182,13 +179,31 @@ export function setupCatalog(pi: CatalogApi): string[] | undefined {
   return catalog.choices.filter(s => s.level).map(identity);
 }
 
-async function selections(pi: CatalogApi, ctx: RoleContext, signal?: AbortSignal): Promise<LiveCatalog> {
+async function selections(pi: CatalogApi, ctx: RoleContext, pins: string[], signal?: AbortSignal): Promise<LiveCatalog> {
   if (detectHost() === "t3") {
-    const cached = t3Catalogs.get(pi);
-    if (cached) return cached;
-    const { result, isError } = await ctx.executeTool(CAPABILITIES, {}, { signal });
-    if (isError) throw new Error("capabilities call failed");
-    return rememberCatalog(pi, result);
+    const query = async (args: { search?: string }) => {
+      const { result, isError } = await ctx.executeTool(CAPABILITIES, args, { signal });
+      if (isError) throw new Error("capabilities call failed");
+      return parseCatalog(result);
+    };
+    const catalog = t3Catalogs.get(pi) ?? await query({});
+    for (const pin of pins) {
+      const { name } = hintParts(pin), slash = name.indexOf("/");
+      if (slash < 0 || catalog.choices.some(s => nameOf(s) === name || (!catalog.instances.has(name.slice(0, slash)) && s.model === name))) continue;
+      // A short listing isn't a refusal. Search once per missing pinned model,
+      // retaining only exact model ids, not unrelated hits from the search.
+      const search = name.slice(slash + 1);
+      if (catalog.searched.has(search)) continue;
+      const extra = await query({ search });
+      catalog.searched.add(search);
+      for (const id of extra.instances) catalog.instances.add(id);
+      const known = new Set(catalog.choices.map(identity));
+      for (const s of extra.choices) {
+        if ((s.model === search || s.model.endsWith(`/${search}`)) && !known.has(identity(s))) catalog.choices.push(s);
+      }
+    }
+    t3Catalogs.set(pi, catalog);
+    return catalog;
   }
   const catalog = terminalCatalog(pi);
   const identities = catalog?.models ?? ctx.modelRegistry.getAvailable().flatMap(model => supportedLevels(model).map(level => `${model.provider}/${model.id}:${level}`));
@@ -258,8 +273,10 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
   const roles: Record<string, string | Target | null | (string | Target | null)[]> = {};
   const problems = [...defaults.problems];
   let catalog: LiveCatalog;
-  try { catalog = await selections(pi, ctx, signal); }
+  const pins = Object.values(defaults.roles).flatMap(r => r.fromFile ? r.value : []);
+  try { catalog = await selections(pi, ctx, pins, signal); }
   catch (error) {
+    t3Catalogs.delete(pi);
     const source = detectHost() === "t3" ? "T3 catalog" : "catalog";
     problems.push(`${source} unavailable (${(error as Error).message}). Blocked roles: ${Object.keys(defaults.roles).join("; ")}.`);
     return { source: defaults.source, budget: defaults.budget, roles, problems };
@@ -315,7 +332,7 @@ export function registerRoles(pi: Pi) {
     for (const event of ["session_start", "session_tree", "model_select"]) pi.on(event, clear);
     pi.on("tool_result", event => {
       if (event.toolName === CAPABILITIES && !Object.keys(record(event.input)).length) {
-        try { rememberCatalog(pi, event); } catch { clear(); }
+        try { t3Catalogs.set(pi, parseCatalog(event)); } catch { clear(); }
       } else if (event.toolName === "mcp__t3-code__delegate_task" && (event.isError || record(event.structuredContent).isError)) clear();
     });
   }
