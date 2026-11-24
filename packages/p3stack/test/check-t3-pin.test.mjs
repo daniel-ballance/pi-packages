@@ -23,17 +23,17 @@ function fixture(t) {
     writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
   };
   const bridge = "export const fixtureBridge = true;\n";
-  const pin = { version: "fixture-version", bridgeSha256: hash(bridge), statePaths, directTools: tools, beforeAgentStartReturn: { systemPrompt: "string" } };
-  const hostMap = tools.map(name => `\`mcp__t3-code__${name}\``).join("\n") + "\n`mcp__t3-code__html_preview`\n`mcp__t3-code__preview_*`\n";
+  const pin = { version: "fixture-version", bridgeSha256: hash(bridge), statePaths, directTools: tools, optionalTools: ["watch_pull_request"], beforeAgentStartReturn: { systemPrompt: "string" } };
+  const hostMap = [...tools, ...pin.optionalTools, "html_preview"].map(name => `\`mcp__t3-code__${name}\``).join("\n");
   write("rules/t3-pin.json", pin);
   write("home/.t3/runtime/service-state.json", { activeVersion: "fixture-version" });
   write("home/.t3/caches/pi-t3-mcp-extension.ts", bridge);
   write("empty-home/.keep", "");
-  write("extra/skills/poteto-mode/references/host-capabilities.md", hostMap);
+  write("extra/skills/poteto-mode/references/host-t3.md", hostMap);
   const doctor = {
     tools: [...tools.map(name => ({ name: `mcp__t3-code__${name}`, exposure: "direct" })), { name: "mcp__t3-code__html_preview", exposure: "deferred" }],
     extension: { path: "/fixture/bridge.ts", sha256: hash(bridge) },
-    claudeSubscriptionBeforeBridge: false,
+    claudeSubscriptionFiles: [],
     problems: [],
   };
   write("doctor.json", doctor);
@@ -62,11 +62,13 @@ test("default is independent of installed release and bridge bytes", t => {
 });
 
 for (const [name, mutate, diagnostic] of [
-  ["missing direct tool in the map", f => f.write("extra/skills/poteto-mode/references/host-capabilities.md", ""), /host map.*required direct tool/],
+  ["missing direct tool in the map", f => f.write("extra/skills/poteto-mode/references/host-t3.md", ""), /host map.*required direct tool/],
   ["malformed JSON", f => f.write("rules/t3-pin.json", "not json"), /t3-pin\.json could not be read/],
   ["invalid provenance hash", f => f.write("rules/t3-pin.json", { ...f.pin, bridgeSha256: "invalid" }), /Invalid rules/],
   ["empty direct tools", f => f.write("rules/t3-pin.json", { ...f.pin, directTools: [] }), /Invalid rules/],
   ["duplicate direct tools", f => f.write("rules/t3-pin.json", { ...f.pin, directTools: ["task_status", "task_status"] }), /Invalid rules/],
+  ["required tool also marked optional", f => f.write("rules/t3-pin.json", { ...f.pin, optionalTools: ["task_status"] }), /Invalid rules/],
+  ["undocumented optional tool", f => f.write("rules/t3-pin.json", { ...f.pin, optionalTools: ["missing_tool"] }), /host map.*missing_tool/],
   ["invalid state layout", f => f.write("rules/t3-pin.json", { ...f.pin, statePaths: [{}] }), /Invalid rules/],
   ["incompatible prompt return", f => f.write("rules/t3-pin.json", { ...f.pin, beforeAgentStartReturn: { systemPrompt: "object" } }), /Unsupported beforeAgentStartReturn/],
 ]) {
@@ -132,6 +134,12 @@ test("installed diagnostics support legacy state and prefer runtime state when b
   assert.ok(legacy.stdout.includes(join(f.root, "home/.t3/userdata/server-runtime.json")));
 });
 
+test("doctor accepts a thread without the optional PR watch tool", t => {
+  const f = fixture(t);
+  const result = f.run(["--doctor", join(f.root, "doctor.json")]);
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("doctor verifies required capabilities independently of release, hash, and additive tools", t => {
   const f = fixture(t);
   f.doctor.extension.sha256 = "0".repeat(64);
@@ -178,9 +186,9 @@ for (const [name, mutate, diagnostic] of [
   });
 }
 
-test("doctor rejects a terminal dump and malformed input", t => {
+test("doctor rejects a dump without the bridge and malformed input", t => {
   const f = fixture(t);
-  for (const dump of [{ tools: [], extension: { path: null, sha256: null }, claudeSubscriptionBeforeBridge: false, problems: ["T3_PI_MCP_EXTENSION_PATH is not set"] }, {}, { tools: [null], extension: null }, "not json"]) {
+  for (const dump of [{ tools: [], extension: { path: null, sha256: null }, claudeSubscriptionFiles: [], problems: ["T3_PI_MCP_EXTENSION_PATH is not set"] }, {}, { tools: [null], extension: null }, "not json"]) {
     f.write("doctor.json", dump);
     const result = f.run(["--doctor", join(f.root, "doctor.json")]);
     assert.equal(result.status, 1, result.stdout);

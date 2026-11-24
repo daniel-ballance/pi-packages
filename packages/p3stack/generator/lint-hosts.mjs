@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const hostMap = "skills/poteto-mode/references/host-capabilities.md";
+const hostMap = host => `skills/poteto-mode/references/host-${host}.md`;
 // Match tool identifiers (including the codemode spelling), not substrings of
 // unrelated variable names. T3 prose sometimes uses the unqualified name.
 const hostTool = new RegExp(`\\b(?:${[
@@ -14,6 +14,8 @@ const hostTool = new RegExp(`\\b(?:${[
   "html_preview|html_render|preview_[\\w*]+|device_(?:open|list|screenshot|close)",
 ].join("|")})(?!\\w)`, "g");
 
+export const hostToolNames = text => text.match(hostTool) ?? [];
+
 export function lintHosts(root, paths = [""]) {
   const problems = [];
   const visit = path => {
@@ -23,9 +25,11 @@ export function lintHosts(root, paths = [""]) {
       return;
     }
     const output = path.split("\\").join("/");
-    if (output === hostMap) return;
+    if (output === hostMap("capabilities")) return; // Names the T3 namespace for host detection.
     readFileSync(absolute, "utf8").split("\n").forEach((line, index) => {
-      for (const [name] of line.matchAll(hostTool)) problems.push(`${output}:${index + 1}: ${name}`);
+      for (const name of hostToolNames(line)) {
+        if (output !== hostMap(name.startsWith("subagent_") ? "terminal" : "t3")) problems.push(`${output}:${index + 1}: ${name}`);
+      }
     });
   };
   for (const path of paths) visit(path);
@@ -43,7 +47,7 @@ function main(args) {
     const manifest = args.length ? undefined : JSON.parse(readFileSync(join(packageDir, "rules/manifest.json"), "utf8"));
     const paths = manifest ? [...new Set(manifest.sources.flatMap(source => source.map.map(({ to }) => to.split("/")[0])))].sort() : undefined;
     const problems = lintHosts(root, paths);
-    if (problems.length) throw new Error(`Host lint failed. Keep tool names in the host map.\n${problems.join("\n")}`);
+    if (problems.length) throw new Error(`Host lint failed. Keep tool names in the matching host reference.\n${problems.join("\n")}`);
     console.log("Host lint passed.");
     return 0;
   } catch (error) {
