@@ -227,7 +227,7 @@ const hintParts = (hint: string) => {
   return { name: match?.[1] ?? hint, level: match?.[2] };
 };
 
-const KNOWN_FAMILY = /claude|grok|composer|gpt|gemini|deepseek|llama|mistral|qwen|kimi|glm|minimax/i;
+const KNOWN_FAMILY = /(?<![a-z])(?:claude|grok|composer|gpt|gemini|deepseek|llama|mistral|qwen|kimi|glm|minimax)(?![a-z])/i;
 function modelFamily(id: string): string {
   const known = id.match(KNOWN_FAMILY)?.[0].toLowerCase();
   return known === "composer" ? "grok" : known ?? id;

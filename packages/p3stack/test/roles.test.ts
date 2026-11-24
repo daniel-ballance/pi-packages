@@ -174,6 +174,15 @@ test("a panel uses distinct eligible families across seats, not just a different
   assert.ok(result.problems.some(p => p.includes("interrogate reviewers") && /distinct famil/i.test(p)));
 });
 
+test("ollama is not the llama family when T3 offers ollama/gpt-oss-120b", async t => {
+  const h = lookup(t, "t3", { t3: { providers: [provider("opencode",
+    t3Model("ollama/gpt-oss-120b", "xhigh"), t3Model("vendor/gemini-3", "high"))] } });
+  assert.deepEqual((await h.resolve("gpt")).roles["judgment and prose"], target("opencode", "vendor/gemini-3", "high"));
+  assert.equal(family("api/notllama"), "notllama");
+  assert.equal(family("api/gptish"), "gptish");
+  assert.equal(family("api/qwen2.5"), "qwen");
+});
+
 test("family checks recognise prefixed ids but never claim independence for unknown aliases", async t => {
   assert.equal(family("bedrock/us.anthropic.claude-opus-5"), "claude");
   assert.equal(family("api/internal-alias-v2:xhigh"), "internal-alias-v2");
