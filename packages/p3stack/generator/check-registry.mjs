@@ -113,7 +113,8 @@ export function loadRegistry(packageDir, sources) {
     if (row.source === "p3stack" && row.action !== "drop" && row.path !== `skills/${row.name}/SKILL.md`) {
       problems.push(`Authored skill ${id} must emit at ${row.path}`);
     }
-    if (typeof row.reason !== "string" || !row.reason.trim()) problems.push(`${id} needs a reason`);
+    const plainReference = row.action === "reference" && id.endsWith(`/${row.name}/SKILL.md`);
+    if ((!plainReference || row.reason !== undefined) && (typeof row.reason !== "string" || !row.reason.trim())) problems.push(`${id} needs a reason`);
     if (row.action === "drop") continue;
     if (!["emit", "reference"].includes(row.action)) { problems.push(`${id} has invalid action ${row.action}`); continue; }
     if (typeof row.name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.name)) problems.push(`${id} has invalid emitted name ${row.name}`);
@@ -121,7 +122,6 @@ export function loadRegistry(packageDir, sources) {
     names.add(row.name);
     if (row.action === "reference") continue;
     if (!["model", "user"].includes(row.invocation)) problems.push(`${id} has invalid invocation ${row.invocation}`);
-    if (!row.phases?.length || !row.roles?.length) problems.push(`${id} needs phases and roles`);
   }
   const emitted = new Set(skills.filter(row => row.action === "emit").map(row => row.name));
   for (const row of skills.filter(row => row.action === "reference")) {

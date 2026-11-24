@@ -242,6 +242,13 @@ test("playbooks and standalone skills resolve roles through the same Subagents s
   }
 });
 
+test("bug diagnosis ends at a confirmed mechanism; only design risk calls for an architect", () => {
+  const bug = playbook("bug-fix"), diagnosis = bug.match(/^2\. (.*)$/m)[1], plan = bug.match(/^3\. (.*)$/m)[1];
+  assert.match(diagnosis, /confirm.*mechanism.*runtime evidence/i);
+  assert.doesNotMatch(diagnosis, /(?:architect|interrogate).*fan-out/i);
+  assert.match(plan, /if .*design risk.*`architect` first/i);
+});
+
 test("recall gives each child scoped history IDs, not a second discovery algorithm", () => {
   const recall = skill("recall");
   assert.match(recall, /Session history[^\n]*host-capabilities\.md/);
@@ -270,6 +277,15 @@ for (const name of reviews) {
   });
 }
 
+test("the correctness pass uses the parent's PR discussion only after its independent audit", () => {
+  const rubric = read("skills/dyl-review/references/thermo-nuclear-review.md");
+  const recipe = read("agents/thermo-nuclear-review-subagent.md");
+  assert.doesNotMatch(rubric, /\b(?:gh|glab)\b/);
+  assert.match(rubric, /\]\(\.\.\/\.\.\/agents\/thermo-nuclear-review-subagent\.md#work\)/);
+  assert.match(recipe, /After the audit[^\n]*medium-or-higher[^\n]*discussion supplied by the parent/i);
+  assert.match(recipe, /unavailable[^\n]*return the independent findings/i);
+});
+
 test("deep review fetches the PR head even when the base repository has a branch of the same name", t => {
   const { repo, wt, git } = auditFixture(t);
   const base = git("-C", repo, "rev-parse", "HEAD");
@@ -289,6 +305,13 @@ test("deep review fetches the PR head even when the base repository has a branch
   assert.match(parent, /headRefOid/);
   assert.match(parent, /FETCH_HEAD[^\n]*stop/i);
   assert.match(parent, /git diff <base-oid>\.\.\.<head-oid>/);
+});
+
+test("dyl-review selects its reviewers through the shared review stance", () => {
+  const parent = skill("dyl-review").split("## Main-thread rules")[1].split("## Dylan-lens worker")[0];
+  assert.doesNotMatch(parent, /inherit(?:ance)?\b|\*\*Parent model\*\*/i);
+  assert.match(parent, /\]\(\.\.\/p3stack-mode\/references\/review-stance\.md\)/);
+  assert.match(parent, /\]\(\.\.\/poteto-mode\/references\/host-capabilities\.md#models-and-role-defaults\)/);
 });
 
 test("dyl-review keeps code-review coordination and Git/forge work in the parent", () => {

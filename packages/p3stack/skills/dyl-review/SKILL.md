@@ -35,7 +35,7 @@ Deep when the invoking skill or the human asks for it (deep / thorough / thermo)
    - Deep only: give one read-only child the [thermo-nuclear-review recipe](../../agents/thermo-nuclear-review-subagent.md) and [rubric](references/thermo-nuclear-review.md) and another the [thermo-nuclear-code-quality-review recipe](../../agents/thermo-nuclear-code-quality-review-subagent.md) and [rubric](references/thermo-nuclear-code-quality-review.md). Resolve these installed files in the parent.
    - In deep review the parent reads [code-review](../code-review/SKILL.md) and starts its Standards and Spec passes as direct children. Give each its axis brief, scoped manifest and read-only access to the reviewed checkout. Include the standards and smell baseline for Standards, and the spec for Spec; record when there is no spec.
    If you cannot delegate, apply the assigned rubrics yourself in sequence and disclose that the passes were not independent.
-3. Every worker uses auto / inherit intelligence through **Parent model** under **Delegate** in the host capabilities. Do not pin a cheap/fast model for the review judgment pass.
+3. Select reviewers per the [review stance](../p3stack-mode/references/review-stance.md). Resolve each role under [Models and role defaults](../poteto-mode/references/host-capabilities.md#models-and-role-defaults).
 4. Keep the main thread thin: launch, wait, synthesize. Nothing user-facing until every worker finishes.
 5. On a re-review (same PR, new tip), tell the Dylan-lens worker and the thermos subagents what changed since the last pass and which earlier asks were deliberately skipped, with the reason, so they re-judge instead of repeating. Give the Standards and Spec reviewers that context too.
 
