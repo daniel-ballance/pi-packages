@@ -1,14 +1,14 @@
 # p3stack review backlog
 
-Open findings from the November 2026 review of p3stack and t3-agent. Each item stands on its own. The parenthesised references name sections of the seven review reports, which are not in the repository.
+What is left from the November 2026 review of p3stack and t3-agent. The review's other findings are fixed.
 
 ## Needs the owner's decision
 
-- Decide when a route actually needs poteto-mode. Only the small-task row skips its full read today; making the read conditional elsewhere would save context but change which rules an agent sees. (router.md §2)
-- Trial shorter descriptions for model-invoked skills, and decide which still need to be advertised. Check discovery with routing off before making a skill explicit-only. (catalog.md §8)
-- Decide whether nightly maintenance should land every changed tip or report unconsumed changes without a PR. A read-only candidate classifier would separate finding a new commit from adopting it. (generator.md §5)
-- Measure searches avoided by T3's `standard` loadout against the cost of declaring its tools before choosing `lean` as a default. (t3.md §7)
-- Decide whether externally consumed or persisted data warrants a routed migration procedure. The dropped upstream skill covers consumer notice and retirement criteria that the one-wave versus expand–contract rule does not. (catalog.md §10 and “Reachability, merges and upstream admissions”)
+- Decide when a route actually needs poteto-mode. Only the small-task row skips its full read today; making the read conditional elsewhere would save context but change which rules an agent sees.
+- Trial shorter descriptions for model-invoked skills, and decide which still need to be advertised. Check discovery with routing off before making a skill explicit-only.
+- Decide whether nightly maintenance should land every changed tip or report unconsumed changes without a PR. A read-only candidate classifier would separate finding a new commit from adopting it.
+- Measure searches avoided by T3's `standard` loadout against the cost of declaring its tools before choosing `lean` as a default.
+- Decide whether externally consumed or persisted data warrants a routed migration procedure. The dropped upstream skill covers consumer notice and retirement criteria that the one-wave versus expand–contract rule does not.
 
 ## Decided
 
@@ -16,63 +16,32 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 - With routing off, deep-module prompts no longer select a skill; `tdd`, `architect` and `improve-codebase-architecture` link the `codebase-design` reference.
 - Multi-PR plans keep their ten mandatory live verification lanes per PR. The owner chose to leave the template and `check-plan.mjs` as they are (2026-11-24).
 - The live evals ran on this branch on 2026-11-24 (results in [the eval decision log](evals/README.md#decision-log)). Still unmeasured: routing on the parent models the owner uses day to day, and anything under T3 Code. The runs used `gpt-6-luna` at low and medium thinking in a terminal.
+- A supervised T3 delegation is not capped at the 4,000 characters the approval dialog shows. The brief is sent whole; a call longer than the preview must put `task` last, so the other arguments stay in view (2026-11-24).
+- `ask_user` has no deadline unless `P3STACK_ASK_TIMEOUT_MS` is set. T3 holds a question open until the person answers (2026-11-24).
+- A parent declares seven subagent tools: catalog, spawn, send, read, wait, close and respond. The others are found by tool search or activated through `subagent_catalog` (2026-11-24).
+- `extra/` and `authored/` stay separate. `authored/` holds owned skills, which the registry and the model-name lint check; `extra/` holds resources added to upstream skills.
+- Terminal sessions start with `tool_search` on (`defaultTools` in `global/settings.json`). T3's bridge already turned it on for its sessions.
 
-## Larger changes worth doing
+## Measured and left
 
-- Use the SDK's extension, command, and tool types at p3stack's boundaries instead of the local `Pi` and `Context` types. Commands cannot execute tools; the current factory type does not catch that mistake. (extension.md §8)
-- Prepare a T3 brief before approval so the human sees the text the child receives. Native workflow and nested dispatch bypass the root hook; pass scope and grant there explicitly if those paths need the same protection. (t3.md §3; extension.md §3; subagents.md §8)
-- Give standalone skills the same stop points as routed calls. `architect` proceeds to implementation, `tdd` requires user-confirmed seams, and `grilling` requires confirmation even when the caller asked for design only or no interview. (catalog.md §6; router.md §8)
-- Reconcile `pr`, Opening a PR, and `implement-spec` on the PR body and on draft versus ready. A draft integration PR and a ready-to-review change are different deliverables. (catalog.md §6; router.md §10)
-- Separate durable tracker acceptance criteria from revision-specific dispatch instructions throughout triage. Its issue brief still asks for signatures that can be stale by the time a child starts. (catalog.md §6)
-- Give recovery, orchestration notes, and `show-me-your-work` one source for decisions and evidence. The execution ledger now identifies the run and reviewed commit, but the other records still ask the parent to record the same work. (router.md §9; catalog.md §7)
-- Replace document-wide metadata rewrites such as `drop-paths` and the per-skill name rules with frontmatter edits driven by the registry. The checker reads the header correctly, but a rewrite can still change a fenced example. (generator.md §§4, 8)
-- Own the Pi-specific setup and help text in small blocks and generate model examples from the role definitions. Preserve the upstream verification offers without maintaining a second role schema. (generator.md, “What to delete or merge” §2; router.md §10)
-- Stage resource lint for all shipped skills, then remove redundant checks only where coverage matches. The staged `resources` list currently covers Pocock; the package-wide skill lint runs after generation. (generator.md, “What to delete or merge” §5)
-- Check concrete script operands, code-span paths, and generated indexes from a consumer's installed skill directory. The packlist test checks Markdown links, not whether a command in a playbook resolves. (catalog.md §11; generator.md §3)
-- Make the remaining behavior checks exercise the product: run above- and below-threshold coverage with the pinned Vitest, reproduce the skipped empty-list case on a grader copy, and check refund arithmetic in the prototype (successive partial approvals up to the order total). The prototype is now driven in a browser, which shows that controls change the page, not that the sums are right. (evals.md §1)
-- Add a scrubbed receipt with revision, actual model and effort, prompt identity, usage, and a reviewable artifact for each live attempt. Raw transcripts and requested model names alone are poor evidence for comparing two revisions. (evals.md §§2–3)
-- Add a human-only reconciliation path for a detached child with uncertain prompt acceptance. A retained slot prevents duplicate work but the Manager cannot confirm a dead process after restart. (subagents.md §1)
-- Separate high-frequency usage updates from durable holds, report receipts, and wake notices. The Manager still serializes archived children in synchronous `registry.json` rewrites. Measure writes before changing the store format. (subagents.md §6)
-- Move collection-wide packaging and security tests to the root and run host-neutral fixtures once. The nested subagents suite still pays twice for them; keep real loader, pnpm, and two-host runtime coverage. (subagents.md §12; evals.md §4)
-- Extract the report inbox from `manager.ts` so read, wait, and wake delivery share one place to prepare a page and acknowledge it. Preserve the saved cursors and commit acknowledgements only for returned reports. (subagents.md, “Smallest behavior-preserving refactor” §1)
-- Make advanced native management tools discoverable without declaring them all for ordinary delegation. Keep a usable path for parents without tool search, and keep the human stop controls. (subagents.md §5)
-- Scope T3 handle receipts to the observed thread and environment. A Pi branch rewind or fork can restore an old receipt without undoing the T3 action; reconcile on request, not by polling. (t3.md §6)
-- Describe the T3 contract with explicit required, direct, and optional operations rather than inferring required names from backticks. Keep live behavior checks separate from fingerprints and the doctor's inventory. (generator.md §9; t3.md §11)
+Each measurement used a scripted stand-in model. It shows what one reminder costs, not how often a real model triggers it.
 
-## Small follow-ups
+- Todo settle reminders: 3 extra provider calls in 13 across three runs. Two reconciled a finished file write and one was redundant. The safeguard stays.
+- The preview-tab reminder: 3 extra provider calls across four cases. One corrected a missed close and one was redundant. The safeguard stays.
+- The stock footer: Pi 1.5.2 has no supported way to decorate it, so the copied renderer stays. `src/footer.ts` records what was checked.
+- Held-out paraphrases select the intended skill at rank 1 in 7 of 17 cases, against 49 of 51 on the examples the descriptions were written against. The number is reported by `npm run check` and fails nothing.
 
-- Narrow the moved-reference path guard. In a moved file it stops generation on a bare directory name that matches one of the reference's own directories (`scripts/` in prose) and on a fenced example of a consumer's path with the same name. Both fail loudly and `maintain-p3stack`'s failure table has the row, so the cost is a scoped rule at the next bump that adds such text.
-- Give `tdd`'s `regression-test` reference an opening that says what the procedure is. It opens with when to use it; the upstream description has no other sentence.
-- Widen the leftover-command test's own cases to the forms the generator's check accepts, such as a removed name inside an HTML tag.
-- Pin deep external reviews to the forge's head commit rather than assuming `origin/<branch>` is the PR head. The two differ on forks. (catalog.md §1)
-- Test a design-only discussion, a task-only grant, and a correction after `/p3stack off` or compaction against the projected prompt. Old hidden messages persist; inspecting the latest section alone cannot show what the model sees. (extension.md §9; t3.md §10)
-- Check the six `/t3-*` shortcuts in the live composer as well as at runtime. A discovery process without `T3_MCP_URL` can see a different command list; this is not a confirmed UI bug. (t3.md §8)
-- Measure workspace Git reads on repeated T3 requests and refresh only facts that changed. A path under `.t3/worktrees` is not evidence of exclusive thread ownership. (t3.md §10)
-- Test unanswered RPC dialogs with a deadline distinct from user dismissal. The abort signal now works, but a client that never responds can still leave a question pending. (extension.md §7)
-- Measure the extra provider turns spent on todo and owned-tab settle reminders. Both safeguards remain; count actual unfinished work and redundant continuations before changing either. (extension.md §2; t3.md §5)
-- Look for a supported stock-footer decoration point before extending the copied renderer. Cached rendering fixes disk access, not the cost of maintaining stock footer parity. (extension.md §6)
-- Drop unconditional persona openers and repeated style or severity instructions where the caller already specifies the report. They add text without changing the evidence the reader needs. (router.md §10)
-- Check borrowed claims as well as paths. In particular, reconcile the fix-loop claim with `review-stance.md` and record the `writing-skills` baseline method at its chain row so bumps flag the real owner. (catalog.md §10)
-- Replace repeated registry admission reasons and unused phase or role annotations with specific reasons at decision points. Keep drop reasons and check for external consumers before removing fields. (generator.md §8; catalog.md §10)
-- Merge `extra/` into `authored/` if their only distinction is copy order; keep emitted paths, host lint, and the two Bun test shims intact. (generator.md, “What to delete or merge” §1)
-- Narrow the `/loop` coupling lint to invocations. Its substring match still forces an upstream compiler pass, its import, and the test adapter to use another filename. (generator.md, “What to delete or merge” §4)
-- Reuse the root verification receipt for the same commit during a bump. Keep independent post-merge and live-host checks; rerunning the same static check adds no evidence. (generator.md §5)
-- Update the eval guide to distinguish the credential source from each private attempt directory. On an invalid run, raw logs may be all the runner wrote; do not require `results.json` to diagnose it. (evals.md §2)
-- Add held-out paraphrases, owned negative examples, and an expiry for pending description cases. Report zero-score ties separately so alphabetical order cannot look like vocabulary evidence. (evals.md §6)
-- Replace assertions about exact source counts, retired files, or shell spelling with failures on bad registry or package fixtures. Those assertions make safe reorganizations expensive. (evals.md §9; subagents.md §12)
-- Keep private worktree ownership details with the saved child, not just in its spawn receipt. A lost reply should not lose the branch and base needed for recovery. (subagents.md §10)
-- Give the app-driver and formal verification generators distinct project-local skill names when the app and area coincide; both currently write `verify-<name>`. (catalog.md, “Reachability, merges and upstream admissions”)
+## Open
 
-- Replay pull request handles that older t3-agent sessions stored as `owner/repo#number` or as a self-hosted forge URL. They are dropped on replay now, so the ledger and prompt lose a watch T3 still holds. (final re-check, runtime R3)
+- Type `/t3-` in the live T3 composer and check that the six shortcuts appear and can be selected. T3 Code 0.1.9 lists composer commands from a Pi it starts without `T3_MCP_URL`, and t3-agent contributes its shortcuts only when that variable is set. Not confirmed as a bug: nobody has looked at the composer.
+- Count how often real models trigger the todo and preview-tab reminders before changing either.
+- Report to Pi that 1.5.2 does not activate a deferred tool first registered at `session_start` when it is named with `--tools +name`. The subagents catalog does not depend on it.
+- The nested subagents suite no longer runs a second time as a T3 host. It passes there today; nothing reruns it.
+- The T3 brief check reads a grant line only at the start of a line and in its exact case. An indented or lowercase `task grant:` in the body passes. The grant is advice to the child; T3's permission mode is the boundary.
+- `packed-files.test.mjs` still allows `./packages/p3stack` in the help skill, where no such operand remains. The setup text says "these four options" beside a generated list of budgets.
 
-- List `subagent_spawn` in the catalog only when `subagent_wait` and `subagent_read` can be selected with it, and state the rule in the subagents configuration reference. A policy that allows spawn without them offers a tool no spawn can use. (final re-check, subagents D2)
-- Surface a child's provider error when it is closed or exits before its run settles. The error now waits for settlement, so an early close can lose its text. (final re-check, subagents D3)
-- Test the two subagents checks that have none: the conditions that decide `workStarted: false`, and the step that advances the read cursor after a report is fully paged. (final re-check, subagents D4)
-- Keep slash commands inside fenced text translated. Translation now skips fences to protect literal paths, and one rule patches the single command the plan template carries there; nothing flags the next one. (final re-check, generator D4)
+## A Pi crash found during this work
 
-- Stop translating `/name` in plain prose that is a path, such as `GET /research HTTP/1.1`. Fenced code, link destinations and HTML attributes are protected; bare prose is not. No such text exists at the current pins. (final re-check, generator F12)
-- Scope what a T3 child reads to its brief: when a parent sets `Task grant:`, the child sees both that line and the header's session grant, and relies on the header's one sentence to pick. (final re-check, instructions A-M4)
+A rejected `Promise.all` in a codemode script could end the Pi process. The cause is in Pi 1.5.2's built-in `read` tool, not in this repository or in T3: when the script ends, Pi cancels its pending calls, and a `read` cancelled at that moment opens its file stream with an already-aborted signal. The stream's error event has no handler. One existing file and one missing path reproduce it with no extensions loaded.
 
-## A Pi crash seen during this work
-
-Two delegated sessions exited the moment a codemode script's `Promise.all` rejected on a missing file while its other reads were still in flight. An offline reproduction against Pi 1.5.2's codemode executor with a stand-in session did not crash. The cause is not isolated.
+No guard was added here. An extension cannot reach that stream, and a process-wide error handler would hide other failures. Scripts that batch tool calls use `Promise.allSettled` until Pi is fixed. The issue text, with a self-contained reproduction, is [drafted and not filed](upstream/pi-read-cancel-crash.md).
