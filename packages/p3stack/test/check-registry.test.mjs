@@ -462,7 +462,10 @@ test("generation refuses an unclassified upstream skill before writing", t => {
 test("pstack regression-test and Pocock tdd keep their distinct procedures", () => {
   const read = path => readFileSync(new URL(`../skills/${path}`, import.meta.url), "utf8");
   assert.doesNotMatch(read("tdd/references/regression-test.md"), /^---/);
-  assert.match(read("tdd/references/regression-test.md"), /^# TDD Bug Fix/);
+  const [title, opening] = read("tdd/references/regression-test.md").split("\n\n");
+  assert.equal(title, "# TDD Bug Fix");
+  assert.match(opening, /^[^.]*fail[^.]*fix[^.]*pass[^.]*\. Use only when/i);
+  assert.match(opening, /explicitly asks for TDD.*OR when the bug has an obvious cheap local test target\. Skip when/);
   assert.match(read("tdd/SKILL.md"), /confirm.*user|confirmed seam/i);
   for (const path of ["poteto-help/SKILL.md", "poteto-help/references/recipes.md", "poteto-mode/playbooks/bug-fix.md"]) {
     assert.match(read(path), /regression-test/);
