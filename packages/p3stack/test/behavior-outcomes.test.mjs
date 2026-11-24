@@ -122,7 +122,17 @@ test("the review must identify the skipped empty-list test and preserve an alrea
     "Coverage of sumAll([]) is not exercised because the test at sum.test.js:13 is skipped.",
     "Nothing in the diff fixes this: sum.test.js:13 still skips the empty-list test.",
     "Nothing in the diff explains why the empty-list test for sumAll is skipped.",
+    "sumAll([]) is never tested: sum.test.js:13 is skipped.",
+    "It's not a flake: the sumAll empty-list case at sum.test.js:13 is skipped.",
   ]) assert.equal(report(claim), true, claim);
+  for (const denial of [
+    "The test at sum.test.js:13 for sumAll is not being skipped.",
+    "The empty-list test for sumAll is not, in fact, skipped.",
+    "The sumAll empty-list test at sum.test.js:13 is not currently being skipped.",
+    "None of the sumAll empty-list tests in sum.test.js are skipped.",
+    "The empty-list test for sumAll is not marked as skipped.",
+    "No sumAll empty-list test in sum.test.js is skipped.",
+  ]) assert.equal(report(denial), false, denial);
   assert.equal(report("No tests were skipped."), false);
   assert.equal(report("There is a skipped test in this repo."), false);
   assert.equal(report("No tests were skipped. sumAll([]) works."), false);

@@ -115,11 +115,19 @@ function matches(step, calls) {
     step.kind === "tool" ? toolMatches(call) || call.nested?.some(toolMatches) : false));
 }
 
+// A sentence denies the skip when a negation governs the skip verb itself ("is not, in fact, skipped",
+// "is not marked as skipped"), or when a negative subject with no verb of its own is said to be skipped
+// ("None of the empty-list tests are skipped"). A negation of something else does not count
+// ("can't run because it is skipped").
+const DENIED_VERB = /(?:\b(?:not|never|no longer)\b|n['’]t\b)(?:\s*,?\s+(?:\w+ly|ever|in fact|actually)\b,?)*\s+(?:(?:be(?:en|ing)?|get(?:ting)?|use|marked(?:\s+as)?)\s+)*`?(?:(?:test|it)\.)?(?:skips?|skipped|disabled)\b/i;
+const NEGATIVE_SUBJECT = /\b(?:nothing|none|no)\b((?:\s+[^\s]+){0,9}?)\s+(?:is|are|was|were)\s+(?:(?:\w+ly|ever)\s+)?(?:skipped|disabled)\b/gi;
+const CLAUSE_WORD = /^(?:is|are|was|were|can|could|does|do|did|has|have|had|fix\w*|explain\w*|covers?|runs?|skips?|means?|because|since|so|but|why|while|when|that|which)$/i;
 function deniesSkip(sentence) {
-  const predicate = /(?:\b(?:not|never|no longer)\b|n['’]t\b)\s+(?:(?:\w+ly|ever)\s+)?(?:be(?:en)?\s+|use\s+)?`?(?:(?:test|it)\.)?(?:skips?|skipped|disabled)\b/i;
-  // Let a negative subject name the file and case, not reach across another verb.
-  const subject = /\b(?:nothing|none|no tests?)\b(?:\s+(?:in|of|for|at|on)\s+(?:(?:the|an?)\s+)?\S+(?:\s+(?:tests?|cases?|list|array|input))?)*\s+(?:(?:is|are|was|were)\s+)?(?:(?:\w+ly|ever)\s+)?(?:skips?|skipped|disabled)\b/i;
-  return predicate.test(sentence) || subject.test(sentence);
+  if (DENIED_VERB.test(sentence)) return true;
+  for (const [, subject] of sentence.matchAll(NEGATIVE_SUBJECT)) {
+    if (!subject.trim().split(/\s+/).filter(Boolean).some(word => CLAUSE_WORD.test(word.replace(/[^\w]/g, "")))) return true;
+  }
+  return false;
 }
 
 /** Grades one expectation against the trace and the project directory after the run. */
