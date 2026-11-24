@@ -19,18 +19,18 @@
 
 > **p3stack only:** [execution-ledger](../p3stack-mode/references/execution-ledger.md) — Open a ledger for more than one delegated unit or work that may outlive this context.
 
-4. Delegate code-writing to a subagent using your configured feature model (default `grok-4.7-xhigh-fast`) with a specific scope (file paths, named data shape and its organizing structure per **principle-model-the-domain**, a state machine over scattered booleans, a table/registry over branching, a typed model over repeated shape assumptions, chosen before the delegate writes logic, and success criteria). Pick each subagent's reasoning level for the job, per the Subagents section. When the implementation admits multiple valid shapes (error handling, abstraction layer, test structure), delegate via the **arena** skill instead so the runners surface the alternatives and the cross-judge guards the pick. Mandatory: no skip-with-reason escape, and Laziness Protocol does not override it (the gain is review separation, not lines saved). A subagent forbidden to spawn satisfies this by owning the diff directly with the same review separation. No "standing by" reply that waits on a nested agent. Comments per **Comments**. Surgical edits, re-ground against the source for upstream-derived files. Port shared-primitive improvements to all consumers and verify each. Commit liberally.
+4. Delegate code-writing to a subagent using your configured feature model (default `grok-4.7-xhigh-fast`) with a specific scope (file paths, named data shape and its organizing structure per **principle-model-the-domain**, a state machine over scattered booleans, a table/registry over branching, a typed model over repeated shape assumptions, chosen before the delegate writes logic, and success criteria). Resolve each subagent's role per the Subagents section. When the implementation admits multiple valid shapes (error handling, abstraction layer, test structure), delegate via the **arena** skill instead so the runners surface the alternatives and the cross-judge guards the pick. Mandatory: no skip-with-reason escape, and Laziness Protocol does not override it (the gain is review separation, not lines saved). A subagent forbidden to spawn satisfies this by owning the diff directly with the same review separation. No "standing by" reply that waits on a nested agent. Comments per **Comments**. Surgical edits, re-ground against the source for upstream-derived files. Port shared-primitive improvements to all consumers and verify each. Commit liberally.
 5. Verify on the matching surface. "Inconclusive" or wrong-surface is not a pass. Flag it.
 6. Rebase into small, ordered commits. Stack follow-ups.
    Use the **sequence-verifiable-units** principle skill, building, verifying, and committing each small unit before the next.
 
 > **p3stack only:** [no-comments](../no-comments/SKILL.md) — When the code is complete, clean up comments before the floor scan.
 
-> **p3stack only:** [floor](../p3stack-mode/references/floor.md) — After comment cleanup, run floor-check on the final diff; explain or remove every finding.
+> **p3stack only:** [floor](../p3stack-mode/references/floor.md) — Commit any cleanup edits and rerun affected checks. Run floor-check on the final diff; explain or remove every finding.
 
 > **p3stack only:** [review-stance](../p3stack-mode/references/review-stance.md) — Give it to every reviewer, judge, or adversary, with the artifact and its contract.
 
-> **p3stack only:** [code-review](../code-review/SKILL.md) — After the floor scan, review the final diff. Keep standards and spec findings separate.
+> **p3stack only:** [code-review](../code-review/SKILL.md) — Review the floor-checked diff against the request and brief. Record the separate Standards and Spec verdicts at that base and head.
 
 7. If the design is contested, `interrogate` before shipping.
 8. Run **Opening a PR**.

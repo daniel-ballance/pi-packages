@@ -4,7 +4,7 @@
 
 1. When the change is one or two files with an obvious approach, skip the plan. Say so and stop.
 2. Settle open questions by prototype before you write. Run `playbooks/prototype.md` for each. Keep the branch, the SHA, and the screenshots for Appendix A. Ask the operator only about a product or preference call that no run can settle. Give options (the **never-block-on-the-human** principle skill).
-3. Explore in subagents briefed per the [poteto-agent recipe](../../agents/poteto-agent.md), with an explicit model per the Subagents section (the **guard-the-context-window** principle skill). Pick each subagent's reasoning level for the job, per the Subagents section. Each returns file pointers, conventions, test commands, and entry points. No inlined dumps.
+3. Explore in read-only subagents per [Delegate](../poteto-mode/references/host-capabilities.md#delegate) (the **guard-the-context-window** principle skill). Resolve each subagent's role per the Subagents section. Each returns file pointers, conventions, test commands, and entry points. No inlined dumps.
 4. Copy the skeleton below into the plan file and fill every placeholder. Unless the operator names a path, write the file under `docs/` in the store (**Store** in the host capabilities). Keep every heading and every sub-block in the order shown. One section per PR. One PR is one change with its own evidence (the **sequence-verifiable-units** principle skill). Name the execution playbook in **How to read this**. Pick `playbooks/autopilot-full.md` when the run may merge. Pick `playbooks/autopilot-stack.md` when the operator lands the PRs. A standing program takes `playbooks/orchestrate.md`.
 5. Write under `/skill:technical-writing` in full, then `/skill:unslop`. The body is one Diátaxis mode, how-to. Appendices hold explanation and reference. Each heading states the task or the finding. No long dashes. No mid-sentence colons.
 6. Run `node scripts/check-plan.mjs <plan.md>` (from this skill's directory) and fix every line it prints (the **encode-lessons-in-structure** principle skill).
@@ -32,7 +32,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 ### Arm the program
 
 - [ ] State the protocol and this plan to the operator, then stop. Start execution only on the operator's explicit go.
-- [ ] Read the installed files below at program start and at every tick. Give each worker the relevant recorded paths in its brief to read directly.
+- [ ] Read the installed files below at program start and at every tick. Use these paths in terminal briefs. For T3 children, inline assigned steps or cite commit-relative source per **Store**.
   - [ ] Installed file. `<absolute installed path to the execution playbook>`
   - [ ] Installed file. `<absolute installed path to swarm/SKILL.md>`
   - [ ] Installed file. `<absolute installed path to poteto-mode/playbooks/opening-a-pr.md>`
@@ -70,10 +70,10 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 Each live lane runs in its own checkout at the PR head. Drive it per **Drive the app** in the host capabilities.
 
-- [ ] `git fetch origin <head-branch> && git checkout <head SHA>`.
+- [ ] Prepare the lane at the PR head per **Isolation** in the host capabilities.
 - [ ] <Start the backend and the surface. Wait for ready.>
 - [ ] <Deliver input only through the control skill's commands. Name the read-only diagnostics.>
-- [ ] Save every screenshot to `/tmp/swarm-<pr-id>/worker-<n>/<slug>.png` and return the paths with the report.
+- [ ] Return each screenshot as evidence per **Store** in the host capabilities.
 
 ## <Task as a verb phrase> (<PR id>)
 

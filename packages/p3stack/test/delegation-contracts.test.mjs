@@ -19,7 +19,12 @@ test("a coordinator can distinguish concurrent runs and reconcile one attempt wi
 test("the brief travels without the parent's files and keeps volatile details out of the ticket", () => {
   const brief = reference("brief-contract");
   assert.match(brief, /stand(?:s)? alone|self-contained/i);
-  assert.match(brief, /T3 Code[^\n]*parent/i);
+  const store = readFileSync(new URL("../skills/poteto-mode/references/host-t3.md", import.meta.url), "utf8").split("## Store")[1].split("##")[0];
+  for (const doc of [brief, store]) {
+    assert.match(doc, /inline[^\n]*commit[^\n]*relative path/i);
+    assert.match(doc, /absolute path[^\n]*run store[^\n]*(?:this|same) machine/i);
+    assert.match(doc, /task result/i);
+  }
   assert.match(brief, /(?:ticket.*acceptance criteria|acceptance criteria.*ticket)/i);
   assert.match(brief, /grant/i);
   assert.doesNotMatch(brief, /Pass file pointers, not pasted history/);

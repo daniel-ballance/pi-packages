@@ -25,6 +25,29 @@ test("the assessment detects different tracked and untracked bytes under identic
   git("add", "tracked"); assert.notEqual(state(), before, "staging alone changes the reviewed state");
 });
 
+test("the local review's fingerprint detects a second edit in a dirty populated submodule", t => {
+  const review = readFileSync(new URL("playbooks/review-local.md", mode), "utf8");
+  const operand = review.match(/node "<p3stack-mode directory>\/(scripts\/checkout-fingerprint\.mjs)"/)?.[1];
+  assert.ok(operand);
+  assert.match(review, /each populated submodule/);
+  const root = mkdtempSync(join(tmpdir(), "review-submodule-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (cwd, ...args) => execFileSync("git", ["--no-optional-locks", "-c", "user.name=t", "-c", "user.email=t@example.org", ...args], { cwd, encoding: "utf8" });
+  const dep = join(root, "dep"), repo = join(root, "repo"), child = join(repo, "sub dir");
+  git(root, "init", "-q", dep);
+  writeFileSync(join(dep, "value"), "original");
+  git(dep, "add", "."); git(dep, "commit", "-qm", "base");
+  git(root, "init", "-q", repo);
+  git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", dep, "sub dir");
+  git(repo, "commit", "-qm", "pin");
+  const baseline = () => execFileSync(process.execPath, [fileURLToPath(new URL(operand, mode))], { cwd: child, encoding: "utf8" });
+  writeFileSync(join(child, "value"), "one");
+  const before = baseline(), status = git(repo, "status", "--porcelain");
+  writeFileSync(join(child, "value"), "two");
+  assert.equal(git(repo, "status", "--porcelain"), status);
+  assert.notEqual(baseline(), before);
+});
+
 test("each write-producing subprocedure stops at its assessment boundary", () => {
   const doc = readFileSync(new URL("playbooks/onboard-brownfield.md", mode), "utf8");
   assert.doesNotMatch(doc, /git status --short|produce its HTML candidate report|follow its procedure\./i);

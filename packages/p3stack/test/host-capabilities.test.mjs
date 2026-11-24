@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -32,13 +33,29 @@ test("each capability links to the same heading on each host", () => {
 
 test("host selection exposes only the selected host's operations", () => {
   const entry = map("capabilities");
-  for (const marker of ["Host: terminal", "Host: t3", "mcp__t3-code__*"]) assert.ok(entry.includes(marker), marker);
-  assert.deepEqual(new Set(hostToolNames(entry)), new Set(["mcp__t3-code__*"]));
+  for (const marker of ["Host: terminal", "Host: t3"]) assert.ok(entry.includes(marker), marker);
+  const check = entry.match(/`(test -n "[^"]*T3_MCP_URL[^"]*")`/)?.[1];
+  assert.ok(check, "missing shell fallback");
+  for (const [env, exit] of [[{}, 1], [{ T3_MCP_URL: "" }, 1], [{ T3_MCP_URL: "http://t3.invalid/mcp" }, 0]]) {
+    const run = spawnSync("sh", ["-c", check], { env, encoding: "utf8" });
+    assert.equal(run.status, exit);
+    assert.equal(run.stdout, "");
+  }
+  assert.deepEqual(hostToolNames(entry), []);
   const terminal = hostToolNames(map("terminal")), t3 = hostToolNames(map("t3"));
   assert.ok(terminal.includes("subagent_spawn"));
   assert.ok(t3.includes("mcp__t3-code__delegate_task"));
   for (const tool of terminal) assert.ok(tool.startsWith("subagent_"), tool);
   for (const tool of t3) assert.ok(!tool.startsWith("subagent_"), tool);
+});
+
+test("T3 capacity, heartbeat and prototype checks have a permitted action", () => {
+  const t3 = sections(map("t3"));
+  assert.match(t3.get("Delegate"), /no fixed live-child limit[^\n]*few at a time/i);
+  assert.match(t3.get("Wake and loop"), /heartbeat[^\n]*standing run[^\n]*authoriz[^\n]*completion wakes/i);
+  assert.match(t3.get("Drive the app"), /project[^\n]*harness or test driver[^\n]*unverified/i);
+  const orchestrate = readFileSync(new URL("../skills/poteto-mode/playbooks/orchestrate.md", import.meta.url), "utf8");
+  assert.doesNotMatch(orchestrate, /\*\*Live-child limit\*\*/i);
 });
 
 test("opening a PR cites the Pull requests section once", () => {

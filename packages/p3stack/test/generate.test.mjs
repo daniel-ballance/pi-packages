@@ -654,8 +654,7 @@ test("only routes are tabulated; each playbook carries its own conditional reads
     const router = readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8");
     assert.doesNotMatch(router, /\{\{(?:routes|chains)\}\}/);
     assert.doesNotMatch(router, /\/home\/|\/tmp\/|<this file's directory>|^## Chains$/m);
-    assert.ok(router.includes("<package>/skills/p3stack-mode/SKILL.md"));
-    assert.ok(router.includes("<package>/skills/poteto-mode/SKILL.md"));
+    assert.match(router, /route table's Read paths from the skills directory/i);
     assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
     for (const name of ["routes", "chains"]) {
       assert.equal(existsSync(join(out, `skills/p3stack-mode/references/${name}.md`)), false);
@@ -688,8 +687,13 @@ test("Feature and Bug fix scan the final diff before independent review", () => 
     const links = [...text.matchAll(/\]\(([^)]+)\)/g)].map(match => match[1]);
     const review = ["../no-comments/SKILL.md", "../p3stack-mode/references/floor.md", "../p3stack-mode/references/review-stance.md", "../code-review/SKILL.md"];
     assert.deepEqual(links.filter(path => review.includes(path)), review, name);
-    assert.doesNotMatch(text, /floor-check before no-comments/i);
+    assert.match(text, /rerun affected checks[^\n]*floor-check/i);
+    assert.match(text, /verdict[^\n]*base and head/i);
   }
+  const pr = readFileSync(join(packageDir, "skills/poteto-mode/playbooks/opening-a-pr.md"), "utf8");
+  assert.match(pr, /slop-strip[^\n]*no-comments[^\n]*skip each pass[^\n]*this head/i);
+  assert.match(pr, /after any edit[^\n]*floor[^\n]*affected checks[^\n]*verdict/i);
+  assert.doesNotMatch(pr, /subagent that opens a PR runs a slop-strip/i);
 });
 
 test("host-specific chain triggers point at the operation, not poteto-mode again", () => {
@@ -803,7 +807,7 @@ pocockCase("4 ordered rule minima detect upstream drift", ({ run, input, rewrite
 pocockCase("5 tracker prerequisites survive and review collection retains its drift guard", ({ run, read, rewrite }) => {
   const first = run();
   assert.equal(first.status, 0, first.stderr);
-  assert.match(read("code-review/SKILL.md"), /The issue tracker should have been provided/);
+  assert.match(read("code-review/SKILL.md"), /caller[^\n]*contract[^\n]*spec/i);
   assert.match(read("triage/SKILL.md"), /docs\/agents\/issue-tracker.md/);
   const setup = read("setup-matt-pocock-skills/SKILL.md");
   assert.match(setup, /Inspect any legacy domain glossary or map/);

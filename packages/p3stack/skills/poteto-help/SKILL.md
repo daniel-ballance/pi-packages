@@ -10,7 +10,7 @@ Answer the user's question about pstack, hand them a prompt they can send, and l
 
 A message that asks for work, such as "use pstack to fix this bug", is not a help question. If routing is on, follow the router. If it is off, honor an explicit skill request; tell the user `/p3stack on` enables routing for this session.
 
-This file maps questions to the skills and guide pages that hold the answers. Those files own the details. Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed package, which the user may not be able to open, so give the user the file's public copy: `https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/` followed by its path.
+Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed package, which the user may not be able to open, so give the user the file's public copy: `https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/` followed by its path.
 
 ## Find out what they need
 
@@ -47,7 +47,7 @@ p3stack runs in Pi, in a terminal or launched by T3 Code. Skills that delegate (
 
 ## Start a task in Pi
 
-Type `/p3stack on` to enable the [router](../p3stack-mode/SKILL.md) for this session with the default grant. Then send the goal and a check that can pass or fail. The router selects the skill or playbook; there is no need to prefix every task. Under the default grant the agent asks about product choices. Use `/p3stack on autonomous` for the other grant: the agent makes covered choices and reports them. Explicit operator gates and irreversible actions still pause.
+Type `/p3stack on default` to enable the [router](../p3stack-mode/SKILL.md) with the default grant. Bare `/p3stack on` keeps the last grant. Then send the goal and a check that can pass or fail. The router selects the skill or playbook; there is no need to prefix every task. Under the default grant the agent asks about product choices. Use `/p3stack on autonomous` for the other grant: the agent makes covered choices and reports them. Explicit operator gates and irreversible actions still pause.
 
 Type `/p3stack off` to turn the router off. For one skill with the mode off, use `/skill:<name>`, for example `/skill:how`. To help word the task, read [Word the prompt](references/prompting.md).
 

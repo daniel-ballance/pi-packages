@@ -4,7 +4,7 @@ Use the live tool descriptions for arguments and results. Tools can load late; s
 
 ## Delegate
 
-Pi delegates with `mcp__t3-code__delegate_task`. The child gets only the task. Reuse a `clientRequestId` only to retry the same lost call. For a report-only review or research brief, set the corresponding `role` and say not to edit; there is no per-task tool subset. Use `mode: "wait"` when this turn needs the result; otherwise dispatch asynchronously. Follow the response's `next`; a timeout is not completion. While work is running, do other authorized work or end your turn. Never poll; read `mcp__t3-code__task_status` on completion wake. Stop unwanted tasks with `mcp__t3-code__task_cancel`.
+Pi delegates with `mcp__t3-code__delegate_task`. The child gets only the task. T3 has no fixed live-child limit; start large fan-outs a few at a time. Reuse a `clientRequestId` only to retry the same lost call. For a report-only review or research brief, set the corresponding `role` and say not to edit; there is no per-task tool subset. Use `mode: "wait"` when this turn needs the result; otherwise dispatch asynchronously. Follow the response's `next`; a timeout is not completion. While work is running, do other authorized work or end your turn. Never poll; read `mcp__t3-code__task_status` on completion wake. Stop unwanted tasks with `mcp__t3-code__task_cancel`.
 
 ## Models and role defaults
 
@@ -20,11 +20,11 @@ A child does the work itself unless its assignment explicitly authorizes delegat
 
 ## Store
 
-Pass absolute store paths only to children that share the filesystem. Otherwise collect evidence in the task result.
+Inline what the child needs or cite the commit and repo-relative path. Give an absolute path only into the run store and only to a child on this machine; otherwise collect evidence in the task result.
 
 ## Wake and loop
 
-For requested scheduled work, use `mcp__t3-code__schedule_task`; a request to schedule is not a request to run it now. Remove the schedule with `mcp__t3-code__delete_scheduled_task` when done. For PR activity use **Pull requests**.
+For a playbook heartbeat, schedule only a standing run the user authorized; otherwise use delegates' completion wakes. Use `mcp__t3-code__schedule_task` for a requested schedule without running it now. Remove it with `mcp__t3-code__delete_scheduled_task` at the stop condition. For PR activity use **Pull requests**.
 
 ## Ask the human
 
@@ -44,7 +44,7 @@ Use Pi's `read` and search tools or `bash` in the bound checkout.
 
 ## Drive the app
 
-Use `mcp__t3-code__preview_snapshot` and `mcp__t3-code__preview_act` only when the current request asks for browser work. For an ordinary edit, verify with the project harness, not an unasked browser preview. Close only tabs you opened and the user is not using or asking to keep.
+Use `mcp__t3-code__preview_snapshot` and `mcp__t3-code__preview_act` only when the current request asks for browser work. Otherwise use the project's own harness or test driver; report a surface you cannot exercise as unverified. Close only tabs you opened and the user is not using or asking to keep.
 
 ## Visuals
 

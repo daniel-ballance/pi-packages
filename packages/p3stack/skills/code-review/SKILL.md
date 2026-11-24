@@ -5,36 +5,32 @@ description: "Review the changes since a fixed point (commit, branch, tag, or me
 
 Read [child delegation guidance](../poteto-mode/references/host-capabilities.md) before using child delegation.
 
-Review the changes since the supplied fixed point, including work in progress, on two axes:
+Review the scoped changes on two axes:
 
 - **Standards**: does the code conform to this repo's documented coding standards?
 - **Spec**: does the code faithfully implement the originating issue / spec?
 
 Both axes run as **parallel subagents** so they don't pollute each other's context, then this skill aggregates their findings. Start every subagent with a fresh context window.
 
-The issue tracker should have been provided to you. If not, tell the user to run `/skill:setup-matt-pocock-skills`.
-
 ## Process
 
 ### 1. Pin the fixed point and capture the review input
 
-Use the commit, branch, or tag the user supplied. If they didn't specify a fixed point, ask for it. From the repository root, run `git merge-base <fixed-point> HEAD`. Stop if it fails. Record the returned SHA as `<base>` and the commit list from `git log <base>..HEAD --oneline`.
+Reuse the caller's pinned base and captured input. If no base is pinned, use `git merge-base <fixed-point> HEAD` with the supplied ref; ask for a ref only if it is missing. Record base and head SHAs. For input not yet captured, use the caller's paths as separate arguments after `--` (`.` for a whole-branch review). Set `GIT_OPTIONAL_LOCKS=0` for Git queries.
 
-Run `git status --porcelain=v1 --untracked-files=all`. Capture the review input once, without changing any files or staging anything:
+- **Committed range requested, or scoped status clean** (`git status --porcelain=v1 --untracked-files=all -- <paths>`): use `git diff <base> HEAD -- <paths>`.
+- **Work in progress:** label `git diff --cached <base> -- <paths>` and `git diff -- <paths>` separately. Enumerate untracked paths with `git ls-files --others --exclude-standard -z -- <paths>`. An untracked file counts even if both patches are empty.
 
-- **Status has entries — review the working tree.** Capture `git diff --cached <base> --` (branch commits plus staged changes) and `git diff --` (unstaged changes). Keep the two patches labeled. List untracked files with `git ls-files --others --exclude-standard -z`; include each NUL-delimited path and its contents as a new file. For a symlink, record its target without following it.
-- **Status is empty — review the committed range.** Capture `git diff <base> HEAD --`.
-
-Stop here on a failed command or if there is nothing to review. An untracked file counts even when both tracked patches are empty.
+Manifest each changed version by path, byte size and content hash. Mark deletions and binary files; hash symlink targets without following them. Keep the checkout and index read-only. Stop on an unresolved base or empty scope; report any input you could not hand over or whose hash changed before review.
 
 ### 2. Identify the spec source
 
-Look for the originating spec, in this order:
+Use the caller's task contract as the spec if supplied. Otherwise look for the spec in this order:
 
 1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.), fetched via the workflow in the tracker doc.
 2. A path the user passed as an argument.
 3. A spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.
-4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** subagent will skip and report "no spec available".
+4. If nothing is found, report the missing spec under full autonomy; otherwise ask where it is. If they say there isn't one, the **Spec** subagent will skip and report "no spec available".
 
 ### 3. Identify the standards sources
 
@@ -62,17 +58,15 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 
 ### 4. [Delegate](../poteto-mode/references/host-capabilities.md#delegate) the independent reviews
 
-Run the reviews in parallel within the live-child limit. Wait for the results; collect and verify both reports before aggregating them.
+Give both reviewers the pinned base and head, the scoped manifest and read-only access to the checkout, not file bodies. Verify mutable inputs against the manifest; split an oversized manifest by path. Run the passes in parallel as capacity permits; collect and verify both reports before aggregating them.
 
 **Standards subagent prompt** should include:
 
-- The captured patches, any untracked file evidence, and the commit list from step 1.
 - The list of standards-source files you found in step 3, **plus the smell baseline from step 3** pasted in full (the subagent has no other access to it).
 - The brief: "Report, per file/hunk where relevant, (a) every place the diff violates a documented standard: cite the standard (file + the rule); and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls: documented-standard breaches can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. Under 400 words."
 
 **Spec subagent prompt** should include:
 
-- The captured patches, any untracked file evidence, and the commit list from step 1.
 - The path or fetched contents of the spec.
 - The brief: "Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words."
 

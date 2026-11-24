@@ -12,7 +12,7 @@ Run the two thermo review passes as async background subagents in parallel, then
 
 1. Determine the review scope from the user request, PR, current branch, or relevant changed files.
 2. Gather the diff and any file/context excerpts needed for reviewers to evaluate the change without guessing.
-3. As the parent, start one read-only child per pass through **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md). Put the absolute installed paths of its recipe and rubric in each brief:
+3. As the parent, start one read-only child per pass through **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md). Give terminal workers the installed paths below. For T3 children, inline the assigned recipe and rubric or cite commit-relative files per **Store**:
    - the [thermo-nuclear-review recipe](../../agents/thermo-nuclear-review-subagent.md) and [rubric](../thermo-nuclear-review/SKILL.md) for bugs, breakages, security, devex regressions, feature-flag leaks, and other branch-audit risks.
    - the [thermo-nuclear-code-quality-review recipe](../../agents/thermo-nuclear-code-quality-review-subagent.md) and [rubric](../thermo-nuclear-code-quality-review/SKILL.md) for maintainability, structure, file-size growth, spaghetti, abstractions, and codebase-health risks.
 4. Pass each subagent the same scoped diff/file context and ask it to return prioritized findings with file references and evidence.

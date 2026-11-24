@@ -104,11 +104,15 @@ test("PR delivery has an explicit trigger and never resets a checkout between ch
   assert.doesNotMatch(text, /end of every other playbook|reset --hard|reset from main/);
 });
 
-test("the plan records installed paths for briefs and reserves git show for project files", () => {
+test("the coordinator records installed paths; T3 briefs travel without that installation", () => {
   const plan = playbook("multi-phase-plan");
   assert.doesNotMatch(plan, /pstack\/skills\/|execution playbook from trunk/);
   assert.match(plan, /absolute installed path/i);
-  assert.match(plan, /brief[^\n]*recorded path|recorded path[^\n]*brief/i);
+  for (const doc of [plan, playbook("autopilot-full"), skill("thermos"), skill("dyl-review")]) {
+    assert.match(doc, /T3[^\n]*inline[^\n]*commit/i);
+    assert.doesNotMatch(doc, /Give each worker (?:its paths|the relevant recorded paths)/);
+  }
+  assert.doesNotMatch(plan, /per the \[poteto-agent recipe\]|git fetch origin <head-branch> && git checkout|\/tmp\/swarm-/);
   assert.match(plan, /project-owned[^\n]*git show <[^>]+>:<[^>]+>/i);
 });
 
@@ -118,6 +122,14 @@ for (const mode of ["autopilot-full", "autopilot-stack"]) {
     assert.doesNotMatch(playbook(mode), /playbook from trunk/);
   });
 }
+
+test("Autopilot opens the ledger before owner dispatch and sets the floor before swarm dispatch", () => {
+  const run = playbook("autopilot-full");
+  for (const [precondition, dispatch] of [["[execution-ledger]", "**Spawn one owner"], ["[floor]", "**Swarm-verify once"]]) {
+    assert.ok(run.indexOf(precondition) >= 0 && run.indexOf(precondition) < run.indexOf(dispatch));
+  }
+  assert.match(playbook("orchestrate"), /notes\.md[^\n]*run directory/i);
+});
 
 test("plan checker accepts installed files outside the consumer repo, not missing files or trunk markers", t => {
   const cwd = scratch(t), file = join(cwd, "plan.md");
@@ -142,10 +154,18 @@ for (const name of ["swarm", "arena"]) {
     const fanOut = skill(name).split("## Phase B: Fan out")[1].split("## Phase C")[0];
     assert.match(fanOut, /every (?:slice|candidate)/i);
     assert.match(fanOut, /waves[^\n]*live-child limit/i);
-    assert.match(fanOut, /close[^\n]*before[^\n]*next/i);
+    assert.match(fanOut, /collect each wave and free its capacity as the host requires/i);
+    assert.doesNotMatch(fanOut, /close each wave/i);
     assert.doesNotMatch(fanOut, /all N .* at once/);
   });
 }
+
+test("playbooks and standalone skills resolve roles through the same Subagents section", () => {
+  for (const doc of [playbook("feature"), playbook("bug-fix"), skill("how"), skill("swarm")]) {
+    assert.match(doc, /resolve each subagent's role per the Subagents section/i);
+    assert.doesNotMatch(doc, /pick each subagent's reasoning level/i);
+  }
+});
 
 test("recall gives each child scoped history IDs, not a second discovery algorithm", () => {
   const recall = skill("recall");
@@ -170,6 +190,7 @@ for (const name of reviews) {
   test(`${name} recipe points to the rubric it uses without a plugin or child forge call`, () => {
     const text = read(`agents/${name}-subagent.md`);
     assert.ok(text.includes(`(../skills/${name}/SKILL.md)`));
+    assert.match(text, /child[^\n]*skip this section/i);
     assert.doesNotMatch(text, /Thermos plugin|Invoked delegated child|use `gh` or `glab`/);
   });
 }
@@ -186,6 +207,9 @@ test("dyl-review keeps code-review coordination and Git/forge work in the parent
 test("Pi help starts at the persistent router and distinguishes an explicit standalone skill", () => {
   const help = skill("poteto-help");
   for (const command of ["/p3stack on`", "/p3stack on autonomous`", "/p3stack off`", "/skill:<name>"]) assert.ok(help.includes(command), command);
+  assert.match(help, /`\/p3stack on default`/);
+  assert.match(help, /`\/p3stack on` keeps the last grant/i);
+  assert.doesNotMatch(help, /This file maps questions/);
   assert.match(help, /model-visible skills[^\n]*router (?:is )?off/i);
   assert.doesNotMatch(help, /references\/routes\.md/, "the router inlines its route table; no separate copy is emitted");
   assert.doesNotMatch(help, /start(?:ing)? each (?:new )?task with|Only `[^\n]*setup-pstack` loads|lists every playbook|default answer is `\/skill:poteto-mode/i);

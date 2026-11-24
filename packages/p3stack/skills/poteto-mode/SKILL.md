@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Poteto mode
 
-Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's absolute path in every `poteto-agent` prompt.
+Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's absolute path in terminal `poteto-agent` prompts.
 
 ## Non-negotiables
 
@@ -25,13 +25,13 @@ Remaining triggers:
 - Any prose surface, your reply to the user included → the **unslop** skill. Write the reply per **Writing the reply**. Agent-facing prose also follows the skill-authoring procedure (**Author a skill** in the host capabilities).
 - Docs, RFCs, readmes, PR descriptions, or commit messages → the **technical-writing** skill (`/skill:technical-writing`).
 - Before commit → a slop-strip pass over the diff (remove AI-generated noise).
-- Before review → the **no-comments** skill (`/skill:no-comments`).
+- Before review on a write-authorized route → the **no-comments** skill (`/skill:no-comments`).
 - Shipping UI / IDE / CLI → the matching control skill. See **Drive the app** in the host capabilities. For bug fixes, reproduce first on the same surface yourself. Hand to the user only under the narrow Bug fix step 1 exception.
 - Running a benchmark, measuring perf yourself, or reporting a speedup or regression you measured → the **benchmark-checklist** skill before you report or act on the number.
 - Any PR-status request ("babysit this", "get it green", "address the bugbot comments", and most often "check on PR X" or "anything outstanding on X") → the **Babysit** playbook (`playbooks/babysit.md`). Never triggered by merely opening a PR. Declare its mode before polling. The playbook's step 1 owns the request-to-mode mapping. Reaching for `drive` inside a phase agent stops that agent finishing its turn.
 - Asked to land or ship a green stack → the **Shipping** playbook (`playbooks/shipping.md`). Green is not safe. Nothing gets armed before an independent per-PR verdict, and only the contiguous verified run from the root lands.
 - Bugbot or the agentic security review commented → skeptical posture. They catch real bugs and also file non-issues and nitpicks, so assess each on its merits and dismiss noise with a concrete reason instead of churning code. Triage fix / dismiss / ask per `references/bugbot-triage.md`.
-- Broken skill mid-task → fix it in its own PR. Don't block. Don't silently work around it.
+- Broken skill mid-task on a write-authorized route → fix it in its own PR. Don't block. Don't silently work around it.
 - Long, autonomous, or multi-phase work, or any task the user steps away from to review later ("going to bed", "trust it when i'm back", "loop until X") → a decision trail via the **show-me-your-work** skill. Commit it when stakes need an auditable record. Keep it local otherwise.
 
 ## Principles
@@ -93,7 +93,7 @@ Run the playbook in the chat that received it. Delegate units within a step per 
 
 Choose the role, not a model tweak. Use the code playbook's role (`feature, refactoring`, `bug-fix`, `perf-issue` or `hillclimb`), `hardest tasks` for the hardest changes, `judgment and prose` for judgment or writing, and `swarm workers` for verification. For a routed skill use its named roles. Use the selection `p3stack_roles` returns per [Models and role defaults](references/host-capabilities.md#models-and-role-defaults).
 
-With p3stack on, the extension adds the session grant and host-appropriate writer or report-only instructions. Supply the assignment, not a second header: goal, interfaces, owned files, constraints, done check and expected evidence. Pass absolute file pointers only for material the child can access. Without the header, state the grant and stance in the brief yourself.
+With p3stack on, the extension adds the session grant and host-appropriate writer or report-only instructions. Supply the assignment, not a second header: goal, interfaces, owned files, constraints, done check and expected evidence. Pass file pointers per your host's [Store](references/host-capabilities.md#store). Without the header, state the grant and stance in the brief yourself.
 
 Start a fresh child for each new round. Include amended scope, prior evidence and the branch; reuse a worker only for live state the new task needs, such as uncommitted work or a running process. Use a fresh reviewer for a recheck. Verify the diff or evidence yourself and report your conclusion.
 
