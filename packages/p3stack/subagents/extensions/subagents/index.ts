@@ -411,7 +411,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         const cwd = worktree?.path ?? requested;
         if (worktree) config = policy.compile(cwd, selection, depth);
         const coordination = normalizeCoordination(declared, cwd);
-        const child = await manager.spawn({ name, task, ...config, coordination, ...(parentId ? { parentId } : {}) });
+        const child = await manager.spawn({ name, task, ...config, coordination, worktree, ...(parentId ? { parentId } : {}) });
         accepted = true; // A lost receipt must not remove a live child's checkout.
         if (worktree && creationLock) releaseCreationLock(worktree, creationLock);
         const record = manager.get(child.id);

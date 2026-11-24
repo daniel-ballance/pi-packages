@@ -16,7 +16,7 @@ import { ReportInbox, type Notice, type ReadReceipt, type SavedReport, type Upda
 export type { Notice, ReadReceipt, Update } from "./report-inbox.js";
 export { reportPage, REPORT_KINDS } from "./read-page.js";
 export { BUSY } from "./wait.js";
-import { gitEnv } from "./worktree.js";
+import { gitEnv, type Worktree } from "./worktree.js";
 
 /** The child's checkout may still be in use. */
 export class StopUnconfirmedError extends Error {}
@@ -25,6 +25,8 @@ export type InputDisposition = "started" | "queued" | "handled" | "unknown";
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
 export interface SpawnOptions {
   name: string; task: string; cwd: string;
+  /** Resolved checkout created for this spawn, not a request or a launch option. */
+  worktree?: Worktree;
   model?: string; thinking?: string; tools?: string[];
   executable?: string; executableArgs?: string[]; cliArgs?: string[];
   inheritExtensions?: boolean; env?: Record<string, string>;
@@ -43,7 +45,8 @@ export interface Assignment { id: string; task: string; status: "running" | "com
 export interface ResultReview { assignmentId: string; status: "unreviewed" | "reviewed"; at?: string }
 export interface AgentRecord {
   id: string; name: string; task: string; status: Status;
-  config: Omit<SpawnOptions, "env" | "task" | "name" | "workflow" | "deferTask" | "parentId">;
+  config: Omit<SpawnOptions, "env" | "task" | "name" | "workflow" | "deferTask" | "parentId" | "worktree">;
+  worktree?: Worktree;
   /** Set for a Child spawned by another Child; depth 1 is a Child of the root Parent. */
   parentId?: string; depth?: number;
   workflow?: string;
@@ -360,14 +363,14 @@ export class SubagentManager {
   }
   async spawn(options: SpawnOptions, reservation?: SlotReservation) {
     const id = `subagent-${randomUUID().slice(0, 8)}`;
-    const { name, task, env, workflow, deferTask, parentId, ...requested } = options;
+    const { name, task, env, workflow, deferTask, parentId, worktree, ...requested } = options;
     const depth = parentId ? (this.get(parentId).depth ?? 1) + 1 : 1;
     if (!name.trim() || !task.trim()) throw new Error("name and task must not be empty");
     // No record/session/log paths for requests rejected before any launch attempt.
     const config = this.preflight(requested, depth, env, reservation);
     if (reservation) this.claimSlot(reservation);
     const record: AgentRecord = {
-      id, name, task, config, workflow, status: "stopped", ...(parentId ? { parentId, depth } : {}),
+      id, name, task, config, workflow, ...(worktree ? { worktree } : {}), status: "stopped", ...(parentId ? { parentId, depth } : {}),
       sessionFile: join(this.directory, `${id}.session.jsonl`),
       logFile: join(this.directory, `${id}.events.jsonl`),
       stderrFile: join(this.directory, `${id}.stderr.log`),
