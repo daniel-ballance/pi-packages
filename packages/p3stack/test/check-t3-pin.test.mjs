@@ -23,8 +23,8 @@ function fixture(t) {
     writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
   };
   const bridge = "export const fixtureBridge = true;\n";
-  const pin = { version: "fixture-version", bridgeSha256: hash(bridge), statePaths, directTools: tools, beforeAgentStartReturn: { systemPrompt: "string" } };
-  const hostMap = tools.map(name => `\`mcp__t3-code__${name}\``).join("\n") + "\n`mcp__t3-code__html_preview`\n`mcp__t3-code__preview_*`\n";
+  const pin = { version: "fixture-version", bridgeSha256: hash(bridge), statePaths, directTools: tools, optionalTools: ["watch_pull_request"], beforeAgentStartReturn: { systemPrompt: "string" } };
+  const hostMap = [...tools, ...pin.optionalTools, "html_preview"].map(name => `\`mcp__t3-code__${name}\``).join("\n");
   write("rules/t3-pin.json", pin);
   write("home/.t3/runtime/service-state.json", { activeVersion: "fixture-version" });
   write("home/.t3/caches/pi-t3-mcp-extension.ts", bridge);
@@ -67,6 +67,8 @@ for (const [name, mutate, diagnostic] of [
   ["invalid provenance hash", f => f.write("rules/t3-pin.json", { ...f.pin, bridgeSha256: "invalid" }), /Invalid rules/],
   ["empty direct tools", f => f.write("rules/t3-pin.json", { ...f.pin, directTools: [] }), /Invalid rules/],
   ["duplicate direct tools", f => f.write("rules/t3-pin.json", { ...f.pin, directTools: ["task_status", "task_status"] }), /Invalid rules/],
+  ["required tool also marked optional", f => f.write("rules/t3-pin.json", { ...f.pin, optionalTools: ["task_status"] }), /Invalid rules/],
+  ["undocumented optional tool", f => f.write("rules/t3-pin.json", { ...f.pin, optionalTools: ["missing_tool"] }), /host map.*missing_tool/],
   ["invalid state layout", f => f.write("rules/t3-pin.json", { ...f.pin, statePaths: [{}] }), /Invalid rules/],
   ["incompatible prompt return", f => f.write("rules/t3-pin.json", { ...f.pin, beforeAgentStartReturn: { systemPrompt: "object" } }), /Unsupported beforeAgentStartReturn/],
 ]) {
@@ -130,6 +132,12 @@ test("installed diagnostics support legacy state and prefer runtime state when b
   assert.equal(legacy.status, 0, legacy.stderr);
   assert.match(legacy.stdout, /activeVersion: legacy-version/);
   assert.ok(legacy.stdout.includes(join(f.root, "home/.t3/userdata/server-runtime.json")));
+});
+
+test("doctor accepts a thread without the optional PR watch tool", t => {
+  const f = fixture(t);
+  const result = f.run(["--doctor", join(f.root, "doctor.json")]);
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("doctor verifies required capabilities independently of release, hash, and additive tools", t => {

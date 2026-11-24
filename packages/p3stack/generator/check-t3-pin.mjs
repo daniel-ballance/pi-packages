@@ -10,20 +10,24 @@ const json = path => {
   catch (error) { throw new Error(`${path} could not be read, ${error.message}`); }
 };
 const documentedTools = hostMap => new Set([...hostMap.matchAll(/`(mcp__t3-code__[a-z][a-z0-9_]*)`/g)].map(match => match[1]));
-const requiredTools = pin => pin.directTools.map(name => "mcp__t3-code__" + name);
+const qualify = name => "mcp__t3-code__" + name;
 
 function checkContract(pin, hostMap) {
+  const { directTools, optionalTools = [] } = pin ?? {};
+  const names = [directTools, optionalTools].flat();
   if (typeof pin?.version !== "string" || !pin.version || !/^[a-f0-9]{64}$/.test(pin.bridgeSha256 ?? "") ||
       !Array.isArray(pin.statePaths) || !pin.statePaths.length || pin.statePaths.some(layout => typeof layout?.path !== "string" || !layout.path || typeof layout.versionField !== "string" || !layout.versionField) ||
-      !Array.isArray(pin.directTools) || !pin.directTools.length || pin.directTools.some(name => typeof name !== "string" || !/^[a-z][a-z0-9_]*$/.test(name)) || new Set(pin.directTools).size !== pin.directTools.length) {
-    throw new Error("Invalid rules/t3-pin.json. Expected provenance version and bridgeSha256, statePaths, and unique directTools.");
+      !Array.isArray(directTools) || !directTools.length || !Array.isArray(optionalTools) ||
+      names.some(name => typeof name !== "string" || !/^[a-z][a-z0-9_]*$/.test(name)) || new Set(names).size !== names.length) {
+    throw new Error("Invalid rules/t3-pin.json. Expected provenance version and bridgeSha256, statePaths, and distinct directTools and optionalTools.");
   }
   if (!pin.beforeAgentStartReturn || Object.keys(pin.beforeAgentStartReturn).length !== 1 || pin.beforeAgentStartReturn.systemPrompt !== "string") {
     throw new Error("Unsupported beforeAgentStartReturn. Expected { systemPrompt: \"string\" }.");
   }
   const documented = documentedTools(hostMap);
-  const missing = requiredTools(pin).filter(name => !documented.has(name));
-  if (missing.length) throw new Error(missing.map(name => `host map is missing required direct tool ${name}`).join("\n"));
+  const missing = names.filter(name => !documented.has(qualify(name)));
+  if (missing.length) throw new Error(missing.map(name =>
+    `host map is missing ${directTools.includes(name) ? "required direct" : "optional"} tool ${qualify(name)}`).join("\n"));
 }
 
 function doctorProblems(dump, pin, hostMap) {
@@ -34,8 +38,9 @@ function doctorProblems(dump, pin, hostMap) {
   const direct = new Set(dump.tools.filter(tool => tool.exposure === "direct").map(tool => tool.name));
   const available = new Set(dump.tools.filter(tool => tool.exposure !== "hidden").map(tool => tool.name));
   const problems = dump.problems.map(problem => `doctor reported ${problem}`);
-  for (const name of requiredTools(pin)) if (!direct.has(name)) problems.push(`doctor directTools missing ${name}`);
-  for (const name of documentedTools(hostMap)) if (!available.has(name)) problems.push(`doctor tools missing host map tool ${name}`);
+  const optional = new Set((pin.optionalTools ?? []).map(qualify));
+  for (const name of pin.directTools.map(qualify)) if (!direct.has(name)) problems.push(`doctor directTools missing ${name}`);
+  for (const name of documentedTools(hostMap)) if (!available.has(name) && !optional.has(name)) problems.push(`doctor tools missing host map tool ${name}`);
   return problems;
 }
 
