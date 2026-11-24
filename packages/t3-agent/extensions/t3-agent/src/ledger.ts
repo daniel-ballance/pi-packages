@@ -31,6 +31,11 @@ const text = (value: unknown) => typeof value === "string" && value.length > 0 ?
 // IDs must survive verbatim for later tool calls. Reject unsafe or overlong IDs rather than truncate.
 const safeId = (value: unknown) => typeof value === "string" && /^[\w][\w.:-]{0,255}$/.test(value) ? value : undefined;
 
+// T3 uses encodeURIComponent on the command id inside the delegated node id.
+function taskId(value: string): string | undefined {
+  return value.length <= 256 && /^node:delegated-task:(?:[\w.!~*'()-]|%[\da-fA-F]{2})+$/.test(value) ? value : safeId(value);
+}
+
 function safeTitle(value: unknown): string | undefined {
   const line = text(value)?.split(/[\r\n]/, 1)[0];
   // Drop URL-like titles rather than copying even part of a credential or webhook path.
@@ -74,7 +79,7 @@ function receipt(data: unknown): Handle | undefined {
   if (!raw || !KINDS.includes(raw.kind as HandleKind) || typeof raw.id !== "string") return undefined;
   if (raw.open !== undefined && typeof raw.open !== "boolean") return undefined;
   const kind = raw.kind as HandleKind;
-  const id = kind === "pr" ? prId(raw.id) : safeId(raw.id);
+  const id = kind === "pr" ? prId(raw.id) : kind === "delegate" ? taskId(raw.id) : safeId(raw.id);
   if (!id) return undefined;
   const title = safeTitle(raw.title);
   const link = kind === "delegate" || kind === "thread" ? threadLink(raw.link) : undefined;

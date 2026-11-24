@@ -101,6 +101,26 @@ test("a running delegate stays open until its result is read or it is cancelled"
   assert.deepEqual(ledger.open("delegate").map(handle => [handle.id, handle.title]), [["node:task-2", undefined]]);
 });
 
+test("T3's encoded task id survives create, status, cancel and branch replay verbatim", () => {
+  const taskId = "node:delegated-task:command%3Amcp%3Asession%3Adelegate-task%3Areview-1";
+  const branch: { type: string; customType: string; data: unknown }[] = [];
+  const ledger = new Ledger();
+  function step(tool: string, input: Record<string, unknown>, result: Record<string, unknown>) {
+    const updates = observe(tool, input, resultPayload([{ type: "text", text: JSON.stringify(result) }]));
+    assert.deepEqual(updates.map(row => row.id), [taskId]);
+    for (const data of updates) branch.push({ type: "custom", customType: ENTRY_TYPE, data });
+    rebuild(ledger, branch);
+    return ledger.open("delegate").map(row => [row.id, row.status]);
+  }
+  assert.deepEqual(step("delegate_task", { task: "Review the diff" }, { taskId, workState: "working", status: "running" }), [[taskId, "working"]]);
+  assert.deepEqual(step("task_status", { taskId }, { taskId, workState: "waiting_for_children" }), [[taskId, "waiting_for_children"]]);
+  assert.deepEqual(step("task_cancel", { taskId }, { status: "cancel_requested" }), [[taskId, "cancelling"]]);
+  assert.deepEqual(step("task_cancel", { taskId }, { status: "cancelled" }), []);
+  for (const tail of ["%", "%XZ", "/private", "x".repeat(1000)]) {
+    assert.deepEqual(observe("delegate_task", {}, { taskId: taskId + tail }), []);
+  }
+});
+
 test("a cancel receipt preserves the reported task state, including a pending cancel", () => {
   assert.deepEqual(observe("task_cancel", { taskId: "d" }, { status: "cancel_requested" }), [
     { kind: "delegate", id: "d", open: true, status: "cancelling" },
