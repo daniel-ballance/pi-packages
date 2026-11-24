@@ -118,6 +118,13 @@ function guard(env: Record<string, string>) {
   return { tools, blocked };
 }
 
+test("a coordinator waits before ending its turn; nested reports do not wake it", () => {
+  const proxy = guard({ PI_SUBAGENT_ALLOWED_TOOLS: '["subagent_wait"]', PI_SUBAGENT_PEER_FD: "3" }).tools.get("subagent_wait");
+  assert.doesNotMatch(proxy.description, /reports wake you/i);
+  assert.match(proxy.description, /before ending your turn/i);
+  assert.match(proxy.description, /ids.*mode.*all/i);
+});
+
 test("a Child gets proxies only for the delegation tools it was given, and only with its private pipe", () => {
   const withPipe = guard({ PI_SUBAGENT: "1", PI_SUBAGENT_ALLOWED_TOOLS: JSON.stringify(["subagent_spawn", "subagent_wait", "subagent_connect"]), PI_SUBAGENT_PEER_FD: "3" });
   assert.deepEqual([...withPipe.tools.keys()].sort(), ["subagent_spawn", "subagent_wait"]);

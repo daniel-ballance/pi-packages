@@ -94,5 +94,11 @@ test("agent-facing spawn schema has no raw argument, executable or environment e
   for (const key of ["cliArgs", "executable", "executableArgs", "env", "inheritExtensions", "thinking"]) assert.equal(schema.properties[key], undefined);
   assert.ok(schema.required.includes("model"));
   assert.ok(schema.required.includes("tools"));
+  assert.match(schema.properties.tools.description, /alwaysTools/);
+  assert.match(tools.find(t => t.name === "subagent_close").description, /subtree|descendants/);
+  const wait = tools.find(t => t.name === "subagent_wait");
+  assert.match(wait.description, /end your turn.*reports wake you/i);
+  assert.match(wait.description, /ids.*mode.*all/i);
+  assert.match(wait.parameters.properties.final.description, /last report/i);
   assert.ok(tools.some(t => t.name === "subagent_catalog"));
 });
