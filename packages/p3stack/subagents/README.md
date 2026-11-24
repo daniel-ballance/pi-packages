@@ -12,7 +12,7 @@ pi install "$PWD"
 
 The root package loads subagents through p3stack. `pi install ./packages/p3stack` loads p3stack without the other root packages.
 
-Reload the parent manually or with `self_reload`. Requires Pi 1.3.0 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). Direct TUI and RPC parents are supported; print and JSON mode register no native management tools or commands.
+Reload the parent manually or with `self_reload`. Requires Pi 1.3.0 or newer; tested with its Node CLI and the installed bundled executable on Linux (Node 22+ for development). Direct TUI and RPC parents are supported; print and JSON mode contribute no native tools, commands or skills.
 
 ## Disable native startup for one launch
 
@@ -29,7 +29,7 @@ The flag does not edit `subagents.json`.
 ## Inside T3 Code
 
 When T3 Code launches Pi with its MCP bridge, it sets `T3_MCP_URL`, and this
-package stays inactive exactly as if `--disable-native-subagents` were passed.
+package registers only its CLI flag: no session hooks, tools, commands or skills.
 T3's own `delegate_task`, `task_status` and `task_cancel` tools are the
 subagent system there: T3's model configuration decides which providers and
 models children can use, and T3 owns execution, permissions, completion
@@ -37,7 +37,7 @@ wake-ups and the subagent UI. This package is for running Pi directly.
 
 ## Bundled setup and execution skill
 
-Outside T3 Code, this extension contributes `/skill:subagents` during resource discovery. Use it to choose policy scope, configure exact providers/models/tools/resources, diagnose unavailable compositions, and operate persistent children. The [skill](skills/subagents/SKILL.md) includes [complete example policies](skills/subagents/reference/configuration.md).
+In terminal TUI and RPC modes, this extension contributes `/skill:subagents` during resource discovery. Use it to choose policy scope, configure exact providers/models/tools/resources, diagnose unavailable compositions, and operate persistent children. The [skill](skills/subagents/SKILL.md) includes [complete example policies](skills/subagents/reference/configuration.md).
 
 This is parent-side guidance, not automatic configuration or child resource inheritance. It does not overwrite user policies or grant permissions. Example model IDs are placeholders and must be replaced with exact available Pi identities. Model-selection research and analysis tooling are maintained separately in Pareto; they are not shipped or required by this execution package.
 
@@ -146,7 +146,7 @@ See [built-in grants and settings](skills/subagents/reference/builtins.md) for t
 | `subagent_disconnect` | Disable a link without erasing counters/history or stopping children |
 | `subagent_renew` | Parent explicitly replenishes one direction's allowance |
 | `subagent_peers` | Inspect links/counters and paginated peer-message history |
-| `subagent_read` | Read new output or replay from a cursor; the page also carries the child's `model` and `thinking` |
+| `subagent_read` | Read new updates and dialogs, replay updates with `since`, or fetch a full report with `page` |
 | `subagent_wait` | Block until the selected children have news, with no time limit unless `timeoutSeconds` is set. Returns `{ wake, agents }`, a compact status for each child with its new reports, and acknowledges those reports unless `collect:false`. `final:true` returns a settled child's last report when it fits. The Waiting for news section names what stays unread. |
 | `subagent_abort` | Clear queues and cancel work, keeping the child alive |
 | `subagent_close` | Stop a child and its subtree, dismissing ordinary notices but retaining results, conversations and worktrees |
@@ -176,7 +176,7 @@ Example composition, after consulting the catalog:
 
 Optional `worktree: true` (or `{ base, branch }`) starts the child in a separate checkout under `<repository of cwd>/.pi/worktrees/`. Defaults: base `HEAD`, new branch `subagent/<directory>`. The manager resolves the base to a commit and checks the planned destination against `workingDirectories` before creating it; it rechecks the actual cwd before spawn. This is not isolation from processes that can write in the repository.
 
-Before spawn acceptance, a failure triggers rollback of this attempt's new checkout and branch, not a repository-wide prune. Cleanup is best effort: if the checkout or commit changed, Git refuses removal, or cleanup cannot be confirmed, inspect the reported path and branch. An accepted child's checkout is left in place even if the receipt fails. The receipt's `worktree` gives the path, branch, base, head and whether the destination is ignored. Merging and removing it are the parent's responsibility, not part of close.
+A failed spawn rolls back only its own new checkout and branch, and only if no process started or its stop was confirmed. If submission and stop both fail, the error names both failures and the retained, locked checkout and branch. Verify the process is gone before unlocking or removing it. Cleanup is best effort: if the checkout or commit changed, Git refuses removal, or cleanup cannot be confirmed, inspect the reported path and branch. An accepted child's checkout is left in place even if the receipt fails. The receipt's `worktree` gives the path, branch, base, head and whether the destination is ignored. Merging and removing it are the parent's responsibility, not part of close.
 
 There are **no executable, raw CLI argument, environment, separate thinking-level or resource-discovery overrides** in the parent-facing spawn tool. The manager compiles validated selections into CLI arguments. It always loads its own child guard, regardless of configuration.
 
@@ -190,7 +190,7 @@ Abort intent is scoped to the current run and recorded before cancellation reque
 
 The human supervises the parent; the parent manages children. `/subagents` is an observational viewer with only two worker interventions: **Halt** (cancel active work and queued prompts, retain process/conversation) and confirmed **Kill** (force-stop the process). In a worker view, `h` requests Halt and `Shift+K` opens target-specific Kill confirmation; Esc remains back/close navigation. Kill remains available to escalate a stuck Halt. Neither operation rolls back edits or guarantees detached subprocess cleanup.
 
-Both persist a human hold before asynchronous cancellation and send attributed requested/outcome supervisory notices to the parent. Halt verifies idle state after cancellation; Kill has a bounded process-close confirmation. Failed Halt can escalate to Kill, and failed Kill can be retried. Unknown prompt acceptance blocks confirmation/release until an observed process exit; after a crash, inspect for orphaned work rather than assuming the absence of an attached process means it stopped. These notices can steer a busy parent; ordinary reads, close, and workflow cleanup cannot dismiss them. Delivery is acknowledged only when the event enters parent history. The parent must acknowledge the intervention and discuss next steps, not automatically replace/retry/resume the stopped work.
+Both persist a human hold before asynchronous cancellation and send attributed requested/outcome supervisory notices to the parent. Halt verifies idle state after cancellation; Kill has a bounded process-close confirmation. Failed Halt can escalate to Kill, and failed Kill can be retried. Unknown prompt acceptance blocks halt confirmation and release until the process is known to have stopped. For detached records, see recovery below. These notices can steer a busy parent; ordinary reads, close, and workflow cleanup cannot dismiss them. Delivery is acknowledged only when the event enters parent history. The parent must acknowledge the intervention and discuss next steps, not automatically replace/retry/resume the stopped work.
 
 Held children reject prompts, peer participation, UI responses and resumption. Owned workflows retain a scheduling barrier against retries, further checks and replacement workers. Holds survive reload. `subagent_release_hold({id})` releases a child hold; for workflows, release every held child and then the workflow ID. Release starts nothing: process resume, prompts and workflow retry/resume are separate explicit operations after discussion. The human viewer has no release, messaging, steering or dialog-answer controls.
 
@@ -200,11 +200,11 @@ Process `status` is separate from `assignment` (identity, task, running/complete
 
 `subagent_list` returns an **object**, `{ totals, agents }`, rather than the previous bare array. Totals cover actual tracked attempts, including stopped children and launch failures:
 
-- `tracked`, `live` (attached processes, including idle), `active` (starting/working/waiting for input), and `unreadReports`.
+- `tracked`, `live` (records with a PID, including idle workers and unconfirmed recorded PIDs), `active` (starting/working/waiting for input), and `unreadReports`.
 - `reportedCost`: summed latest cumulative Pi-reported session costs, in USD; `missingCost`: sessions without valid cost data. Missing usage is not a claim that the work was free. Snapshots refresh at startup/resume, after assistant/tool-result messages and persisted usage/summary entries (including idle cache warming), at turn/compaction completion, and on settle/close, and are not guaranteed provider billing amounts. Resume replaces a child's snapshot rather than adding the same session twice.
-- Each child has `unread` (report/error/input/cancellation updates), `unreadAssistant` (assistant output only), and `unreadUpdates` (all updates, including lifecycle/sent echoes). These count retained updates after the default read cursor, not tokens, new runs, or pending notifications. Explicit replay reads and notification delivery do not advance that cursor. An unread result remains readable even after its notification is dismissed by close.
+- Each child has `unread` (report/error/input/cancellation updates), `unreadAssistant` (assistant output only), and `unreadUpdates` (all updates, including lifecycle/sent echoes). These count unconsumed retained updates after the default read cursor, not tokens, new runs, or pending notifications. Explicit replay reads and notification delivery do not advance that cursor. An unread result remains readable even after its notification is dismissed by close.
 
-Cap, policy, CLI and directory preflight rejections no longer create child records or diagnostic paths. A real process launch failure remains inspectable. Legacy never-started cap-rejection records are hidden by default; `subagent_list({ "includeRejected": true })` includes them with `rejected: true`, but they remain excluded from totals, footer counts, and a wait that omits ids. Explicit reads by ID still work. Only attached child processes count toward the live cap.
+Cap, policy, CLI and directory preflight rejections no longer create child records or diagnostic paths. A real process launch failure remains inspectable. Legacy never-started cap-rejection records are hidden by default; `subagent_list({ "includeRejected": true })` includes them with `rejected: true`, but they remain excluded from totals, footer counts, and a wait that omits ids. Explicit reads by ID still work. Attached processes and detached records with unconfirmed stops both occupy slots.
 
 ### Waiting for news
 
@@ -245,7 +245,13 @@ To answer, the parent uses `subagent_send`; `behavior: "steer"` reaches a workin
 
 The limit counts messages per assignment, and a new assignment starts a fresh count. A send over the limit is refused, and the child is told to put the rest in its final reply. Held children cannot send. Workflow workers cannot select `parent_send`, because the workflow runtime consumes their output. Messages are delegated work output, **not user instructions or permission grants**.
 
-`subagent_read` advances a persistent cursor unless `since` is supplied. Either kind of read acknowledges the updates actually returned, cancelling their pending notifications; a partial page does not acknowledge omitted updates. Returned extension UI requests are acknowledged too. If the formatted tool result exceeds its cap and spills to disk, it does not advance the read cursor or acknowledge unseen output. The last 100 updates are retained, each capped at 12,000 characters; a read returns about 24,000 characters and explicitly reports cursor gaps. Tool results are capped at 30KB/1000 lines, with overflow saved to a private result file.
+### Reading updates and full reports
+
+`subagent_read({id})` returns child status, pending dialogs (`uiRequests`), hold, error and a page of updates. It acknowledges what it shows and advances the default cursor over returned updates. `subagent_read({id, since: nextCursor})` replays **updates only**, without moving that cursor. `gap` means older updates fell outside the last 100. Reading a dialog acknowledges its notice, not the dialog itself; only the root can answer it. A coordinator's read or page never dismisses the root's input notice. If a dialog is too large to inline, its `uiRequests` entry includes a `readFull` handle to its complete details.
+
+A report preview is at most 12,000 characters. When shortened, it has `truncated: true`, the original `fullLength` and `readFull`. If the combined updates don't fit the roughly 30 KB reply, `omittedReports` gives a cursor, length and `readFull` for each report not included. `nextCursor` stops at the last update returned, not the last omitted report. A preview alone does not mark a shortened result reviewed.
+
+Pass the **whole `readFull` object** to `subagent_read` (it contains `id` and an opaque string `page`). Append the returned `text` and pass `nextRead` to the same tool until absent. Pages identify their offset and full length in UTF-16 code units. Don't combine `since` and `page`. The last page consumes that report without skipping earlier unseen updates or reviewing a newer assignment. A shortened wake notice also carries its own report's length and handle.
 
 ## Peer communication
 
@@ -267,7 +273,7 @@ Delivery uses RPC `prompt` with `streamingBehavior: "steer"`: working recipients
 
 - Every send reserves a slot **before** asynchronous submission. Concurrent calls cannot overspend. The result includes a stable message ID and remaining allowance.
 - Definitive RPC rejection refunds the slot (`rejected`). Timeout/transport failure retains it (`unknown`); ask the parent to inspect before retrying. No automatic replay or retry.
-- Send results expose `disposition`: `started`, `queued`, `handled`, or `unknown` when an older runtime does not report it. `handled` means an extension consumed the input; it is not a completed assignment. The latest submission is retained on the child record. Workflow task inputs consumed this way fail the attempt; its submission disposition is recorded.
+- Send results expose `disposition`: `started`, `queued`, `handled`, or `unknown` when an older runtime does not report it. `handled` means an extension consumed the input; it is not a completed assignment. The latest submission is retained on the child record. Only an unchanged idle run with an empty queue confirms `workStarted: false`. Workflows reject that no-run case, not a handler that actually ran the assignment.
 - Peer `handled` means an extension consumed the envelope without an observed conversation receipt. It retains its allowance and is not automatically retried. A matching observed receipt takes precedence.
 - `accepted` means RPC accepted/queued, not completion. `received` means the matching message entered the recipient's conversation, not proof the model read or answered it. Parent history can show `submitting` while a send is in flight.
 - Abort/close/reload may discard queued messages. Unconfirmed receipts are marked `interrupted`, retaining their consumed allowance. Already-received history stays received; interrupted messages are never automatically redelivered.
@@ -281,7 +287,7 @@ See [the design note](PEER-MESSAGING.md) for scope, failure semantics and accept
 
 ## Wake loops
 
-`subagent_loop` (and the `/loop` command for the human) repeats a task on an interval: each tick is a custom message, `subagent-loop-tick`, that starts a parent turn. A tick reaches only an idle parent with no pending human-intervention notice; one that falls due during a turn waits until the turn settles, and ticks never stack. The interval must be shorter than the run's duration, and the deadline is enforced on time, even while a tick waits. The loop ends when the parent calls `subagent_loop({op: "stop"})`, when the human runs `/loop stop`, or at the policy's iteration or duration bound; a bound adds a `subagent-loop-end` message without starting a turn. A failed tick submission ends the loop and records the delivery error rather than retrying. One loop runs per parent, and a reload stops it.
+`subagent_loop` (and the `/loop` command for the human) repeats a task on an interval: each tick is a custom message, `subagent-loop-tick`, that starts a parent turn. A tick reaches only an idle parent with no pending human-intervention notice; one that falls due during a turn waits until the turn settles, and ticks never stack. The interval must be shorter than the run's duration, and the deadline is enforced on time, even while a tick waits. The loop ends when the parent calls `subagent_loop({op: "stop"})`, when the human runs `/loop stop`, or at the policy's iteration or duration bound; a bound adds a `subagent-loop-end` message without starting a turn. The next tick is scheduled only after the current tick's matching message starts. No receipt within 10 seconds (or by the earlier loop deadline) ends the loop and records why; there is no automatic retry. One loop runs per parent, and a reload stops it.
 
 User policies leave loops off unless configured; the built-in fallback enables them. The policy's `loops` field enables them and caps the interval, tick count and duration (see the [configuration reference](skills/subagents/reference/configuration.md)). Under T3 Code this package is inactive; T3's `schedule_task` and `watch_pull_request` cover the same need. A watcher child whose task is "watch X and report" also wakes the parent, through its completion notice, without a loop.
 
@@ -293,7 +299,7 @@ With `maxDepth: 1` (the default in a user file) a child cannot delegate: configu
 
 One manager owns the whole tree. All live children count toward `maxChildren`; listing, the inspector and reported costs include descendants. Close, abort, Halt and Kill target the subtree. Inspect each affected child's status, hold outcome and reported failures; a top-level acknowledgement alone does not establish that every descendant stopped. A held ancestor blocks resumption.
 
-Coordinators pull their direct children's routine reports with `subagent_wait` or `subagent_read`. A coordinator wait uses bounded pipe calls but has no overall deadline unless requested. Its own queued messages (from the root or a peer), not the operator's queue at the root, can end it with `wake: "message"`. Input requests and human interventions reach the root, as do reports left unread when a coordinator stops. A coordinator read cannot settle a dialog.
+A child given `subagent_spawn` must also receive both `subagent_wait` and `subagent_read`, or spawn is refused. Coordinators pull their direct children's routine reports with `subagent_wait` or `subagent_read`. A coordinator wait uses bounded pipe calls but has no overall deadline unless requested. Its own queued messages (from the root or a peer), not the operator's queue at the root, can end it with `wake: "message"`. Input requests and human interventions reach the root, as do reports left unread when a coordinator stops. A coordinator read cannot settle a dialog.
 
 A proxy request too large for the private pipe is refused before submission. A large reply may be a truncated preview; full tool output can spill in the root manager's directory, which a child is not guaranteed to access. Narrow the call instead. A coordinator can free slots only in its subtree. See `docs/adr/0002-nesting-through-one-root-manager.md` in the repository for the rationale.
 
@@ -363,9 +369,13 @@ How it works, and its limits:
 
 ## Persistence, reload, and migration
 
-State lives in `<Pi agent directory>/subagents/<parent-session-id>/`: a registry, saved Pi sessions, and per-child event/stderr logs. Directories are private (0700), manager-written files 0600. Logs may contain sensitive code/task data and are capped at 20 MiB each (the final record may be truncated). There is no automatic retention/deletion policy.
+State lives in `<Pi agent directory>/subagents/<parent-session-id>/`: the registry, saved Pi sessions, full report files and per-child event/stderr logs. **Report files are private to the operating-system user, not to other children with file or shell tools.** The manager checks subtree ownership for tool reads, including pages. It is not a filesystem sandbox: children run as the same OS user. Directories are 0700 and manager-written files 0600; logs may contain sensitive task data and are capped at 20 MiB each.
 
-Orderly reload/session replacement/exit clears queues and requests abort, then sends SIGTERM and escalates to SIGKILL after a grace period. Signal escalation is timed; the final wait for process exit has no fixed bound. Saved children are restored as stopped; resumption is explicit and does not replay interrupted tasks. It rechecks the **current policy and current availability** and recompiles the saved composition, not stale raw arguments. Already-running children are not silently reconfigured; normal parent reload stops them. Completed file edits are not rolled back.
+Each child retains its latest 100 saved reports (terminal assistant answers and reports over 600 characters). The oldest expires first, even if unread. Only a report longer than its 12,000-character display copy needs a separate file; shorter saved text stays in the registry. A retained handle can outlive the update window, later assignments and reload. An expired handle is refused. Sessions and logs are not automatically deleted.
+
+Orderly reload, session replacement and exit clear queues and request abort. RPC stop waits up to 2 seconds after SIGTERM, then up to 2 seconds after SIGKILL; queue, abort and usage requests have separate bounds. An interrupted workflow command gets 1.5 seconds after SIGTERM and 2 seconds after SIGKILL. If close is still unconfirmed the attempt records that fact; it does not block manager shutdown.
+
+Close and force-kill persist a pending stop **before** signalling. On recovery the manager checks the recorded PID without sending a termination signal: a nonexistent PID confirms the stop and frees the slot. A present PID (possibly reused), an unknown PID or an inconclusive check retains the slot. After independently verifying the old worker is gone, the human can run `/subagents confirm-stopped <id>` and confirm the prompt. This clears only a detached stop record; no model tool can do it, no process is signalled and no hold is released. Resume is explicit, rechecks current policy and availability, and replays no interrupted tasks. Completed edits are not rolled back.
 
 **v1 records:** existing unrestricted child records remain visible/readable/closable, but cannot resume through the new tools because they lack a validated composition. Spawn a new allowlisted child instead. This deliberately prevents old executable/env/CLI settings bypassing the new policy.
 
