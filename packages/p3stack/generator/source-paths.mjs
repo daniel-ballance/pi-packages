@@ -10,7 +10,10 @@ export function sourcesOf(manifest) {
 }
 
 export function sourcePathClassifier(source, skills) {
-  const exclude = (source.exclude ?? []).map(pattern => new RegExp(pattern));
+  const exclude = (source.exclude ?? []).map((pattern, index) => {
+    try { return new RegExp(pattern); }
+    catch (error) { throw new Error(`rules/manifest.json: ${source.name} exclude[${index}]: ${error.message}`, { cause: error }); }
+  });
   const rows = (skills ?? []).filter(row => row.source === source.name).map(row => ({ ...row, directory: row.path.slice(0, -"SKILL.md".length) }));
   return path => {
     const row = rows.find(row => path.startsWith(row.directory));

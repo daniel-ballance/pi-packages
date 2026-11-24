@@ -2,15 +2,20 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gitEnv } from "./git-env.mjs";
-import { checkRegistry, loadRegistry } from "./check-registry.mjs";
+import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
+import { checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
 import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
-const readJson = (path, fallback) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
+function readJson(path, fallback) {
+  if (!existsSync(path)) return fallback;
+  try { return JSON.parse(readFileSync(path, "utf8")); }
+  catch (error) { throw new Error(`Cannot load ${path}: ${error.message}`, { cause: error }); }
+}
 
 const byName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
@@ -72,7 +77,7 @@ function expander(commit, problems) {
   };
 }
 
-function applyTokens(files, owners, rules, expanders, problems) {
+function applyTokens(files, owners, rules, expanders, problems, sectionRewrites) {
   const skillNames = [...files.keys()]
     .flatMap(path => /^skills\/([^/]+)\/SKILL\.md$/.exec(path)?.slice(1) ?? [])
     .sort().map(name => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") || "(?!)";
@@ -81,113 +86,150 @@ function applyTokens(files, owners, rules, expanders, problems) {
       problems.push(`token rule ${rule.id}: unknown source "${rule.source}"`);
       continue;
     }
-    const scope = rule.files ? new RegExp(rule.files) : undefined;
-    const pattern = new RegExp(rule.find.replaceAll("{{skills.names}}", () => skillNames), `g${rule.flags ?? ""}`);
+    let scope, pattern;
+    try {
+      scope = rule.files ? new RegExp(rule.files) : undefined;
+      pattern = new RegExp(rule.find.replaceAll("{{skills.names}}", () => skillNames), `g${rule.flags ?? ""}`);
+    } catch (error) {
+      problems.push(`rules/tokens.json: token rule ${rule.id}: ${error.message}`);
+      continue;
+    }
     let count = 0;
     for (const [path, text] of files) {
       if (typeof text !== "string" || (rule.source !== undefined && owners.get(path) !== rule.source) || (scope && !scope.test(path))) continue;
       const matches = text.match(pattern)?.length ?? 0;
       if (matches === 0) continue;
       count += matches;
-      files.set(path, text.replace(pattern, expanders.get(owners.get(path))(rule.replace, `token rule ${rule.id}`)));
+      const replacement = expanders.get(owners.get(path))(rule.replace, `token rule ${rule.id}`);
+      files.set(path, text.replace(pattern, replacement));
+      sectionRewrites.get(path)?.push([pattern, replacement]);
     }
-    if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min}. Upstream reworded or removed its text.`);
+    if (count < (rule.min ?? 0)) problems.push(`token rule ${rule.id}: ${count} matches, expected at least ${rule.min} after earlier token rewrites (source: ${rule.source ?? "all sources"}; files: ${rule.files ?? "all files"}). Review its scope and upstream text.`);
   }
 }
 
-// Whether each line sits inside fenced code. A fence opens with three or more
-// backticks or tildes, indented at most three spaces, and closes with a line of
-// at least as many of the same character (CommonMark).
-function fencedLines(lines) {
-  let fence;
-  return lines.map(line => {
-    const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-    if (!fence) {
-      if (marker && !(marker[1][0] === "`" && marker[2].includes("`"))) { fence = marker[1]; return true; }
-      return false;
-    }
-    if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && marker[2].trim() === "") fence = undefined;
-    return true;
+const { fromMarkdown } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("mdast-util-from-markdown");
+
+function sectionView(text) {
+  const lines = text.split("\n"), header = frontmatterBlock(text)?.[0] ?? "";
+  const offset = header.split("\n").length - 1;
+  // Only document headings delimit an overlay, not examples in fences or blockquotes.
+  const headings = fromMarkdown(text.slice(header.length)).children.filter(node => node.type === "heading").map(node => {
+    const start = offset + node.position.start.line - 1, last = offset + node.position.end.line - 1;
+    // For Setext headings the rule names the title, without the underline.
+    const title = lines.slice(start, Math.max(start + 1, last)).join("\n").replace(/\r$/gm, "");
+    return { start, title, level: node.depth };
   });
+  return { lines, headings };
 }
 
-const headingLevel = line => line.match(/^ {0,3}(#{1,6})(?:[ \t]|$)/)?.[1].length;
-
-function findSection(lines, heading) {
-  const fenced = fencedLines(lines);
-  const starts = lines.flatMap((line, index) => line === heading && !fenced[index] ? [index] : []);
-  if (starts.length !== 1) return { error: starts.length === 0 ? "not found" : `found ${starts.length} times` };
-  const start = starts[0], level = headingLevel(heading) ?? 0;
-  let end = lines.length;
-  const children = [];
-  for (let index = start + 1; index < lines.length; index++) {
-    const found = fenced[index] ? undefined : headingLevel(lines[index]);
-    if (found === undefined) continue;
-    if (found <= level) { end = index; break; }
-    children.push(lines[index]);
+function findSection({ lines, headings }, title) {
+  const matches = headings.filter(node => node.title === title);
+  if (matches.length !== 1) return { error: matches.length ? `found ${matches.length} times` : "not found" };
+  const [{ start, level }] = matches, children = [];
+  for (const next of headings) {
+    if (next.start <= start) continue;
+    if (next.level <= level) return { start, end: next.start, children };
+    children.push(next.title);
   }
-  return { start, end, children };
+  return { start, end: lines.length, children };
 }
 
-// The hash of the untranslated upstream section an overlay replaces. When
-// upstream edits that section, the overlay must be reviewed, not left to hide it.
-export function sectionHash(text, heading) {
-  const lines = text.split("\n"), section = findSection(lines, heading);
-  if (section.error) return undefined;
-  const body = lines.slice(section.start, section.end).join("\n").trimEnd() + "\n";
+function sectionText(lines, { start, end }) {
+  return lines.slice(start, end).join("\n") + (end < lines.length ? "\n" : "");
+}
+
+function hashSection(lines, section) {
+  const body = sectionText(lines, section).trimEnd() + "\n";
   return createHash("sha256").update(body).digest("hex").slice(0, 12);
 }
 
-function applySections(files, upstream, sections, overlaysDir, expand, problems) {
-  for (const { file, heading, upstreamHeading = heading, overlay, upstream: expected } of sections) {
+// Hash the untranslated section, never its rewritten text.
+export function sectionHash(text, heading) {
+  const view = sectionView(text), section = findSection(view, heading);
+  return section.error ? undefined : hashSection(view.lines, section);
+}
+
+function applySections(files, upstream, sections, sectionRewrites, overlaysDir, expand, problems) {
+  for (const [file, rules] of Map.groupBy(sections, rule => rule.file)) {
     const text = files.get(file);
     if (typeof text !== "string") { problems.push(`section rule: ${file} is not an emitted text file`); continue; }
-    const lines = text.split("\n"), section = findSection(lines, heading);
-    if (section.error) { problems.push(`section rule: ${file}: heading "${heading}" ${section.error}. Upstream changed the section.`); continue; }
-    const source = upstream.get(file);
-    const sourceSection = typeof source === "string" ? findSection(source.split("\n"), upstreamHeading) : undefined;
-    if (sourceSection && !sourceSection.error && sourceSection.children.length) {
-      const listed = sourceSection.children.map(line => `"${line}"`).join(", ");
-      problems.push(`section rule: ${file}: "${heading}" is not a leaf; it contains ${listed}. Replace each child. Put text before the first child in a token anchored on "${heading}". A sibling with no rule is emitted.`);
-      continue;
+    const raw = sectionView(upstream.get(file)), rewritten = sectionView(text), edits = [];
+    for (const { heading, upstreamHeading = heading, overlay, upstream: expected } of rules) {
+      const section = findSection(rewritten, heading);
+      if (section.error) { problems.push(`section rule: ${file}: heading "${heading}" ${section.error} after token rewrites.`); continue; }
+      const original = findSection(raw, upstreamHeading);
+      if (original.error) { problems.push(`section rule: ${file}: upstream heading "${upstreamHeading}" ${original.error}.`); continue; }
+      const children = [...new Set([...original.children, ...section.children])];
+      if (children.length) {
+        const listed = children.map(line => `"${line}"`).join(", ");
+        problems.push(`section rule: ${file}: "${heading}" is not a leaf; it contains ${listed}. Replace each child. Put text before the first child in a token anchored on "${heading}". A sibling with no rule is emitted.`);
+        continue;
+      }
+      const actual = hashSection(raw.lines, original);
+      if (!/^[0-9a-f]{12}$/.test(expected ?? "")) {
+        problems.push(`section rule: ${file}: "${heading}": expected a 12-digit upstream hash. Review the overlay against the raw section (hash ${actual}).`);
+        continue;
+      }
+      if (actual !== expected) {
+        problems.push(`section rule: ${file}: section "${heading}" changed upstream (was ${expected}, now ${actual}). Review the overlay, then update its hash.`);
+        continue;
+      }
+      // A sibling can also disappear without becoming a child. Replace only the
+      // translation of the raw span we hashed, not surrounding unreviewed text.
+      const translated = sectionRewrites.get(file).reduce((span, [pattern, replacement]) => span.replace(pattern, replacement), sectionText(raw.lines, original));
+      if (translated !== sectionText(rewritten.lines, section)) {
+        problems.push(`section rule: ${file}: "${heading}" changed boundary during token rewrites. Keep each rewrite inside or outside the reviewed section.`);
+        continue;
+      }
+      if (edits.some(edit => edit.start === section.start)) { problems.push(`Duplicate section rule: ${file}: "${heading}"`); continue; }
+      const replacement = expand(readFileSync(join(overlaysDir, overlay), "utf8"), `overlay ${overlay}`, file);
+      edits.push({ ...section, replacement });
     }
-    const actual = sectionHash(source, upstreamHeading);
-    if (actual !== expected) {
-      problems.push(`section rule: ${file}: section "${heading}" changed upstream (was ${expected}, now ${actual}). Review the overlay, then update its hash.`);
-      continue;
+    // All offsets refer to the same after-tokens view, never to an earlier overlay's text.
+    for (const { start, end, replacement } of edits.sort((a, b) => b.start - a.start)) {
+      rewritten.lines.splice(start, end - start, ...replacement.trimEnd().split("\n"), "");
     }
-    const replacement = expand(readFileSync(join(overlaysDir, overlay), "utf8"), `overlay ${overlay}`, file);
-    lines.splice(section.start, section.end - section.start, ...replacement.trimEnd().split("\n"), "");
-    files.set(file, lines.join("\n"));
+    files.set(file, rewritten.lines.join("\n"));
   }
 }
 
-function addExtras(files, extraDir, executables) {
-  for (const path of walk(extraDir)) {
-    const output = path.split("\\").join("/");
-    files.set(output, readFileSync(join(extraDir, path)));
-    if (isExecutable(join(extraDir, path))) executables.add(output);
+function addExtras(dir, put) {
+  for (const path of walk(dir)) {
+    const input = join(dir, path);
+    put(path.split("\\").join("/"), readFileSync(input), isExecutable(input));
   }
 }
 
-function renderRegistry(files, { routes, chains }) {
+function renderRegistry(files, { routes, chains }, put) {
   const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
   const path = target => target.startsWith("p3stack-mode/") ? `../${target}` : target.startsWith("playbooks/") ? `../poteto-mode/${target}` : `../${target}/SKILL.md`;
   const link = target => `[${target}](${path(target)})`;
   const table = (title, columns, rows) => `# ${title}\n\n| ${columns.join(" | ")} |\n| ${columns.map(() => "---").join(" | ")} |\n${rows.map(row => `| ${row.map(cell).join(" | ")} |`).join("\n")}\n`;
-  files.set("skills/p3stack-mode/references/routes.md", table("Routes", ["Request", "Grant", "Target"], routes.map(row => [row.request, row.grant, link(row.target)])));
-  files.set("skills/p3stack-mode/references/chains.md", table("Chains", ["Id", "Playbook", "Anchor", "Position", "Skill", "When"], chains.map(row => [row.id, link(row.playbook), row.anchor, row.position, link(row.skill), row.when])));
+  put("skills/p3stack-mode/references/routes.md", table("Routes", ["Request", "Grant", "Target"], routes.map(row => [row.request, row.grant, link(row.target)])));
+  put("skills/p3stack-mode/references/chains.md", table("Chains", ["Id", "Playbook", "Anchor", "Position", "Skill", "When"], chains.map(row => [row.id, link(row.playbook), row.anchor, row.position, link(row.skill), row.when])));
   const template = "skills/p3stack-mode/SKILL.md.tmpl";
   if (!files.has(template)) return;
   const readPath = target => `\`<this file's directory>/${path(target)}\``;
   const routesTable = table("Routes", ["Request", "Grant", "Read"], routes.map(row => [row.request, row.grant, readPath(row.target)])).replace(/^# Routes\n\n/, "").trimEnd();
   const chainsTable = table("Chains", ["Playbook", "Anchor", "Position", "Read", "When"], chains.map(row => [readPath(row.playbook), row.anchor, row.position, readPath(row.skill), row.when])).replace(/^# Chains\n\n/, "").trimEnd();
-  files.set("skills/p3stack-mode/SKILL.md", files.get(template).toString().replaceAll("{{routes}}", routesTable).replaceAll("{{chains}}", chainsTable));
+  put("skills/p3stack-mode/SKILL.md", files.get(template).toString().replaceAll("{{routes}}", routesTable).replaceAll("{{chains}}", chainsTable));
   files.delete(template);
+}
+
+// Roots replaced wholesale by installGenerated, even if a source stops supplying one.
+const GENERATED_ROOTS = ["LICENSE", "LICENSE-agent-skills", "LICENSE-matt-pocock", "LICENSE-superpowers", "agents", "skills"];
+
+function checkOutputPath(path) {
+  const parts = path.split("/");
+  if (!GENERATED_ROOTS.includes(parts[0]) || path.includes("\\") || parts.some(part => !part || part === "." || part === "..")) {
+    throw new Error(`${path}: not an installed output path. Move it to a slash-separated path under a generated root, or explicitly declare its root in GENERATED_ROOTS.`);
+  }
 }
 
 function writeFiles(files, executables, outDir) {
   for (const [path, contents] of files) {
+    checkOutputPath(path);
     mkdirSync(dirname(join(outDir, path)), { recursive: true });
     writeFileSync(join(outDir, path), contents);
     chmodSync(join(outDir, path), executables.has(path) ? 0o755 : 0o644);
@@ -198,8 +240,10 @@ function applyPatches(patchesDir, outDir, problems) {
   for (const name of walk(patchesDir).filter(file => file.endsWith(".patch"))) {
     const patch = join(patchesDir, name);
     try {
-      execFileSync("git", ["apply", "--check", patch], { cwd: outDir, stdio: "pipe", env: gitEnv() });
-      execFileSync("git", ["apply", patch], { cwd: outDir, stdio: "pipe", env: gitEnv() });
+      const apply = ["-c", "apply.ignoreWhitespace=no", "apply", "--whitespace=nowarn"];
+      const options = { cwd: outDir, stdio: "pipe", env: gitEnv() };
+      execFileSync("git", [...apply, "--check", patch], options);
+      execFileSync("git", [...apply, patch], options);
     } catch (error) {
       problems.push(`patch ${name} no longer applies; rebase it: ${String(error.stderr ?? error.message).trim()}`);
     }
@@ -239,27 +283,39 @@ export function generate({ packageDir, outDir }) {
   const expanders = new Map(sources.map(source => [source.name, expander(infos.find(info => info.source === source.name)?.commit, problems)]));
   const expand = (text, where, path) => expanders.get(owners.get(path))(text, where);
   const upstream = new Map(files);
-  applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems);
-  applySections(files, upstream, readJson(join(rules, "sections.json"), []), join(packageDir, "overlays"), expand, problems);
+  const sections = readJson(join(rules, "sections.json"), []);
+  const sectionRewrites = new Map(sections.map(({ file }) => [file, []]));
+  applyTokens(files, owners, readJson(join(rules, "tokens.json"), []), expanders, problems, sectionRewrites);
+  applySections(files, upstream, sections, sectionRewrites, join(packageDir, "overlays"), expand, problems);
   if (registry) {
     for (const row of registry.skills.filter(row => row.action === "emit" && row.source !== "p3stack")) {
       const path = `skills/${row.name}/SKILL.md`, text = files.get(path);
       if (typeof text !== "string") { problems.push(`Registry skill ${row.name} is not mapped to ${path}`); continue; }
-      const hidden = /^disable-model-invocation:\s*true\s*$/m.test(text);
-      if (hidden === (row.invocation === "user")) continue;
-      const visible = text.replace(/^disable-model-invocation:.*\n/gm, "");
-      files.set(path, row.invocation === "user" ? visible.replace(/^---\n/, "---\ndisable-model-invocation: true\n") : visible);
+      files.set(path, skillFrontmatter(text, path).withInvocation(row.invocation === "user"));
     }
   }
-  addExtras(files, join(packageDir, "extra"), executables);
-  addExtras(files, join(packageDir, "authored"), executables);
-  if (registry) renderRegistry(files, registry);
+  const put = by => (path, contents, executable = false) => {
+    const from = owners.get(path);
+    if (from !== undefined && !manifest.overwrites?.some(rule => rule.file === path && rule.from === from && rule.by === by)) {
+      problems.push(`${path}: ${from} and ${by} both emit this path. Remove the duplicate or declare {file, from, by} in rules/manifest.json overwrites.`);
+      return;
+    }
+    files.set(path, contents);
+    owners.set(path, by);
+    if (executable) executables.add(path);
+    else executables.delete(path);
+  };
+  for (const dir of ["extra", "authored"]) addExtras(join(packageDir, dir), put(dir));
+  if (registry) renderRegistry(files, registry, put("registry"));
   if (problems.length) throw new Error(problems.join("\n"));
   writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));
   // Patches are rewritten under the caller's umask; keep only the executable bit.
-  for (const path of walk(outDir)) chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
+  for (const path of walk(outDir)) {
+    checkOutputPath(path.split(sep).join("/"));
+    chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
+  }
   const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
   lint(outDir, checks.deny, lintProblems);
   for (const { file, contains } of checks.require ?? []) {
@@ -274,12 +330,9 @@ export function generate({ packageDir, outDir }) {
   return infos;
 }
 
-const generatedRoots = packageDir =>
-  [...new Set(readJson(join(packageDir, "rules/manifest.json")).sources.flatMap(source => source.map.map(({ to }) => to.split("/")[0])))].sort();
-
 function drift(packageDir, outDir) {
   const problems = [];
-  for (const root of generatedRoots(packageDir)) {
+  for (const root of GENERATED_ROOTS) {
     const expected = new Set(walk(join(outDir, root)).map(file => join(root, file)));
     const actual = new Set(walk(join(packageDir, root)).map(file => join(root, file)));
     for (const path of [...new Set([...expected, ...actual])].sort()) {
@@ -298,12 +351,8 @@ export function upstreamInfo(packageDir, source) {
   const { vendor, upstream } = source;
   if (!upstream) return undefined;
   const checkout = join(packageDir, upstream.checkout);
-  const git = (...args) => execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
-  const subtreePath = relative(checkout, join(packageDir, vendor)) || ".";
-  const hidden = git("ls-files", "-v", "-z", "--", subtreePath).split("\0").filter(entry => /^[a-zS] /.test(entry));
-  const changes = [git("-c", "core.fileMode=true", "status", "--porcelain=v1", "--untracked-files=all", "--ignored", "--ignore-submodules=none", "--", subtreePath), ...hidden].filter(Boolean).join("\n");
-  if (changes) throw new Error(`${upstream.checkout} has local changes; generation requires clean upstream inputs, including ignored files.\n${changes}`);
-  const commit = git("rev-parse", "HEAD");
+  requireCleanCheckout(checkout, relative(checkout, join(packageDir, vendor)) || ".");
+  const commit = gitAt(checkout, "rev-parse", "HEAD");
   const { name, version } = readJson(join(packageDir, vendor, "plugin.json"), {});
   const subtree = relative(upstream.checkout, vendor).split("\\").join("/");
   return { source: source.name, repository: upstream.repository, commit, subtree, name, version };
@@ -334,7 +383,7 @@ export function installGenerated({ packageDir, outDir, copy = cpSync }) {
   const backupsDir = join(outDir, BACKUPS), changed = [];
   mkdirSync(backupsDir);
   try {
-    for (const root of generatedRoots(packageDir)) {
+    for (const root of GENERATED_ROOTS) {
       const destination = join(packageDir, root);
       const backup = existsSync(destination) || isLink(destination) ? join(backupsDir, root) : undefined;
       if (backup) renameSync(destination, backup);
@@ -373,17 +422,18 @@ function main(args) {
       const problems = drift(packageDir, outDir);
       const recorded = pin === undefined ? undefined : readJson(manifestPath).p3stack?.upstream;
       if (recorded !== pin) problems.push(`package.json p3stack.upstream is "${recorded}", expected "${pin}"`);
-      for (const info of infos) problems.push(...gitlinkDrift(packageDir, sources.find(source => source.name === info.source), info));
+      const gitlinks = infos.flatMap(info => gitlinkDrift(packageDir, sources.find(source => source.name === info.source), info));
       if (readme !== undefined && infos.length) {
         if ([...readme.matchAll(README_PIN)].length !== 1) problems.push("README.md: expected one pair of p3stack:upstream pin markers");
         else if (pinnedReadme(readme, infos) !== readme) problems.push(`README.md: the upstream pins for ${infos.map(info => info.source).join(", ")} between the p3stack:upstream markers are stale`);
       }
-      if (problems.length === 0) {
+      if (!gitlinks.length && !problems.length) {
         const paths = walk(outDir);
         console.log(`Generated output is current. ${paths.length} files, ${paths.reduce((bytes, path) => bytes + statSync(join(outDir, path)).size, 0)} bytes.`);
         return 0;
       }
-      console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs.\n  ${problems.join("\n  ")}`);
+      if (gitlinks.length) console.error(`${gitlinks.join("\n")}\nConfirm the intended ref first. Restore the checkout to the staged pin, or stage the candidate gitlink if that update was authorized.`);
+      if (problems.length) console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs after confirming the pins.\n  ${problems.join("\n  ")}`);
       return 1;
     }
     installGenerated({ packageDir, outDir });

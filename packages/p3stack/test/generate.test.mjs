@@ -103,10 +103,10 @@ test("source-scoped token rules rewrite only that source and global rules still 
 
 test("a source-scoped token minimum cannot count matches from another source", () => {
   const { root, out, dispose } = twoSources({
-    "rules/tokens.json": JSON.stringify([{ id: "only-other", source: "other", min: 1, find: "Cursor-only", replace: "Pi" }]),
+    "rules/tokens.json": JSON.stringify([{ id: "only-other", source: "other", files: "SKILL\\.md$", min: 1, find: "Cursor-only", replace: "Pi" }]),
   });
   try {
-    assert.throws(() => generate({ packageDir: root, outDir: out }), /only-other: 0 matches, expected at least 1/);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /only-other: 0 matches, expected at least 1.*source: other.*files: SKILL\\\.md\$/);
   } finally { dispose(); }
 });
 
@@ -120,6 +120,12 @@ test("source names must be nonempty and unique", () => {
       assert.equal(existsSync(out), false);
     } finally { dispose(); }
   }
+});
+
+test("a malformed source exclusion names its manifest rule", t => {
+  const f = fixture({ "rules/manifest.json": manifest({ exclude: ["("] }) });
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /rules\/manifest\.json.*cursor-plugins.*exclude.*Invalid regular expression/i);
 });
 
 test("a token rule with an unknown source fails even without a minimum", () => {
@@ -183,7 +189,7 @@ test("slash command discovery with no emitted skills cannot match a bare slash",
 test("a token rule that stops matching upstream fails with its id", () => {
   const { root, out, dispose } = fixture({ "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\n---\n\n## Subagents\n\nx\n" });
   try {
-    assert.throws(() => generate({ packageDir: root, outDir: out }), /task-tool: 0 matches, expected at least 1/);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /task-tool: 0 matches, expected at least 1.*all sources.*all files/);
   } finally { dispose(); }
 });
 
@@ -220,6 +226,87 @@ test("a leaf section ends at the next heading of the same or a higher level, and
   } finally { leaf.dispose(); }
 });
 
+function sectionFixture(text, rule, tokens = []) {
+  const file = "skills/demo/SKILL.md";
+  return fixture({
+    [`vendor/up/${file}`]: text,
+    "rules/tokens.json": JSON.stringify(tokens),
+    "rules/sections.json": JSON.stringify([{ file, overlay: "demo/subagents.md", ...rule }]),
+    "rules/lint.json": "{\"deny\":[]}",
+  });
+}
+
+test("a token that turns a sibling into a child cannot expand a hashed overlay", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nMust survive.\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "demote", min: 1, find: "^## Next$", flags: "m", replace: "### Next" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /"## Pick" is not a leaf.*### Next/);
+});
+
+test("a token cannot make an overlay consume the body of a vanished sibling heading", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nNever part of Pick.\n\n## Last\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "remove-heading", min: 1, find: "## Next", replace: "Next:" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /section rule: skills\/demo\/SKILL.md:.*Pick.*boundary/);
+});
+
+test("a token may rename an unoverlaid sibling without moving the boundary", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nKeep me.\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "rename-heading", min: 1, find: "## Next", replace: "## Renamed" },
+  ]);
+  t.after(f.dispose);
+  generate({ packageDir: f.root, outDir: f.out });
+  assert.ok(f.read("skills/demo/SKILL.md").endsWith("## Renamed\n\nKeep me.\n"));
+});
+
+test("two overlays cannot claim the same leaf", t => {
+  const f = fixture({});
+  t.after(f.dispose);
+  const path = join(f.root, "rules/sections.json"), [rule] = JSON.parse(readFileSync(path, "utf8"));
+  writeFileSync(path, JSON.stringify([rule, rule]));
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /duplicate section.*skills\/demo\/SKILL.md.*Subagents/i);
+});
+
+test("a Setext child in the raw section is refused, even if a token removes its underline", t => {
+  const raw = "# Pick\n\nOld.\n\nDetail\n------\n\nKeep this.\n";
+  const f = sectionFixture(raw, { heading: "# Pick", upstream: sectionHash(raw, "# Pick") }, [
+    { id: "strip-underline", min: 1, find: "------", replace: "" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /"# Pick" is not a leaf.*Detail/);
+});
+
+test("a Setext section ends at its sibling and a fenced underline stays in the hashed leaf", t => {
+  const leaf = "Pick\n====\n\n```md\nFake\n----\n```\n";
+  const sibling = "Next\n====\n\nKeep this.\n";
+  const f = sectionFixture(leaf + "\n" + sibling, { heading: "Pick", upstream: sectionHash(leaf, "Pick") });
+  t.after(f.dispose);
+  generate({ packageDir: f.root, outDir: f.out });
+  assert.equal(f.read("skills/demo/SKILL.md"), "## Subagents\n\nPi delegation.\n\n" + sibling);
+});
+
+for (const [name, rule, diagnostic] of [
+  ["missing hash", {}, /(?:missing|expected|required).*upstream hash/i],
+  ["absent raw heading and hash", { upstreamHeading: "## Typo" }, /upstream heading "## Typo" not found/],
+  ["absent raw heading", { upstreamHeading: "## Typo", upstream: "123456789abc" }, /upstream heading "## Typo" not found/],
+  ["non-heading raw line", { upstreamHeading: "Old.", upstream: "123456789abc" }, /upstream heading "Old\." not found/],
+]) {
+  test(`section rejects ${name} without suggesting an undefined hash`, t => {
+    const f = sectionFixture("## Pick\n\nOld.\n", { heading: "## Pick", ...rule });
+    t.after(f.dispose);
+    assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), error => {
+      assert.match(error.message, diagnostic);
+      assert.doesNotMatch(error.message, /undefined/);
+      return true;
+    });
+  });
+}
+
 test("patches apply after tokens and sections, and a stale patch fails with its name", () => {
   const patch = [
     "--- a/skills/demo/SKILL.md", "+++ b/skills/demo/SKILL.md", "@@ -11,3 +11,3 @@", " ## Next", " ", "-Kept.", "+Patched.", "",
@@ -233,6 +320,25 @@ test("patches apply after tokens and sections, and a stale patch fails with its 
   try {
     assert.throws(() => generate({ packageDir: stale.root, outDir: stale.out }), /0001-demo\.patch/);
   } finally { stale.dispose(); }
+});
+
+test("patch bytes and context matching do not depend on Git whitespace configuration", t => {
+  const header = ["--- a/skills/demo/SKILL.md", "+++ b/skills/demo/SKILL.md", "@@ -11,3 +11,3 @@"];
+  const patch = [...header, " ## Next", " ", "-Kept.", "+        Indented.", ""].join("\n");
+  const { root, dispose } = fixture({ "patches/demo.patch": patch });
+  t.after(dispose);
+  const env = { ...process.env, P3STACK_PACKAGE_DIR: root, GIT_CONFIG_COUNT: "3",
+    GIT_CONFIG_KEY_0: "core.whitespace", GIT_CONFIG_VALUE_0: "indent-with-non-tab",
+    GIT_CONFIG_KEY_1: "apply.whitespace", GIT_CONFIG_VALUE_1: "fix",
+    GIT_CONFIG_KEY_2: "apply.ignoreWhitespace", GIT_CONFIG_VALUE_2: "change" };
+  const run = () => spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8", env });
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(readFileSync(join(root, "skills/demo/SKILL.md"), "utf8"), /\n {8}Indented\.\n$/);
+  writeFileSync(join(root, "patches/demo.patch"), patch.replace(" ## Next", " ##    Next"));
+  const stale = run();
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /patch demo\.patch no longer applies/);
 });
 
 test("the coupling lint names every file, line and token a rule left behind", () => {
@@ -282,8 +388,55 @@ test("a replaced section that changes upstream fails with its new hash, so the o
   } finally { dispose(); }
 });
 
-test("authored files copy after extras without token rewrites and keep executable modes", () => {
+test("undeclared overwrites name the competing input producers and output", t => {
+  for (const [from, to] of [["cursor-plugins", "extra"], ["cursor-plugins", "authored"], ["extra", "authored"]]) {
+    const file = "skills/demo/note.md";
+    const { root, out, dispose } = fixture({ [`${from === "cursor-plugins" ? "vendor/up" : from}/${file}`]: "Old.", [`${to}/${file}`]: "New." });
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), error => {
+      for (const part of [from, to, file]) assert.ok(error.message.includes(part), error.message);
+      return true;
+    });
+    assert.equal(existsSync(out), false);
+  }
+});
+
+test("an uninstalled root fails generation even when introduced by a patch", t => {
+  const file = "prompts/new.md";
+  const patch = [`diff --git a/${file} b/${file}`, "new file mode 100644", "--- /dev/null", `+++ b/${file}`, "@@ -0,0 +1 @@", "+Hello", ""].join("\n");
+  for (const files of [{ [`authored/${file}`]: "Hello\n" }, { "patches/prompt.patch": patch }]) {
+    const { root, out, dispose } = fixture(files);
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /prompts\/new\.md:.*(?:move|declare)/i);
+  }
+});
+
+test("a noncanonical manifest path cannot masquerade as an installed root", t => {
+  const path = "skills\\not-installed.md";
+  const f = fixture({
+    "rules/manifest.json": manifest({ map: [{ from: "LICENSE", to: path }] }),
+    "rules/tokens.json": "[]", "rules/sections.json": "[]",
+  });
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), error => error.message.includes(path));
+});
+
+test("drift and install recognize previously owned licenses without sweeping unrelated licenses", t => {
+  const { root, dispose } = fixture({ "LICENSE-superpowers": "stale pin\n", "LICENSE-local": "keep\n" });
+  t.after(dispose);
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });
+  assert.match(run("--check").stderr, /LICENSE-superpowers: not generated/);
+  const installed = run();
+  assert.equal(installed.status, 0, installed.stderr);
+  assert.equal(existsSync(join(root, "LICENSE-superpowers")), false);
+  assert.equal(readFileSync(join(root, "LICENSE-local"), "utf8"), "keep\n");
+});
+
+test("a declared authored replacement supplies both bytes and mode without token rewrites", () => {
   const { root, out, read, dispose } = fixture({
+    "rules/manifest.json": JSON.stringify({ ...JSON.parse(manifest()), overwrites: [
+      { file: "skills/demo/references/contract.md", from: "extra", by: "authored" },
+    ] }),
     "extra/skills/demo/references/contract.md": "Extra copy.\n",
     "authored/skills/demo/references/contract.md": "Authored copy.\n",
     "authored/skills/release/SKILL.md": "---\nname: release\ndescription: Prepare a release.\n---\n\n# Release\n",
@@ -293,9 +446,11 @@ test("authored files copy after extras without token rewrites and keep executabl
     "rules/lint.json": JSON.stringify({ deny: [] }),
   });
   try {
+    chmodSync(join(root, "extra/skills/demo/references/contract.md"), 0o755);
     chmodSync(join(root, "authored/skills/release/scripts/version.sh"), 0o755);
     generate({ packageDir: root, outDir: out });
     assert.equal(read("skills/demo/references/contract.md"), "Authored copy.\n");
+    assert.equal(statSync(join(out, "skills/demo/references/contract.md")).mode & 0o111, 0);
     assert.match(read("skills/release/SKILL.md"), /^name: release$/m);
     assert.equal(statSync(join(out, "skills/release/scripts/version.sh")).mode & 0o111, 0o111);
   } finally { dispose(); }
@@ -648,14 +803,15 @@ pocockCase("6 unrecognized harness wording names the file", ({ run, input }) => 
   assert.match(result.stderr, /skills\/research\/SKILL\.md:\d+: Skill tool/);
 });
 
-pocockCase("7 invalid optional regexes are errors", ({ root, run }) => {
-  const file = join(root, "rules/tokens.json"), rules = JSON.parse(readFileSync(file, "utf8"));
-  const rule = rules.find(({ id, source }) => id === "arg-hint" && source === "matt-pocock");
-  assert.ok(rule);
-  rule.find = "(";
-  writeFileSync(file, JSON.stringify(rules));
-  assert.match(run().stderr, /Invalid regular expression/);
-});
+for (const field of ["find", "files"]) {
+  test(`a malformed token ${field} regex names the rule, even without a minimum`, t => {
+    const { root, out, dispose } = fixture({
+      "rules/tokens.json": JSON.stringify([{ id: "bad-regex", find: "Task tool", replace: "child", [field]: "(" }]),
+    });
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /rules\/tokens\.json.*bad-regex.*Invalid regular expression/i);
+  });
+}
 
 pocockCase("8 resource collisions fail instead of overwriting", ({ root, run }) => {
   const file = join(root, "rules/manifest.json"), manifest = JSON.parse(readFileSync(file, "utf8"));

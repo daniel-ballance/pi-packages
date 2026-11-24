@@ -143,7 +143,25 @@ test("doctor verifies required capabilities independently of release, hash, and 
   assert.match(result.stdout, /doctor capabilities match.*host map; behavioral verification is still required/);
 });
 
+test("doctor reads the producer's dump with every Pi exposure kind on extra tools", async t => {
+  const f = fixture(t);
+  const { doctor } = await import("../extensions/p3stack/src/doctor.ts");
+  const env = process.env;
+  t.after(() => { process.env = env; });
+  process.env = { ...env, PI_CODING_AGENT_DIR: f.root, T3_MCP_URL: "http://fixture.invalid",
+    T3_PI_MCP_EXTENSION_PATH: join(f.root, "home/.t3/caches/pi-t3-mcp-extension.ts") };
+  const provider = "claude-subscription/index.ts";
+  f.write(provider, "");
+  const dump = doctor({
+    getCommands: () => [{ source: "extension", sourceInfo: { path: join(f.root, provider) } }],
+    getAllTools: () => [...f.doctor.tools, ...["model-only", "codemode", "hidden"].map((exposure, i) => ({ name: `mcp__t3-code__extra_${i}`, exposure }))],
+  });
+  const result = f.run(["--doctor", dump]);
+  assert.equal(result.status, 0, result.stderr);
+});
+
 for (const [name, mutate, diagnostic] of [
+  ["hidden documented tool", f => { f.doctor.tools.at(-1).exposure = "hidden"; }, /html_preview/],
   ["renamed direct tool", f => { f.doctor.tools[1].name = "mcp__t3-code__delegate_task_renamed"; }, /delegate_task/],
   ["missing documented tool", f => { f.doctor.tools.pop(); }, /html_preview/],
   ["changed required exposure", f => { f.doctor.tools[1].exposure = "deferred"; }, /directTools.*delegate_task/],
