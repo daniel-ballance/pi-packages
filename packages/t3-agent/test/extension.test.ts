@@ -82,10 +82,10 @@ test("the ledger persists only bounded handle data, never URL credentials, promp
   await toolResult(f, "preview_open", { url: webhook }, { tabId: "p", url: "https://user:PRIVATE@host/path?PRIVATE#PRIVATE" });
   await toolResult(f, "delegate_task", { title: `Deployment ${webhook}`, task: "PRIVATE instructions" }, { taskId: "d", model: "PRIVATE model", status: webhook, link: webhook });
   await toolResult(f, "t3_thread_send", { message: "PRIVATE child brief" }, { taskId: "d2" });
-  await toolResult(f, "watch_pull_request", {}, { url: "https://user:PRIVATE@github.com/o/r/pull/7?PRIVATE#PRIVATE" });
-  await toolResult(f, "watch_pull_request", {}, { url: webhook });
+  await toolResult(f, "watch_pull_request", {}, { url: "https://user:PRIVATE@github.com/o/r/pull/7?PRIVATE#PRIVATE", watching: true });
+  await toolResult(f, "watch_pull_request", {}, { url: webhook, watching: true });
   // A terminal pull/number alone does not make an arbitrary URL a canonical PR link.
-  await toolResult(f, "watch_pull_request", {}, { url: "https://example.invalid/hooks/PRIVATE/redirect/pull/7" });
+  await toolResult(f, "watch_pull_request", {}, { url: "https://example.invalid/hooks/PRIVATE/redirect/pull/7", watching: true });
   await toolResult(f, "t3_thread_launch", { title: "Build `nightly`\nPRIVATE" }, { threadId: "t", link: "[PRIVATE](t3-thread://v2/e/t?PRIVATE#PRIVATE)" });
   await toolResult(f, "t3_thread_launch", { title: "a".repeat(1000) }, { threadId: "t2" });
   await toolResult(f, "t3_thread_launch", {}, { threadId: "x".repeat(1000) });
@@ -345,14 +345,15 @@ test("/t3-agent loadout changes this session's tools and survives a restart", as
 });
 
 test("/t3-agent forget closes ledger entries without touching T3", async () => {
-  const f = fixture(T3, { branch: [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id: "o/r#1", status: "watching", open: true } }] });
+  const id = "https://github.com/o/r/pull/1";
+  const f = fixture(T3, { branch: [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id, status: "watching", open: true } }] });
   await f.emit("session_start", { reason: "startup" });
   const command = f.commands.get("t3-agent");
   await command.handler("ledger", f.ctx);
-  assert.match(String(f.notices.at(-1)![0]), /watching PR o\/r#1/);
-  await command.handler("forget o/r#1", f.ctx);
-  assert.deepEqual(f.appended.at(-1), [ENTRY_TYPE, { kind: "pr", id: "o/r#1", open: false }]);
-  await command.handler("forget o/r#1", f.ctx);
+  assert.ok(String(f.notices.at(-1)![0]).includes(`watching PR ${id}`));
+  await command.handler(`forget ${id}`, f.ctx);
+  assert.deepEqual(f.appended.at(-1), [ENTRY_TYPE, { kind: "pr", id, open: false }]);
+  await command.handler(`forget ${id}`, f.ctx);
   assert.match(String(f.notices.at(-1)![0]), /Nothing open matched/);
 });
 

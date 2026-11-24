@@ -58,7 +58,7 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
 
   apply("delegate_task", { task: "Review the diff\nin detail", title: "Review the diff" }, delegateResult);
   apply("schedule_task", { title: "nightly", schedule: { type: "interval", everyMs: 1 } }, [{ type: "text", text: JSON.stringify({ scheduledTaskId: "scheduled-task:1", title: "nightly", nextRunAt: "2026-11-24T08:00:00.000Z" }) }]);
-  apply("watch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: "{}" }]);
+  apply("watch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: '{"watching":true}' }]);
   apply("preview_open", { url: "http://localhost:3000" }, [{ type: "text", text: JSON.stringify({ tabId: "tab-1" }) }]);
   apply("t3_thread_launch", { title: "Nightly", message: "go" }, [{ type: "text", text: JSON.stringify({ threadId: "t-1", link: "<t3-thread://v2/e/t-1>" }) }]);
   apply("html_render", { path: "/x.html" }, [{ type: "text", text: "{}" }]);
@@ -73,7 +73,7 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
 
   apply("task_status", { taskId: "node:delegated-task:abc" }, [{ type: "text", text: JSON.stringify({ taskId: "node:delegated-task:abc", status: "completed", workState: "result_available", summary: "done" }) }]);
   apply("delete_scheduled_task", { scheduledTaskId: "scheduled-task:1" }, [{ type: "text", text: '{"deleted":true}' }]);
-  apply("unwatch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: "{}" }]);
+  apply("unwatch_pull_request", { repository: "o/r", number: 7 }, [{ type: "text", text: '{"host":"github.com","repository":"o/r","number":7,"watching":false}' }]);
   apply("t3_preview_close", { tabId: "tab-1" }, [{ type: "text", text: "{}" }]);
   assert.deepEqual(ledger.open().map(handle => handle.kind), ["thread"]);
   assert.deepEqual(ledger.forget("all"), [{ kind: "thread", id: "t-1", open: false }]);
@@ -173,6 +173,34 @@ test("a paused schedule exists until T3 reports deletion", () => {
   assert.deepEqual(ledger.open(), []);
 });
 
+test("PR watches and unwatches share a verified forge key across spellings and restart", () => {
+  const canonical = "https://github.com/org/repo/pull/7";
+  const deep = `${canonical}/files#diff-file`;
+  const callback = "https://webhook.site/00000000-0000-4000-8000-000000000000/hook/pull/3";
+  const pr = { host: "github.com", repository: "Org/Repo", number: 7 };
+  const ledger = new Ledger();
+  const branch = [{ kind: "pr", id: callback, open: true }];
+  const step = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) => {
+    const rows = observe(tool, input, result);
+    assert.doesNotMatch(JSON.stringify(rows), /diff-file|webhook\.site/);
+    branch.push(...rows);
+    rebuild(ledger, branch.map(data => ({ type: "custom", customType: ENTRY_TYPE, data })));
+  };
+  step("watch_pull_request", { url: deep }, { ...pr, url: deep, watching: true });
+  assert.deepEqual(ledger.open().map(h => h.id), [canonical]);
+  step("watch_pull_request", { url: canonical }, { ...pr, watching: false });
+  assert.deepEqual(ledger.open(), []);
+  step("unwatch_pull_request", { repository: pr.repository, number: 7 }, { ...pr, url: callback, watching: true });
+  const other = { ...pr, host: "git.example.org" };
+  step("watch_pull_request", other, { ...other, watching: true });
+  assert.equal(ledger.open().length, 2);
+  step("unwatch_pull_request", { url: deep }, { ...pr, watching: false });
+  assert.equal(ledger.open().length, 1);
+  step("unwatch_pull_request", other, { ...other, watching: false });
+  step("watch_pull_request", { url: callback }, { url: callback, watching: true });
+  assert.deepEqual(ledger.open(), []);
+});
+
 test("devices use the reported host and id, including on an argument-less close", () => {
   const ledger = new Ledger();
   const apply = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) =>
@@ -200,9 +228,9 @@ test("rebuild replays only this package's entries on the branch", () => {
     { type: "custom", customType: "other", data: { kind: "preview", id: "tab-2", open: true } },
     { type: "message" },
     { type: "custom", customType: ENTRY_TYPE, data: { kind: "preview", id: "tab-1", open: false } },
-    { type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id: "o/r#1", status: "watching" } },
+    { type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id: "https://github.com/o/r/pull/1", status: "watching" } },
   ]);
-  assert.deepEqual(ledger.open().map(handle => handle.id), ["o/r#1"]);
+  assert.deepEqual(ledger.open().map(handle => handle.id), ["https://github.com/o/r/pull/1"]);
 });
 
 const tools: ToolInfo[] = [

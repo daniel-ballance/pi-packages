@@ -58,19 +58,31 @@ function threadLink(value: unknown): string | undefined {
   return undefined;
 }
 
+const forgeRoutes = new Map([
+  ["github.com", "pull"], ["gitlab.com", "-/merge_requests"], ["bitbucket.org", "pull-requests"],
+  ["codeberg.org", "pulls"], ["dev.azure.com", "pullrequest"],
+]);
+
+function forgeKey(host: unknown, repository: unknown, number: unknown): string | undefined {
+  if (typeof host !== "string" || host.length > 253 || !/^[\w-]+(?:\.[\w-]+)*(?::\d{1,5})?$/.test(host) ||
+    typeof repository !== "string" || repository.length > 256 || !/^(?:[\w.-]+\/)+[\w.-]+$/.test(repository) ||
+    repository.split("/").some(part => part === "." || part === "..") ||
+    typeof number !== "number" || !Number.isSafeInteger(number) || number < 1) return undefined;
+  const authority = host.toLowerCase(), repo = repository.toLowerCase();
+  const route = forgeRoutes.get(authority);
+  if (!route) return `${authority}:${repo}#${number}`; // Reported self-hosted target, not a verified web link.
+  if (authority === "dev.azure.com" ? !/\/_git\/[\w.-]+$/.test(repo) : authority !== "gitlab.com" && repo.split("/").length !== 2) return undefined;
+  return `https://${authority}/${repo}/${route}/${number}`;
+}
+
 function prId(value: string): string | undefined {
   if (value.length > 2048) return undefined;
-  // Older/non-URL results can identify a PR by repository and number instead.
-  if (value.length <= 256 && /^(?:[\w.-]+\/)+[\w.-]+#[1-9]\d*$/.test(value)) return value;
+  const scoped = /^([^/]+):([^#]+)#([1-9]\d*)$/.exec(value);
+  if (scoped) return forgeKey(scoped[1], scoped[2], Number(scoped[3]));
   const url = URL.parse(value);
-  if (url?.protocol !== "https:") return undefined;
-  const path = url.pathname.replace(/\/$/, "");
-  const pr = /^\/[\w.-]+\/[\w.-]+\/(?:pull|pulls|pull-requests)\/[1-9]\d*$/;
-  const gitlab = /^\/(?:[\w.-]+\/){2,}-\/merge_requests\/[1-9]\d*$/;
-  const azure = /^\/(?:[\w.-]+\/)+_git\/[\w.-]+\/pullrequest\/[1-9]\d*$/;
-  if (!pr.test(path) && !gitlab.test(path) && !azure.test(path)) return undefined;
-  const canonical = url.origin + path; // no userinfo, query or fragment
-  return canonical.length <= 512 ? canonical : undefined;
+  if (url?.protocol !== "https:" || !forgeRoutes.has(url.host)) return undefined;
+  const match = /^\/(.+?)\/(pull|pulls|pull-requests|-\/merge_requests|pullrequest)\/([1-9]\d*)(?:\/|$)/.exec(url.pathname);
+  return match && match[2] === forgeRoutes.get(url.host) ? forgeKey(url.host, match[1], Number(match[3])) : undefined;
 }
 
 /** The same allowlist gates live writes and replay of untrusted, older session entries. */
@@ -137,11 +149,10 @@ export function trackRunTab(opened: Set<string>, tool: string, input: Json, resu
 }
 
 function prKey(input: Json, result?: Json) {
+  const host = result?.host ?? input.host;
+  if (host !== undefined) return forgeKey(host, result?.repository ?? input.repository, result?.number ?? input.number);
   const url = text(result?.url) ?? text(input.url);
-  if (url) return url;
-  const repository = text(result?.repository) ?? text(input.repository);
-  const number = result?.number ?? input.number;
-  return repository && typeof number === "number" ? `${repository}#${number}` : undefined;
+  return url && prId(url);
 }
 
 /** Translate one successful T3 tool call into ledger updates. Pure, so it is easy to test. */
@@ -177,13 +188,11 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       const id = result?.scheduledTaskId ?? input.scheduledTaskId;
       return result?.deleted === true ? [{ kind: "schedule", id, status: "deleted", open: false }] : [];
     }
-    case "watch_pull_request": {
-      const id = prKey(input, result);
-      return id ? [{ kind: "pr", id, status: "watching", open: true }] : [];
-    }
+    case "watch_pull_request":
     case "unwatch_pull_request": {
       const id = prKey(input, result);
-      return id ? [{ kind: "pr", id, status: "unwatched", open: false }] : [];
+      const open = result?.watching;
+      return id && typeof open === "boolean" ? [{ kind: "pr", id, status: open ? "watching" : "unwatched", open }] : [];
     }
     case "t3_thread_launch": {
       const id = text(result?.threadId);
