@@ -507,24 +507,27 @@ function pathOperand(before, after) {
     /(?:\]\(\s*<?|\b(?:href|src)\s*=\s*)$/i.test(prefix);
 }
 
+function* bareCommands(line, names) {
+  if (!names.size) return;
+  for (const hit of line.matchAll(/(?<![\w./:-])\/([\w-]+)(?![\w/-]|[.?#][\w/])/g)) {
+    if (names.has(hit[1]) && !pathOperand(line.slice(0, hit.index), line.slice(hit.index + hit[0].length))) yield hit[0];
+  }
+}
+
 function lintFencedCommands(text, path, names, problems) {
   function visit(node) {
     if (node.type !== "code") return node.children?.forEach(visit);
     const start = node.position.start;
     const fenced = /^(?:`{3,}|~{3,})/.test(text.slice(start.offset));
     node.value.split("\n").forEach((line, i) => {
-      for (const hit of line.matchAll(/(?<![\w./:-])\/([\w-]+)(?![\w/-]|[.?#][\w/])/g)) {
-        if (names.has(hit[1]) && !pathOperand(line.slice(0, hit.index), line.slice(hit.index + hit[0].length))) {
-          problems.push(`${path}:${start.line + Number(fenced) + i}: untranslated fenced command ${hit[0]}`);
-        }
-      }
+      for (const command of bareCommands(line, names)) problems.push(`${path}:${start.line + Number(fenced) + i}: untranslated fenced command ${command}`);
     });
   }
   visit(fromMarkdown(text));
 }
 
-function lint(outDir, deny, problems, skills) {
-  const removed = skills && removedCommandPattern(skills);
+function lint(outDir, checks, problems, skills) {
+  const removed = skills && removedCommandPattern(skills), deniedCommands = new Set(checks.denyCommands);
   const upstream = new Set(skills?.filter(row => row.source !== "p3stack").flatMap(row => [row.name, posix.basename(posix.dirname(row.path))]));
   for (const path of walk(outDir)) {
     const text = decode(readFileSync(join(outDir, path)));
@@ -536,7 +539,8 @@ function lint(outDir, deny, problems, skills) {
           problems.push(`${path}:${index + 1}: removed skill command ${hit[0]}`);
         }
       }
-      for (const token of deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
+      for (const command of bareCommands(line, deniedCommands)) problems.push(`${path}:${index + 1}: ${command}`);
+      for (const token of checks.deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
     });
   }
 }
@@ -602,7 +606,7 @@ export function generate({ packageDir, outDir }) {
     chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
   }
   const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
-  lint(outDir, checks.deny, lintProblems, registry?.skills);
+  lint(outDir, checks, lintProblems, registry?.skills);
   for (const { file, contains } of checks.require ?? []) {
     const text = existsSync(join(outDir, file)) ? readFileSync(join(outDir, file), "utf8") : "";
     for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);

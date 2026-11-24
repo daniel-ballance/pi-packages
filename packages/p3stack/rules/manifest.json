@@ -10,10 +10,6 @@
       ],
       "map": [
         {
-          "from": "skills/statechart/scripts/passes/loop-check.ts",
-          "to": "skills/statechart/scripts/passes/cycle-check.ts"
-        },
-        {
           "from": "skills/",
           "to": "skills/"
         },

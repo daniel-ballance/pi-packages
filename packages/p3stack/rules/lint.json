@@ -12,7 +12,6 @@
     "generalPurpose",
     "cursor-team-kit",
     "bun ",
-    "/loop",
     "agent-transcripts",
     "mcps/",
     "create-skill",
@@ -34,6 +33,7 @@
     "CONTEXT-FORMAT",
     "Task("
   ],
+  "denyCommands": ["loop"],
   "require": [
     {
       "file": "skills/implement-spec/references/implement.md",

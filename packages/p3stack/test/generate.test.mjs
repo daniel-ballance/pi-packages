@@ -85,6 +85,23 @@ test("the coupling lint scans the second source", () => {
   } finally { dispose(); }
 });
 
+test("the coupling lint flags /loop invocations but permits path segments", t => {
+  const { deny, denyCommands } = JSON.parse(readFileSync(new URL("../rules/lint.json", import.meta.url)));
+  const path = "skills/demo/usage.md", safe = 'Read [route](/loop), GET /loop HTTP/1.1, /loop/data or passes/loop-check.ts.\n';
+  const f = fixture({
+    ["vendor/up/" + path]: safe,
+    "vendor/up/skills/demo/compiler.ts": 'import { loopCheck } from "./passes/loop-check.ts";\n',
+    "rules/lint.json": JSON.stringify({ deny, denyCommands }),
+  });
+  t.after(f.dispose);
+  const build = () => generate({ packageDir: f.root, outDir: f.out });
+  build();
+  for (const invocation of ["Use **/loop**.", "`/loop 1h` until green.", "/loop"]) {
+    writeFileSync(join(f.root, "vendor/up", path), safe + invocation + "\n");
+    assert.throws(build, /skills\/demo\/usage\.md:2: \/loop/);
+  }
+});
+
 test("source-scoped token rules rewrite only that source and global rules still span sources", () => {
   const { root, out, read, dispose } = twoSources({
     "rules/tokens.json": JSON.stringify([

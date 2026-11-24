@@ -116,14 +116,13 @@ test("statechart runtime resources preserve the compiler without shipping test f
   const sourceFiles = readdirSync(upstream, { recursive: true }).filter(path =>
     !path.startsWith("test/") && (path === "statechart" || /\.(?:ts|json)$/.test(path))
   ).sort();
-  const mapped = path => path === "passes/loop-check.ts" ? "passes/cycle-check.ts" : path;
   const outputFiles = readdirSync(emitted, { recursive: true }).filter(path =>
     path === "statechart" || /\.(?:ts|json)$/.test(path)
   ).sort();
-  assert.deepEqual(outputFiles, sourceFiles.map(mapped).sort());
+  assert.deepEqual(outputFiles, sourceFiles);
   assert.ok(!readdirSync(emitted).includes("test"));
   for (const path of sourceFiles) {
-    if (path === "statechart" || path === "pipeline.ts") continue;
-    assert.deepEqual(readFileSync(new URL(mapped(path), emitted)), readFileSync(new URL(path, upstream)), path);
+    if (path === "statechart") continue;
+    assert.deepEqual(readFileSync(new URL(path, emitted)), readFileSync(new URL(path, upstream)), path);
   }
 });
