@@ -8,17 +8,15 @@ disable-model-invocation: true
 
 Choose the route by deliverable and grant before using tools. Follow the small-task row here: no poteto-mode read or playbook. On every other route, read `poteto-mode/SKILL.md` in full, then the selected target, before any other tool call. This router wins where their rules differ.
 
-Resolve Read paths from the skills directory (the one containing `p3stack-mode/`). For example, if this file is `<package>/skills/p3stack-mode/SKILL.md`, read poteto-mode at `<package>/skills/poteto-mode/SKILL.md`.
+Resolve the route table's Read paths from the skills directory (the parent of `p3stack-mode/`). Ordinary links resolve from the skill directory.
 
 ## Grants
 
-Use the session grant in the system prompt (`Grant: default` or `Grant: full-autonomy`); if absent, use `default`. An explicit request for full autonomy in the user's message raises it for this task only. Write `Task grant: full-autonomy` in each delegation brief for that task: its header shows the session grant.
+Use the session grant in the system prompt (`Grant: default` or `Grant: full-autonomy`); if absent, use `default`. An explicit request for full autonomy in the user's message raises it for this task only. The brief header shows the session grant. For a different grant, the parent writes `Task grant: <grant>` in each brief; that line sets the task grant, higher or lower. A child never raises its own grant. Operator gates hold under either grant; pause before irreversible actions.
 
-Match `any` or the effective grant. Under full autonomy, replace design interviews (grill-with-docs and grilling) with sharpen, then architect. Infer covered choices from repository evidence and report them. Under default, use the interview skills for product choices. Explicit operator gates and irreversible actions still pause.
+Match `any` or the effective grant. Under full autonomy, replace design interviews with sharpen. Use the rewritten brief for architect; on a design route stop at its design synthesis and return the recommendation. Infer covered choices from repository evidence and report them. Under default, use the interview skills for product choices.
 
 ## House policies
-
-These settle conflicts between the routed skills, and they win over any of them.
 
 1. **Deliverable.** The request names what to deliver. Review and explain: a report. Design: a recommendation. Prototype: a checked demo. Plan: a plan. Stop there; do not edit the code under review, implement, publish, or land. Implementing, opening a PR, babysitting it and landing it each need a separate request or a delivery step of the playbook the request selected.
 2. **Authority.** Internal team actions (team chat, ticket updates, starting evals) proceed. Messages to customers or anyone outside the team, deploys, force-pushes to shared branches, and data deletion pause. Under full autonomy, a call only the operator can make gets a default, a report, and a plain statement of what they could choose instead.

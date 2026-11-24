@@ -20,6 +20,8 @@ test("only the narrow small-task row bypasses both reads", () => {
   }
   assert.match(first.next, /inspect.*edit only if asked.*nearest existing check.*reply/i);
   const entry = router.split("## Grants")[0];
+  assert.match(entry, /route table[^\n]*skills directory/i);
+  assert.match(entry, /links[^\n]*skill directory/i);
   assert.match(entry, /small.task[^\n]*no poteto-mode[^\n]*playbook/i);
   assert.match(entry, /choose.*route[^\n]*read `poteto-mode\/SKILL\.md` in full[^\n]*then (?:read )?the (?:selected )?target/i);
 });
@@ -84,7 +86,12 @@ test("a task-only grant raise reaches the delegate despite its session header", 
   const grants = router.split("## Grants")[1].split("## House policies")[0];
   assert.match(grants, /system prompt/i);
   assert.match(grants, /explicit.*full autonomy.*task/i);
-  assert.match(grants, /(?:each|every) (?:delegation )?brief/i);
-  assert.match(grants, /header.*session grant/i);
+  for (const doc of [grants, read("p3stack-mode/references/brief-contract.md")]) {
+    assert.match(doc, /header.*session grant/i);
+    assert.match(doc, /parent[^\n]*Task grant:[^\n]*(?:higher or lower|raise[^\n]*lower)/i);
+    assert.match(doc, /child never raises its own grant/i);
+    assert.match(doc, /operator gates[^\n]*(?:any|either) grant/i);
+  }
+  assert.match(grants, /architect[^\n]*design synthesis[^\n]*recommendation/i);
   assert.doesNotMatch(grants, /infer (?:it|the grant) from the request/i);
 });

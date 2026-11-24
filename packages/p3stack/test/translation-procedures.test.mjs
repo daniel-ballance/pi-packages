@@ -186,6 +186,9 @@ test("dyl-review keeps code-review coordination and Git/forge work in the parent
 test("Pi help starts at the persistent router and distinguishes an explicit standalone skill", () => {
   const help = skill("poteto-help");
   for (const command of ["/p3stack on`", "/p3stack on autonomous`", "/p3stack off`", "/skill:<name>"]) assert.ok(help.includes(command), command);
+  assert.match(help, /`\/p3stack on default`/);
+  assert.match(help, /`\/p3stack on` keeps the last grant/i);
+  assert.doesNotMatch(help, /This file maps questions/);
   assert.match(help, /model-visible skills[^\n]*router (?:is )?off/i);
   assert.doesNotMatch(help, /references\/routes\.md/, "the router inlines its route table; no separate copy is emitted");
   assert.doesNotMatch(help, /start(?:ing)? each (?:new )?task with|Only `[^\n]*setup-pstack` loads|lists every playbook|default answer is `\/skill:poteto-mode/i);
