@@ -62,7 +62,7 @@ when the call arrives.
 
 Each change is stored as a session entry (`appendEntry`, type `todo`). On
 session start and after `/tree` navigation the list is rebuilt from the last
-entry on the active branch, so `/fork`, `/tree` and resumed sessions show the
+valid todo entry on the active branch, so `/fork`, `/tree` and resumed sessions show the
 list as it was at that point. Changes made from codemode scripts are stored the
 same way.
 

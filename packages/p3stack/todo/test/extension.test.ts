@@ -100,6 +100,26 @@ test("the list is rebuilt from the active branch on start and on tree navigation
   assert.match(text(await h.call({ op: "get" })), /\[x\] 1\. Old/);
 });
 
+test("a malformed snapshot is ignored as a whole, preserving the last valid items and next id", async () => {
+  const item = { id: 4, state: "pending", text: "Keep" };
+  const valid = { type: "custom", customType: "todo", data: { items: [item], nextId: 9 } };
+  for (const bad of [
+    { items: [null] }, null, {}, { items: "not an array" }, { items: [item, { ...item, id: 1.5 }] },
+    { items: [item, item] }, { items: [{ ...item, text: " " }] }, { items: [{ ...item, state: "unknown" }] },
+    { items: [{ ...item, note: 7 }] }, { items: [{ ...item, state: "skipped" }] },
+    { items: [item], nextId: 4 }, { items: [], nextId: "9" },
+  ]) {
+    const branch = [valid, { ...valid, data: bad }];
+    const h = harness({ hasUI: false, branch });
+    await h.emit("session_start");
+    assert.deepEqual((await h.call({ op: "get" })).structuredContent.items, [item]);
+    assert.match(text(await h.call({ op: "add", items: ["Next"] })), /^Added item 9\./);
+    branch.shift();
+    await h.emit("session_tree");
+    assert.equal(text(await h.call({ op: "get" })), "Todo: no items", "no valid snapshot on this branch");
+  }
+});
+
 test("the widget shows open work, clears when nothing is open, and no UI is touched without one", async () => {
   const h = harness();
   await h.call({ op: "set", items: ["Frame"] });

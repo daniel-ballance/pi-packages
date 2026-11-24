@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-w
 import { Text, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { registerHostAware } from "./src/host.js";
-import { apply, counts, emptyList, formatList, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
+import { apply, counts, emptyList, formatList, isTodoList, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
 import { resultLines, widgetLines } from "./src/render.js";
 
 const ENTRY = "todo";
@@ -118,10 +118,13 @@ export default function todo(pi: ExtensionAPI) {
   // State follows the active branch: rebuild it from the last snapshot on it.
   const rebuild = (_event: unknown, ctx: ExtensionContext) => {
     list = emptyList;
-    for (const entry of ctx.sessionManager.getBranch()) {
-      if (entry.type !== "custom" || entry.customType !== ENTRY) continue;
-      const data = entry.data as { items?: Item[]; nextId?: number } | undefined;
-      list = { items: data?.items ?? [], ...typeof data?.nextId === "number" ? { nextId: data.nextId } : {} };
+    const branch = ctx.sessionManager.getBranch();
+    for (let i = branch.length - 1; i >= 0; i--) {
+      const entry = branch[i];
+      if (entry.type === "custom" && entry.customType === ENTRY && isTodoList(entry.data)) {
+        list = entry.data;
+        break;
+      }
     }
     showList(ctx, true);
   };
