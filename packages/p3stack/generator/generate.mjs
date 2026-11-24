@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
 import { chainSlots, checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter, targetPath } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
+import { BUDGETS, rolesFor } from "../extensions/p3stack/src/role-definitions.ts";
 import { byName, isLink, referenceMoves, referencePath, sourcePathClassifier, sourcesOf, walk } from "./source-paths.mjs";
 
 function readJson(path, fallback) {
@@ -230,6 +231,15 @@ function renderRegistry(files, { routes, chains }, put) {
     `| ${cell(request)} | ${cell(grant)} | ${typeof target === "string" ? `\`../poteto-mode/SKILL.md\`, then \`../${targetPath(target)}\`` : cell(action)} |`)];
   put("skills/p3stack-mode/SKILL.md", files.get(template).toString().replace("{{routes}}", () => table.join("\n")));
   files.delete(template);
+}
+
+function renderSetupExample(files) {
+  const path = "skills/setup-pstack/SKILL.md", text = files.get(path);
+  if (typeof text !== "string") return;
+  const { name, level } = BUDGETS.find(budget => budget.name === "large");
+  const roles = rolesFor(`example/code:${level}`, `example/judge:${level}`);
+  files.set(path, text.replace("{{role-example}}", JSON.stringify({ host: "terminal", budget: `${name} (${level})`, roles }, null, 2))
+    .replace("{{budget-options}}", BUDGETS.map(({ label }) => `- \`${label}\``).join("\n")));
 }
 
 // Keep both user-facing indexes in step with the registry, not a second catalog.
@@ -535,6 +545,7 @@ export function generate({ packageDir, outDir }) {
   if (registry) renderRegistry(files, registry, put("registry"));
   if (problems.length) throw new Error(problems.join("\n"));
   if (registry) renderCatalog(files, registry, readJson(join(rules, "help-jobs.json"), {}));
+  renderSetupExample(files);
   writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));

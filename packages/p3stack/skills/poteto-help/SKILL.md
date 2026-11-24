@@ -136,15 +136,13 @@ When the role defaults file is missing and it matters, ask whether the user want
 
 ## Get set up
 
-1. The collection installs p3stack with `subagents` and `todo`. To install p3stack alone from a pi-packages checkout, run `pi install ./packages/p3stack` at the repository root, then `/reload`.
-2. Run [`/skill:setup-pstack`](../setup-pstack/SKILL.md). It asks for a thinking budget and writes your choices to the [role defaults file](../poteto-mode/references/host-capabilities.md#models-and-role-defaults). Skills use them on their next delegation. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
-3. Type `/p3stack on`, then send a goal and a check that can pass or fail.
+1. The collection installs p3stack with `subagents` and `todo`. For install choices, see the [Pi package README](../../README.md).
+2. For personal defaults, run `/p3stack-setup` in interactive Pi. Choose a budget, a code model and a judgment model. Under T3, if setup requests a catalog, call `p3stack_roles` once and rerun setup. For per-role or project choices, use [`/skill:setup-pstack`](../setup-pstack/SKILL.md). Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
+3. Type `/p3stack on`, then send a goal and a check that can pass or fail. Offer to [word their first prompt](references/prompting.md) with them.
 
-Pi can select model-visible skills from the request even with the router off. Use `/skill:<name>` to request any installed skill explicitly. The [README](../../README.md) has the details, and upstream's [guide page 1](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/01-setup.md) explains the ideas (written for Cursor). Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).
+If cost is the worry, p3stack spends extra tokens on subagents and review panels. A smaller budget reduces thinking; a cheaper model reduces cost per token. Shortening a panel list runs fewer children.
 
-If cost is the worry, say where the tokens go and how to spend fewer. p3stack spends extra tokens on subagents and review panels. Rerun `/skill:setup-pstack` and pick a smaller budget or cheaper models. A role set to `auto` or `inherit-parent` runs on the chat's model, which costs less if the chat model is cheaper than the role default. A shorter panel list runs fewer subagents, one for each entry. Save `/skill:poteto-mode` for work that needs rigor.
-
-p3stack runs in Pi, in a terminal or launched by T3 Code. Skills that delegate (`/skill:poteto-mode`, `/skill:how`, `/skill:why` and the routed skills) need a delegation backend: the `subagents` package in a terminal, T3's own tools under T3. The [host capabilities](../poteto-mode/references/host-capabilities.md) list what each host provides and what a skill does when a capability is missing.
+Follow this host's [capabilities](../poteto-mode/references/host-capabilities.md) for delegation. Upstream's [setup guide](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/01-setup.md) was written for Cursor.
 
 ## Start a task in Pi
 

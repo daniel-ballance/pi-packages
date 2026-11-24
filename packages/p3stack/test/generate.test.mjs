@@ -610,7 +610,10 @@ test("a heading inside a fence is not a child of the leaf that contains it", () 
   } finally { dispose(); }
 });
 
-test("setup offers and the help setup sentence come from upstream through the package rules", () => {
+test("setup documents the configured roles and both hosts without losing the upstream verification offers", async t => {
+  const { PANEL_ROLES } = await import("../extensions/p3stack/src/role-definitions.ts");
+  PANEL_ROLES.push("release reviewers"); // Simulate a new panel in the wizard's role definitions.
+  t.after(() => PANEL_ROLES.pop());
   const packageDir = fileURLToPath(new URL("..", import.meta.url));
   const out = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-rules-")));
   try {
@@ -622,6 +625,13 @@ test("setup offers and the help setup sentence come from upstream through the pa
     const expectedOffers = upstream.slice(upstream.indexOf("### 7. Offer a verification skill")).replaceAll(aside, "").replaceAll(/\/(create-(?:formal-)?verification-skill)\b/g, "/skill:$1");
     assert.equal(setup.slice(setup.indexOf("### 7. Offer a verification skill")), expectedOffers);
     assert.equal(setup.includes(aside), false);
+    const { roles } = JSON.parse(setup.match(/```json\n([^`]+)\n```/)[1]);
+    assert.deepEqual(roles["release reviewers"], [roles["judgment and prose"], roles["feature, refactoring"]]);
+    for (const doc of [setup, help]) {
+      assert.match(doc, /`\/p3stack-setup`/);
+      assert.match(doc, /T3[^\n]*`p3stack_roles`/);
+      assert.doesNotMatch(doc, /always under T3/);
+    }
     const offer = "Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.";
     assert.equal(help.includes(offer), true);
     assert.equal(readFileSync(join(packageDir, "vendor/pstack/pstack/skills/poteto-help/SKILL.md"), "utf8").includes(offer), true);

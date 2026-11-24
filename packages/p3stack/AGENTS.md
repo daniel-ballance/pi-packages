@@ -9,6 +9,8 @@ Change the input, not the generated file. For runtime behavior, see [About p3sta
 - [`registry/routes.json`](registry/routes.json) supplies the router and the jobs in `poteto-help`. Help then lists skills with no direct route, using the first description sentence unless [`rules/help-jobs.json`](rules/help-jobs.json) gives a clearer job to ask for. Each request and grant pair must be unique. Use `any`, `default`, or `full-autonomy` and either a target or an inline action.
 - [`registry/chains.json`](registry/chains.json) adds conditional reads **in the playbook**, marked **p3stack only**. Give each row a unique ID and anchor it before or after a unique top-level step. There is no router chain table or generated `p3stack-mode/references/routes.md` or `chains.md`.
 
+For Pi onboarding, edit the `setup-pstack` and `poteto-help` [overlays](overlays/). The wizard and the generated setup example use the same [role definitions](extensions/p3stack/src/role-definitions.ts). Leave the setup skill's two verification offers upstream.
+
 The generator replaces only `skills/`, `agents/`, `LICENSE`, `LICENSE-agent-skills`, `LICENSE-matt-pocock`, and `LICENSE-superpowers`. Staging a file outside those roots fails, even from a patch. The generator also updates the pin text between the README markers and `package.json#p3stack.upstream` (the Cursor pin).
 
 ## Translate or add a file
