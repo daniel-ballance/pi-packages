@@ -420,7 +420,7 @@ test("the card is compact when collapsed and holds the tool list and the report 
   const { result, updates } = await h.run({ task: "Survey the source tree and list what each file is for.\nBe brief.", model: "haiku" });
   const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
   const state = { expanded: false } as Parameters<NonNullable<typeof h.tool.renderCall>>[2];
-  const lines = (component: { render(width: number): string[] }, width = 60): string[] =>
+  const lines = (component: { render(width: number): readonly string[] }, width = 60): string[] =>
     component.render(width).map(line => stripVTControlCharacters(line).trimEnd());
 
   const call = lines(h.tool.renderCall!({ task: "Survey the source tree and list what each file is for.\nBe brief.", model: "haiku" }, theme, state));

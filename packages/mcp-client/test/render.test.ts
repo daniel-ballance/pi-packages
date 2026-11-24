@@ -17,7 +17,7 @@ const theme = { fg: (_color: string, text: string) => text, bold: (text: string)
 function context(options: Partial<ToolRenderContext> = {}): ToolRenderContext {
   return { expanded: false, argsComplete: true, ...options } as ToolRenderContext;
 }
-function lines(component: { render(width: number): string[] }, width = 120) {
+function lines(component: { render(width: number): readonly string[] }, width = 120) {
   return component.render(width).map((line) => line.trimEnd());
 }
 
