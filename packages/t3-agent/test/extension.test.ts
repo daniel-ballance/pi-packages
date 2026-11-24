@@ -259,6 +259,20 @@ test("/t3-agent forget closes ledger entries without touching T3", async () => {
   assert.match(String(f.notices.at(-1)![0]), /Nothing open matched/);
 });
 
+test("forget can address a device by host/id and its close survives replay", async () => {
+  const branch = ["one", "two"].map(hostId => ({ type: "custom", customType: ENTRY_TYPE, data: { kind: "device", id: "sim", hostId, open: true } }));
+  const f = fixture(T3, { branch });
+  await f.emit("session_start");
+  await f.commands.get("t3-agent").handler("forget one/sim", f.ctx);
+  const closed = f.appended.find(([type]) => type === ENTRY_TYPE);
+  assert.ok(closed);
+  const restart = fixture(T3, { branch: [...branch, { type: "custom", customType: closed[0], data: closed[1] }] });
+  await restart.emit("session_start");
+  const prompt = (await startTurn(restart)).t3_agent!;
+  assert.match(prompt, /deviceId=sim.*hostId=two/);
+  assert.doesNotMatch(prompt, /hostId=one/);
+});
+
 test("the loadout is restored after another extension resets the active tools", async () => {
   const f = fixture(T3);
   await f.emit("session_start", { reason: "startup" });

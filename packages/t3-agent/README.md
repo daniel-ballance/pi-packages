@@ -40,7 +40,7 @@ Open handles add the tools that act on them: `t3_preview_close` while a preview 
 - preview tabs
 - devices
 
-`task_status` with a delivered result, `task_cancel`, `delete_scheduled_task`, `unwatch_pull_request`, `t3_preview_close` and `device_close` close them. Updates are saved as custom session entries at each turn boundary, so the ledger follows `/tree` branches and survives restarts. It is rendered into the prompt section, so the long ids that `task_cancel` and `t3_preview_close` need survive compaction.
+Terminal task results, confirmed schedule deletions, PR unwatches, tab and device closes remove open handles. A pending cancel stays open as cancelling; disabling a schedule keeps it open as paused. Device identities include the host ID when known. Updates are saved as custom session entries at each turn boundary, so the ledger follows `/tree` branches and survives restarts. It is rendered into the prompt section, so the long ids that `task_cancel` and `t3_preview_close` need survive compaction.
 
 The ledger keeps bounded identifiers, titles, states and checked thread or pull request links. It does not copy task briefs, preview URLs, webhook URLs or free-form result details. Replay applies the same checks to older entries; it does not erase old transcripts. Use T3's schedule settings for webhook details.
 
@@ -68,7 +68,7 @@ The skill and templates are contributed through `resources_discover` only under 
 - `/t3-agent` or `/t3-agent status` reports the mode, loadout, declared tools, workspace, open handles and configuration problems.
 - `/t3-agent loadout lean|standard|full` sets this session's loadout. The choice is saved in the session.
 - `/t3-agent ledger` lists open handles.
-- `/t3-agent forget <id|all>` drops stale handles from the ledger. It changes nothing in T3.
+- `/t3-agent forget <id|all>` drops stale handles from the ledger (use `hostId/deviceId` for a scoped device). It changes nothing in T3.
 
 ## Configuration
 

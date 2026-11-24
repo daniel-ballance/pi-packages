@@ -72,7 +72,7 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
   assert.deepEqual(contextualTools(ledger).sort(), ["delete_scheduled_task", "t3_preview_close", "task_cancel", "unwatch_pull_request"]);
 
   apply("task_status", { taskId: "node:delegated-task:abc" }, [{ type: "text", text: JSON.stringify({ taskId: "node:delegated-task:abc", status: "completed", workState: "result_available", summary: "done" }) }]);
-  apply("delete_scheduled_task", { scheduledTaskId: "scheduled-task:1" }, [{ type: "text", text: "{}" }]);
+  apply("delete_scheduled_task", { scheduledTaskId: "scheduled-task:1" }, [{ type: "text", text: '{"deleted":true}' }]);
   apply("unwatch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: "{}" }]);
   apply("t3_preview_close", { tabId: "tab-1" }, [{ type: "text", text: "{}" }]);
   assert.deepEqual(ledger.open().map(handle => handle.kind), ["thread"]);
@@ -91,6 +91,55 @@ test("a running delegate stays open until its result is read or it is cancelled"
   assert.deepEqual(observe("t3_thread_send", { message: "Fix the review findings" }, { threadId: "t", link: "<l>", status: "starting" }), []);
   observe("t3_thread_send", { message: "Fix the review findings" }, { taskId: "node:task-2", link: "<l>", status: "running" }).forEach(update => ledger.apply(update));
   assert.deepEqual(ledger.open("delegate").map(handle => [handle.id, handle.title]), [["node:task-2", undefined]]);
+});
+
+test("a cancel receipt preserves the reported task state, including a pending cancel", () => {
+  assert.deepEqual(observe("task_cancel", { taskId: "d" }, { status: "cancel_requested" }), [
+    { kind: "delegate", id: "d", open: true, status: "cancelling" },
+  ]);
+  assert.deepEqual(observe("task_cancel", { taskId: "d" }, { status: "completed" }), [
+    { kind: "delegate", id: "d", open: false, status: "completed" },
+  ]);
+  assert.deepEqual(observe("task_cancel", { taskId: "d" }, {}), []);
+});
+
+test("a wait that delivered the terminal result leaves no open task", () => {
+  const ledger = new Ledger();
+  observe("delegate_task", { mode: "wait", task: "check" }, { taskId: "d", status: "completed", workState: "result_available", summary: "done" })
+    .forEach(update => ledger.apply(update));
+  assert.deepEqual(ledger.open(), []);
+});
+
+test("a paused schedule exists until T3 reports deletion", () => {
+  const ledger = new Ledger();
+  const apply = (tool: string, result: Record<string, unknown>) =>
+    observe(tool, { scheduledTaskId: "s" }, { scheduledTaskId: "s", ...result }).forEach(update => ledger.apply(update));
+  rebuild(ledger, [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "schedule", id: "legacy", open: false, status: "paused" } }]);
+  assert.match(ledger.render() ?? "", /scheduledTaskId=legacy, status paused/);
+  ledger.clear();
+  apply("schedule_task", { enabled: false });
+  assert.match(ledger.render() ?? "", /scheduledTaskId=s, status paused/);
+  apply("update_scheduled_task", { enabled: true });
+  assert.match(ledger.render() ?? "", /scheduledTaskId=s, status enabled/);
+  apply("update_scheduled_task", { enabled: false });
+  apply("delete_scheduled_task", { deleted: false });
+  assert.match(ledger.render() ?? "", /scheduledTaskId=s, status paused/);
+  apply("delete_scheduled_task", { deleted: true });
+  assert.deepEqual(ledger.open(), []);
+});
+
+test("devices use the reported host and id, including on an argument-less close", () => {
+  const ledger = new Ledger();
+  const apply = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) =>
+    observe(tool, input, result).forEach(update => ledger.apply(update));
+  apply("device_open", { platform: "ios" }, { device: { id: "sim", hostId: "mac-1" } });
+  apply("device_open", { hostId: "mac-2", deviceId: "sim" }, {});
+  assert.equal(ledger.open("device").length, 2);
+  apply("device_close", {}, { device: { id: "sim", hostId: "mac-1" } });
+  assert.equal(ledger.open("device").length, 1);
+  assert.match(ledger.render()!, /deviceId=sim.*hostId=mac-2/);
+  apply("device_close", { hostId: "mac-2", deviceId: "sim" }, {});
+  assert.deepEqual(ledger.open("device"), []);
 });
 
 test("structured content wins over text when a bridge supplies it", () => {

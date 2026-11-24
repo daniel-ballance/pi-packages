@@ -14,6 +14,7 @@ type State = (typeof STATES)[number];
 export interface Handle {
   kind: HandleKind;
   id: string;
+  hostId?: string; // part of a device's identity
   title?: string;
   link?: string;
   status?: State;
@@ -75,7 +76,11 @@ function receipt(data: unknown): Handle | undefined {
   const title = safeTitle(raw.title);
   const link = kind === "delegate" || kind === "thread" ? threadLink(raw.link) : undefined;
   const status = STATES.find(state => state === raw.status);
-  return { kind, id, open: raw.open ?? true, ...(title && { title }), ...(link && { link }), ...(status && { status }) };
+  const hostId = kind === "device" ? safeId(raw.hostId) : undefined;
+  if (kind === "device" && raw.hostId !== undefined && !hostId) return undefined;
+  // Older receipts confused pausing a schedule with deleting it.
+  const open = kind === "schedule" && status === "paused" ? true : raw.open ?? true;
+  return { kind, id, open, ...(hostId && { hostId }), ...(title && { title }), ...(link && { link }), ...(status && { status }) };
 }
 
 /** T3 returns its result as JSON text; prefer structured content when a newer bridge supplies it. */
@@ -134,39 +139,31 @@ export function observe(tool: string, input: Json, result: Json | undefined): Ha
 
 function observations(tool: string, input: Json, result: Json | undefined): Json[] {
   switch (tool) {
-    case "delegate_task": {
-      const id = text(result?.taskId);
-      if (!id) return [];
-      return [{
-        kind: "delegate", id, open: true,
-        title: input.title, link: result?.link, status: result?.workState ?? result?.status,
-      }];
-    }
+    case "delegate_task":
+    case "t3_thread_send": // Only a send that started a fresh child task returns a taskId.
     case "task_status": {
-      const id = text(result?.taskId) ?? text(input.taskId);
-      if (!id) return [];
-      const status = text(result?.status);
-      const delivered = result?.workState === "result_available" && TERMINAL.some(state => state === status);
-      return [{ kind: "delegate", id, status: delivered ? status : text(result?.workState) ?? status, open: !delivered, ...(text(result?.link) ? { link: text(result?.link) } : {}) }];
-    }
-    case "t3_thread_send": {
-      // A send to a finished child thread starts a fresh delegated task.
-      const id = text(result?.taskId);
-      return id ? [{ kind: "delegate", id, open: true, link: text(result?.link), status: text(result?.workState) ?? text(result?.status) }] : [];
+      const id = result?.taskId ?? (tool === "task_status" ? input.taskId : undefined);
+      if (!id || !result) return [];
+      const delivered = result.workState === "result_available" && TERMINAL.some(state => state === result.status);
+      return [{ kind: "delegate", id, open: !delivered, title: tool === "delegate_task" ? input.title : undefined,
+        link: result.link, status: delivered ? result.status : result.workState ?? result.status }];
     }
     case "task_cancel": {
-      const id = text(input.taskId);
-      return id ? [{ kind: "delegate", id, status: "cancelled", open: false }] : [];
+      const id = result?.taskId ?? input.taskId;
+      const status = result?.status;
+      if (status === "cancel_requested") return [{ kind: "delegate", id, open: true, status: "cancelling" }];
+      return TERMINAL.some(state => state === status) ? [{ kind: "delegate", id, open: false, status }] : [];
     }
-    case "schedule_task": {
+    case "schedule_task":
+    case "update_scheduled_task": {
       const id = text(result?.scheduledTaskId) ?? text(input.scheduledTaskId);
       if (!id) return [];
       const enabled = (result?.enabled ?? input.enabled) !== false;
-      return [{ kind: "schedule", id, title: result?.title ?? input.title, open: enabled, status: enabled ? "enabled" : "paused" }];
+      return [{ kind: "schedule", id, title: result?.title ?? input.title, open: true, status: enabled ? "enabled" : "paused" }];
     }
     case "delete_scheduled_task": {
-      const id = text(input.scheduledTaskId);
-      return id ? [{ kind: "schedule", id, status: "deleted", open: false }] : [];
+      const id = result?.scheduledTaskId ?? input.scheduledTaskId;
+      return result?.deleted === true ? [{ kind: "schedule", id, status: "deleted", open: false }] : [];
     }
     case "watch_pull_request": {
       const id = prKey(input, result);
@@ -196,24 +193,25 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       const id = text(input.tabId);
       return id ? [{ kind: "preview", id, open: false }] : [];
     }
-    case "device_open": {
-      const device = text(input.deviceId) ?? text(result?.deviceId);
-      return device ? [{ kind: "device", id: device, open: true }] : [];
-    }
+    case "device_open":
     case "device_close": {
-      const id = text(input.deviceId);
-      return id ? [{ kind: "device", id, open: false }] : [];
+      const device = record(result?.device);
+      const id = device?.id ?? result?.deviceId ?? input.deviceId;
+      const hostId = device?.hostId ?? result?.hostId ?? input.hostId;
+      return id ? [{ kind: "device", id, hostId, open: tool === "device_open" }] : [];
     }
     default:
       return [];
   }
 }
 
+export const scopedId = (handle: Handle) => handle.hostId ? `${handle.hostId}/${handle.id}` : handle.id;
+
 export class Ledger {
   private readonly handles = new Map<string, Handle>();
 
   apply(update: Handle): void {
-    const key = `${update.kind}:${update.id}`;
+    const key = `${update.kind}:${scopedId(update)}`;
     const previous = this.handles.get(key);
     const next = { ...previous, ...update };
     // Re-insert so iteration order is most recent last.
@@ -253,7 +251,7 @@ export class Ledger {
       ...this.open("schedule").map(handle => `- schedule${quote(handle.title)} scheduledTaskId=${handle.id}${part("status", handle.status)}`),
       ...this.open("pr").map(handle => `- watching PR ${handle.id}`),
       ...this.open("preview").map(handle => `- preview tab tabId=${handle.id}`),
-      ...this.open("device").map(handle => `- device deviceId=${handle.id}`),
+      ...this.open("device").map(handle => `- device deviceId=${handle.id}${handle.hostId ? ` on hostId=${handle.hostId}` : ""}`),
       ...threads.map(handle => `- thread${quote(handle.title)} ${handle.link ?? handle.id}`),
     ];
     if (lines.length === 0) return undefined;
