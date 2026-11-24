@@ -54,3 +54,26 @@ test("an integration queue opens a draft, links it, and promotes the reviewed he
   assert.match(opening, /before (?:opening|marking)[^\n]*ready[^\n]*verdict on the changed diff/i);
   assert.doesNotMatch(opening, /open every PR ready|draft: false` on every creation|if a PR still opens as a draft/i);
 });
+
+test("triage posts observable acceptance criteria, including on a state override", () => {
+  const triage = skill("triage"), tracker = read("triage/AGENT-BRIEF.md");
+  assert.match(triage, /`ready-for-agent`: post [^\n]*tracker brief[^\n]*AGENT-BRIEF\.md/);
+  assert.match(triage.split("## Quick state override")[1], /ask whether[^\n]*tracker brief/i);
+  const positive = tracker.split(/### Bad .*brief/i)[0];
+  assert.match(positive, /private[^\n]*brief-contract\.md/i);
+  assert.doesNotMatch(positive, /authoritative specification|name specific types|\*\*Key interfaces:\*\*|TypeName|SkillConfig|reuse the existing serializer/i);
+  const comments = [...positive.matchAll(/```markdown\n([^`][\s\S]*?)\n```/g)].map(match => match[1]);
+  assert.ok(comments.some(comment => comment.includes("Category:** bug")));
+  assert.ok(comments.some(comment => comment.includes("--json")), "attached PR");
+  for (const comment of comments) {
+    for (const field of ["Current behavior", "Desired behavior", "Acceptance criteria", "Out of scope"]) assert.ok(comment.includes(`**${field}:**`), field);
+    assert.match(comment, /- \[ \] /);
+  }
+});
+
+test("each newly unblocked ticket gets a private brief against the assigned revision", () => {
+  const spec = skill("implement-spec"), contract = read("p3stack-mode/references/brief-contract.md");
+  assert.match(spec, /each dispatch[^\n]*integration (?:base|tip)[^\n]*private[^\n]*brief-contract\.md/i);
+  assert.match(contract, /acceptance criteria in the tracker ticket/i);
+  assert.match(contract, /at dispatch[^\n]*signatures[^\n]*paths[^\n]*done command[^\n]*brief/i);
+});
