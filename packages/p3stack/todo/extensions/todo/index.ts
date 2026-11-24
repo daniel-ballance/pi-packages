@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-w
 import { Text, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { registerHostAware } from "./src/host.js";
-import { apply, counts, emptyList, formatList, isTodoList, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
+import { apply, counts, emptyList, formatList, isOpen, isTodoList, parseOperation, STATES, type Item, type Operation, type TodoList } from "./src/list.js";
 import { resultLines, widgetLines } from "./src/render.js";
 
 const ENTRY = "todo";
@@ -27,7 +27,6 @@ const outputSchema = Type.Object({
   counts: Type.Object({ pending: Type.Integer(), in_progress: Type.Integer(), done: Type.Integer(), skipped: Type.Integer() }),
 });
 
-const isOpen = (item: Item) => item.state === "pending" || item.state === "in_progress";
 /** Turns without a todo call, while items are open, before a reminder. */
 const REMIND_AFTER_TURNS = 4;
 const SET_HINT = "Update items as you finish them: update with id, or ids for several at once; add appends new steps; codemode scripts can call tools.todo. Nothing marks them for you.";
@@ -59,11 +58,11 @@ export default function todo(pi: ExtensionAPI) {
     ctx.ui.setWidget(ENTRY, shown.items.some(isOpen) ? (_tui, theme) => ({ render: width => widgetLines(shown, width, theme), invalidate() {} }) : undefined);
   };
 
-  const result = (change: string, error?: string) => ({
-    content: [{ type: "text" as const, text: [error ?? change, formatList(list)].filter(Boolean).join("\n") }],
+  const result = (op: Operation["op"] | "error", change: string) => ({
+    content: [{ type: "text" as const, text: [change, formatList(list, op === "add" || op === "update" || op === "remove")].filter(Boolean).join("\n") }],
     structuredContent: { items: list.items.map(item => ({ ...item })), counts: counts(list) },
     details: { items: list.items },
-    ...(error ? { isError: true } : {}),
+    ...(op === "error" ? { isError: true } : {}),
   });
 
   const tool: ToolDefinition<typeof parameters> = {
@@ -76,17 +75,17 @@ export default function todo(pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       turnsSinceTodo = 0; reminded = false; usedThisTurn = true; usedThisRun = true;
       const operation = parseOperation(params);
-      if ("error" in operation) return result("", operation.error);
+      if ("error" in operation) return result("error", operation.error);
       const outcome = apply(list, operation);
-      if ("error" in outcome) return result("", outcome.error);
+      if ("error" in outcome) return result("error", outcome.error);
       if (operation.op !== "get") {
         list = outcome.list;
         pi.appendEntry(ENTRY, { items: list.items, nextId: list.nextId });
         showList(ctx);
       }
       // Answering the end-of-run check: models otherwise follow the update with a recap.
-      if (settleNudged) return result(`${outcome.change}\n${SETTLED}`);
-      return result(operation.op === "set" ? `${outcome.change}\n${SET_HINT}` : outcome.change);
+      const hint = settleNudged ? SETTLED : operation.op === "set" ? SET_HINT : "";
+      return result(operation.op, [outcome.change, hint].filter(Boolean).join("\n"));
     },
     renderCall(args, theme) {
       const ids = args.ids?.join(", ") ?? args.id ?? "?";
@@ -95,7 +94,7 @@ export default function todo(pi: ExtensionAPI) {
       return new Text(theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", `${args.op}${detail}`), 0, 0);
     },
     // In the TUI a call is one line, like other tools; the widget shows the list and
-    // expanding the call shows it too. The text result stays complete for the model and T3.
+    // expanding the call shows all items, including resolved rows omitted from the text.
     renderResult(output, { expanded, isPartial }, theme) {
       if (isPartial) return new Text(theme.fg("muted", "updating…"), 0, 0);
       const text = output.content.map(part => part.type === "text" ? part.text : "").join("\n");

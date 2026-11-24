@@ -18,17 +18,17 @@ One tool, `todo`, with five operations:
 | `remove` | `id` or `ids` | Deletes `pending` items, all or none, such as a duplicate or a mistaken step. An item in progress, done or skipped can't be removed; a step the model decides not to do is `skipped` with a reason instead. Numbers are not reused. |
 | `get` | | Returns the list. |
 
-Every result is the complete list as plain text, for example:
+`set`, `get` and errors return the complete list as plain text. Successful
+`add`, `update` and `remove` return the change, counts for the entire list and
+only the items still open, for example:
 
 ```text
 Item 2 is skipped.
 Todo: 1 done, 1 skipped, 1 in progress, 0 pending
-[x] 1. Frame
-[-] 2. Fan out (skip: single slice)
 [>] 3. Report
 ```
 
-Results also carry `structuredContent` (`items`, `counts`) for codemode scripts.
+`structuredContent` (`items`, `counts`) and renderer `details` always carry the full list.
 An invalid operation, such as a skip without a reason or an unknown id, returns
 an error result with the unchanged list and changes nothing.
 

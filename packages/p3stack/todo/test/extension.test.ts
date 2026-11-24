@@ -54,7 +54,7 @@ const plainTheme = { fg: (_color: string, text: string) => text, bold: (text: st
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
 const snapshot = (items: unknown[]) => ({ type: "custom", customType: "todo", data: { items } });
 
-test("each change answers with the complete list as text and as structured content, and is persisted", async () => {
+test("set returns the complete list as text and as structured content, and each change is persisted", async () => {
   const h = harness();
   const result = await h.call({ op: "set", items: ["Frame", "Fan out"] });
   assert.equal(result.isError, undefined);
@@ -66,6 +66,35 @@ test("each change answers with the complete list as text and as structured conte
   assert.equal(h.entries.length, 2);
   assert.equal(text(await h.call({ op: "get" })).split("\n")[0], "Todo: 0 done, 0 skipped, 1 in progress, 1 pending");
   assert.equal(h.entries.length, 2, "get persists nothing");
+});
+
+test("incremental changes return counts and only open rows; get, errors and structured results retain resolved rows", async () => {
+  const h = harness();
+  await h.call({ op: "set", items: ["Frame", "Fan out", "Review"] });
+  await h.call({ op: "update", id: 1, state: "done" });
+  await h.call({ op: "update", id: 3, state: "in_progress" });
+  const updated = await h.call({ op: "update", id: 2, state: "skipped", note: "single slice" });
+  const added = await h.call({ op: "add", items: ["Duplicate"] });
+  const removed = await h.call({ op: "remove", id: 4 });
+  const counts = "Todo: 1 done, 1 skipped, 1 in progress, 0 pending";
+  assert.equal(text(updated), `Item 2 is skipped.\n${counts}\n[>] 3. Review`);
+  assert.equal(text(added), "Added item 4.\nTodo: 1 done, 1 skipped, 1 in progress, 1 pending\n[>] 3. Review\n[ ] 4. Duplicate");
+  assert.equal(text(removed), `Removed item 4.\n${counts}\n[>] 3. Review`);
+  for (const result of [updated, added, removed]) {
+    assert.deepEqual(result.structuredContent.items.slice(0, 2), [
+      { id: 1, text: "Frame", state: "done" }, { id: 2, text: "Fan out", state: "skipped", note: "single slice" },
+    ]);
+    assert.deepEqual(result.details.items, result.structuredContent.items);
+  }
+  const full = `${counts}\n[x] 1. Frame\n[-] 2. Fan out (skip: single slice)\n[>] 3. Review`;
+  assert.equal(text(await h.call({ op: "get" })), full);
+  for (const params of [{ op: "update", id: 1 }, { op: "remove", id: 9 }]) {
+    const error = await h.call(params);
+    assert.equal(error.isError, true);
+    assert.ok(text(error).endsWith(full));
+  }
+  await h.call({ op: "set", items: ["Duplicate"] });
+  assert.equal(text(await h.call({ op: "remove", id: 1 })), "Removed item 1.\nTodo: 0 done, 0 skipped, 0 in progress, 0 pending");
 });
 
 test("a resumed list keeps numbering after removed items, and older snapshots number from their highest item", async () => {

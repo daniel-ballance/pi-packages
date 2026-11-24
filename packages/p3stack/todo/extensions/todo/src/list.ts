@@ -12,6 +12,7 @@ export type Operation =
 
 export const STATES: readonly ItemState[] = ["pending", "in_progress", "done", "skipped"];
 export const emptyList: TodoList = { items: [] };
+export const isOpen = (item: Item) => item.state === "pending" || item.state === "in_progress";
 
 type Failure = { readonly error: string };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
@@ -98,7 +99,7 @@ export function apply(list: TodoList, operation: Operation): { readonly list: To
   switch (operation.op) {
     case "get": return { list, change: "" };
     case "set": {
-      const open = list.items.filter(item => item.state === "pending" || item.state === "in_progress").length;
+      const open = list.items.filter(isOpen).length;
       const items = operation.items.map((text, index): Item => ({ id: index + 1, text, state: "pending" }));
       return { list: { items, nextId: items.length + 1 }, change: `Set ${items.length} items${open ? `, replacing a list with ${open} open` : ""}.` };
     }
@@ -167,9 +168,10 @@ export function widgetRows(list: TodoList, limit: number): { readonly shown: rea
   return { shown, hidden: counts({ items: ordered.slice(shown.length) }) };
 }
 
-export function formatList(list: TodoList): string {
-  if (list.items.length === 0) return "Todo: no items";
+export function formatList(list: TodoList, openOnly = false): string {
+  if (!openOnly && list.items.length === 0) return "Todo: no items";
   const total = counts(list);
   const summary = `Todo: ${total.done} done, ${total.skipped} skipped, ${total.in_progress} in progress, ${total.pending} pending`;
-  return [summary, ...list.items.map(formatItem)].join("\n");
+  const items = openOnly ? list.items.filter(isOpen) : list.items;
+  return [summary, ...items.map(formatItem)].join("\n");
 }

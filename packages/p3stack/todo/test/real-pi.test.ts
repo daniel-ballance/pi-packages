@@ -48,7 +48,8 @@ test("a real Pi session keeps the list across a restart of the same session", { 
   try {
     const first = pi(root, session);
     assert.match((await first.call({ op: "set", items: ["Frame", "Report"] })).text, /Set 2 items/);
-    assert.match((await first.call({ op: "update", id: 1, state: "done" })).text, /\[x\] 1\. Frame/);
+    assert.equal((await first.call({ op: "update", id: 1, state: "done" })).text,
+      "Item 1 is done.\nTodo: 1 done, 0 skipped, 0 in progress, 1 pending\n[ ] 2. Report");
     const refused = await first.call({ op: "update", id: 2, state: "skipped" });
     assert.equal(refused.isError, true);
     await first.stop();
