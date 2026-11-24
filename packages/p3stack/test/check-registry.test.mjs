@@ -118,6 +118,47 @@ test("generation copies registered authored skills and validates their invocatio
   assert.throws(() => generate({ packageDir: f.root, outDir }), /release\/SKILL.md has a different invocation/);
 });
 
+const example = "\n```yaml\n---\nname: first\ndescription: Example, not metadata.\ndisable-model-invocation: true\n---\n```\n";
+
+for (const [field, header] of [
+  ["name", "description: Real description."],
+  ["description", "name: first"],
+  ["invocation", "name: first\ndescription: Real description."],
+]) {
+  test(`a fenced example cannot supply the registered ${field}`, t => {
+    const f = fixture(t);
+    if (field === "invocation") f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
+    const body = field === "invocation" ? example : example.replace("disable-model-invocation: true\n", "");
+    f.write("skills/first/SKILL.md", `---\n${header}\n---\n${body}`);
+    const result = f.run();
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, new RegExp(`first/SKILL.md.*${field}`));
+  });
+}
+
+test("registry accepts quoted and folded frontmatter fields without reading the fenced example", t => {
+  const f = fixture(t);
+  f.write("skills/first/SKILL.md", "---\nname: 'first' # literal name\ndescription: >-\n  A folded\n  description.\n---\n" + example);
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+});
+
+for (const invocation of ["model", "user"]) {
+  test(`generation sets ${invocation} invocation only in frontmatter and preserves the body bytes`, t => {
+    const f = fixture(t), path = "skills/first/SKILL.md";
+    const fields = "name: first\ndescription: First.\n";
+    const header = invocation === "model" ? fields + "disable-model-invocation: true\n" : fields;
+    f.write(`vendor/demo/${path}`, (`---\n${header}---\n` + example).replaceAll("\n", "\r\n"));
+    f.write("registry/skills.json", [{ ...f.skills[0], invocation }]);
+    f.write("registry/chains.json", []);
+    const outDir = join(f.root, "out");
+    generate({ packageDir: f.root, outDir });
+    const text = readFileSync(join(outDir, path), "utf8");
+    assert.ok(text.endsWith(example.replaceAll("\n", "\r\n")), "the example should be byte-identical");
+    assert.equal(/^disable-model-invocation: true\r?$/m.test(text.slice(0, text.indexOf("\r\n---\r\n"))), invocation === "user");
+  });
+}
+
 test("generation renders routes and chains from their registry rows", t => {
   const f = fixture(t);
   f.write("vendor/demo/skills/poteto-mode/SKILL.md", f.skill("poteto-mode"));

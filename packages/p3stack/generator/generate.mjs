@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
-import { checkRegistry, loadRegistry } from "./check-registry.mjs";
+import { checkRegistry, loadRegistry, skillFrontmatter } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
 import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
@@ -267,10 +267,7 @@ export function generate({ packageDir, outDir }) {
     for (const row of registry.skills.filter(row => row.action === "emit" && row.source !== "p3stack")) {
       const path = `skills/${row.name}/SKILL.md`, text = files.get(path);
       if (typeof text !== "string") { problems.push(`Registry skill ${row.name} is not mapped to ${path}`); continue; }
-      const hidden = /^disable-model-invocation:\s*true\s*$/m.test(text);
-      if (hidden === (row.invocation === "user")) continue;
-      const visible = text.replace(/^disable-model-invocation:.*\n/gm, "");
-      files.set(path, row.invocation === "user" ? visible.replace(/^---\n/, "---\ndisable-model-invocation: true\n") : visible);
+      files.set(path, skillFrontmatter(text, path).withInvocation(row.invocation === "user"));
     }
   }
   const put = by => (path, contents, executable = false) => {

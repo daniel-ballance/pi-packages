@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sourcesOf } from "./source-paths.mjs";
@@ -7,6 +8,35 @@ import { sourcesOf } from "./source-paths.mjs";
 const json = path => JSON.parse(readFileSync(path, "utf8"));
 const key = row => `${row.source}/${row.path}`;
 export const playbookPath = target => target.startsWith("p3stack-mode/") ? `skills/${target}` : `skills/poteto-mode/${target}`;
+
+// Use the same workspace YAML parser as lint-skill, including under isolated pnpm installs.
+const { isMap, parseDocument } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("yaml");
+const INVOCATION_FLAG = "disable-model-invocation";
+
+export function skillFrontmatter(text, path) {
+  const header = /^(\uFEFF?---[ \t]*\r?\n)([\s\S]*?)^---[ \t]*\r?$/my.exec(text);
+  if (!header) throw new Error(`${path}: expected a leading --- frontmatter block`);
+  const [, opening, yaml] = header, doc = parseDocument(yaml);
+  if (doc.errors.length || !isMap(doc.contents)) throw new Error(`${path}: invalid frontmatter: ${doc.errors[0]?.message ?? "expected a YAML mapping"}`);
+  const flag = doc.get(INVOCATION_FLAG, true);
+  if (flag && typeof flag.value !== "boolean") throw new Error(`${path}: frontmatter ${INVOCATION_FLAG} must be a boolean`);
+  const hidden = flag?.value === true;
+  return {
+    name: doc.get("name"), description: doc.get("description"), hidden,
+    withInvocation(userOnly) {
+      if (userOnly === hidden) return text;
+      // Edit just the flag, preserving other fields, comments, newlines and the entire body.
+      const at = opening.length;
+      if (flag) return text.slice(0, at + flag.range[0]) + userOnly + text.slice(at + flag.range[1]);
+      const start = doc.contents.range[0];
+      const indent = yaml.slice(0, start).split("\n").at(-1);
+      const offset = at + start + (doc.contents.flow ? 1 : 0);
+      const newline = opening.endsWith("\r\n") ? "\r\n" : "\n";
+      const insert = `${INVOCATION_FLAG}: true` + (doc.contents.flow ? ", " : newline + indent);
+      return text.slice(0, offset) + insert + text.slice(offset);
+    },
+  };
+}
 
 function skillPaths(root, prefix = "", templates = false) {
   if (!existsSync(root)) return [];
@@ -54,21 +84,19 @@ export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
   const emitted = skills.filter(row => row.action === "emit");
   const names = new Set(emitted.map(row => row.name)), problems = [];
   const targetExists = target => names.has(target) || (typeof target === "string" && /^(?:(?:p3stack-mode\/)?playbooks|p3stack-mode\/references)\/[a-z0-9-]+\.md$/.test(target) && existsSync(join(outDir, playbookPath(target))));
-  for (const row of emitted) {
-    const path = `skills/${row.name}/SKILL.md`, absolute = join(outDir, path);
-    if (!existsSync(absolute)) { problems.push(`Missing emitted skill ${path}`); continue; }
-    const text = readFileSync(absolute, "utf8");
-    if (text.match(/^name:\s*(.+)$/m)?.[1] !== row.name) problems.push(`${path} has a different frontmatter name`);
-    const hidden = /^disable-model-invocation:\s*true\s*$/m.test(text);
+  const expected = new Map(emitted.map(row => [`skills/${row.name}/SKILL.md`, row])), outputNames = new Set();
+  for (const relative of skillPaths(join(outDir, "skills"))) {
+    const path = `skills/${relative}`, row = expected.get(path);
+    const { name, description, hidden } = skillFrontmatter(readFileSync(join(outDir, path), "utf8"), path);
+    if (outputNames.has(name)) problems.push(`Duplicate emitted name ${name} in ${path}`);
+    outputNames.add(name);
+    if (!row) { problems.push(`Unregistered emitted skill ${path}`); continue; }
+    expected.delete(path);
+    if (name !== row.name) problems.push(`${path} has a different frontmatter name`);
+    if (typeof description !== "string" || !description.trim()) problems.push(`${path} needs a frontmatter description`);
     if (hidden !== (row.invocation === "user")) problems.push(`${path} has a different invocation`);
   }
-  const outputNames = new Set(), expected = new Set(emitted.map(row => `${row.name}/SKILL.md`));
-  for (const path of skillPaths(join(outDir, "skills"))) {
-    const name = readFileSync(join(outDir, "skills", path), "utf8").match(/^name:\s*(.+)$/m)?.[1];
-    if (outputNames.has(name)) problems.push(`Duplicate emitted name ${name} in skills/${path}`);
-    outputNames.add(name);
-    if (!expected.has(path)) problems.push(`Unregistered emitted skill skills/${path}`);
-  }
+  for (const path of expected.keys()) problems.push(`Missing emitted skill ${path}`);
   const routeKeys = new Set(), chainIds = new Set();
   for (const row of routes) {
     if (!["any", "default", "full-autonomy"].includes(row.grant)) problems.push(`Route ${row.request} has invalid grant ${row.grant}`);
