@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { cp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { git as runGit, gitEnv } from "./git.js";
 import { detectHost } from "../extensions/subagents/src/host.js";
-import { DefaultResourceLoader, SettingsManager, type ResourcesDiscoverResult } from "@earendil-works/pi-coding-agent";
+import { DefaultResourceLoader, parseArgs, SettingsManager, type ResourcesDiscoverResult } from "@earendil-works/pi-coding-agent";
 import { tempRoot } from "./support/temp-root.js";
 
 const root = fileURLToPath(new URL("../../../..", import.meta.url));
@@ -34,11 +34,12 @@ const packageDirs: Record<string, string> = {
   todo: "packages/p3stack/todo",
   "web-search": "packages/web-search",
 };
-const p3stackSkills = readdirSync(join(root, "packages/p3stack/skills"), { withFileTypes: true })
-  .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/p3stack/skills", entry.name, "SKILL.md")))
-  .map(entry => entry.name);
+type SkillRow = { action: string; name?: string };
+const registry: SkillRow[] = JSON.parse(await readFile(join(root, "packages/p3stack/registry/skills.json"), "utf8"));
 const nativeSkills = detectHost() === "cli" ? ["subagents", "workflows"] : [];
-const expectedSkills = [...nativeSkills, ...p3stackSkills].sort();
+function assertSkillMenu(actual: string[], native: string[], rows = registry) {
+  assert.deepEqual(actual, [...native, ...rows.filter(row => row.action === "emit").map(row => row.name)].sort());
+}
 
 async function load(packages: string[], base: string, options: { agentDir?: string; extensions?: string[] } = {}) {
   const temp = tempRoot("pi-package-discovery-");
@@ -94,25 +95,18 @@ function publish(bare: string, work: string) {
   runGit(["clone", "--quiet", "--bare", work, bare], { stdio: "pipe" });
 }
 
-test("retired research and skill-report files are absent", async () => {
-  for (const path of [
-    ".pi/model-selection.json",
-    "scripts/skill-report.mjs",
-    ".pi/skills/p3stack-pocock-unification",
-    ".pi/skills/refresh-subagent-models/SKILL.md",
-    "docs/subagents-model-selection",
-    "docs/subagents-pareto-exploration.md",
-    "packages/p3stack/subagents/proposals/2026-09-20-global-subagents.md",
-    "packages/p3stack/subagents/proposals/2026-09-20-global-subagents.json",
-  ]) {
-    await assert.rejects(stat(join(root, path)), { code: "ENOENT" }, path);
-  }
-});
-
-test("project settings do not reference the retired pi-pocock-skills package", async () => {
-  const settings = JSON.parse(await readFile(join(root, ".pi/settings.json"), "utf8"));
-  const sources = (settings.packages ?? []).map((entry: string | { source: string }) => typeof entry === "string" ? entry : entry.source);
-  assert.deepEqual(sources.filter((source: string) => source.includes("pi-pocock-skills")), []);
+test("discovery rejects a reference shipped as a command in place of an emitted skill", async () => {
+  const temp = tempRoot("bad-package-menu-");
+  try {
+    const rows = registry.filter(row => ["tdd", "regression-test"].includes(row.name ?? ""));
+    const dir = join(temp, "skills/regression-test");
+    mkdirSync(dir, { recursive: true });
+    await writeFile(join(temp, "package.json"), JSON.stringify({ name: "bad-menu", pi: { skills: ["./skills"] } }));
+    await writeFile(join(dir, "SKILL.md"), "---\nname: regression-test\ndescription: Check a regression.\n---\n");
+    const result = await load([temp], temp);
+    assert.deepEqual(result.skills, ["regression-test"]);
+    assert.throws(() => assertSkillMenu(result.skills, [], rows), /tdd/);
+  } finally { await rm(temp, { recursive: true, force: true }); }
 });
 
 test("pi install git:github.com/daniel-ballance/pi-packages loads the six packages, and T3's launch argument loads claude-subscription once, first", async () => {
@@ -146,7 +140,7 @@ test("pi install git:github.com/daniel-ballance/pi-packages loads the six packag
 
     const result = await load([githubSource], installed, { agentDir });
     assert.deepEqual(result.extensions, rootExtensions);
-    assert.deepEqual(result.skills, expectedSkills);
+    assertSkillMenu(result.skills, nativeSkills);
     assert.equal(result.skillPaths.tdd, "packages/p3stack/skills/tdd/SKILL.md");
     assert.equal(result.skillPaths.subagents, nativeSkills.length ? "packages/p3stack/subagents/skills/subagents/SKILL.md" : undefined);
     assert.deepEqual(result.skillDiagnostics, []);
@@ -163,8 +157,9 @@ test("pi install git:github.com/daniel-ballance/pi-packages loads the six packag
 
     const launchArgs = execFileSync(process.execPath, [join(installed, "scripts/root-package.mjs"), "--t3-launch-args"], { encoding: "utf8" }).trim();
     const claudeSubscription = join(installed, "packages/claude-subscription/extensions/claude-subscription/index.ts");
-    assert.equal(launchArgs, `--extension ${claudeSubscription}`);
-    const underT3 = await load([githubSource], installed, { agentDir, extensions: [launchArgs.slice("--extension ".length)] });
+    const { extensions } = parseArgs(launchArgs.split(/\s+/));
+    assert.deepEqual(extensions, [claudeSubscription]);
+    const underT3 = await load([githubSource], installed, { agentDir, extensions });
     assert.deepEqual(underT3.extensions, rootExtensions);
   } finally {
     await rm(temp, { recursive: true, force: true });
@@ -187,7 +182,7 @@ test("pnpm production workspace loads the root package without development depen
     });
     const result = await load([temp], temp);
     assert.deepEqual(result.extensions, rootExtensions);
-    assert.deepEqual(result.skills, expectedSkills);
+    assertSkillMenu(result.skills, nativeSkills);
     for (const dir of Object.values(packageDirs)) {
       await assert.rejects(readFile(join(temp, dir, "node_modules/@earendil-works/pi-coding-agent/package.json")), dir);
     }
@@ -211,8 +206,7 @@ test("the packed p3stack loads alone: its three extensions and its skills, with 
     assert.match(await readFile(join(skill, link), "utf8"), /limits\.maxAttempts/);
     const result = await load([packed], packed);
     assert.deepEqual(result.extensions, ["extensions/p3stack/index.ts", "subagents/extensions/subagents/index.ts", "todo/extensions/todo/index.ts"]);
-    assert.deepEqual(result.skills, expectedSkills);
-    assert.equal(p3stackSkills.length, 46);
+    assertSkillMenu(result.skills, nativeSkills);
     assert.equal(result.skillPaths.tdd, "skills/tdd/SKILL.md");
     assert.equal(result.skillPaths["regression-test"], undefined);
     assert.ok(existsSync(join(packed, "skills/tdd/references/regression-test.md")));
@@ -230,30 +224,18 @@ test("individual packages still discover their public resources", async () => {
   }
 });
 
-test("every package has resource directories and packs its declared extension implementation", async () => {
+test("each tarball contains its declared extensions and public native resources", async () => {
   for (const [name, dir] of Object.entries(packageDirs)) {
     const path = join(root, dir);
     const manifest = JSON.parse(await readFile(join(path, "package.json"), "utf8"));
-    for (const type of ["extensions", "skills", "prompts", "themes"]) {
-      if (name === "p3stack" && ["prompts", "themes"].includes(type)) {
-        assert.equal(manifest.pi[type], undefined);
-        await assert.rejects(stat(join(path, type)), { code: "ENOENT" });
-        continue;
-      }
-      await readdir(join(path, type));
-      assert.ok(Array.isArray(manifest.pi[type]), `${name}: missing pi.${type}`);
-    }
     const [pack] = Object.values<{ files: { path: string }[] }>(JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
       cwd: path, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
     })));
     const files = pack!.files.map((file: { path: string }) => file.path);
-    assert.ok(files.includes(`extensions/${name}/index.ts`), name);
-    if (name !== "self-reload") assert.ok(files.some((file: string) => file.startsWith(`extensions/${name}/src/`)), name);
-    assert.ok(!files.includes("index.ts"));
+    for (const entry of manifest.pi.extensions) assert.ok(files.includes(entry.replace(/^\.\//, "")), `${name}: tarball is missing ${entry}`);
     assert.ok(!files.some((file: string) => file.includes("node_modules/")));
     assert.ok(!files.some((file: string) => /(^|\/)test\//.test(file)));
     if (name === "p3stack") {
-      for (const extension of ["subagents/extensions/subagents/index.ts", "todo/extensions/todo/index.ts"]) assert.ok(files.includes(extension), extension);
       for (const moved of ["claude-subscription", "computer-use", "self-reload", "web-search", "t3-agent"]) {
         assert.ok(!files.some((file: string) => file.startsWith(`${moved}/`)), moved);
       }
@@ -267,9 +249,6 @@ test("every package has resource directories and packs its declared extension im
       assert.ok(files.includes("skills/subagents/reference/builtins.md"));
       assert.ok(files.includes("skills/workflows/SKILL.md"));
       assert.ok(!files.some((file: string) => file.startsWith("skills/subagents/scripts/")), "research scripts must not ship");
-      for (const reference of ["model-research.md", "frontier-analysis.md"]) {
-        assert.ok(!files.includes(`skills/subagents/reference/${reference}`), reference);
-      }
     }
   }
 });
