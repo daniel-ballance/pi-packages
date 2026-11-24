@@ -7,7 +7,8 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { git as runGit, gitEnv } from "./git.js";
-import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { detectHost } from "../extensions/subagents/src/host.js";
+import { DefaultResourceLoader, SettingsManager, type ResourcesDiscoverResult } from "@earendil-works/pi-coding-agent";
 import { tempRoot } from "./support/temp-root.js";
 
 const root = fileURLToPath(new URL("../../../..", import.meta.url));
@@ -36,7 +37,8 @@ const packageDirs: Record<string, string> = {
 const p3stackSkills = readdirSync(join(root, "packages/p3stack/skills"), { withFileTypes: true })
   .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/p3stack/skills", entry.name, "SKILL.md")))
   .map(entry => entry.name);
-const expectedSkills = p3stackSkills.sort(); // static resources, before resources_discover
+const nativeSkills = detectHost() === "cli" ? ["subagents", "workflows"] : [];
+const expectedSkills = [...nativeSkills, ...p3stackSkills].sort();
 
 async function load(packages: string[], base: string, options: { agentDir?: string; extensions?: string[] } = {}) {
   const temp = tempRoot("pi-package-discovery-");
@@ -51,6 +53,16 @@ async function load(packages: string[], base: string, options: { agentDir?: stri
     });
     await loader.reload();
     assert.deepEqual(loader.getExtensions().errors, []);
+    // reload() loads package manifests and factories. A session then extends the
+    // loader with resources_discover results; exercise that boundary without opening Pi.
+    const native = loader.getExtensions().extensions.find(ext => ext.path.endsWith("/extensions/subagents/index.ts"));
+    if (native) {
+      assert.ok(!loader.getSkills().skills.some(s => ["subagents", "workflows"].includes(s.name)), "native skills are not static resources");
+      for (const discover of native.handlers.get("resources_discover") ?? []) {
+        const result = await discover({ type: "resources_discover", cwd: temp, reason: "startup" }, {}) as ResourcesDiscoverResult;
+        loader.extendResources({ skillPaths: result.skillPaths?.map(path => ({ path, metadata: { source: native.path, scope: "temporary", origin: "top-level" } })) });
+      }
+    }
     return {
       extensions: loader.getExtensions().extensions.map(extension => relative(base, extension.path)),
       skills: loader.getSkills().skills.map(skill => skill.name).sort(),
@@ -136,7 +148,7 @@ test("pi install git:github.com/daniel-ballance/pi-packages loads the six packag
     assert.deepEqual(result.extensions, rootExtensions);
     assert.deepEqual(result.skills, expectedSkills);
     assert.equal(result.skillPaths.tdd, "packages/p3stack/skills/tdd/SKILL.md");
-    assert.equal(result.skillPaths.subagents, undefined);
+    assert.equal(result.skillPaths.subagents, nativeSkills.length ? "packages/p3stack/subagents/skills/subagents/SKILL.md" : undefined);
     assert.deepEqual(result.skillDiagnostics, []);
     for (const dir of ["", ...Object.values(packageDirs)]) {
       await assert.rejects(readFile(join(installed, dir, "node_modules/@earendil-works/pi-coding-agent/package.json")), dir || "root");
@@ -211,7 +223,7 @@ test("individual packages still discover their public resources", async () => {
   for (const [name, dir] of Object.entries(packageDirs).filter(([name]) => name !== "p3stack")) {
     const result = await load([join(root, dir)], root);
     assert.deepEqual(result.extensions, [`${dir}/extensions/${name}/index.ts`]);
-    assert.deepEqual(result.skills, []);
+    assert.deepEqual(result.skills, name === "subagents" ? nativeSkills : []);
   }
 });
 
