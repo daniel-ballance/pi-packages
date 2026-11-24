@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
 import { isProxiedTool } from "./nesting.js";
@@ -10,7 +10,12 @@ import type { Composition } from "./policy.js";
 import type { ChildPolicy } from "./child-policy.js";
 import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
-import type { WaitEnd } from "./wait.js";
+import { BUSY, type WaitEnd } from "./wait.js";
+import { REPORT_KINDS } from "./read-page.js";
+import { ReportInbox, type Notice, type ReadReceipt, type SavedReport, type Update } from "./report-inbox.js";
+export type { Notice, ReadReceipt, Update } from "./report-inbox.js";
+export { reportPage, REPORT_KINDS } from "./read-page.js";
+export { BUSY } from "./wait.js";
 import { gitEnv } from "./worktree.js";
 
 /** The child's checkout may still be in use. */
@@ -31,14 +36,7 @@ export interface SpawnOptions {
   parentId?: string;
   coordination?: { owns?: string[]; outputs?: string[] };
 }
-type ReadArgs = { id: string; page: string };
-export const reportPage = (id: string, cursor: number, offset = 0): ReadArgs => ({ id, page: `${cursor}:${offset}` });
-export interface Update { cursor: number; kind: string; text: string; time: string; truncated?: true; fullLength?: number; readFull?: ReadArgs; assignmentId?: string; consumed?: true }
-interface SavedReport { assignmentId?: string; updateCursor: number; fullLength: number; reviewed?: true; file?: string; text?: string }
-const SAVED_REPORTS = 100;
-const DISPLAY_CHARS = 12_000;
-// Even worst-case JSON escaping fits a page inside both tool and private-pipe limits.
-const PAGE_CHARS = 4_000;
+
 export type InterventionKind = "halt" | "kill";
 export interface HumanHold { kind: InterventionKind; at: string; outcome: "pending" | "confirmed" | "failed"; detail?: string }
 export interface Assignment { id: string; task: string; status: "running" | "completed" | "failed" | "cancelled"; at: string; finishedAt?: string; resultCursor?: number }
@@ -79,13 +77,11 @@ interface InputDelivery {
   error?: string;
   cancelled?: boolean;
 }
-export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string; assignmentId?: string; fullLength?: number; readFull?: ReadArgs }
-export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
+
 export interface SlotReservation { readonly id: symbol }
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
-export const BUSY = new Set<Status>(["starting", "working", "waiting_input", "stopping"]);
-export const REPORT_KINDS: ReadonlySet<string> = new Set(["assistant", "message", "error", "extension_error", "input_requested", "aborted", "completed", "failure", "human_intervention"]);
+
 function enforcePrivatePath(path: string, mode: number, directory: boolean) {
   const stat = lstatSync(path);
   if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile())) throw new Error(`Unsafe subagent state path: ${path}`);
@@ -119,7 +115,7 @@ export class SubagentManager {
   private logSizes = new Map<string, number>();
   private shuttingDown = false;
   private verifiedTools = new Map<string, string[]>();
-  private notices = new Map<string, Notice>();
+  readonly inbox: ReportInbox;
   private activeRuns = new Set<string>();
   private workflowChildren = new Set<string>();
   private abortIntents = new Map<string, { revision: number; awaitingStart: boolean }>();
@@ -162,6 +158,11 @@ export class SubagentManager {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     enforcePrivatePath(directory, 0o700, true);
     this.registry = resolve(directory, "registry.json");
+    this.inbox = new ReportInbox({
+      directory, lookup: id => this.records.get(id), attached: id => this.children.has(id),
+      mayAnnounce: (id, kind) => this.current && (kind === "human_intervention" || (!this.shuttingDown && !this.workflowChildren.has(id))),
+      persist: () => this.persist(), notify: notice => this.notice(notice),
+    });
     let peerState: PeerState | undefined;
     const recoveredHolds: AgentRecord[] = [];
     let recoveredChanges = false;
@@ -205,15 +206,10 @@ export class SubagentManager {
         record.activity = record.unconfirmedStop ?? "No process attached. Resume explicitly to continue the saved conversation.";
         enforcePrivatePathIfPresent(record.logFile, 0o600, false);
         enforcePrivatePathIfPresent(record.stderrFile, 0o600, false);
-        for (const u of record.updates) if (u.readFull) u.readFull = reportPage(record.id, u.cursor); // pre-page registries
-        if (this.trimReports(record)) recoveredChanges = true;
+        if (this.inbox.restoreReports(record)) recoveredChanges = true;
         this.records.set(record.id, record);
       }
-      // Old registries have no pending queue: never reconstruct already-sent reports.
-      for (const notice of (stored.pendingNotices ?? []) as Notice[]) {
-        const record = this.records.get(notice.id);
-        if (record && notice.kind !== "input_requested" && (notice.kind === "human_intervention" || !record.observedCursors?.includes(notice.cursor))) this.notices.set(notice.key, notice);
-      }
+      this.inbox.restoreNotices(stored.pendingNotices ?? []);
     }
     SubagentManager.owners.set(this.registry, this);
     this.peers = new PeerBroker({
@@ -229,7 +225,7 @@ export class SubagentManager {
     });
     for (const record of recoveredHolds) {
       const text = `Human ${record.hold!.kind} for ${record.name} (${record.id}): failed (confirmation interrupted by parent restart). ${record.hold!.detail}`;
-      this.report(record, "human_intervention", text);
+      this.inbox.report(record, "human_intervention", text);
     }
     if (recoveredChanges) this.persist();
   }
@@ -237,41 +233,15 @@ export class SubagentManager {
     if (!this.current) return;
     const temp = this.registry + ".tmp";
     enforcePrivatePathIfPresent(temp, 0o600, false);
-    writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()], pendingNotices: [...this.notices.values()], peers: this.peers?.state }, null, 2), { mode: 0o600 });
+    writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()], pendingNotices: this.inbox.savedNotices(), peers: this.peers?.state }, null, 2), { mode: 0o600 });
     enforcePrivatePath(temp, 0o600, false);
     renameSync(temp, this.registry);
     enforcePrivatePath(this.registry, 0o600, false);
     this.changed();
   }
-  private trimReports(record: AgentRecord) {
-    const saved = record.savedReports;
-    if (!saved || saved.length <= SAVED_REPORTS) return;
-    for (const {file} of saved.splice(0, saved.length - SAVED_REPORTS)) {
-      if (file && dirname(resolve(file)) === resolve(this.directory) && /^[\da-f-]{36}\.report$/.test(basename(file)) && existsSync(file)) unlinkSync(file);
-    }
-    return true;
-  }
-  private appendUpdate(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
-    record.updatedAt = new Date().toISOString();
-    const truncated = text.length > DISPLAY_CHARS, assignmentId = record.assignment?.id;
-    const cursor = ++record.cursor;
-    if (finalAnswer || (REPORT_KINDS.has(kind) && text.length > 600)) {
-      const saved: SavedReport = { assignmentId, updateCursor: cursor, fullLength: text.length };
-      if (truncated) {
-        saved.file = join(this.directory, `${randomUUID()}.report`);
-        writeFileSync(saved.file, text, { encoding: "utf16le", mode: 0o600, flag: "wx" });
-      } else saved.text = text;
-      (record.savedReports ??= []).push(saved);
-      this.trimReports(record);
-    }
-    const update: Update = { cursor, kind, text: text.slice(0, DISPLAY_CHARS), time: record.updatedAt, assignmentId,
-      ...(truncated ? { truncated: true, fullLength: text.length, ...(REPORT_KINDS.has(kind) ? { readFull: reportPage(record.id, cursor) } : {}) } : {}) };
-    record.updates.push(update);
-    record.updates = record.updates.slice(-100);
-    return update;
-  }
+
   private update(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
-    const update = this.appendUpdate(record, kind, text, finalAnswer);
+    const update = this.inbox.appendUpdate(record, kind, text, finalAnswer);
     this.persist();
     return update;
   }
@@ -282,87 +252,10 @@ export class SubagentManager {
     appendFileSync(path, bytes.subarray(0, MAX_LOG - size), { mode: 0o600 });
     this.logSizes.set(path, size + Math.min(bytes.length, MAX_LOG - size));
   }
-  private report(record: AgentRecord, kind: string, text: string, noticeKind = kind, requestId?: string) {
-    const update = this.appendUpdate(record, kind, text);
-    if (requestId !== undefined) {
-      const request = record.uiRequests.find(r => r.id === requestId);
-      if (request) request.readFull = reportPage(record.id, update.cursor);
-    }
-    if (!this.announce(record, noticeKind, text, update.cursor, requestId)) this.persist();
-  }
-  private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
-    if (!this.current) return;
-    if (kind !== "human_intervention" && (this.shuttingDown || this.workflowChildren.has(record.id) || record.observedCursors?.includes(cursor))) return;
-    const key = `${record.id}:${cursor}:${kind}`;
-    if (this.notices.has(key)) return;
-    const saved = record.savedReports?.find(r => r.updateCursor === cursor);
-    const fullLength = saved?.fullLength ?? text.length;
-    const notice = { id: record.id, name: record.name, kind, text: text.slice(0, 4000), cursor, key, requestId,
-      ...(fullLength > 600 && (saved || record.updates.some(u => u.cursor === cursor)) ? {
-        assignmentId: saved?.assignmentId ?? record.assignment?.id, fullLength, readFull: reportPage(record.id, cursor),
-      } : {}) };
-    this.notices.set(key, notice);
-    this.persist();
-    // Notification scheduling must not prevent a human cancellation; the queue is durable.
-    if (kind === "human_intervention") { try { this.notice(notice); } catch { /* retry from persisted queue */ } }
-    else if (!this.routedToParent(notice)) this.notice(notice); // Wake the delivery scheduler; don't inject into the parent here.
-    return notice;
-  }
-  /**
-   * A nested Child's routine report waits for its own parent, which drains it with its
-   * proxied tools. It stays queued: if that parent stops before reading it, it reaches
-   * the root. Human interventions and input requests (only the root can answer) always do.
-   */
-  private routedToParent(notice: Notice) {
-    if (notice.kind === "human_intervention" || notice.kind === "input_requested") return false;
-    return this.reportsDrainedBy(notice.id) !== undefined;
-  }
-  reportsDrainedBy(id: string): string | undefined {
-    const parentId = this.records.get(id)?.parentId;
-    return parentId && this.children.has(parentId) ? parentId : undefined;
-  }
-  /** Notices for the root Parent now. */
-  pendingNotices(): Notice[] { return [...this.notices.values()].filter(notice => !this.routedToParent(notice)); }
-  /** keepInput: a coordinator's read never settles an input request; only the root can answer it. */
-  private observe(record: AgentRecord, cursors: number[], keepInput = false) {
-    record.observedCursors = [...new Set([...(record.observedCursors ?? []), ...cursors])].sort((a, b) => a - b).slice(-200);
-    const seen = new Set(cursors);
-    for (const [key, notice] of this.notices) {
-      if (notice.id !== record.id || notice.kind === "human_intervention" || !seen.has(notice.cursor)) continue;
-      if (keepInput && notice.kind === "input_requested") continue;
-      this.notices.delete(key);
-    }
-  }
-  markNoticesDelivered(keys: string[]) {
-    for (const key of keys) {
-      const notice = this.notices.get(key);
-      if (notice?.kind === "human_intervention") this.notices.delete(key);
-      else if (notice) this.observe(this.get(notice.id), [notice.cursor]);
-    }
-    this.persist();
-  }
-  /** byRoot false: a coordinator Child read this through its proxied tools. */
+  pendingNotices() { return this.inbox.pendingNotices(); }
+  markNoticesDelivered(keys: string[]) { this.inbox.markNoticesDelivered(keys); }
   acknowledgeRead(receipt: ReadReceipt, advanceCursor: boolean, byRoot = true) {
-    const record = this.get(receipt.id);
-    const cursors = receipt.updates.map(update => update.cursor);
-    const requests = new Set(receipt.uiRequests.map(request => request.id));
-    for (const notice of this.notices.values()) {
-      if (notice.id === record.id && notice.requestId && requests.has(notice.requestId)) cursors.push(notice.cursor);
-    }
-    this.observe(record, cursors, !byRoot);
-    if (receipt.updates.some(u => u.cursor === record.assignment?.resultCursor && !u.truncated)) this.review(record);
-    if (advanceCursor) { record.readCursor = Math.max(record.readCursor, receipt.nextCursor); this.advanceConsumed(record); }
-    this.persist();
-  }
-  private review(record: AgentRecord) {
-    if (record.resultReview?.status === "unreviewed" && record.resultReview.assignmentId === record.assignment?.id)
-      record.resultReview = { ...record.resultReview, status: "reviewed", at: new Date().toISOString() };
-  }
-  private expireInputNotices(record: AgentRecord) {
-    const live = new Set(record.uiRequests.map(request => request.id));
-    for (const [key, notice] of this.notices) {
-      if (notice.id === record.id && notice.requestId && !live.has(notice.requestId)) this.notices.delete(key);
-    }
+    this.inbox.acknowledgeRead(receipt, advanceCursor, byRoot);
   }
   get(id: string) {
     const record = this.records.get(id);
@@ -443,83 +336,10 @@ export class SubagentManager {
     if ((checked.cliArgs ?? []).some(arg => RESERVED.has(arg.split("=")[0]))) throw new Error("cliArgs cannot override manager-owned RPC mode/session flags, print/export modes, or contain --");
     return checked;
   }
-  private savedFinal(record: AgentRecord) {
-    return record.savedReports?.findLast(r => r.updateCursor === record.assignment?.resultCursor && r.assignmentId === record.assignment?.id);
-  }
-  finalAnswer(id: string) {
-    const saved = this.savedFinal(this.get(id));
-    return saved?.file ? readFileSync(saved.file, "utf16le") : saved?.text;
-  }
-  readReportPage(id: string, page: string) {
-    const record = this.get(id);
-    const match = /^(\d+):(\d+)$/.exec(page);
-    const cursor = Number(match?.[1]), offset = Number(match?.[2]);
-    const saved = record.savedReports?.find(r => r.updateCursor === cursor);
-    const update = record.updates.find(u => u.cursor === cursor && REPORT_KINDS.has(u.kind));
-    const inline = saved?.text ?? (update && !update.truncated ? update.text : undefined);
-    const fullLength = saved?.fullLength ?? inline?.length;
-    if (fullLength === undefined || !Number.isSafeInteger(offset) || offset % PAGE_CHARS || offset >= fullLength) throw new Error("Unknown or expired report page");
-    // Seek including the adjacent code units so a boundary never splits a surrogate pair.
-    const from = Math.max(0, offset - 1), to = Math.min(fullLength, offset + PAGE_CHARS + 1);
-    let window: string;
-    if (saved?.file) {
-      const bytes = Buffer.alloc((to - from) * 2), fd = openSync(saved.file, "r");
-      try {
-        if (readSync(fd, bytes, 0, bytes.length, from * 2) !== bytes.length) throw new Error("Incomplete saved report");
-      } finally { closeSync(fd); }
-      window = bytes.toString("utf16le");
-    } else window = inline!.slice(from, to);
-    const boundary = (n: number) => /[\uD800-\uDBFF]/.test(window.charAt(n - 1)) && /[\uDC00-\uDFFF]/.test(window.charAt(n)) ? n + 1 : n;
-    const start = boundary(offset - from), text = window.slice(start, boundary(offset - from + PAGE_CHARS));
-    const data = { id, assignmentId: saved?.assignmentId ?? update?.assignmentId, text, offset: from + start, fullLength, truncated: text.length < fullLength,
-      resultReview: record.resultReview && structuredClone(record.resultReview), nextRead: from + start + text.length < fullLength ? reportPage(id, cursor, offset + PAGE_CHARS) : undefined };
-    return { data, acknowledge: (byRoot = true) => {
-      if (data.nextRead) return;
-      this.observe(record, [cursor], !byRoot);
-      if (saved) saved.reviewed = true;
-      if (update) update.consumed = true;
-      if (record.assignment?.resultCursor === cursor) this.review(record);
-      data.resultReview = record.resultReview && structuredClone(record.resultReview);
-      this.advanceConsumed(record);
-      this.persist();
-    } };
-  }
-  private advanceConsumed(record: AgentRecord) {
-    for (const update of record.updates) {
-      if (update.cursor <= record.readCursor) continue;
-      if (!update.consumed) break;
-      record.readCursor = update.cursor;
-    }
-  }
+  finalAnswer(id: string) { return this.inbox.finalAnswer(id); }
+  readReportPage(id: string, page: string) { return this.inbox.readReportPage(id, page); }
   read(id: string, since?: number, acknowledge = true, allUpdates = false) {
-    const record = this.get(id);
-    const cursor = since ?? record.readCursor;
-    const updates: Update[] = [];
-    let size = 0;
-    for (const update of record.updates.filter(u => u.cursor > cursor && (since !== undefined || !u.consumed))) {
-      if (!allUpdates && size + update.text.length > 24000 && updates.length) break;
-      updates.push(update); size += update.text.length;
-    }
-    const nextCursor = updates.at(-1)?.cursor ?? cursor;
-    const saved = this.savedFinal(record);
-    const result = {
-      id, name: record.name, status: record.status, activity: record.activity,
-      model: record.model, thinking: record.thinking,
-      updates, nextCursor, hasMore: record.cursor > nextCursor,
-      ...(saved?.file && !saved.reviewed && saved.fullLength > DISPLAY_CHARS ? { readFull: reportPage(id, saved.updateCursor), fullLength: saved.fullLength } : {}),
-      gap: record.updates.length > 0 && cursor < record.updates[0].cursor - 1,
-      uiRequests: record.uiRequests, sessionFile: record.sessionFile,
-      logFile: record.logFile, stderrFile: record.stderrFile, error: record.error,
-      hold: record.hold, assignment: record.assignment, resultReview: record.resultReview,
-      uncertainSubmission: record.uncertainSubmission,
-      coordination: record.config.coordination,
-    };
-    if (acknowledge) {
-      this.acknowledgeRead(result, since === undefined);
-      result.resultReview = record.resultReview;
-    }
-    // Acknowledgement uses the live receipt above; callers only receive a detached page.
-    return structuredClone(result);
+    return this.inbox.read(id, since, acknowledge, allUpdates);
   }
   private assertReleased(record: AgentRecord) {
     if (record.hold) throw new Error(`${record.id} is under human ${record.hold.kind} hold; parent must releaseHold explicitly.`);
@@ -661,9 +481,9 @@ export class SubagentManager {
         record.status = expected ? "stopped" : "failed";
         record.activity = expected ? "Stopped; saved conversation available" : "Process exited";
         record.uiRequests = [];
-        this.expireInputNotices(record);
+        this.inbox.expireInputNotices(record);
         if (!expected) record.error = error?.message || "Child exited unexpectedly";
-        const update = this.appendUpdate(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
+        const update = this.inbox.appendUpdate(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
         if (record.assignment?.status === "running") {
           record.assignment.status = expected ? "cancelled" : "failed";
           record.assignment.finishedAt = new Date().toISOString();
@@ -671,10 +491,9 @@ export class SubagentManager {
           record.resultReview = { assignmentId: record.assignment.id, status: "unreviewed" };
         }
         if (expected && record.error) { record.lastError = record.error; delete record.error; }
-        if (expected || !this.announce(record, "failure", record.error!, update.cursor)) this.persist();
+        if (expected || !this.inbox.announce(record, "failure", record.error!, update.cursor)) this.persist();
         // Its Children's unread reports were waiting for it; they now go to the root.
-        const released = [...this.notices.values()].find(notice => this.records.get(notice.id)?.parentId === record.id);
-        if (released) this.notice(released);
+        this.inbox.parentStopped(record.id);
       },
     });
     this.children.set(record.id, child);
@@ -731,15 +550,15 @@ export class SubagentManager {
     const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
     if (record.assignment?.status === "running") record.assignment.status = record.error ? "failed" : record.aborted ? "cancelled" : "completed";
     const text = record.error || last?.text || (record.aborted ? "Work cancelled; child remains available for instructions." : "Run settled without a text response.");
-    if (!last) last = this.appendUpdate(record, record.error ? "error" : kind, text);
+    if (!last) last = this.inbox.appendUpdate(record, record.error ? "error" : kind, text);
     if (record.assignment && !record.assignment.finishedAt) {
       record.assignment.finishedAt = new Date().toISOString();
       record.assignment.resultCursor = last.cursor;
-      record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last.truncated || this.savedFinal(record)?.reviewed) ? "reviewed" : "unreviewed" };
+      record.resultReview = { assignmentId: record.assignment.id, status: this.inbox.wasReviewed(record, last) ? "reviewed" : "unreviewed" };
     }
     // announce commits the result and its wake notice together, before calling
     // the scheduler. A suppressed notice still needs the settlement committed.
-    if ((humanCancellation && kind === "aborted") || !this.announce(record, kind, text, last.cursor)) this.persist();
+    if ((humanCancellation && kind === "aborted") || !this.inbox.announce(record, kind, text, last.cursor)) this.persist();
   }
   private deliveredInput(record: AgentRecord, delivery: InputDelivery, text: string) {
     const removed = delivery.removed, first = delivery.firstUser;
@@ -870,7 +689,7 @@ export class SubagentManager {
         record.status = record.error ? "failed" : "idle";
         record.activity = record.error ? "Run failed; process remains available" : record.aborted ? "Work aborted; waiting for instructions" : "Waiting for instructions";
         record.uiRequests = [];
-        this.expireInputNotices(record);
+        this.inbox.expireInputNotices(record);
         this.finishAssignment(record, delivery.lastResult, humanCancellation);
         delivery.lastResult = undefined; delivery.removed = undefined;
         void this.refreshUsage(record);
@@ -883,7 +702,7 @@ export class SubagentManager {
         if (["confirm", "select", "input", "editor"].includes(packet.method)) {
           record.uiRequests.push(packet);
           record.status = "waiting_input";
-          this.report(record, "input_requested", JSON.stringify(packet), "input_requested", packet.id);
+          this.inbox.report(record, "input_requested", JSON.stringify(packet), "input_requested", packet.id);
         }
         break;
     }
@@ -902,7 +721,7 @@ export class SubagentManager {
     const limit = this.parentMessageLimit;
     if (record.parentMessages.used >= limit) throw new Error(`Message limit reached for this assignment (${limit}). Put anything else in your final reply; do not retry.`);
     record.parentMessages.used++;
-    this.report(record, "message", message);
+    this.inbox.report(record, "message", message);
     return { delivery: "queued", to: record.parentId ?? "parent", remaining: limit - record.parentMessages.used };
   }
   summary(id: string) { return this.list(true).find(record => record.id === id)!; }
@@ -968,7 +787,7 @@ export class SubagentManager {
             record.hold.outcome = "failed";
             record.hold.detail = "Prompt acceptance timed out after halt confirmation; a late run may still start. Kill or close the process before release.";
             const text = `Human halt for ${record.name} (${id}): failed. ${record.hold.detail}`;
-            this.report(record, "human_intervention", text);
+            this.inbox.report(record, "human_intervention", text);
           }
         }
         if (error instanceof RpcRejectedError && !record.hold) {
@@ -995,7 +814,7 @@ export class SubagentManager {
         if (record.hold === acceptedUnderHalt && this.retryableHalts.has(acceptedUnderHalt) && stopped.outcome === "confirmed") {
           acceptedUnderHalt.outcome = "confirmed";
           acceptedUnderHalt.detail = "Late prompt accepted; queues cleared and active work cancelled.";
-          this.report(record, "human_intervention", `Human halt for ${record.name} (${id}): confirmed. ${acceptedUnderHalt.detail}`);
+          this.inbox.report(record, "human_intervention", `Human halt for ${record.name} (${id}): confirmed. ${acceptedUnderHalt.detail}`);
         }
       }
     }
@@ -1086,7 +905,7 @@ export class SubagentManager {
     record.hold = hold;
     if (kind === "kill" && this.children.has(id)) record.unconfirmedStop = "Awaiting process kill confirmation";
     record.queuedAssignments = [];
-    this.report(record, "human_intervention", `Human ${kind} requested for ${record.name} (${id}); cancellation pending.`);
+    this.inbox.report(record, "human_intervention", `Human ${kind} requested for ${record.name} (${id}); cancellation pending.`);
     let hookError: unknown;
     try { this.interventionHook?.(record, kind); beforeCancel?.(record, kind); }
     catch (error) { hookError = error; }
@@ -1135,7 +954,7 @@ export class SubagentManager {
     hold.detail = subtreeFailures.length
       ? `Target ${id}: ${targetOutcome}. ${targetDetail} Unconfirmed descendants: ${subtreeFailures.join("; ")}` : targetDetail;
     const text = `Human ${kind} for ${record.name} (${id}): ${hold.outcome}. ${hold.detail}`;
-    this.report(record, "human_intervention", text);
+    this.inbox.report(record, "human_intervention", text);
     return { ...this.summary(id), hold: structuredClone(hold), targetOutcome, targetDetail, outcome: confirmed ? "confirmed" : "unconfirmed", subtreeFailures };
   }
   /** Parent-only release: clearing a hold never resumes, prompts, or restarts work. */
@@ -1161,10 +980,7 @@ export class SubagentManager {
     this.workflowChildren.delete(id);
     // Explicit close means abandon ordinary reports, never human intervention.
     // Reload/exit shutdown deliberately preserves unread results for recovery.
-    if (!preserveNotices) {
-      this.observe(record, [...this.notices.values()].filter(n => n.id === id && n.kind !== "human_intervention").map(n => n.cursor));
-      this.persist();
-    }
+    if (!preserveNotices) this.inbox.dismissRoutine(record);
     const child = this.children.get(id);
     if (!child) {
       this.checkDetached(record);
@@ -1224,7 +1040,7 @@ export class SubagentManager {
       await child.respond({ type: "extension_ui_response", id: requestId, ...response });
       if (record.hold) throw new Error(`${id} was held while the UI response was being submitted`);
       record.uiRequests = record.uiRequests.filter(r => r.id !== requestId);
-      this.expireInputNotices(record);
+      this.inbox.expireInputNotices(record);
       if (record.uiRequests.length) record.status = "waiting_input";
       else if (record.status === "waiting_input") {
         record.status = "working";
@@ -1239,13 +1055,12 @@ export class SubagentManager {
   /** callerId: the coordinator Child waiting, or undefined for the root Parent. */
   async wait(ids: readonly string[], mode: "any" | "all", timeoutMs?: number, signal?: AbortSignal, messageQueued?: () => boolean, callerId?: string): Promise<WaitEnd> {
     const selected = ids.length ? [...ids] : [...this.records.values()]
-      .filter(record => !record.rejected && !record.workflow && this.reportsDrainedBy(record.id) === callerId)
+      .filter(record => !record.rejected && !record.workflow && this.inbox.reportsDrainedBy(record.id) === callerId)
       .map(record => record.id);
     for (const id of selected) this.get(id);
     const watched = new Set(selected);
     // Only messages this caller will collect: a grandchild's message is its coordinator's.
-    const childMessage = () => [...this.notices.values()].some(notice =>
-      notice.kind === "message" && watched.has(notice.id) && this.reportsDrainedBy(notice.id) === callerId);
+    const childMessage = () => this.inbox.hasMessage(watched, callerId);
     const deadline = timeoutMs === undefined ? Infinity : Date.now() + timeoutMs;
     const end = (wake: WaitEnd["wake"]): WaitEnd => ({ wake, ids: selected });
     while (true) {

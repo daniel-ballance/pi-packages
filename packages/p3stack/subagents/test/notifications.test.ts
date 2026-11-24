@@ -200,6 +200,22 @@ test("list/wait do not acknowledge; reading cancels only that run, replay also a
   } finally { await s.close(); }
 });
 
+test("committing a prepared inbox page does not acknowledge a later report", async () => {
+  const s = await managerFixture();
+  try {
+    const { id } = await s.spawn("first"); await s.manager.wait([id], "all", 2000);
+    const page = s.manager.inbox.prepareRead(id);
+    const [first] = s.manager.pendingNotices();
+    await s.manager.send(id, "second"); await s.manager.wait([id], "all", 2000);
+    const [, second] = s.manager.pendingNotices();
+    assert.ok(first.cursor < second.cursor);
+    page.acknowledge();
+    assert.equal(s.manager.get(id).readCursor, first.cursor);
+    assert.deepEqual(s.manager.pendingNotices(), [second]);
+    assert.equal(s.manager.get(id).resultReview?.status, "unreviewed");
+  } finally { await s.close(); }
+});
+
 test("partial pages acknowledge only actual returned updates; skipped/unformatted reads do not", async () => {
   const s = await managerFixture();
   try {

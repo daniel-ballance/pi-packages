@@ -972,8 +972,8 @@ test("only shortened display copies write report files; a child retains at most 
     await s.manager.wait([id], "all", 2000);
     const files = () => readdirSync(s.dir).filter(f => f.endsWith(".report"));
     assert.deepEqual(files(), []);
-    const r = s.manager.get(id), m = s.manager as any;
-    for (let i = 0; i < 102; i++) m.appendUpdate(r, "assistant", "x".repeat(12001), true);
+    const r = s.manager.get(id);
+    for (let i = 0; i < 102; i++) s.manager.inbox.appendUpdate(r, "assistant", "x".repeat(12001), true);
     assert.equal(files().length, 100);
     assert.equal(r.savedReports!.length, 100);
   } finally { await s.cleanup(); }

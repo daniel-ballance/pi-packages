@@ -5,13 +5,12 @@ import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { fitUpdateRead } from "./src/read-page.js";
 import { StopUnconfirmedError, SubagentManager, type InputDisposition } from "./src/manager.js";
 import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
 import { isSupervisoryNotice, NoticeScheduler } from "./src/notifications.js";
-import { childNews, DEFAULT_WAIT_MODE, messageLatch, waitReport, withCurrentReviews, type ChildNews } from "./src/wait.js";
+import { DEFAULT_WAIT_MODE, messageLatch, waitReport, type ChildNews } from "./src/wait.js";
 import { normalizeCoordination, coordinationWarnings, recoverySummary } from "./src/coordination.js";
 import { cardsFromDetails, listingLine } from "./src/card.js";
 import { summarizeAgents } from "./src/usage.js";
@@ -419,7 +418,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         const all = coordinationWarnings(coordination, manager.list(), child.id), warnings = visible(all);
         const outside = all.length - warnings.length;
         const receipt: SpawnReceipt = {
-          ...childNews(record),
+          ...manager.inbox.news(child.id),
           disposition: child.lastSubmission?.disposition,
           ...(child.lastSubmission?.workStarted === false ? { workStarted: false } : {}),
           ...(record.model ? { model: record.model } : {}),
@@ -511,13 +510,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const manager = get(ctx);
       const byRoot = !delegation.getStore();
       if (args.page !== undefined && args.since !== undefined) throw new Error("Use page for report text or since for update replay, not both");
-      const page = args.page === undefined ? undefined : manager.readReportPage(args.id, args.page);
-      const data = page?.data ?? fitUpdateRead(manager.read(args.id, args.since, false, true), args.since ?? manager.get(args.id).readCursor);
-      if (page) page.acknowledge(byRoot);
-      else if ("updates" in data) {
-        manager.acknowledgeRead(data, args.since === undefined, byRoot);
-        data.resultReview = structuredClone(manager.get(args.id).resultReview);
-      }
+      const { data, acknowledge } = args.page === undefined
+        ? manager.inbox.prepareRead(args.id, args.since) : manager.inbox.readReportPage(args.id, args.page);
+      acknowledge(byRoot);
       return { content: [{ type: "text", text: JSON.stringify(data) }], details: data };
     },
   });
@@ -532,15 +527,14 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
       const end = await manager.wait(args.ids ?? [], args.mode ?? DEFAULT_WAIT_MODE,
         args.timeoutSeconds === undefined ? undefined : args.timeoutSeconds * 1000, signal, operatorMessageQueued, callerId);
       signal?.throwIfAborted();
-      const { report, receipts } = waitReport(manager, end, args.collect ?? true, callerId, undefined, args.final ?? false);
+      const { report, acknowledge } = waitReport(manager, end, args.collect ?? true, callerId, undefined, args.final ?? false);
       if (callerId && truncateHead(JSON.stringify(report, null, 2), { maxBytes: 30000, maxLines: 1000 }).truncated) {
         return result({ truncated: true, note: "Wait report too large; narrow ids or use subagent_read for one child." }, ctx);
       }
       const output = result(report, ctx);
       if (output.details !== report) return output;
-      for (const receipt of receipts) manager.acknowledgeRead(receipt, true, !callerId);
       // Acknowledgement only turns unreviewed into reviewed, which is shorter, so this still fits.
-      return result(withCurrentReviews(manager, report), ctx);
+      return result(acknowledge(), ctx);
     },
   });
   registerTool({

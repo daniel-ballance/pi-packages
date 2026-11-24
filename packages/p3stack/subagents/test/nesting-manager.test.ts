@@ -88,7 +88,7 @@ test("resume revalidates a nested Child at its own depth", async () => {
 test("a nested Child's input request reaches the root; its ordinary reports do not", async () => {
   const t = await settledTree();
   try {
-    const announce = (kind: string, cursor: number) => (t.manager as any).announce(t.manager.get(t.c), kind, "text", cursor);
+    const announce = (kind: string, cursor: number) => t.manager.inbox.announce(t.manager.get(t.c), kind, "text", cursor);
     announce("completed", 1001);
     announce("input_requested", 1002);
     const kinds = t.manager.pendingNotices().filter(notice => notice.id === t.c).map(notice => notice.kind);
@@ -109,7 +109,7 @@ test("a coordinator's read leaves its Child's input request for the root; the ro
   try {
     const receipt = t.manager.read(t.c, undefined, false);
     const cursor = receipt.updates.at(-1)!.cursor;
-    (t.manager as any).announce(t.manager.get(t.c), "input_requested", "confirm?", cursor, "request-1");
+    t.manager.inbox.announce(t.manager.get(t.c), "input_requested", "confirm?", cursor, "request-1");
     const withRequest = { ...receipt, uiRequests: [{ id: "request-1" }] } as typeof receipt;
     t.manager.acknowledgeRead(withRequest, true, false);
     assert.deepEqual(t.manager.pendingNotices().filter(n => n.id === t.c).map(n => n.kind), ["input_requested"]);
