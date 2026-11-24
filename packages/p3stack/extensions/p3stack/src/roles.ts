@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { Type } from "typebox";
 import type { Context, Pi } from "./mode.ts";
@@ -58,7 +58,7 @@ export function candidates(budget: Budget, models: ModelInfo[], catalog?: string
   });
 }
 
-export const agentDir = () => process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+export const agentDir = getAgentDir;
 
 export interface Resolved { source: string; budget?: string; roles: Record<string, { value: RoleValue; fromFile: boolean }>; problems: string[] }
 
@@ -83,9 +83,10 @@ export function resolveRoles(cwd: string, projectTrusted: boolean): Resolved {
   for (const path of candidates) {
     if (!existsSync(path)) continue;
     let data: unknown;
-    try { data = JSON.parse(readFileSync(path, "utf8")); } catch (error) { return { source: "default hints", roles, problems: [...skipped, `ignored ${path}: ${(error as Error).message}`] }; }
+    try { data = JSON.parse(readFileSync(path, "utf8")); }
+    catch (error) { skipped.push(`ignored ${path}: ${(error as Error).message}`); continue; }
     const problems = problemsIn(data);
-    if (problems.length) return { source: "default hints", roles, problems: [...skipped, ...problems.map(problem => `ignored ${path}: ${problem}`)] };
+    if (problems.length) { skipped.push(...problems.map(problem => `ignored ${path}: ${problem}`)); continue; }
     const file = data as { budget?: string; roles?: Record<string, RoleValue> };
     for (const [role, value] of Object.entries(file.roles ?? {})) roles[role] = { value, fromFile: true };
     return { source: path, budget: file.budget, roles, problems: skipped };
