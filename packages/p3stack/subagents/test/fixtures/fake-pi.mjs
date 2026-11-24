@@ -98,6 +98,15 @@ process.stdin.on('data', chunk => {
         emit({ type: 'turn_end' });
         timer = setTimeout(() => settle('finished'), 5000);
       }
+      else if (cmd.message.startsWith('empty-final')) {
+        emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'progress'.repeat(2000) }], stopReason: 'toolUse' } });
+        settle('');
+      }
+      else if (cmd.message.startsWith('evicted-final')) {
+        emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'actual final answer' }], stopReason: 'stop' } });
+        for (let n = 0; n < 101; n++) emit({ type: 'extension_error', error: 'unrelated extension event' });
+        working = false; emit({ type: 'agent_settled' });
+      }
       else if (cmd.message === 'split-settle') {
         emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'early result' }], stopReason: 'stop' } });
         timer = setTimeout(() => { working = false; emit({ type: 'agent_settled' }); }, 150);

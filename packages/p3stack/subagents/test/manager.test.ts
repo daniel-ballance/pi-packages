@@ -877,6 +877,17 @@ function workflowPolicy(): SubagentPolicy {
   return { compile: (cwd: string) => ({ cwd, executable: process.execPath, executableArgs: [fixture] }) } as unknown as SubagentPolicy;
 }
 
+test("workflow results use the terminal response independently of retained progress", async () => {
+  const s = await setup();
+  try {
+    const host = managerWorkflowHost(s.manager, workflowPolicy), [job] = workflowJobs(s.dir);
+    job.instructions = "evicted-final";
+    assert.deepEqual(await host.agents([job], [], new AbortController().signal), ["actual final answer"]);
+    job.instructions = "empty-final";
+    await assert.rejects(host.agents([job], [], new AbortController().signal), /no final text/);
+  } finally { await s.cleanup(); }
+});
+
 test("workflow response.md and validator inputs include the end of a long final answer", async () => {
   const s = await setup();
   try {

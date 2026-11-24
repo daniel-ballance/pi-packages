@@ -71,6 +71,7 @@ interface InputDelivery {
   removed?: { queue: "followUp" | "steering"; text: string };
   firstUser?: boolean;
   batch?: boolean;
+  lastResult?: Update;
 }
 export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string }
 export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
@@ -230,13 +231,16 @@ export class SubagentManager {
       (record.savedReports ??= []).push({ file, assignmentId, firstPage, updateCursor: record.cursor + 1, fullLength: text.length });
       readFull = { id: record.id, since: firstPage };
     }
-    record.updates.push({ cursor: ++record.cursor, kind, text: text.slice(0, DISPLAY_CHARS), time: record.updatedAt,
-      ...(truncated ? { truncated: true, fullLength: text.length } : {}), ...(readFull ? { assignmentId, readFull } : {}) });
+    const update: Update = { cursor: ++record.cursor, kind, text: text.slice(0, DISPLAY_CHARS), time: record.updatedAt,
+      ...(truncated ? { truncated: true, fullLength: text.length } : {}), ...(readFull ? { assignmentId, readFull } : {}) };
+    record.updates.push(update);
     record.updates = record.updates.slice(-100);
+    return update;
   }
   private update(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
-    this.appendUpdate(record, kind, text, finalAnswer);
+    const update = this.appendUpdate(record, kind, text, finalAnswer);
     this.persist();
+    return update;
   }
   private log(path: string, text: string) {
     const size = this.logSizes.get(path) ?? (existsSync(path) ? statSync(path).size : 0);
@@ -652,10 +656,9 @@ export class SubagentManager {
       return record ? this.refreshUsage(record) : undefined;
     }));
   }
-  private finishAssignment(record: AgentRecord, humanCancellation = false) {
+  private finishAssignment(record: AgentRecord, last: Update | undefined, humanCancellation = false) {
     const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
     if (record.assignment?.status === "running") record.assignment.status = record.error ? "failed" : record.aborted ? "cancelled" : "completed";
-    const last = record.updates.findLast(u => u.kind === (record.error ? "error" : record.aborted ? "aborted" : "assistant") && u.cursor > (record.runStartCursor ?? 0));
     const text = record.error || last?.text || "Run settled without a text response.";
     if (!last) this.appendUpdate(record, kind, text);
     if (record.assignment && !record.assignment.finishedAt) {
@@ -685,8 +688,8 @@ export class SubagentManager {
         record.assignment.task += `\n\n${text}`;
         this.persist();
       } else {
-        if (record.assignment && !record.assignment.finishedAt) this.finishAssignment(record);
-        record.runStartCursor = record.cursor;
+        if (record.assignment && !record.assignment.finishedAt) this.finishAssignment(record, delivery.lastResult);
+        delivery.lastResult = undefined;
         this.beginAssignment(record, text, next?.id, next?.at);
         delivery.batch = true;
       }
@@ -724,7 +727,7 @@ export class SubagentManager {
         const intent = this.abortIntents.get(record.id);
         if (intent?.awaitingStart) { intent.revision = record.runRevision; intent.awaitingStart = false; }
         else this.abortIntents.delete(record.id);
-        record.runStartCursor = record.cursor;
+        delivery.lastResult = undefined;
         record.aborted = false;
         // A prompt accepted before its start event can be closed immediately.
         // Track cancellation identity without reviving the stopping lifecycle.
@@ -749,7 +752,9 @@ export class SubagentManager {
         if (message?.role !== "assistant") break;
         delivery.firstUser = false; delivery.batch = false;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
-        if (text) this.update(record, "assistant", text, !["toolUse", "error", "aborted"].includes(message.stopReason));
+        const terminal = !["toolUse", "error", "aborted"].includes(message.stopReason) && !message.content?.some((c: Packet) => c.type === "toolCall");
+        const update = text ? this.update(record, "assistant", text, terminal) : undefined;
+        delivery.lastResult = terminal ? update : undefined;
         const intent = this.abortIntents.get(record.id);
         const requestedAbort = intent && !intent.awaitingStart && intent.revision === (record.runRevision ?? 0);
         const cancelled = message.stopReason === "aborted" ||
@@ -758,12 +763,12 @@ export class SubagentManager {
           if (record.assignment?.status === "running") record.assignment.status = "cancelled";
           if (!record.aborted) {
             record.aborted = true;
-            this.update(record, "aborted", "Work cancelled; child remains available for instructions.");
+            delivery.lastResult = this.update(record, "aborted", "Work cancelled; child remains available for instructions.");
           }
         } else if (message.stopReason === "error") {
           if (record.assignment?.status === "running") record.assignment.status = "failed";
           record.error = message.errorMessage || "Assistant request failed";
-          this.update(record, "error", record.error!);
+          delivery.lastResult = this.update(record, "error", record.error!);
         }
         break;
       }
@@ -790,7 +795,7 @@ export class SubagentManager {
         record.activity = record.error ? "Run failed; process remains available" : record.aborted ? "Work aborted; waiting for instructions" : "Waiting for instructions";
         record.uiRequests = [];
         this.expireInputNotices(record);
-        this.finishAssignment(record, humanCancellation);
+        this.finishAssignment(record, delivery.lastResult, humanCancellation);
         void this.refreshUsage(record);
         break;
       }
