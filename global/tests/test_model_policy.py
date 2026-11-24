@@ -15,7 +15,7 @@ REALM_EFFORTS = (
     ("anthropic/", "low", "high"),
     ("xai/", "low", "high"),
 )
-PARENT_ONLY = ("claude-fable", "gpt-6-astra")
+PARENT_ONLY = ("claude-fable", "-astra")
 
 
 def rule_for(model):
@@ -46,10 +46,12 @@ class ModelPolicyTest(unittest.TestCase):
                 "openai-codex/gpt-6-luna:max", "openai-codex/gpt-6.1-sol:xhigh", "xai/grok-4.7:low",
                 "openai-codex/gpt-6.1-sol:max", "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh",
                 "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high",
+                "openai-codex/gpt-6.2-astra:high",
             ]),
             [
                 "openai-codex/gpt-6.1-sol:max", "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh",
                 "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high",
+                "openai-codex/gpt-6.2-astra:high",
             ],
         )
 
