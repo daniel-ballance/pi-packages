@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { SubagentManager, type InputDisposition } from "./src/manager.js";
+import { StopUnconfirmedError, SubagentManager, type InputDisposition } from "./src/manager.js";
 import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
@@ -423,6 +423,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         };
         return result(receipt, ctx);
       } catch (error) {
+        if (worktree && error instanceof StopUnconfirmedError) {
+          throw new Error(`${error.message}. Kept locked checkout ${worktree.path} (branch ${worktree.branch}); confirm stop before manual cleanup.`, { cause: error });
+        }
         if (worktree && !accepted) removeWorktree(worktree, error, creationLock);
         throw error;
       }

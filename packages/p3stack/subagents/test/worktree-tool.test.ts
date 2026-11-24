@@ -56,6 +56,26 @@ test("a worktree outside workingDirectories is refused before git writes anythin
   });
 });
 
+test("unconfirmed process cleanup keeps the checkout and identifies both failures", async t => {
+  await withSpawnTool(["."], async (spawn, repo, git) => {
+    let path = "";
+    t.mock.method(SubagentManager.prototype as any, "start", async function (this: any, record: any) {
+      path = record.config.cwd;
+      this.children.set(record.id, { request: async () => ({}), stop: async () => {
+        this.children.delete(record.id); // no transport to clean up in this fixture
+        throw new Error("no exit observed");
+      } });
+    });
+    t.mock.method(SubagentManager.prototype, "send", async () => { throw new Error("submission timed out"); });
+    await assert.rejects(spawn({ name: "uncertain", task: "x", cwd: repo, model: "p/m:off", tools: [], worktree: { branch: "keep-worker" } }), (e: Error) => {
+      assert.ok(e.message.includes("submission timed out") && e.message.includes("no exit observed"), e.message);
+      assert.ok(e.message.includes(path) && e.message.includes("keep-worker"), e.message);
+      return true;
+    });
+    assert.ok(git("worktree", "list").includes(path));
+  });
+});
+
 test("a failed launch reports its error and any checkout it could not safely remove", async t => {
   await withSpawnTool(["."], async (spawn, repo, git) => {
     let path = "";

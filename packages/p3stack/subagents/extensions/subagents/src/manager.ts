@@ -13,6 +13,8 @@ import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summariz
 import type { WaitEnd } from "./wait.js";
 import { gitEnv } from "./worktree.js";
 
+/** The child's checkout may still be in use. */
+export class StopUnconfirmedError extends Error {}
 export type InputDisposition = "started" | "queued" | "handled" | "unknown";
 export type Status = "starting" | "working" | "waiting_input" | "idle" | "stopping" | "stopped" | "failed";
 export interface SpawnOptions {
@@ -523,13 +525,25 @@ export class SubagentManager {
       return this.summary(id);
     } catch (error) {
       if (record.hold) return this.summary(id); // A concurrent human intervention owns this lifecycle.
-      if (this.children.has(id)) await this.close(id);
-      this.workflowChildren.delete(id);
-      record.status = "failed";
-      record.error = String(error);
-      this.update(record, "error", String(error));
-      throw new Error(`${id}: ${error}. Diagnostics: ${record.stderrFile}`);
+      return this.failedLaunch(record, error);
     }
+  }
+  private async failedLaunch(record: AgentRecord, error: unknown): Promise<never> {
+    const { id } = record;
+    let cleanup: string | undefined;
+    if (this.children.has(id)) {
+      try {
+        const closed = await this.close(id);
+        if (closed.outcome === "unconfirmed") cleanup = [closed.targetDetail, ...closed.subtreeFailures].filter(Boolean).join("; ");
+      } catch (stopError) { cleanup = String(stopError); }
+    }
+    this.workflowChildren.delete(id);
+    record.error = String(error);
+    if (!cleanup) record.status = "failed";
+    const detail = `${id}: ${error}. Diagnostics: ${record.stderrFile}`;
+    this.update(record, "error", record.error);
+    if (cleanup) throw new StopUnconfirmedError(`${detail}; stop unconfirmed: ${cleanup}`);
+    throw new Error(detail, { cause: error });
   }
   private async start(record: AgentRecord, overrides?: Record<string, string>, capacityReserved = false) {
     this.assertReleased(record);
@@ -1141,9 +1155,7 @@ export class SubagentManager {
       return this.summary(id);
     } catch (error) {
       if (record.hold) return this.summary(id);
-      if (this.children.has(id)) await this.close(id);
-      record.status = "failed"; record.error = String(error); this.persist();
-      throw error;
+      return this.failedLaunch(record, error);
     }
   }
   async respond(id: string, requestId: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) {
