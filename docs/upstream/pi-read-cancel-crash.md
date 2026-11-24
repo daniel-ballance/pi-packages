@@ -1,6 +1,6 @@
 # Draft issue for Pi: a cancelled `read` can end the process
 
-Not filed. Found on 2026-11-24 while isolating why a rejected `Promise.all` in a codemode script ended Pi sessions. Until Pi fixes it, scripts that batch tool calls use `Promise.allSettled`. The first reproduction below needs a driver that is not in this repository; the second is self-contained.
+Not filed, by the owner's choice. Found on 2026-11-24 while isolating why a rejected `Promise.all` in a codemode script ended Pi sessions. Until Pi fixes it, scripts that batch tool calls use `Promise.allSettled`. The first reproduction below needs a driver that is not in this repository; the second is self-contained.
 
 **Title:** Pi 1.5.2: cancelling a built-in text `read` during setup emits an unhandled ReadStream `'error'` and exits Pi
 
