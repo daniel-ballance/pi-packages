@@ -11,7 +11,7 @@ Change the input, not the generated file. For runtime behavior, see [About p3sta
 
 For Pi onboarding, edit the `setup-pstack` and `poteto-help` [overlays](overlays/). The wizard and the generated setup example use the same [role definitions](extensions/p3stack/src/role-definitions.ts). Leave the setup skill's two verification offers upstream.
 
-The generator replaces only `skills/`, `agents/`, `LICENSE`, `LICENSE-agent-skills`, `LICENSE-matt-pocock`, and `LICENSE-superpowers`. Staging a file outside those roots fails, even from a patch. The generator also updates the pin text between the README markers and `package.json#p3stack.upstream` (the Cursor pin).
+The generator replaces only `skills/`, `agents/`, `LICENSE`, `LICENSE-agent-skills`, `LICENSE-dyl-stack`, `LICENSE-matt-pocock`, `LICENSE-superpowers`, and `LICENSE-thermos`. Staging a file outside those roots fails, even from a patch. The generator also updates the pin text between the README markers and `package.json#p3stack.upstream` (the Cursor pin).
 
 ## Translate or add a file
 

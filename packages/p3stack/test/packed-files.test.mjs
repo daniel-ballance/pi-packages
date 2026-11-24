@@ -174,11 +174,30 @@ test("Pi discovers the registry's commands and their references in the packed pa
   await assert.rejects(checkCatalog(root), /tdd\/references\/regression-test\.md/);
 });
 
-test("the packlist includes every mapped upstream license", () => {
-  const { sources } = JSON.parse(readFileSync(join(cwd, "rules/manifest.json")));
-  for (const { map } of sources) for (const { from, to } of map) {
-    if (from === "LICENSE") assert.ok(files.has(to), to);
+function checkLicenses(sources) {
+  for (const { name, vendor, map } of sources) {
+    const licenses = map.filter(({ from }) => posix.basename(from) === "LICENSE");
+    assert.ok(licenses.length, `${name}: no mapped license`);
+    for (const { from } of map) {
+      assert.ok(licenses.some(license => from.startsWith(license.from.slice(0, -"LICENSE".length))), `${name}: ${from} has no mapped license`);
+    }
+    for (const { from, to } of licenses) {
+      assert.ok(files.has(to), to);
+      assert.deepEqual(readFileSync(join(installed, to)), readFileSync(join(cwd, vendor, from)), to);
+    }
   }
+}
+
+test("the packlist includes a license for each vendored source", () => {
+  const { sources } = JSON.parse(readFileSync(join(cwd, "rules/manifest.json")));
+  checkLicenses(sources);
+});
+
+test("removing a license mapping fails even when the tarball still contains the file", () => {
+  const { sources } = JSON.parse(readFileSync(join(cwd, "rules/manifest.json")));
+  const source = sources.find(s => s.name === "matt-pocock");
+  source.map = source.map.filter(entry => entry.from !== "LICENSE");
+  assert.throws(() => checkLicenses([source]), /matt-pocock.*no mapped license/);
 });
 
 const removedCommands = new Set(registry.filter(row => row.action !== "emit").flatMap(row => {

@@ -307,7 +307,7 @@ function renderCatalog(files, { skills, routes }, helpJobs) {
 }
 
 // Roots replaced wholesale by installGenerated, even if a source stops supplying one.
-const GENERATED_ROOTS = ["LICENSE", "LICENSE-agent-skills", "LICENSE-matt-pocock", "LICENSE-superpowers", "agents", "skills"];
+const GENERATED_ROOTS = ["LICENSE", "LICENSE-agent-skills", "LICENSE-dyl-stack", "LICENSE-matt-pocock", "LICENSE-superpowers", "LICENSE-thermos", "agents", "skills"];
 
 function checkOutputPath(path) {
   const parts = path.split("/");

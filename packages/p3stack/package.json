@@ -31,7 +31,9 @@
     "LICENSE",
     "LICENSE-matt-pocock",
     "LICENSE-agent-skills",
-    "LICENSE-superpowers"
+    "LICENSE-superpowers",
+    "LICENSE-dyl-stack",
+    "LICENSE-thermos"
   ],
   "scripts": {
     "sync": "git -C ../.. submodule update --init packages/p3stack/vendor/pstack packages/p3stack/vendor/matt-pocock packages/p3stack/vendor/agent-skills packages/p3stack/vendor/superpowers && node generator/generate.mjs",
