@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Pi } from "./mode.ts";
-import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, setupCatalog } from "./roles.ts";
+import { agentDir, BUDGETS, candidates, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, roleHost, setupCatalog } from "./roles.ts";
 
 export function registerSetup(pi: Pi & Partial<Pick<ExtensionAPI, "sendMessage">>) {
   pi.registerCommand("p3stack-setup", {
@@ -37,7 +37,7 @@ export function registerSetup(pi: Pi & Partial<Pick<ExtensionAPI, "sendMessage">
       const label = `${budget.name} (${budget.level})`;
       if (existsSync(path) && !await ctx.ui.confirm("Replace the role defaults?", `${path} exists. Setup rewrites it whole.`)) { ctx.ui.notify("Kept the existing file.", "info"); return; }
       mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, JSON.stringify({ budget: label, roles }, null, 2) + "\n");
+      writeFileSync(path, JSON.stringify({ host: roleHost(), budget: label, roles }, null, 2) + "\n");
       ctx.ui.notify(`Wrote ${path}. Budget: ${label}. Code roles: ${code}. Judgment roles: ${judge}. Panels: [${judge}, ${code}].${gap ? ` ${gap}` : ""}`, "info");
     },
   });

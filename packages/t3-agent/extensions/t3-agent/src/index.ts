@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_CONFIG, LOADOUTS, readConfig, type Config, type Loadout } from "./config.ts";
 import { detectHost } from "./host.ts";
 import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, trackRunTab, type Handle } from "./ledger.ts";
@@ -41,10 +41,10 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     promptPaths: [join(resources, "prompts")],
   }));
 
-  const declaredTools = () => pi.getActiveTools().filter(name => name.startsWith(T3_PREFIX));
-  const declarationReport = () => {
-    const names = declaredTools().map(name => name.slice(T3_PREFIX.length));
-    return `Declared T3 tools: ${names.length}${names.length ? ` (${names.join(", ")})` : ""}.`;
+  const activeT3Tools = () => pi.getActiveTools().filter(name => name.startsWith(T3_PREFIX));
+  const activeToolsReport = () => {
+    const names = activeT3Tools().map(name => name.slice(T3_PREFIX.length));
+    return `Active T3 tools: ${names.length}${names.length ? ` (${names.join(", ")})` : ""}.`;
   };
   const applyLoadout = (ctx: ExtensionContext) => {
     const allTools = pi.getAllTools().filter(tool => manageableTool(tool, ctx.model?.api));
@@ -126,7 +126,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     const section = buildSection({
       mode,
       workspace,
-      declared: declaredTools().length,
+      active: activeT3Tools().length,
       ledger: ledger.render(),
     });
     const options = event.systemPromptOptions;
@@ -142,7 +142,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     if (tool === undefined || event.isError) return undefined;
     const result = resultPayload(event.content, event.structuredContent);
     trackRunTab(openedThisRun, tool, event.input, result);
-    const updates = observe(tool, event.input, result);
+    const updates = observe(tool, event.input, result, ledger);
     if (updates.length === 0) return undefined;
     for (const update of updates) {
       ledger.apply(update);
@@ -153,7 +153,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     return undefined;
   });
 
-  const flush = (): SessionBoundaryDraft[] => {
+  const flush = () => {
     const drafts = pending.map(data => ({ type: "custom" as const, customType: ENTRY_TYPE, data }));
     pending = [];
     return drafts;
@@ -206,7 +206,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
         pi.appendEntry(LOADOUT_ENTRY, { loadout: sessionLoadout });
         applyLoadout(ctx);
         refreshStatus(ctx);
-        notify(`t3-agent loadout: ${sessionLoadout} for this session. ${declarationReport()}`, "info");
+        notify(`t3-agent loadout: ${sessionLoadout} for this session. ${activeToolsReport()}`, "info");
         return;
       }
       if (verb === "forget") {
@@ -215,6 +215,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
           notify("Usage: /t3-agent forget <id|all>. Nothing open matched.", "warning");
           return;
         }
+        for (const draft of flush()) pi.appendEntry(draft.customType, draft.data);
         for (const close of closing) pi.appendEntry(ENTRY_TYPE, close);
         applyLoadout(ctx);
         refreshStatus(ctx);
@@ -240,7 +241,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     return [
       `t3-agent is active: T3 Code launched this Pi (T3_MCP_URL is set).`,
       `Permission mode: ${modeLabel(mode)}.`,
-      `Loadout: ${loadout()}${sessionLoadout ? " (set for this session)" : ""}. ${declarationReport()}`,
+      `Loadout: ${loadout()}${sessionLoadout ? " (set for this session)" : ""}. ${activeToolsReport()}`,
       workspace ? `Workspace: ${workspace.root}${workspace.branch ? ` on ${workspace.branch}` : ""}${workspace.t3Managed ? " (linked worktree under T3's worktree directory)" : workspace.linked ? " (linked worktree)" : ""}.` : "Workspace: not a git checkout.",
       `Open handles:\n${ledger.render() ?? "none"}`,
       ...(problems.length > 0 ? [`Configuration problems:\n${problems.join("\n")}`] : []),

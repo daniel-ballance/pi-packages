@@ -12,8 +12,8 @@ export const SECTION = "t3_agent";
 export interface PromptState {
   mode: RuntimeMode;
   workspace?: Workspace;
-  /** Public T3 tool names in Pi’s active loadout, including bridge declarations. */
-  declared: number;
+  /** Public T3 tools active in Pi, even when codemode hides their declarations. */
+  active: number;
   ledger?: string;
 }
 
@@ -30,7 +30,7 @@ function workspaceLine(workspace: Workspace | undefined): string | undefined {
   const branch = workspace.branch ? `branch \`${workspace.branch}\`${workspace.upstream ? ` (upstream \`${workspace.upstream}\`)` : " (no upstream configured)"}` : "a detached HEAD";
   const base = workspace.defaultBranch ? `; origin/HEAD points to \`${workspace.defaultBranch}\`` : "";
   if (workspace.t3Managed) {
-    return `- Workspace: \`${workspace.root}\`, ${branch}, a linked Git worktree under T3's worktree directory${base}. Treat it as this thread's isolated worktree unless the user says otherwise.`;
+    return `- Workspace: \`${workspace.root}\`, ${branch}${base}. Git reports a linked worktree under T3's worktree directory. Work here is already off the main checkout; other threads or delegates may be using it too.`;
   }
   if (workspace.linked) {
     return `- Workspace: \`${workspace.root}\`, ${branch}, a linked git worktree of \`${workspace.mainCheckout ?? "the main checkout"}\`${base}.`;
@@ -49,7 +49,7 @@ export function buildSection(state: PromptState): string {
     permissionLine(state.mode),
     workspaceLine(state.workspace),
     "- After you open a pull request, call `link_pull_request` so T3 tracks it with this thread, or `watch_pull_request` when you will handle its checks and reviews.",
-    `- Declared T3 tools: ${state.declared} in Pi's active loadout. Use \`tool_search\` to discover available tools; the \`t3-code\` skill maps jobs to T3 tools.`,
+    `- Active T3 tools: ${state.active}. Use \`tool_search\` to discover available tools; the \`t3-code\` skill maps jobs to T3 tools.`,
     "- For T3 delegation, wherever the bridge says to use your native tool, use `delegate_task`: it is your subagent tool for every child, your own provider included. Pass `mode:\"wait\"` only when this turn needs the result; otherwise use `mode:\"async\"`, end the turn, and let completion wake you.",
   ].filter((line): line is string => line !== undefined);
   if (state.ledger) {

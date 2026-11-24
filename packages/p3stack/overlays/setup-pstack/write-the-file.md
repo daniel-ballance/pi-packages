@@ -1,6 +1,6 @@
 ### 5. Write the file
 
-Write `p3stack.json` in Pi's agent directory (step 2), or `.pi/p3stack.json` for a trusted project-only choice. Ask before replacing an existing file. Without confirmation, leave it unchanged. Record the budget and exact selections:
+Write `p3stack.json` in Pi's agent directory (step 2), or `.pi/p3stack.json` for a trusted project-only choice. Ask before replacing an existing file. Without confirmation, leave it unchanged. Set `host` to `terminal` or `t3` for the host writing the file. Record the budget and exact selections:
 
 - Terminal: `<provider>/<model id>:<thinking>`.
 - T3: `<provider instance>/<model id>:<thinking>`. Keep the whole model id, including any slashes. For instance `pi` offering model `xai/grok-4.7` at `xhigh`, write `pi/xai/grok-4.7:xhigh`.
@@ -9,6 +9,7 @@ Example terminal file:
 
 ```json
 {
+  "host": "terminal",
   "budget": "large (xhigh)",
   "roles": {
     "feature, refactoring": "xai/grok-4.7:xhigh",

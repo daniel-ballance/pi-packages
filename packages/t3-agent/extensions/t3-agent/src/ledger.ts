@@ -15,7 +15,7 @@ export interface Handle {
   kind: HandleKind;
   id: string;
   hostId?: string; // part of a device's identity
-  title?: string;
+  explicitTitle?: string; // Old `title` fields could contain prompt text; never replay them.
   link?: string;
   status?: State;
   open: boolean;
@@ -30,6 +30,11 @@ const record = (value: unknown): Json | undefined => typeof value === "object" &
 const text = (value: unknown) => typeof value === "string" && value.length > 0 ? value : undefined;
 // IDs must survive verbatim for later tool calls. Reject unsafe or overlong IDs rather than truncate.
 const safeId = (value: unknown) => typeof value === "string" && /^[\w][\w.:-]{0,255}$/.test(value) ? value : undefined;
+
+// T3 uses encodeURIComponent on the command id inside the delegated node id.
+function taskId(value: string): string | undefined {
+  return value.length <= 256 && /^node:delegated-task:(?:[\w.!~*'()-]|%[\da-fA-F]{2})+$/.test(value) ? value : safeId(value);
+}
 
 function safeTitle(value: unknown): string | undefined {
   const line = text(value)?.split(/[\r\n]/, 1)[0];
@@ -53,19 +58,35 @@ function threadLink(value: unknown): string | undefined {
   return undefined;
 }
 
+const forgeRoutes = new Map([
+  ["github.com", "pull"], ["gitlab.com", "-/merge_requests"], ["bitbucket.org", "pull-requests"],
+  ["codeberg.org", "pulls"], ["dev.azure.com", "pullrequest"],
+]);
+
+function forgeKey(host: unknown, repository: unknown, number: unknown): string | undefined {
+  if (typeof host !== "string" || host.length > 253 || !/^[\w-]+(?:\.[\w-]+)*(?::\d{1,5})?$/.test(host) ||
+    typeof repository !== "string" || repository.length > 256 || !/^(?:[\w.-]+\/)+[\w.-]+$/.test(repository) ||
+    repository.split("/").some(part => part === "." || part === "..") ||
+    typeof number !== "number" || !Number.isSafeInteger(number) || number < 1) return undefined;
+  const authority = host.toLowerCase(), repo = repository.toLowerCase();
+  const route = forgeRoutes.get(authority);
+  if (!route) return `${repo}#${number}@${authority}`; // Reported self-hosted target, not a verified web link.
+  if (authority === "dev.azure.com" ? !/\/_git\/[\w.-]+$/.test(repo) : authority !== "gitlab.com" && repo.split("/").length !== 2) return undefined;
+  return `https://${authority}/${repo}/${route}/${number}`;
+}
+
+function keyFromForgeUrl(value: string): string | undefined {
+  if (value.length > 2048) return undefined;
+  const url = URL.parse(value);
+  if (url?.protocol !== "https:" || !forgeRoutes.has(url.host)) return undefined;
+  const match = /^\/(.+?)\/(pull|pulls|pull-requests|-\/merge_requests|pullrequest)\/([1-9]\d*)(?:\/|$)/.exec(url.pathname);
+  return match && match[2] === forgeRoutes.get(url.host) ? forgeKey(url.host, match[1], Number(match[3])) : undefined;
+}
+
 function prId(value: string): string | undefined {
   if (value.length > 2048) return undefined;
-  // Older/non-URL results can identify a PR by repository and number instead.
-  if (value.length <= 256 && /^(?:[\w.-]+\/)+[\w.-]+#[1-9]\d*$/.test(value)) return value;
-  const url = URL.parse(value);
-  if (url?.protocol !== "https:") return undefined;
-  const path = url.pathname.replace(/\/$/, "");
-  const pr = /^\/[\w.-]+\/[\w.-]+\/(?:pull|pulls|pull-requests)\/[1-9]\d*$/;
-  const gitlab = /^\/(?:[\w.-]+\/){2,}-\/merge_requests\/[1-9]\d*$/;
-  const azure = /^\/(?:[\w.-]+\/)+_git\/[\w.-]+\/pullrequest\/[1-9]\d*$/;
-  if (!pr.test(path) && !gitlab.test(path) && !azure.test(path)) return undefined;
-  const canonical = url.origin + path; // no userinfo, query or fragment
-  return canonical.length <= 512 ? canonical : undefined;
+  const scoped = /^([\w./-]+)#([1-9]\d*)@([\w.:-]+)$/.exec(value);
+  return scoped ? forgeKey(scoped[3], scoped[1], Number(scoped[2])) : keyFromForgeUrl(value);
 }
 
 /** The same allowlist gates live writes and replay of untrusted, older session entries. */
@@ -74,16 +95,16 @@ function receipt(data: unknown): Handle | undefined {
   if (!raw || !KINDS.includes(raw.kind as HandleKind) || typeof raw.id !== "string") return undefined;
   if (raw.open !== undefined && typeof raw.open !== "boolean") return undefined;
   const kind = raw.kind as HandleKind;
-  const id = kind === "pr" ? prId(raw.id) : safeId(raw.id);
+  const id = kind === "pr" ? prId(raw.id) : kind === "delegate" ? taskId(raw.id) : safeId(raw.id);
   if (!id) return undefined;
-  const title = safeTitle(raw.title);
+  const explicitTitle = safeTitle(raw.explicitTitle);
   const link = kind === "delegate" || kind === "thread" ? threadLink(raw.link) : undefined;
   const status = STATES.find(state => state === raw.status);
   const hostId = kind === "device" ? safeId(raw.hostId) : undefined;
   if (kind === "device" && raw.hostId !== undefined && !hostId) return undefined;
   // Older receipts confused pausing a schedule with deleting it.
   const open = kind === "schedule" && status === "paused" ? true : raw.open ?? true;
-  return { kind, id, open, ...(hostId && { hostId }), ...(title && { title }), ...(link && { link }), ...(status && { status }) };
+  return { kind, id, open, ...(hostId && { hostId }), ...(explicitTitle && { explicitTitle }), ...(link && { link }), ...(status && { status }) };
 }
 
 /** T3 returns its result as JSON text; prefer structured content when a newer bridge supplies it. */
@@ -120,8 +141,8 @@ export function trackRunTab(opened: Set<string>, tool: string, input: Json, resu
     // Current bridges reuse by default and do not always return a reused flag.
     const fresh = !input.tabId && (result?.reused === false || (result?.reused === undefined && input.reuseExistingTab === false));
     if (result?.available !== false && owned && fresh) opened.add(id);
-    else opened.delete(id);
-  } else if (id && control && !owned) {
+  }
+  if (id && (control?.ownedByCaller === false || control?.owner === "human" || control?.owner === "unclaimed")) {
     opened.delete(id);
   }
   // Status can also report a takeover of another tab, not just the current one.
@@ -132,19 +153,18 @@ export function trackRunTab(opened: Set<string>, tool: string, input: Json, resu
 }
 
 function prKey(input: Json, result?: Json) {
+  const host = result?.host ?? input.host;
+  if (host !== undefined) return forgeKey(host, result?.repository ?? input.repository, result?.number ?? input.number);
   const url = text(result?.url) ?? text(input.url);
-  if (url) return url;
-  const repository = text(result?.repository) ?? text(input.repository);
-  const number = result?.number ?? input.number;
-  return repository && typeof number === "number" ? `${repository}#${number}` : undefined;
+  return url && keyFromForgeUrl(url);
 }
 
 /** Translate one successful T3 tool call into ledger updates. Pure, so it is easy to test. */
-export function observe(tool: string, input: Json, result: Json | undefined): Handle[] {
-  return observations(tool, input, result).flatMap(raw => receipt(raw) ?? []);
+export function observe(tool: string, input: Json, result: Json | undefined, ledger?: Ledger): Handle[] {
+  return observations(tool, input, result, ledger).flatMap(raw => receipt(raw) ?? []);
 }
 
-function observations(tool: string, input: Json, result: Json | undefined): Json[] {
+function observations(tool: string, input: Json, result: Json | undefined, ledger?: Ledger): Json[] {
   switch (tool) {
     case "delegate_task":
     case "t3_thread_send": // Only a send that started a fresh child task returns a taskId.
@@ -152,7 +172,7 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       const id = result?.taskId ?? (tool === "task_status" ? input.taskId : undefined);
       if (!id || !result) return [];
       const delivered = result.workState === "result_available" && TERMINAL.some(state => state === result.status);
-      return [{ kind: "delegate", id, open: !delivered, title: tool === "delegate_task" ? input.title : undefined,
+      return [{ kind: "delegate", id, open: !delivered, explicitTitle: tool === "delegate_task" ? input.title : undefined,
         link: result.link, status: delivered ? result.status : result.workState ?? result.status }];
     }
     case "task_cancel": {
@@ -166,30 +186,29 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       const id = text(result?.scheduledTaskId) ?? text(input.scheduledTaskId);
       if (!id) return [];
       const enabled = (result?.enabled ?? input.enabled) !== false;
-      return [{ kind: "schedule", id, title: result?.title ?? input.title, open: true, status: enabled ? "enabled" : "paused" }];
+      return [{ kind: "schedule", id, explicitTitle: input.title, open: true, status: enabled ? "enabled" : "paused" }];
     }
     case "delete_scheduled_task": {
       const id = result?.scheduledTaskId ?? input.scheduledTaskId;
       return result?.deleted === true ? [{ kind: "schedule", id, status: "deleted", open: false }] : [];
     }
-    case "watch_pull_request": {
-      const id = prKey(input, result);
-      return id ? [{ kind: "pr", id, status: "watching", open: true }] : [];
-    }
+    case "watch_pull_request":
     case "unwatch_pull_request": {
       const id = prKey(input, result);
-      return id ? [{ kind: "pr", id, status: "unwatched", open: false }] : [];
+      const open = result?.watching;
+      return id && typeof open === "boolean" ? [{ kind: "pr", id, status: open ? "watching" : "unwatched", open }] : [];
     }
     case "t3_thread_launch": {
       const id = text(result?.threadId);
-      return id ? [{ kind: "thread", id, title: input.title, link: text(result?.link), open: true }] : [];
+      return id ? [{ kind: "thread", id, explicitTitle: input.title, link: text(result?.link), open: true }] : [];
     }
     case "create_threads": {
       const threads = Array.isArray(result?.threads) ? result.threads : [];
-      return threads.flatMap(thread => {
+      const requests = Array.isArray(input.threads) ? input.threads : [];
+      return threads.flatMap((thread, index) => {
         const value = record(thread);
         const id = text(value?.threadId) ?? text(value?.id);
-        return id ? [{ kind: "thread" as const, id, title: value?.title, link: text(value?.link), open: true }] : [];
+        return id ? [{ kind: "thread" as const, id, explicitTitle: record(requests[index])?.title, link: text(value?.link), open: true }] : [];
       });
     }
     case "preview_open": {
@@ -205,7 +224,9 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       const device = record(result?.device);
       const id = device?.id ?? result?.deviceId ?? input.deviceId;
       const hostId = device?.hostId ?? result?.hostId ?? input.hostId;
-      return id ? [{ kind: "device", id, hostId, open: tool === "device_open" }] : [];
+      if (tool === "device_open") return id ? [{ kind: "device", id, hostId, open: true }] : [];
+      return (ledger?.open("device") ?? []).filter(h => (id === undefined || h.id === id) && (hostId === undefined || h.hostId === hostId))
+        .map(h => ({ kind: "device", id: h.id, hostId: h.hostId, open: false }));
     }
     default:
       return [];
@@ -264,8 +285,8 @@ export class Ledger {
 }
 
 function handleLine(handle: Handle): string {
-  const { kind, title, id, status, link, hostId } = handle;
-  const label = title ? ` "${title}"` : "";
+  const { kind, explicitTitle, id, status, link, hostId } = handle;
+  const label = explicitTitle ? ` "${explicitTitle}"` : "";
   const state = status ? `, status ${status}` : "";
   switch (kind) {
     case "delegate": return `- delegate${label} taskId=${id}${state}${link ? ` link ${link}` : ""}`;

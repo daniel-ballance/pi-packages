@@ -58,7 +58,7 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
 
   apply("delegate_task", { task: "Review the diff\nin detail", title: "Review the diff" }, delegateResult);
   apply("schedule_task", { title: "nightly", schedule: { type: "interval", everyMs: 1 } }, [{ type: "text", text: JSON.stringify({ scheduledTaskId: "scheduled-task:1", title: "nightly", nextRunAt: "2026-11-24T08:00:00.000Z" }) }]);
-  apply("watch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: "{}" }]);
+  apply("watch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: '{"watching":true}' }]);
   apply("preview_open", { url: "http://localhost:3000" }, [{ type: "text", text: JSON.stringify({ tabId: "tab-1" }) }]);
   apply("t3_thread_launch", { title: "Nightly", message: "go" }, [{ type: "text", text: JSON.stringify({ threadId: "t-1", link: "<t3-thread://v2/e/t-1>" }) }]);
   apply("html_render", { path: "/x.html" }, [{ type: "text", text: "{}" }]);
@@ -73,16 +73,33 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
 
   apply("task_status", { taskId: "node:delegated-task:abc" }, [{ type: "text", text: JSON.stringify({ taskId: "node:delegated-task:abc", status: "completed", workState: "result_available", summary: "done" }) }]);
   apply("delete_scheduled_task", { scheduledTaskId: "scheduled-task:1" }, [{ type: "text", text: '{"deleted":true}' }]);
-  apply("unwatch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: "{}" }]);
+  apply("unwatch_pull_request", { repository: "o/r", number: 7 }, [{ type: "text", text: '{"host":"github.com","repository":"o/r","number":7,"watching":false}' }]);
   apply("t3_preview_close", { tabId: "tab-1" }, [{ type: "text", text: "{}" }]);
   assert.deepEqual(ledger.open().map(handle => handle.kind), ["thread"]);
   assert.deepEqual(ledger.forget("all"), [{ kind: "thread", id: "t-1", open: false }]);
   assert.equal(ledger.render(), undefined);
 });
 
+test("only titles supplied by the caller survive live observation and replay", () => {
+  const prompt = "Unpublished payroll plan for Project Sample";
+  const updates = [
+    ...observe("schedule_task", { prompt }, { scheduledTaskId: "s", title: prompt }),
+    ...observe("update_scheduled_task", { scheduledTaskId: "s", enabled: false }, { scheduledTaskId: "s", title: prompt }),
+    ...observe("create_threads", { threads: [{ prompt }, { prompt, title: "Second review" }] },
+      { threads: [{ threadId: "t1", title: prompt }, { threadId: "t2", title: prompt }] }),
+  ];
+  assert.doesNotMatch(JSON.stringify(updates), /Unpublished/);
+  const ledger = new Ledger();
+  rebuild(ledger, [{ kind: "schedule", id: "old", title: prompt, open: true }, ...updates]
+    .map(data => ({ type: "custom", customType: ENTRY_TYPE, data })));
+  assert.match(ledger.render()!, /Second review.*t2/);
+  assert.match(ledger.render()!, /scheduledTaskId=old/);
+  assert.doesNotMatch(ledger.render()!, /Unpublished/);
+});
+
 test("closing a handle discards its details before an id is reused", () => {
   const ledger = new Ledger();
-  ledger.apply({ kind: "schedule", id: "s", open: true, title: "Obsolete title" });
+  ledger.apply({ kind: "schedule", id: "s", open: true, explicitTitle: "Obsolete title" });
   ledger.apply({ kind: "schedule", id: "s", open: false });
   ledger.apply({ kind: "schedule", id: "s", open: true });
   assert.doesNotMatch(ledger.render()!, /Obsolete/);
@@ -98,7 +115,27 @@ test("a running delegate stays open until its result is read or it is cancelled"
   // A send to a finished child thread starts a new task; a send to a live thread does not.
   assert.deepEqual(observe("t3_thread_send", { message: "Fix the review findings" }, { threadId: "t", link: "<l>", status: "starting" }), []);
   observe("t3_thread_send", { message: "Fix the review findings" }, { taskId: "node:task-2", link: "<l>", status: "running" }).forEach(update => ledger.apply(update));
-  assert.deepEqual(ledger.open("delegate").map(handle => [handle.id, handle.title]), [["node:task-2", undefined]]);
+  assert.deepEqual(ledger.open("delegate").map(handle => [handle.id, handle.explicitTitle]), [["node:task-2", undefined]]);
+});
+
+test("T3's encoded task id survives create, status, cancel and branch replay verbatim", () => {
+  const taskId = "node:delegated-task:command%3Amcp%3Asession%3Adelegate-task%3Areview-1";
+  const branch: { type: string; customType: string; data: unknown }[] = [];
+  const ledger = new Ledger();
+  function step(tool: string, input: Record<string, unknown>, result: Record<string, unknown>) {
+    const updates = observe(tool, input, resultPayload([{ type: "text", text: JSON.stringify(result) }]));
+    assert.deepEqual(updates.map(row => row.id), [taskId]);
+    for (const data of updates) branch.push({ type: "custom", customType: ENTRY_TYPE, data });
+    rebuild(ledger, branch);
+    return ledger.open("delegate").map(row => [row.id, row.status]);
+  }
+  assert.deepEqual(step("delegate_task", { task: "Review the diff" }, { taskId, workState: "working", status: "running" }), [[taskId, "working"]]);
+  assert.deepEqual(step("task_status", { taskId }, { taskId, workState: "waiting_for_children" }), [[taskId, "waiting_for_children"]]);
+  assert.deepEqual(step("task_cancel", { taskId }, { status: "cancel_requested" }), [[taskId, "cancelling"]]);
+  assert.deepEqual(step("task_cancel", { taskId }, { status: "cancelled" }), []);
+  for (const tail of ["%", "%XZ", "/private", "x".repeat(1000)]) {
+    assert.deepEqual(observe("delegate_task", {}, { taskId: taskId + tail }), []);
+  }
 });
 
 test("a cancel receipt preserves the reported task state, including a pending cancel", () => {
@@ -136,10 +173,41 @@ test("a paused schedule exists until T3 reports deletion", () => {
   assert.deepEqual(ledger.open(), []);
 });
 
+test("PR watches and unwatches share a verified forge key across spellings and restart", () => {
+  const canonical = "https://github.com/org/repo/pull/7";
+  const deep = `${canonical}/files#diff-file`;
+  const callback = "https://webhook.site/00000000-0000-4000-8000-000000000000/hook/pull/3";
+  const pr = { host: "github.com", repository: "Org/Repo", number: 7 };
+  const ledger = new Ledger();
+  const branch = [{ kind: "pr", id: callback, open: true }];
+  const step = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) => {
+    const rows = observe(tool, input, result);
+    assert.doesNotMatch(JSON.stringify(rows), /diff-file|webhook\.site/);
+    branch.push(...rows);
+    rebuild(ledger, branch.map(data => ({ type: "custom", customType: ENTRY_TYPE, data })));
+  };
+  step("watch_pull_request", { url: deep }, { ...pr, url: deep, watching: true });
+  assert.deepEqual(ledger.open().map(h => h.id), [canonical]);
+  step("watch_pull_request", { url: canonical }, { ...pr, watching: false });
+  assert.deepEqual(ledger.open(), []);
+  step("unwatch_pull_request", { repository: pr.repository, number: 7 }, { ...pr, url: callback, watching: true });
+  const other = { ...pr, host: "git.example.org" };
+  step("watch_pull_request", other, { ...other, watching: true });
+  assert.equal(ledger.open().length, 2);
+  step("unwatch_pull_request", { url: deep }, { ...pr, watching: false });
+  assert.equal(ledger.open().length, 1);
+  step("unwatch_pull_request", other, { ...other, watching: false });
+  step("watch_pull_request", { url: `${canonical}/files#3` }, { watching: true });
+  assert.deepEqual(ledger.open().map(h => h.id), [canonical]);
+  step("unwatch_pull_request", { repository: pr.repository, number: 7 }, { ...pr, watching: false });
+  step("watch_pull_request", { url: callback }, { url: callback, watching: true });
+  assert.deepEqual(ledger.open(), []);
+});
+
 test("devices use the reported host and id, including on an argument-less close", () => {
   const ledger = new Ledger();
   const apply = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) =>
-    observe(tool, input, result).forEach(update => ledger.apply(update));
+    observe(tool, input, result, ledger).forEach(update => ledger.apply(update));
   apply("device_open", { platform: "ios" }, { device: { id: "sim", hostId: "mac-1" } });
   apply("device_open", { hostId: "mac-2", deviceId: "sim" }, {});
   assert.equal(ledger.open("device").length, 2);
@@ -163,9 +231,9 @@ test("rebuild replays only this package's entries on the branch", () => {
     { type: "custom", customType: "other", data: { kind: "preview", id: "tab-2", open: true } },
     { type: "message" },
     { type: "custom", customType: ENTRY_TYPE, data: { kind: "preview", id: "tab-1", open: false } },
-    { type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id: "o/r#1", status: "watching" } },
+    { type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id: "https://github.com/o/r/pull/1", status: "watching" } },
   ]);
-  assert.deepEqual(ledger.open().map(handle => handle.id), ["o/r#1"]);
+  assert.deepEqual(ledger.open().map(handle => handle.id), ["https://github.com/o/r/pull/1"]);
 });
 
 const tools: ToolInfo[] = [
@@ -205,27 +273,28 @@ test("the prompt section states mode, workspace, loadout and open handles", () =
   const supervised = buildSection({
     mode: "approval-required",
     workspace: { root: "/home/u/.t3/worktrees/p/t3-1", branch: "feat/x", linked: true, mainCheckout: "/home/u/Code/p", t3Managed: true, defaultBranch: "origin/main" },
-    declared: 1,
+    active: 1,
     ledger: "- watching PR o/r#1",
   });
   assert.match(supervised, /Permission mode: supervised.*bridge asks for approval before bash/i);
   assert.match(supervised, /Workspace: `\/home\/u\/\.t3\/worktrees\/p\/t3-1`, branch `feat\/x` \(no upstream configured\)/);
-  assert.match(supervised, /linked Git worktree under T3's worktree directory/);
-  assert.match(supervised, /treat it as this thread's isolated worktree unless the user says otherwise/i);
+  assert.match(supervised, /Git reports a linked worktree under T3's worktree directory/);
+  assert.match(supervised, /already off the main checkout.*other threads or delegates may be using it/i);
+  assert.doesNotMatch(supervised, /this thread's isolated worktree/i);
   assert.match(supervised, /origin\/HEAD.*`origin\/main`/);
   assert.doesNotMatch(supervised, /created for this thread|satisfies any instruction|not pushed/);
-  assert.match(supervised, /Declared T3 tools: 1\b/);
+  assert.match(supervised, /Active T3 tools: 1\b/);
   assert.match(supervised, /use `delegate_task`: it is your subagent tool/);
   assert.match(supervised, /### Open T3 handles[\s\S]*watching PR o\/r#1/);
 
-  const full = buildSection({ mode: "full-access", declared: 31 });
+  const full = buildSection({ mode: "full-access", active: 31 });
   assert.match(full, /batch tool calls with `Promise\.allSettled`, not `Promise\.all`/, "a failed batch has ended the Pi process");
   assert.match(full, /Permission mode: full access\. The bridge asks for no approval in this mode\./);
   assert.doesNotMatch(full, /no tool call asks the user|leave no background process/i);
-  assert.match(full, /Declared T3 tools: 31\b/);
+  assert.match(full, /Active T3 tools: 31\b/);
   assert.doesNotMatch(full, /Workspace:|Open T3 handles/);
-  assert.match(buildSection({ mode: "auto-accept-edits", declared: 0 }), /auto-accept edits\. The bridge accepts edit and write without approval/);
-  assert.match(buildSection({ mode: "full-access", declared: 0, workspace: { root: "/r", branch: "main", upstream: "origin/main", linked: false, t3Managed: false } }),
+  assert.match(buildSection({ mode: "auto-accept-edits", active: 0 }), /auto-accept edits\. The bridge accepts edit and write without approval/);
+  assert.match(buildSection({ mode: "full-access", active: 0, workspace: { root: "/r", branch: "main", upstream: "origin/main", linked: false, t3Managed: false } }),
     /the repository's main checkout\. Other T3 threads may share it/);
 });
 

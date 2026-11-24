@@ -28,7 +28,7 @@ The default role-to-model mapping is the file shape shown in step 5 below. Use t
 - `medium, high thinking`
 - `small, medium thinking`
 
-**(b) Apply it.** Keep configured models, panel lists and parent aliases unless the user changes them. Resolve missing roles from the skill hints per **Models and role defaults**. Name any substitution. If a pin cannot run within its family (and its named instance under T3), ask for another choice.
+**(b) Apply it.** Keep configured models, panel lists and parent aliases unless the user changes them. Resolve missing roles from the skill hints per **Models and role defaults**. Name any substitution. The file's `host` says where it was written. On that host, keep the exact pin or ask for another choice. On the other host, use the same family and thinking level and report the substitution. With no `host`, keep exact matches and treat the rest as other-host hints.
 
 For code, offer each model's highest advertised thinking level at or below the budget. For judgment, use the same ceiling except that `small` allows `high`. Offer only judgment choices of `high` or above if any fit that ceiling. Otherwise say no offered model reaches the judgment floor within budget; let the user choose an advertised lower level or cancel. A model with no level within the ceiling is not a choice. In a standard panel, the judgment seat gets the judgment level and the code seat gets the code level. Parent aliases keep the parent's settings.
 
@@ -40,7 +40,7 @@ Every real model written must be in the detected set, with a thinking level it o
 
 ### 5. Write the file
 
-Write `p3stack.json` in Pi's agent directory (step 2), or `.pi/p3stack.json` for a trusted project-only choice. Ask before replacing an existing file. Without confirmation, leave it unchanged. Record the budget and exact selections:
+Write `p3stack.json` in Pi's agent directory (step 2), or `.pi/p3stack.json` for a trusted project-only choice. Ask before replacing an existing file. Without confirmation, leave it unchanged. Set `host` to `terminal` or `t3` for the host writing the file. Record the budget and exact selections:
 
 - Terminal: `<provider>/<model id>:<thinking>`.
 - T3: `<provider instance>/<model id>:<thinking>`. Keep the whole model id, including any slashes. For instance `pi` offering model `xai/grok-4.7` at `xhigh`, write `pi/xai/grok-4.7:xhigh`.
@@ -49,6 +49,7 @@ Example terminal file:
 
 ```json
 {
+  "host": "terminal",
   "budget": "large (xhigh)",
   "roles": {
     "feature, refactoring": "xai/grok-4.7:xhigh",

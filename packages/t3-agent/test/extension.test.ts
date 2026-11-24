@@ -82,10 +82,10 @@ test("the ledger persists only bounded handle data, never URL credentials, promp
   await toolResult(f, "preview_open", { url: webhook }, { tabId: "p", url: "https://user:PRIVATE@host/path?PRIVATE#PRIVATE" });
   await toolResult(f, "delegate_task", { title: `Deployment ${webhook}`, task: "PRIVATE instructions" }, { taskId: "d", model: "PRIVATE model", status: webhook, link: webhook });
   await toolResult(f, "t3_thread_send", { message: "PRIVATE child brief" }, { taskId: "d2" });
-  await toolResult(f, "watch_pull_request", {}, { url: "https://user:PRIVATE@github.com/o/r/pull/7?PRIVATE#PRIVATE" });
-  await toolResult(f, "watch_pull_request", {}, { url: webhook });
+  await toolResult(f, "watch_pull_request", {}, { url: "https://user:PRIVATE@github.com/o/r/pull/7?PRIVATE#PRIVATE", watching: true });
+  await toolResult(f, "watch_pull_request", {}, { url: webhook, watching: true });
   // A terminal pull/number alone does not make an arbitrary URL a canonical PR link.
-  await toolResult(f, "watch_pull_request", {}, { url: "https://example.invalid/hooks/PRIVATE/redirect/pull/7" });
+  await toolResult(f, "watch_pull_request", {}, { url: "https://example.invalid/hooks/PRIVATE/redirect/pull/7", watching: true });
   await toolResult(f, "t3_thread_launch", { title: "Build `nightly`\nPRIVATE" }, { threadId: "t", link: "[PRIVATE](t3-thread://v2/e/t?PRIVATE#PRIVATE)" });
   await toolResult(f, "t3_thread_launch", { title: "a".repeat(1000) }, { threadId: "t2" });
   await toolResult(f, "t3_thread_launch", {}, { threadId: "x".repeat(1000) });
@@ -143,7 +143,7 @@ test("under T3 it contributes its skill and prompts and declares the standard lo
   assert.deepEqual(f.statuses.at(-1), [STATUS_KEY, "t3-agent: full access · standard loadout"]);
   const sections = await startTurn(f);
   assert.match(sections.t3_agent!, /Permission mode: full access/);
-  assert.match(sections.t3_agent!, /Declared T3 tools: 10\b/);
+  assert.match(sections.t3_agent!, /Active T3 tools: 10\b/);
 });
 
 test("headless T3 sessions never call ctx.ui, including for command feedback or config warnings", async t => {
@@ -231,7 +231,7 @@ test("T3 results feed the ledger, persist at the turn boundary and reach the pro
   await f.emit("tool_result", { toolName: "mcp__t3-code__html_render", toolCallId: "c2", isError: true, input: {}, content: [{ type: "text", text: "{\"taskId\":\"x\"}" }] });
   assert.deepEqual(f.statuses.at(-1), [STATUS_KEY, "t3-agent: full access · standard loadout · 1 delegate"]);
   const boundary = await f.emit("turn_end", { entries: [], continue: false });
-  assert.deepEqual(boundary.entries, [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "delegate", id: "node:task-1", open: true, title: "Review the branch", link: "<t3-thread://v2/e/t1>", status: "working" } }]);
+  assert.deepEqual(boundary.entries, [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "delegate", id: "node:task-1", open: true, explicitTitle: "Review the branch", link: "<t3-thread://v2/e/t1>", status: "working" } }]);
   assert.equal(await f.emit("turn_end", { entries: [], continue: false }), undefined);
   assert.match((await startTurn(f)).t3_agent!, /### Open T3 handles[\s\S]*delegate "Review the branch" taskId=node:task-1, status working/);
 });
@@ -271,12 +271,13 @@ test("a new caller-owned preview tab left open gets one automated reminder befor
   await startTurn(f);
   await toolResult(f, "preview_open", { reuseExistingTab: false }, { tabId: "tab-9", control: { owner: "agent", ownedByCaller: true } });
   assert.ok(f.active().includes("mcp__t3-code__t3_preview_close"), "the close tool is declared while a tab is open");
+  await toolResult(f, "preview_open", { tabId: "tab-9" }, { tabId: "tab-9", control: { owner: "agent", ownedByCaller: true } });
   const first = await f.emit("agent_before_settle", { entries: [], continue: false, outcome: "completed" });
   assert.equal(first.continue, true);
   assert.equal(first.entries[0].customType, ENTRY_TYPE);
-  assert.equal(first.entries[1].customType, REMINDER_TYPE);
-  assert.match(first.entries[1].content, /automated note from the t3-agent extension, not from the user/i);
-  assert.match(first.entries[1].content, /tab `tab-9`/);
+  assert.equal(first.entries.at(-1).customType, REMINDER_TYPE);
+  assert.match(first.entries.at(-1).content, /automated note from the t3-agent extension, not from the user/i);
+  assert.match(first.entries.at(-1).content, /tab `tab-9`/);
   assert.equal(await f.emit("agent_before_settle", { entries: [], continue: false, outcome: "completed" }), undefined);
 
   // A tab closed in the same turn needs no reminder, and its close tool is withdrawn.
@@ -341,19 +342,53 @@ test("/t3-agent loadout changes this session's tools and survives a restart", as
   const restarted = fixture(T3, { branch: [{ type: "custom", customType: LOADOUT_ENTRY, data: { loadout: "full" } }] });
   await restarted.emit("session_start", { reason: "resume" });
   assert.equal(restarted.active().filter(name => name.startsWith("mcp__t3-code__")).length, T3_TOOLS.length);
-  assert.match((await startTurn(restarted)).t3_agent!, /Declared T3 tools: 12\b/);
+  assert.match((await startTurn(restarted)).t3_agent!, /Active T3 tools: 12\b/);
 });
 
 test("/t3-agent forget closes ledger entries without touching T3", async () => {
-  const f = fixture(T3, { branch: [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id: "o/r#1", status: "watching", open: true } }] });
+  const id = "https://github.com/o/r/pull/1";
+  const f = fixture(T3, { branch: [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id, status: "watching", open: true } }] });
   await f.emit("session_start", { reason: "startup" });
   const command = f.commands.get("t3-agent");
   await command.handler("ledger", f.ctx);
-  assert.match(String(f.notices.at(-1)![0]), /watching PR o\/r#1/);
-  await command.handler("forget o/r#1", f.ctx);
-  assert.deepEqual(f.appended.at(-1), [ENTRY_TYPE, { kind: "pr", id: "o/r#1", open: false }]);
-  await command.handler("forget o/r#1", f.ctx);
+  assert.ok(String(f.notices.at(-1)![0]).includes(`watching PR ${id}`));
+  await command.handler(`forget ${id}`, f.ctx);
+  assert.deepEqual(f.appended.at(-1), [ENTRY_TYPE, { kind: "pr", id, open: false }]);
+  await command.handler(`forget ${id}`, f.ctx);
   assert.match(String(f.notices.at(-1)![0]), /Nothing open matched/);
+});
+
+test("forget before turn_end stays forgotten on replay", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  await toolResult(f, "schedule_task", { prompt: "Check" }, { scheduledTaskId: "s", enabled: true });
+  await f.commands.get("t3-agent").handler("forget s", f.ctx);
+  const boundary = await f.emit("turn_end", { entries: [] });
+  const restart = fixture(T3, { branch: [...f.ctx.sessionManager.getBranch(), ...boundary?.entries ?? []] });
+  await restart.emit("session_start");
+  await restart.commands.get("t3-agent").handler("ledger", restart.ctx);
+  assert.match(String(restart.notices.at(-1)![0]), /No open T3 handles/);
+});
+
+test("device_close with T3's empty result closes every and only matching host/id pair on replay", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  for (const [hostId, id] of [["local", "A"], ["local", "B"], ["remote", "A"], ["remote", "C"]]) {
+    await toolResult(f, "device_open", { deviceId: id, hostId }, { device: { id, hostId } });
+  }
+  const branch = f.ctx.sessionManager.getBranch();
+  async function close(input: Record<string, string>) {
+    await toolResult(f, "device_close", input, {});
+    const boundary = await f.emit("turn_end", { entries: [] });
+    branch.push(...boundary?.entries ?? []);
+    const restart = fixture(T3, { branch });
+    await restart.emit("session_start");
+    await restart.commands.get("t3-agent").handler("ledger", restart.ctx);
+    return String(restart.notices.at(-1)![0]);
+  }
+  assert.equal(await close({ deviceId: "A" }), "- device deviceId=B on hostId=local\n- device deviceId=C on hostId=remote");
+  assert.equal(await close({ hostId: "local" }), "- device deviceId=C on hostId=remote");
+  assert.match(await close({}), /No open T3 handles/);
 });
 
 test("forget can address a device by host/id and its close survives replay", async () => {
@@ -422,14 +457,30 @@ test("switching to lean cannot withdraw tools now required by the bridge", async
   }
 });
 
-test("the prompt and status report actual declared T3 counts for a partial or empty catalog", async () => {
+test("codemode-only reports T3 tools as active even though none are declared", async () => {
+  const { createCodemodeToolDefinition } = await import(new URL("./extensions/codemode/tool.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+  const names = T3_TOOLS.slice(0, 3);
+  const tools = names.map(n => ({ name: "mcp__t3-code__" + n, description: n, parameters: { type: "object", properties: {} } }));
+  const { hiddenDeclarations } = createCodemodeToolDefinition({ getMode: () => "only" }).prepareLoadout({
+    declared: tools, callable: tools, getExposure: () => "direct", getNamespace: () => undefined, getPromptGuidelines: () => [],
+  });
+  assert.deepEqual(hiddenDeclarations, tools.map(tool => tool.name));
+  const f = fixture(T3, { t3Tools: names, active: ["codemode", ...hiddenDeclarations] });
+  await f.emit("session_start");
+  const sections: Record<string, string> = {};
+  await f.emit("before_agent_start", { systemPromptOptions: { sections, hiddenTools: hiddenDeclarations } });
+  await f.commands.get("t3-agent").handler("status", f.ctx);
+  for (const report of [sections.t3_agent!, String(f.notices.at(-1)![0])]) assert.match(report, /Active T3 tools: 3\b/);
+});
+
+test("the prompt and status report actual active T3 counts for a partial or empty catalog", async () => {
   for (const count of [20, 0]) {
     const t3Tools = count ? Array.from({ length: 31 }, (_, i) => "tool_" + i) : [];
     const f = fixture(T3, { t3Tools, active: ["read", ...t3Tools.slice(0, count).map(name => "mcp__t3-code__" + name)] });
     await f.emit("session_start");
     await f.commands.get("t3-agent").handler("status", f.ctx);
     for (const report of [(await startTurn(f)).t3_agent!, String(f.notices.at(-1)![0])]) {
-      assert.match(report, new RegExp(`Declared T3 tools: ${count}\\b`));
+      assert.match(report, new RegExp(`Active T3 tools: ${count}\\b`));
       assert.doesNotMatch(report, /every T3 tool is declared|bridge's three/i);
     }
   }

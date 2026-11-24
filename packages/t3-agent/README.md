@@ -16,15 +16,15 @@ T3 injects its own extension into every Pi it launches. The bridge owns the MCP 
 - Waiting for T3 means ending the turn on a wake, not leaving an agent polling after the reply.
 - Codemode scripts batch tool calls with `Promise.allSettled` and read only paths known to exist. Twice, a script whose `Promise.all` rejected on a missing file while its other reads were running ended the Pi process, and T3 reported the turn as failed ("Pi process exited unexpectedly"). The cause inside Pi is not isolated, so the prompt tells the model to avoid the pattern.
 - The permission mode from `T3_PI_RUNTIME_MODE`. In supervised and auto-accept-edits threads, `read`, `grep`, `find`, `ls` and read-only T3 tools are exempt from bridge approval, so the model is told to search with them and to batch shell commands.
-- The workspace: repository root, branch, upstream, default branch, and whether Git reports a linked worktree under T3's worktree directory. Treat that as this thread's isolated checkout unless the user says otherwise; the layout is not proof of ownership.
+- The workspace: repository root, branch, upstream, default branch, and whether Git reports a linked worktree under T3's worktree directory. Work in such a worktree is already off the main checkout; other threads or delegates may be using it too.
 - Pi has no native subagent tool under T3, so wherever T3's guidance says "your native tool", Pi uses `delegate_task`.
 - The open T3 handles, described below.
 
 The section is rebuilt before each prompt. Pi can resend changed sections to providers that support mid-conversation system messages.
 
-**A T3 tool loadout.** The model can discover deferred tools with `tool_search` or call known ones in codemode. A loadout declares a chosen set up front:
+**A T3 tool loadout.** The model can discover deferred tools with `tool_search` or call known ones in codemode. A loadout activates a chosen set up front. Codemode-only can hide declarations without deactivating the tools:
 
-| Loadout | Declares |
+| Loadout | Activates |
 | --- | --- |
 | `lean` | No preset additions to the bridge's tools |
 | `standard` (default) | Also `task_cancel`, `t3_thread_read`, `request_secret`, `html_preview`, `html_render`, `watch_pull_request`, `schedule_task`: the tools T3's guidance tells the model to call |
@@ -43,9 +43,9 @@ Open handles add the tools that act on them: `t3_preview_close` while a preview 
 
 Terminal task results, confirmed schedule deletions, PR unwatches, tab and device closes remove open handles. A pending cancel stays open as cancelling; disabling a schedule keeps it open as paused. Device identities include the host ID when known. Updates are saved as custom session entries at each turn boundary, so the ledger follows `/tree` branches and survives restarts. It is rendered into the prompt section, so the long ids that `task_cancel` and `t3_preview_close` need survive compaction.
 
-The ledger keeps bounded identifiers, titles, states and checked thread or pull request links. It does not copy task briefs, preview URLs, webhook URLs or free-form result details. Replay applies the same checks to older entries; it does not erase old transcripts. Use T3's schedule settings for webhook details.
+The ledger keeps bounded identifiers, caller-supplied titles, states and checked thread or pull request links. It drops legacy titles on replay. A PR is keyed by forge, repository and number; without a known public link format, its handle is `repository#number@host`. It does not copy task briefs, preview URLs, webhook URLs or free-form result details. Replay applies the same checks to older entries; it does not erase old transcripts. Use T3's schedule settings for webhook details.
 
-**A preview-tab reminder.** T3's guidance says to close a preview tab you opened before replying. Only a confirmed new, caller-owned tab still open at settlement triggers one automated reminder and an extra model request. A reused tab or one with uncertain ownership does not.
+**A preview-tab reminder.** T3's guidance says to close a preview tab you opened before replying. Only a confirmed new, caller-owned tab still open at settlement triggers one automated reminder and an extra model request. Reusing an existing tab does not claim it. Revisiting a tab this run created keeps the reminder unless a close or takeover was observed.
 
 **Composer status.** T3 shows extension status near the composer. t3-agent publishes the mode, the loadout, and the counts of open delegates, schedules, watched PRs and tabs, for example `t3-agent: supervised · standard loadout · 2 delegates`.
 
@@ -66,7 +66,7 @@ The skill and templates are contributed through `resources_discover` only under 
 
 ## Commands
 
-- `/t3-agent` or `/t3-agent status` reports the mode, loadout, declared tools, workspace, open handles and configuration problems.
+- `/t3-agent` or `/t3-agent status` reports the mode, loadout, active tools, workspace, open handles and configuration problems.
 - `/t3-agent loadout lean|standard|full` sets this session's loadout. The choice is saved in the session.
 - `/t3-agent ledger` lists open handles.
 - `/t3-agent forget <id|all>` drops stale handles from the ledger (use `hostId/deviceId` for a scoped device). It changes nothing in T3.
@@ -82,7 +82,7 @@ Optional. `~/.pi/agent/t3-agent.json` (or under `PI_CODING_AGENT_DIR`) applies f
 }
 ```
 
-`loadout` is `lean`, `standard` or `full`. `tools` lists bare T3 tool names to declare beside the loadout. Bad values are ignored and reported once in the thread. `/t3-agent status` separately lists valid tool names not in the current catalog; it checks again each time, since T3 tools can load late.
+`loadout` is `lean`, `standard` or `full`. `tools` lists bare T3 tool names to activate beside the loadout. Bad values are ignored and reported once in the thread. `/t3-agent status` separately lists valid tool names not in the current catalog; it checks again each time, since T3 tools can load late.
 
 ## Install
 

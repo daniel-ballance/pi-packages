@@ -37,7 +37,8 @@ export default function todo(pi: ExtensionAPI) {
   // Models set the list and then forget it while they work (seen with GPT and Claude
   // alike): nothing in their context mentions it again. So the extension does, once
   // after a few turns without a todo call, and once more before a run settles.
-  let turnsSinceTodo = 0, reminded = false, usedThisTurn = false, usedThisRun = false, settleNudged = false;
+  let turnsSinceTodo = 0, reminded = false, usedThisTurn = false, usedThisRun = false;
+  let settleCheck: "none" | "pending" | "spent" = "none";
   // Whether the model used other tools after its last todo call: only then can the
   // list have fallen behind the work.
   let workSinceTodo = false;
@@ -45,7 +46,7 @@ export default function todo(pi: ExtensionAPI) {
   let lastStatus: string | undefined;
   const showList = (ctx: ExtensionContext, restored = false) => {
     if (!ctx.hasUI) return;
-    if (ctx.mode !== "tui") {
+    if (host !== "cli" || ctx.mode !== "tui") {
       const open = list.items.filter(isOpen), size = list.items.length;
       const next = open[0]?.text.trim().replace(/\s+/g, " ");
       const status = next && `todo ${size - open.length}/${size} · next: ${[...next].slice(0, 60).join("")}`;
@@ -84,7 +85,8 @@ export default function todo(pi: ExtensionAPI) {
         showList(ctx);
       }
       // Answering the end-of-run check: models otherwise follow the update with a recap.
-      const hint = settleNudged ? SETTLED : operation.op === "set" ? SET_HINT : "";
+      const hint = settleCheck === "pending" ? SETTLED : operation.op === "set" ? SET_HINT : "";
+      if (settleCheck === "pending") settleCheck = "spent";
       return result(operation.op, [outcome.change, hint].filter(Boolean).join("\n"));
     },
     renderCall(args, theme) {
@@ -109,7 +111,7 @@ export default function todo(pi: ExtensionAPI) {
       return new Text(output.isError ? theme.fg("error", change) : theme.fg("muted", `${change}${summary}`), 0, 0);
     },
   };
-  registerHostAware(pi, tool, { duplicatesT3: false });
+  const host = registerHostAware(pi, tool, { duplicatesT3: false });
 
   // Snapshots are stored with appendEntry only to rebuild state per branch. They have no
   // transcript renderer, so the feed shows each change once, as its tool call.
@@ -146,7 +148,11 @@ export default function todo(pi: ExtensionAPI) {
   // Both user requests and idle custom wakes start here. Pi's settle continuation
   // calls agent.continue() inside the same run, without another before_agent_start.
   pi.on("before_agent_start", () => {
-    turnsSinceTodo = 0; reminded = false; usedThisTurn = false; usedThisRun = false; settleNudged = false; workSinceTodo = false;
+    turnsSinceTodo = 0; reminded = false; usedThisTurn = false; usedThisRun = false; settleCheck = "none"; workSinceTodo = false;
+  });
+  // Queued follow-ups and completions are delivered inside the existing run.
+  pi.on("message_start", ({ message }) => {
+    if (settleCheck === "pending" && (message.role === "user" || (message.role === "custom" && message.customType !== "todo-settle"))) settleCheck = "spent";
   });
 
   pi.on("turn_end", event => {
@@ -171,10 +177,10 @@ export default function todo(pi: ExtensionAPI) {
   // at a normal end). Each one costs a visible reply, so a run whose last tool call was
   // todo itself, with the list as the model left it, is not checked.
   pi.on("agent_before_settle", event => {
-    if (event.continue || settleNudged || !usedThisRun || !workSinceTodo || event.outcome !== "completed") return;
+    if (event.continue || settleCheck !== "none" || !usedThisRun || !workSinceTodo || event.outcome !== "completed") return;
     const { open, line } = openSummary();
     if (open.length === 0) return;
-    settleNudged = true;
+    settleCheck = "pending";
     const names = open.map(item => `${item.id}. ${item.text.slice(0, 80)}`).join("; ");
     return { continue: true, entries: [...event.entries, note("todo-settle", `${line}. The run is ending with ${open.length} open item${open.length === 1 ? "" : "s"}: ${names}. Mark any that are finished done, or skipped with the reason in note; leave any that stay open on purpose, for example waiting on delegated work or the user. Then end your turn without writing anything: your last reply to the user stands.`)] };
   });
