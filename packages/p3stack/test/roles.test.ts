@@ -58,6 +58,38 @@ test("a missing T3 catalog blocks every role without consulting terminal policy"
   assert.deepEqual(h.calls, [capabilities]);
 });
 
+const t3Model = (id: string, ...values: string[]) => ({ id, options: [{ id: "thinking", values }] });
+const provider = (providerInstanceId: string, ...models: ReturnType<typeof t3Model>[]) => ({ providerInstanceId, models, canRunChildTask: true });
+const target = (providerInstanceId: string, model: string, level: string) => ({ providerInstanceId, model, options: [{ id: "thinking", value: level }] });
+
+test("a T3 pin selects the named instance and the entire model id before any alias", async t => {
+  const models = [t3Model("gpt-6", "high"), t3Model("xai/grok-4.7", "high")];
+  const h = lookup(t, "t3", {
+    t3: { providers: [provider("work", ...models, t3Model("personal/gpt-6", "high")), provider("personal", ...models)] },
+    pins: { "bug-fix": "personal/gpt-6:high", "swarm workers": "personal/xai/grok-4.7:high", "hardest tasks": "gone/gpt-6:high" },
+  });
+  const { roles, problems } = await h.resolve();
+  assert.deepEqual(roles["bug-fix"], target("personal", "gpt-6", "high"));
+  assert.deepEqual(roles["swarm workers"], target("personal", "xai/grok-4.7", "high"));
+  assert.equal(roles["hardest tasks"], undefined, "never move a missing instance's pin to work");
+  assert.ok(problems.some(p => p.includes("gone/gpt-6:high")));
+});
+
+test("T3 selects the closest advertised level below the hint and names the downgrade", async t => {
+  const h = lookup(t, "t3", { t3: { providers: [provider("pi", t3Model("xai/grok-4.7", "low", "max", "high", "medium"))] } });
+  const { roles, problems } = await h.resolve();
+  assert.deepEqual(roles["swarm workers"], target("pi", "xai/grok-4.7", "high"));
+  assert.ok(problems.some(p => p.includes("grok-4.7-xhigh-fast") && p.includes("pi/xai/grok-4.7:high")));
+});
+
+test("T3 cannot satisfy a thinking pin with unadvertised or higher effort", async t => {
+  const h = lookup(t, "t3", { t3: { providers: [provider("pi", t3Model("gpt-6", "max"), t3Model("grok-4.7"))] },
+    pins: { "bug-fix": "pi/gpt-6:high", "perf-issue": "pi/grok-4.7:low" } });
+  const { roles, problems } = await h.resolve();
+  for (const role of ["bug-fix", "perf-issue"]) assert.equal(roles[role], undefined);
+  for (const pin of ["pi/gpt-6:high", "pi/grok-4.7:low"]) assert.ok(problems.some(p => p.includes(pin)));
+});
+
 test("the agent directory follows Pi for empty, tilde and explicit overrides", t => {
   env(t, "PI_CODING_AGENT_DIR", "");
   assert.equal(agentDir(), join(homedir(), ".pi", "agent"));

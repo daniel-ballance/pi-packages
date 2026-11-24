@@ -100,7 +100,15 @@ export interface Target {
   model: string;
   options?: { id: string; value: string }[];
 }
-type Selection = { model: string; level?: string; value: string | Target; inherited?: Target };
+type Selection = { provider: string; model: string; level?: string; option?: string };
+interface LiveCatalog { choices: Selection[]; instances?: Set<string>; inherited?: Selection }
+const nameOf = (s: Selection) => `${s.provider}/${s.model}`;
+const identity = (s: Selection) => nameOf(s) + (s.level ? `:${s.level}` : "");
+const rank = (level?: string) => LEVELS.indexOf(level ?? "");
+
+function asTarget(s: Selection): Target {
+  return { providerInstanceId: s.provider, model: s.model, ...s.option && s.level && { options: [{ id: s.option, value: s.level }] } };
+}
 export interface Catalog { spawnEnabled: boolean; models: string[] }
 interface CatalogApi {
   getThinkingLevel(): string;
@@ -124,62 +132,79 @@ export function readCatalog(pi: CatalogApi): Catalog | undefined {
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
-function t3Selections(data: unknown): Selection[] {
+function t3Selections(data: unknown): LiveCatalog {
   const catalog = record(data);
-  return array(catalog.providers).flatMap(raw => {
-    const provider = record(raw);
-    if (provider.canRunChildTask !== true || typeof provider.providerInstanceId !== "string") return [];
-    return array(provider.models).flatMap(raw => {
-      const model = record(raw);
-      if (typeof model.id !== "string") return [];
-      const target: Target = { providerInstanceId: provider.providerInstanceId as string, model: model.id };
-      const inherited = target.providerInstanceId === catalog.inheritedProviderInstanceId && target.model === catalog.inheritedModel ? target : undefined;
-      const thinking = array(model.options).map(record).find(option => option.type === "select" && /thinking|reasoning|effort/i.test(String(option.id)));
-      if (!thinking) return [{ model: model.id, value: target, inherited }];
-      return array(thinking.options).flatMap(raw => {
-        const choice = record(raw);
-        return typeof choice.id === "string" && LEVELS.includes(choice.id)
-          ? [{ model: model.id as string, level: choice.id, inherited, value: { ...target, options: [{ id: String(thinking.id), value: choice.id }] } }]
-          : [];
-      });
-    });
-  });
+  if (!Array.isArray(catalog.providers)) throw new Error("no providers in capabilities response");
+  const instances = new Set<string>();
+  const choices: Selection[] = [];
+  let inherited: Selection | undefined;
+  for (const provider of catalog.providers.map(record)) {
+    if (typeof provider.providerInstanceId !== "string") continue;
+    instances.add(provider.providerInstanceId);
+    if (provider.canRunChildTask !== true) continue;
+    for (const model of array(provider.models).map(record)) {
+      if (typeof model.id !== "string") continue;
+      const base = { provider: provider.providerInstanceId, model: model.id };
+      if (base.provider === catalog.inheritedProviderInstanceId && base.model === catalog.inheritedModel) inherited = base;
+      const thinking = array(model.options).map(record).find(o => typeof o.id === "string" && /thinking|reasoning|effort/i.test(o.id));
+      const values = thinking?.values ?? array(thinking?.options).map(choice => record(choice).id);
+      const levels = array(values).filter((v): v is string => typeof v === "string" && LEVELS.includes(v));
+      if (!levels.length) choices.push(base); // usable without an explicit thinking request only
+      for (const level of levels) choices.push({ ...base, level, option: String(thinking!.id) });
+    }
+  }
+  return { choices, instances, inherited };
 }
 
 const CAPABILITIES = "mcp__t3-code__orchestrator_capabilities";
 
-async function selections(pi: CatalogApi, ctx: RoleContext, signal?: AbortSignal): Promise<Selection[]> {
+async function selections(pi: CatalogApi, ctx: RoleContext, signal?: AbortSignal): Promise<LiveCatalog> {
   if (detectHost() === "t3") {
     const { result, isError } = await ctx.executeTool(CAPABILITIES, {}, { signal });
     const payload = record(result.structuredContent);
     if (isError || result.isError || payload.isError) throw new Error("capabilities call failed");
     const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
     const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
-    if (!Array.isArray(record(data).providers)) throw new Error("no providers in capabilities response");
     return t3Selections(data);
   }
   const catalog = readCatalog(pi);
   if (!catalog && pi.getAllTools().some(tool => tool.name === "subagent_catalog")) throw new Error("subagents catalog did not reply");
   if (catalog && !catalog.spawnEnabled) throw new Error("subagents policy does not permit spawning");
   const identities = catalog?.models ?? ctx.modelRegistry.getAvailable().flatMap(model => supportedLevels(model).map(level => `${model.provider}/${model.id}:${level}`));
-  return identities.flatMap(value => {
-    const at = value.lastIndexOf(":");
-    return at > 0 && LEVELS.includes(value.slice(at + 1)) ? [{ model: value.slice(0, at), level: value.slice(at + 1), value }] : [];
+  const choices = identities.flatMap(value => {
+    const at = value.lastIndexOf(":"), slash = value.indexOf("/");
+    return slash > 0 && at > slash + 1 && LEVELS.includes(value.slice(at + 1))
+      ? [{ provider: value.slice(0, slash), model: value.slice(slash + 1, at), level: value.slice(at + 1) }] : [];
   });
+  return { choices };
 }
 
-function resolveHint(hint: string, catalog: Selection[], parent: string | undefined): Selection | undefined {
+const hintParts = (hint: string) => {
+  const match = /^(.*?)(?::|-)(off|minimal|low|medium|high|xhigh|max)(?:-fast)?$/.exec(hint);
+  return { name: match?.[1] ?? hint, level: match?.[2] };
+};
+
+function scopedChoices(name: string, catalog: LiveCatalog): Selection[] {
+  const slash = name.indexOf("/");
+  if (!catalog.instances || slash < 0) return catalog.choices;
+  const prefix = name.slice(0, slash);
+  if (catalog.instances.has(prefix)) return catalog.choices.filter(s => s.provider === prefix);
+  // A Pi identity under T3 is a foreign-host hint, not permission to strip an
+  // unrecognised instance. Only match a whole catalog model id on one instance.
+  const foreign = catalog.choices.filter(s => s.model === name);
+  return new Set(foreign.map(s => s.provider)).size === 1 ? foreign : [];
+}
+
+function resolveHint(hint: string, catalog: LiveCatalog, parent: string | undefined): Selection | undefined {
   if (hint === "auto" || hint === "inherit-parent") {
-    const inherited = catalog.find(entry => entry.inherited)?.inherited;
-    return inherited ? { model: inherited.model, value: inherited } : catalog.find(entry => typeof entry.value === "string" && entry.value === parent);
+    return catalog.inherited ?? catalog.choices.find(s => !catalog.instances && identity(s) === parent);
   }
-  const wanted = hint;
-  const match = /^(.*?)(?::|-)(off|minimal|low|medium|high|xhigh|max)(?:-fast)?$/.exec(wanted);
-  const name = match?.[1] ?? wanted;
-  const level = match?.[2];
-  const matches = catalog.filter(entry => entry.model === name || ((!name.includes("/") || !entry.model.includes("/")) && entry.model.split("/").at(-1) === name.split("/").at(-1)));
-  return matches.filter(entry => !level || entry.level === undefined || LEVELS.indexOf(entry.level) <= LEVELS.indexOf(level))
-    .sort((a, b) => LEVELS.indexOf(b.level ?? "off") - LEVELS.indexOf(a.level ?? "off"))[0];
+  const { name, level } = hintParts(hint);
+  const choices = scopedChoices(name, catalog);
+  const exact = choices.filter(s => nameOf(s) === name);
+  const matches = exact.length ? exact : choices.filter(s => s.model === name || (!name.includes("/") && s.model.split("/").at(-1) === name));
+  return matches.filter(s => !level || (s.level && rank(s.level) <= rank(level)))
+    .sort((a, b) => rank(b.level) - rank(a.level))[0];
 }
 
 /** A model's family is the leading word of its id without the provider: claude-opus-5-5 -> claude, xai/grok-4.7 -> grok. */
@@ -201,9 +226,9 @@ function diversify(selection: Selection, catalog: Selection[], avoid: string): S
 
 export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?: string, signal?: AbortSignal) {
   const defaults = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
-  const roles: Record<string, string | Target | (string | Target)[]> = {};
+  const roles: Record<string, string | Target | null | (string | Target | null)[]> = {};
   const problems = [...defaults.problems];
-  let catalog: Selection[];
+  let catalog: LiveCatalog;
   try { catalog = await selections(pi, ctx, signal); }
   catch (error) {
     const source = detectHost() === "t3" ? "T3 catalog" : "catalog";
@@ -215,12 +240,14 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
     const avoid = distinctFrom ? family(distinctFrom) : undefined;
     const resolved = (Array.isArray(value) ? value : [value]).map(hint => {
       const found = resolveHint(hint, catalog, parent);
-      if (!found) problems.push(`${role} has no live catalog selection for ${hint}`);
-      if (!found || !avoid) return found?.value;
-      const selection = diversify(found, catalog, avoid);
-      if (!selection) problems.push(`${role}: no model outside the ${avoid} family is offered, so ${hint} stays on it`);
-      else if (selection !== found) problems.push(`${role}: substituted ${selection.model}${selection.level ? `:${selection.level}` : ""} for ${hint} to differ from ${distinctFrom}`);
-      return (selection ?? found).value;
+      if (!found) { problems.push(`${role} has no live catalog selection for ${hint}`); return undefined; }
+      if (catalog.instances && (hint === "inherit-parent" || hint === "auto")) return null;
+      const selection = avoid ? diversify(found, catalog.choices, avoid) ?? found : found;
+      if (selection !== found) problems.push(`${role}: substituted ${identity(selection)} for ${hint} to differ from ${distinctFrom}`);
+      else if (avoid && selectionFamily(found) === avoid) problems.push(`${role}: no model outside the ${avoid} family is offered, so ${hint} stays on it`);
+      const { level } = hintParts(hint);
+      if (selection === found && level && level !== found.level) problems.push(`${role}: substituted ${identity(found)} for ${hint} (closest offered thinking below ${level})`);
+      return catalog.instances ? asTarget(selection) : identity(selection);
     });
     if (resolved.every(value => value !== undefined)) roles[role] = Array.isArray(value) ? resolved : resolved[0]!;
   }
@@ -228,12 +255,12 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
 }
 
 const targetSchema = Type.Object({ providerInstanceId: Type.String(), model: Type.String(), options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), value: Type.String() }))) });
-const selectionSchema = Type.Union([Type.String(), targetSchema]);
+const selectionSchema = Type.Union([Type.String(), targetSchema, Type.Null()]);
 
 export function registerRoles(pi: Pi) {
   pi.registerTool({
     name: "p3stack_roles", label: "p3stack roles",
-    description: "Resolve every p3stack role against the live catalog. Return exact provider/model:thinking identities or ready T3 targets, and report unavailable roles. Pass distinctFrom with the author's model to get reviewers from another model family.",
+    description: "Resolve every p3stack role against the live catalog. Return exact provider/model:thinking identities or ready T3 targets (null means omit target to inherit), and report unavailable roles. Pass distinctFrom with the author's model to get reviewers from another model family.",
     promptSnippet: "p3stack_roles resolves role models against the live delegation catalog.",
     parameters: Type.Object({ distinctFrom: Type.Optional(Type.String({ description: "The author's model or model family. Reviewers, judges, and adversaries pass it so each role resolves to a different family when the catalog offers one." })) }, { additionalProperties: false }),
     reachesTools: () => detectHost() === "t3" ? [CAPABILITIES] : [],

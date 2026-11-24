@@ -195,7 +195,7 @@ test("under T3, roles return ready targets with advertised thinking options", as
   } finally { h.dispose(); }
 });
 
-test("T3 bridge MCP envelopes resolve roles and preserve the inherited target without guessing options", async t => {
+test("T3 bridge MCP envelopes distinguish inheriting the parent from requesting an unoffered level", async t => {
   t.after(asHost("t3"));
   const h = harness({ t3: { content: [], structuredContent: {
     inheritedProviderInstanceId: "pi-main", inheritedModel: "claude/claude-opus-5-5",
@@ -203,8 +203,8 @@ test("T3 bridge MCP envelopes resolve roles and preserve the inherited target wi
   } }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
   try {
     const roles = (await h.call("p3stack_roles", {})).structuredContent.roles;
-    assert.deepEqual(roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5" });
-    assert.deepEqual(roles["bug-fix"], roles["judgment and prose"]);
+    assert.equal(roles["judgment and prose"], undefined);
+    assert.equal(roles["bug-fix"], null, "omit target to inherit, including the parent's settings");
   } finally { h.dispose(); }
 });
 
@@ -229,7 +229,7 @@ test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or te
       const result = await h.call("p3stack_roles", {});
       assert.deepEqual(result.structuredContent.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
       assert.equal(Object.keys(result.structuredContent.roles).length, 17);
-      assert.deepEqual(result.structuredContent.problems, []);
+      assert.match(result.structuredContent.problems.join("\n"), /grok-4\.7:high.*grok-4\.7-xhigh-fast/);
     } finally { h.dispose(); }
   }
 });
