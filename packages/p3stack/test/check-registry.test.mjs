@@ -67,7 +67,7 @@ test("registry admissions match the shipped skills, including narrow and watch-o
   assert.deepEqual(from("agent-skills"), new Set(["constraints", "source-grounding", "security-hardening", "instrumentation"]));
   assert.deepEqual(from("superpowers"), new Set(), "superpowers is watch only");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
-  for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
+  assert.equal(new Set(admitted.map(row => row.reason)).size, admitted.length, "each standalone entry explains its distinct job");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").owner, "implement-spec");
   assert.equal(skills.find(row => row.name === "code-review").invocation, "model");
   assert.equal(skills.find(row => row.name === "interactive-prototype").invocation, "model");
@@ -85,7 +85,7 @@ function fixture(t) {
   write("rules/manifest.json", { registry: true, sources: [{ name: "demo", vendor: "vendor/demo", map: [{ from: "skills/", to: "skills/" }] }] });
   write("vendor/demo/skills/first/SKILL.md", skill("first"));
   write("skills/first/SKILL.md", skill("first"));
-  const skills = [{ source: "demo", path: "skills/first/SKILL.md", action: "emit", name: "first", invocation: "model", phases: ["test"], roles: ["owner"], reason: "Fixture admission." }];
+  const skills = [{ source: "demo", path: "skills/first/SKILL.md", action: "emit", name: "first", invocation: "model", reason: "Fixture admission." }];
   write("registry/skills.json", skills);
   write("registry/routes.json", [{ request: "test", grant: "any", target: "first" }]);
   write("registry/chains.json", [{ id: "first-chain", playbook: "playbooks/feature.md", anchor: "Implement the sketch.", position: "before", skill: "first", when: "Always." }]);
@@ -96,7 +96,7 @@ function fixture(t) {
 
 function referenceFixture(t, owner = "first") {
   const f = fixture(t), outDir = join(f.root, "out"), path = "skills/leaf/SKILL.md";
-  const ref = { source: "demo", path, name: "leaf", action: "reference", owner, reason: "Read during review." };
+  const ref = { source: "demo", path, name: "leaf", action: "reference", owner };
   f.write(`vendor/demo/${path}`, f.skill("leaf"));
   f.write("registry/skills.json", [...f.skills, ref]);
   f.write("registry/chains.json", []);
@@ -568,6 +568,22 @@ test("registry check reports emitted, dropped, and zero unclassified skills", t 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), "1 emitted, 0 references, 0 dropped, 0 unclassified");
 });
+
+for (const decision of [
+  { action: "emit", name: "second", invocation: "user" },
+  { action: "drop" },
+  { action: "reference", name: "renamed", owner: "first" },
+  { action: "reference", name: "second", owner: "first", reason: " " },
+]) {
+  test(`registry rejects an unexplained ${decision.action} decision (${decision.name ?? "drop"})`, t => {
+    const f = fixture(t), path = "skills/second/SKILL.md";
+    f.write(`vendor/demo/${path}`, f.skill("second"));
+    f.write("registry/skills.json", [...f.skills, { source: "demo", path, ...decision }]);
+    const result = f.run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /demo\/skills\/second\/SKILL\.md needs a reason/);
+  });
+}
 
 for (const [name, mutate, diagnostic] of [
   ["unclassified skill", f => f.write("vendor/demo/skills/unclassified/SKILL.md", f.skill("unclassified")), /unclassified.*skills\/unclassified\/SKILL.md/i],

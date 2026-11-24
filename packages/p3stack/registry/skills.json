@@ -23,14 +23,7 @@
     "action": "emit",
     "name": "architect",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Explore competing interfaces before implementation; grilling instead settles decisions with the human."
   },
   {
     "source": "cursor-plugins",
@@ -38,14 +31,7 @@
     "action": "emit",
     "name": "arena",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Compare independent solutions to the same task and graft the strongest parts onto one candidate."
   },
   {
     "source": "cursor-plugins",
@@ -59,28 +45,13 @@
     "action": "emit",
     "name": "benchmark-checklist",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Check that a measured speedup represents the intended work before reporting it."
   },
   {
     "source": "cursor-plugins",
     "path": "skills/blast-radius/SKILL.md",
     "action": "reference",
     "name": "blast-radius",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from code-review for this part of its procedure.",
     "owner": "code-review"
   },
   {
@@ -88,14 +59,6 @@
     "path": "skills/bro/SKILL.md",
     "action": "reference",
     "name": "bro",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from technical-writing for this part of its procedure.",
     "owner": "technical-writing"
   },
   {
@@ -104,14 +67,7 @@
     "action": "emit",
     "name": "correct",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Turn a repeated agent mistake into a check that fails on a past instance."
   },
   {
     "source": "cursor-plugins",
@@ -119,14 +75,7 @@
     "action": "emit",
     "name": "create-formal-verification-skill",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Generate a project-local proof harness for properties that app-driver tests cannot establish."
   },
   {
     "source": "cursor-plugins",
@@ -134,14 +83,7 @@
     "action": "emit",
     "name": "create-verification-skill",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Generate a project-local driver that exercises the app through its user interface."
   },
   {
     "source": "cursor-plugins",
@@ -149,14 +91,7 @@
     "action": "emit",
     "name": "figure-it-out",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Build a verifiable procedure for work that fits no existing playbook."
   },
   {
     "source": "cursor-plugins",
@@ -164,28 +99,13 @@
     "action": "emit",
     "name": "how",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Trace the current code path; why reconstructs the decisions that led to it."
   },
   {
     "source": "cursor-plugins",
     "path": "skills/in-your-own-words/SKILL.md",
     "action": "reference",
     "name": "in-your-own-words",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from grilling for this part of its procedure.",
     "owner": "grilling"
   },
   {
@@ -194,14 +114,7 @@
     "action": "emit",
     "name": "interrogate",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Try to break a design or change, distinct from checking it against a spec."
   },
   {
     "source": "cursor-plugins",
@@ -209,14 +122,7 @@
     "action": "emit",
     "name": "ketchup",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Summarize this conversation and its pending decisions; recall reconstructs work across sessions."
   },
   {
     "source": "cursor-plugins",
@@ -229,14 +135,6 @@
     "path": "skills/maintain-formal-verification-skill/SKILL.md",
     "action": "reference",
     "name": "maintain-formal-verification-skill",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from create-formal-verification-skill for this part of its procedure.",
     "owner": "create-formal-verification-skill"
   },
   {
@@ -244,14 +142,6 @@
     "path": "skills/maintain-verification-skill/SKILL.md",
     "action": "reference",
     "name": "maintain-verification-skill",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from create-verification-skill for this part of its procedure.",
     "owner": "create-verification-skill"
   },
   {
@@ -265,14 +155,7 @@
     "path": "skills/no-comments/SKILL.md",
     "action": "reference",
     "name": "no-comments",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from code-review for this part of its procedure.",
+    "reason": "The comment-cleanup route needs this procedure, not the full standards and spec review.",
     "owner": "code-review"
   },
   {
@@ -281,14 +164,7 @@
     "action": "emit",
     "name": "poteto-help",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Give users the route and standalone-skill index without requiring router mode."
   },
   {
     "source": "cursor-plugins",
@@ -296,28 +172,13 @@
     "action": "emit",
     "name": "poteto-mode",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Supply the playbooks and principles that p3stack-mode routes to."
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-attack-the-premise/SKILL.md",
     "action": "reference",
     "name": "principle-attack-the-premise",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -325,14 +186,6 @@
     "path": "skills/principle-boundary-discipline/SKILL.md",
     "action": "reference",
     "name": "principle-boundary-discipline",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -340,14 +193,6 @@
     "path": "skills/principle-build-the-lever/SKILL.md",
     "action": "reference",
     "name": "principle-build-the-lever",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -355,14 +200,6 @@
     "path": "skills/principle-encode-lessons-in-structure/SKILL.md",
     "action": "reference",
     "name": "principle-encode-lessons-in-structure",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -370,14 +207,6 @@
     "path": "skills/principle-exhaust-the-design-space/SKILL.md",
     "action": "reference",
     "name": "principle-exhaust-the-design-space",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -385,14 +214,6 @@
     "path": "skills/principle-experience-first/SKILL.md",
     "action": "reference",
     "name": "principle-experience-first",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -400,14 +221,6 @@
     "path": "skills/principle-explain-the-number/SKILL.md",
     "action": "reference",
     "name": "principle-explain-the-number",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -415,14 +228,6 @@
     "path": "skills/principle-fix-root-causes/SKILL.md",
     "action": "reference",
     "name": "principle-fix-root-causes",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -430,14 +235,6 @@
     "path": "skills/principle-foundational-thinking/SKILL.md",
     "action": "reference",
     "name": "principle-foundational-thinking",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -445,14 +242,6 @@
     "path": "skills/principle-guard-the-context-window/SKILL.md",
     "action": "reference",
     "name": "principle-guard-the-context-window",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -460,14 +249,6 @@
     "path": "skills/principle-laziness-protocol/SKILL.md",
     "action": "reference",
     "name": "principle-laziness-protocol",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -475,14 +256,6 @@
     "path": "skills/principle-make-operations-idempotent/SKILL.md",
     "action": "reference",
     "name": "principle-make-operations-idempotent",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -490,14 +263,6 @@
     "path": "skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md",
     "action": "reference",
     "name": "principle-migrate-callers-then-delete-legacy-apis",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -505,14 +270,6 @@
     "path": "skills/principle-minimize-reader-load/SKILL.md",
     "action": "reference",
     "name": "principle-minimize-reader-load",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -520,14 +277,6 @@
     "path": "skills/principle-model-the-domain/SKILL.md",
     "action": "reference",
     "name": "principle-model-the-domain",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -535,14 +284,6 @@
     "path": "skills/principle-never-block-on-the-human/SKILL.md",
     "action": "reference",
     "name": "principle-never-block-on-the-human",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -550,14 +291,6 @@
     "path": "skills/principle-outcome-oriented-execution/SKILL.md",
     "action": "reference",
     "name": "principle-outcome-oriented-execution",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -565,14 +298,6 @@
     "path": "skills/principle-prove-it-works/SKILL.md",
     "action": "reference",
     "name": "principle-prove-it-works",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -580,14 +305,6 @@
     "path": "skills/principle-redesign-from-first-principles/SKILL.md",
     "action": "reference",
     "name": "principle-redesign-from-first-principles",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -595,14 +312,6 @@
     "path": "skills/principle-separate-before-serializing-shared-state/SKILL.md",
     "action": "reference",
     "name": "principle-separate-before-serializing-shared-state",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -610,14 +319,6 @@
     "path": "skills/principle-sequence-verifiable-units/SKILL.md",
     "action": "reference",
     "name": "principle-sequence-verifiable-units",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -625,14 +326,6 @@
     "path": "skills/principle-subtract-before-you-add/SKILL.md",
     "action": "reference",
     "name": "principle-subtract-before-you-add",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -640,14 +333,6 @@
     "path": "skills/principle-test-behavior-not-implementation/SKILL.md",
     "action": "reference",
     "name": "principle-test-behavior-not-implementation",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -655,14 +340,6 @@
     "path": "skills/principle-type-system-discipline/SKILL.md",
     "action": "reference",
     "name": "principle-type-system-discipline",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from poteto-mode's Principles index.",
     "owner": "poteto-mode"
   },
   {
@@ -671,28 +348,13 @@
     "action": "emit",
     "name": "recall",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Reconstruct an earlier workstream from history, live state and shared records."
   },
   {
     "source": "cursor-plugins",
     "path": "skills/reflect/SKILL.md",
     "action": "reference",
     "name": "reflect",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from retro for this part of its procedure.",
     "owner": "retro"
   },
   {
@@ -701,28 +363,13 @@
     "action": "emit",
     "name": "setup-pstack",
     "invocation": "model",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Write role defaults from the models available on this host."
   },
   {
     "source": "cursor-plugins",
     "path": "skills/sharpen/SKILL.md",
     "action": "reference",
     "name": "sharpen",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from architect for this part of its procedure.",
     "owner": "architect"
   },
   {
@@ -730,14 +377,6 @@
     "path": "skills/show-me-your-work/SKILL.md",
     "action": "reference",
     "name": "show-me-your-work",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from p3stack-mode for this part of its procedure.",
     "owner": "p3stack-mode"
   },
   {
@@ -746,13 +385,6 @@
     "action": "emit",
     "name": "statechart",
     "invocation": "user",
-    "phases": [
-      "verify"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Draw user-visible behavior and model counterexamples with portable Node scripts, with TLC and PNG rendering as explicit external prerequisites."
   },
   {
@@ -761,28 +393,14 @@
     "action": "emit",
     "name": "swarm",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Combine parallel workers' findings into one report; arena selects a winning candidate."
   },
   {
     "source": "cursor-plugins",
     "path": "skills/tdd/SKILL.md",
     "action": "reference",
     "name": "regression-test",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from tdd for this part of its procedure.",
+    "reason": "Keep Pocock's tdd entry for general TDD and pstack's narrower failing-before-fix procedure here.",
     "owner": "tdd"
   },
   {
@@ -790,14 +408,6 @@
     "path": "skills/teach/SKILL.md",
     "action": "reference",
     "name": "teach",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from how for this part of its procedure.",
     "owner": "how"
   },
   {
@@ -806,28 +416,13 @@
     "action": "emit",
     "name": "technical-writing",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Edit developer-facing documentation; writing-for-agents targets agent instructions."
   },
   {
     "source": "cursor-plugins",
     "path": "skills/typescript-best-practices/SKILL.md",
     "action": "reference",
     "name": "typescript-best-practices",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from architect for this part of its procedure.",
     "owner": "architect"
   },
   {
@@ -835,14 +430,6 @@
     "path": "skills/unslop/SKILL.md",
     "action": "reference",
     "name": "unslop",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from technical-writing for this part of its procedure.",
     "owner": "technical-writing"
   },
   {
@@ -851,14 +438,7 @@
     "action": "emit",
     "name": "why",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Trace a design decision to its historical evidence rather than infer intent from current code."
   },
   {
     "source": "matt-pocock",
@@ -872,13 +452,6 @@
     "action": "emit",
     "name": "code-review",
     "invocation": "model",
-    "phases": [
-      "review-own-work"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Standards and spec review stays separate from adversarial review."
   },
   {
@@ -886,14 +459,7 @@
     "path": "skills/engineering/codebase-design/SKILL.md",
     "action": "reference",
     "name": "codebase-design",
-    "phases": [
-      "align-and-design"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from architect for this part of its procedure.",
+    "reason": "Share one deep-module vocabulary across architect, tdd and the architecture survey.",
     "owner": "architect"
   },
   {
@@ -902,13 +468,6 @@
     "action": "emit",
     "name": "diagnosing-bugs",
     "invocation": "model",
-    "phases": [
-      "debug"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Keep the red reproduction loop before Bug fix."
   },
   {
@@ -917,13 +476,6 @@
     "action": "emit",
     "name": "domain-modeling",
     "invocation": "model",
-    "phases": [
-      "docs"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Keep glossary and ADR authoring."
   },
   {
@@ -937,14 +489,6 @@
     "path": "skills/engineering/implement/SKILL.md",
     "action": "reference",
     "name": "implement",
-    "phases": [
-      "implement"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Read from implement-spec for this part of its procedure.",
     "owner": "implement-spec"
   },
   {
@@ -953,13 +497,6 @@
     "action": "emit",
     "name": "implement-spec",
     "invocation": "user",
-    "phases": [
-      "orchestrate-and-autonomy"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Admit the tracker ticket-graph runner for owner work."
   },
   {
@@ -968,13 +505,6 @@
     "action": "emit",
     "name": "improve-codebase-architecture",
     "invocation": "user",
-    "phases": [
-      "understand-codebase"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Admit the whole-repo architecture survey."
   },
   {
@@ -983,13 +513,6 @@
     "action": "emit",
     "name": "pr",
     "invocation": "model",
-    "phases": [
-      "ship-pr"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Keep PR body guidance outside mode routing."
   },
   {
@@ -998,13 +521,6 @@
     "action": "emit",
     "name": "interactive-prototype",
     "invocation": "model",
-    "phases": [
-      "align-and-design"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "A prototype a human tries and judges, chained into the Prototype playbook, which stays the agent-judged path."
   },
   {
@@ -1013,13 +529,6 @@
     "action": "emit",
     "name": "research",
     "invocation": "model",
-    "phases": [
-      "research"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Keep cited research from outside the repository."
   },
   {
@@ -1028,13 +537,6 @@
     "action": "emit",
     "name": "retro",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Admit environment retrospectives, distinct from skill reflection."
   },
   {
@@ -1043,13 +545,6 @@
     "action": "emit",
     "name": "setup-matt-pocock-skills",
     "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Admit tracker configuration required by the owner skills."
   },
   {
@@ -1058,13 +553,6 @@
     "action": "emit",
     "name": "tdd",
     "invocation": "model",
-    "phases": [
-      "test"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Keep confirmed-seam TDD under its upstream name."
   },
   {
@@ -1073,13 +561,6 @@
     "action": "emit",
     "name": "to-spec",
     "invocation": "user",
-    "phases": [
-      "plan"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Admit tracker specs, distinct from PR checklist plans."
   },
   {
@@ -1088,13 +569,6 @@
     "action": "emit",
     "name": "to-tickets",
     "invocation": "user",
-    "phases": [
-      "plan"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Admit vertical ticket slices with blocking edges."
   },
   {
@@ -1103,12 +577,6 @@
     "action": "emit",
     "name": "triage",
     "invocation": "user",
-    "phases": [
-      "review-others-work"
-    ],
-    "roles": [
-      "owner"
-    ],
     "reason": "Admit incoming issues and external PR intake."
   },
   {
@@ -1117,13 +585,6 @@
     "action": "emit",
     "name": "wayfinder",
     "invocation": "user",
-    "phases": [
-      "plan"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Admit the decision-ticket map for large efforts."
   },
   {
@@ -1132,13 +593,6 @@
     "action": "emit",
     "name": "wizard",
     "invocation": "model",
-    "phases": [
-      "implement"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Admit scripts for steps only a human can perform."
   },
   {
@@ -1225,13 +679,6 @@
     "action": "emit",
     "name": "grilling",
     "invocation": "model",
-    "phases": [
-      "align-and-design"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Keep the shared human interview."
   },
   {
@@ -1240,13 +687,6 @@
     "action": "emit",
     "name": "handoff",
     "invocation": "user",
-    "phases": [
-      "orchestrate-and-autonomy"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Keep portable handoff notes across tools and people."
   },
   {
@@ -1273,13 +713,6 @@
     "action": "emit",
     "name": "writing-for-agents",
     "invocation": "model",
-    "phases": [
-      "author-skills"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Keep the agent-document authoring procedure."
   },
   {
@@ -1293,13 +726,7 @@
     "path": "dyl-stack/skills/dyl-mode/SKILL.md",
     "action": "reference",
     "name": "dyl-mode",
-    "phases": [
-      "review-others-work"
-    ],
-    "roles": [
-      "owner"
-    ],
-    "reason": "Read from dyl-review for this part of its procedure.",
+    "reason": "Keep Dylan's merge criteria available to review without a second mode entry.",
     "owner": "dyl-review"
   },
   {
@@ -1314,12 +741,6 @@
     "action": "emit",
     "name": "dyl-review",
     "invocation": "user",
-    "phases": [
-      "review-others-work"
-    ],
-    "roles": [
-      "owner"
-    ],
     "reason": "Admit the owner review procedure and its Dylan lens."
   },
   {
@@ -1333,13 +754,6 @@
     "path": "thermos/skills/thermo-nuclear-code-quality-review/SKILL.md",
     "action": "reference",
     "name": "thermo-nuclear-code-quality-review",
-    "phases": [
-      "review-others-work"
-    ],
-    "roles": [
-      "owner"
-    ],
-    "reason": "Read from dyl-review for this part of its procedure.",
     "owner": "dyl-review"
   },
   {
@@ -1347,13 +761,6 @@
     "path": "thermos/skills/thermo-nuclear-review/SKILL.md",
     "action": "reference",
     "name": "thermo-nuclear-review",
-    "phases": [
-      "review-others-work"
-    ],
-    "roles": [
-      "owner"
-    ],
-    "reason": "Read from dyl-review for this part of its procedure.",
     "owner": "dyl-review"
   },
   {
@@ -1361,13 +768,7 @@
     "path": "thermos/skills/thermos/SKILL.md",
     "action": "reference",
     "name": "thermos",
-    "phases": [
-      "review-others-work"
-    ],
-    "roles": [
-      "owner"
-    ],
-    "reason": "Read from dyl-review for this part of its procedure.",
+    "reason": "Deep PR review uses both rubrics; quick review needs neither.",
     "owner": "dyl-review"
   },
   {
@@ -1406,14 +807,6 @@
     "action": "emit",
     "name": "constraints",
     "invocation": "user",
-    "phases": [
-      "plan",
-      "verify"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Writes the project's quality bar with numbers into CONSTRAINTS.md; floor-check enforces its floor."
   },
   {
@@ -1482,13 +875,6 @@
     "action": "emit",
     "name": "instrumentation",
     "invocation": "user",
-    "phases": [
-      "implement"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Structured logs, RED metrics, tracing and symptom alerts; no other source covers telemetry."
   },
   {
@@ -1509,14 +895,6 @@
     "action": "emit",
     "name": "security-hardening",
     "invocation": "user",
-    "phases": [
-      "align-and-design",
-      "implement"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Design- and build-time hardening; thermos stays the review-time audit."
   },
   {
@@ -1531,14 +909,6 @@
     "action": "emit",
     "name": "source-grounding",
     "invocation": "model",
-    "phases": [
-      "implement",
-      "research"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Grounds framework-specific code in the installed version's official docs; nothing else covers code written from memory."
   },
   {
@@ -1655,12 +1025,6 @@
     "action": "emit",
     "name": "release",
     "invocation": "model",
-    "phases": [
-      "release"
-    ],
-    "roles": [
-      "owner"
-    ],
     "reason": "Prepare notes and local versions with an explicit publication pause."
   },
   {
@@ -1669,13 +1033,6 @@
     "action": "emit",
     "name": "onboard-brownfield",
     "invocation": "model",
-    "phases": [
-      "understand-codebase"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Map an existing repository through the brownfield onboarding playbook."
   },
   {
@@ -1684,13 +1041,6 @@
     "action": "emit",
     "name": "p3stack-mode",
     "invocation": "user",
-    "phases": [
-      "route"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
     "reason": "Compose the registry routes and chains with poteto-mode."
   },
   {
@@ -1699,12 +1049,6 @@
     "action": "emit",
     "name": "maintain-p3stack",
     "invocation": "model",
-    "phases": [
-      "maintain"
-    ],
-    "roles": [
-      "owner"
-    ],
     "reason": "Audit source pins and land verified upstream update PRs, reverting a merge that breaks main."
   }
 ]
