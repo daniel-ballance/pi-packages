@@ -187,6 +187,10 @@ test("code-review's Git inputs cover the index, working tree and new files, or t
   const others = commands.find(c => c.startsWith("ls-files "));
   assert.ok(others);
   assert.deepEqual(run(others).split("\0"), [path, ""]);
+  const whole = step.match(/`([^`]+)` for a whole-branch review/)?.[1];
+  assert.ok(whole);
+  assert.match(git("-C", scope, "status", "--porcelain=v1", "--", whole), /unrelated/);
+  assert.match(step, /from the repository root/i);
   assert.match(step, /path[^\n]*size[^\n]*content hash/i);
   assert.match(step, /binary/i);
 
