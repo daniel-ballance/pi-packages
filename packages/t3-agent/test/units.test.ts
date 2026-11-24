@@ -8,7 +8,7 @@ import { Ledger, observe, rebuild, resultPayload, ENTRY_TYPE } from "../extensio
 import { contextualTools, desiredTools, nextActive, type ToolInfo } from "../extensions/t3-agent/src/loadout.ts";
 import { buildSection } from "../extensions/t3-agent/src/prompt.ts";
 import { modeLabel, runtimeMode, t3ToolName } from "../extensions/t3-agent/src/runtime.ts";
-import { readWorkspace, type Exec } from "../extensions/t3-agent/src/workspace.ts";
+import { workspaceReader, type Exec } from "../extensions/t3-agent/src/workspace.ts";
 
 // Recorded from real T3 sessions: results arrive as JSON text with no structured content.
 const delegateResult = [{ type: "text", text: JSON.stringify({
@@ -204,6 +204,25 @@ test("PR watches and unwatches share a verified forge key across spellings and r
   assert.deepEqual(ledger.open(), []);
 });
 
+test("pre-upgrade PR receipts survive replay without turning an unknown origin into a trusted link", () => {
+  const ledger = new Ledger();
+  const urls = ["https://gitlab.example.com/g/p/-/merge_requests/3", "https://forge.example:4431/team/repo/pulls/4"];
+  const branch = ["o/r#7", ...urls].map(id => ({ type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id, status: "watching", open: true } }));
+  rebuild(ledger, branch);
+  assert.equal(ledger.open("pr").length, 3);
+  assert.match(ledger.render()!, /watching PR o\/r#7/);
+  assert.ok(contextualTools(ledger).includes("unwatch_pull_request"));
+  assert.match(ledger.render()!, /#3@gitlab\.example\.com/);
+  assert.doesNotMatch(ledger.render()!, /https:|g\/p|team\/repo/);
+  // Structured results identify the same self-hosted watches without trusting the old URL path.
+  for (const [host, repository, number] of [["gitlab.example.com", "g/p", 3], ["forge.example:4431", "team/repo", 4]]) {
+    for (const update of observe("unwatch_pull_request", {}, { host, repository, number, watching: false })) ledger.apply(update);
+  }
+  assert.deepEqual(ledger.open().map(h => h.id), ["o/r#7"]);
+  rebuild(ledger, [...branch, ...branch.map(e => ({ ...e, data: { kind: "pr", id: e.data.id, open: false } }))]);
+  assert.deepEqual(ledger.open(), []);
+});
+
 test("devices use the reported host and id, including on an argument-less close", () => {
   const ledger = new Ledger();
   const apply = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) =>
@@ -300,20 +319,18 @@ test("the prompt section states mode, workspace, loadout and open handles", () =
 
 test("readWorkspace reports a T3 worktree from git", async () => {
   const replies: Record<string, string | undefined> = {
-    "rev-parse": "/home/u/.t3/worktrees/p/t3-1\n/home/u/Code/p/.git/worktrees/t3-1\n/home/u/Code/p/.git",
-    "branch": "feat/x",
+    "rev-parse": "/home/u/.t3/worktrees/p/t3-1\n/home/u/Code/p/.git/worktrees/t3-1\n/home/u/Code/p/.git\nrefs/heads/feat/x",
     "worktree": "worktree /home/u/Code/p\nHEAD abc\nbranch refs/heads/main\n",
     "symbolic-ref": "origin/main",
-    "rev-parse@{u}": undefined,
   };
   const exec: Exec = async (_command, args) => {
-    const key = args.includes("@{u}") ? "rev-parse@{u}" : args[0]!;
+    const key = args[0]!;
     const stdout = replies[key];
     return stdout === undefined ? { stdout: "", code: 128 } : { stdout, code: 0 };
   };
-  assert.deepEqual(await readWorkspace(exec, "/home/u/.t3/worktrees/p/t3-1"), {
+  assert.deepEqual(await workspaceReader(exec)("/home/u/.t3/worktrees/p/t3-1"), {
     root: "/home/u/.t3/worktrees/p/t3-1", branch: "feat/x", linked: true, mainCheckout: "/home/u/Code/p", t3Managed: true, defaultBranch: "origin/main",
   });
-  assert.equal(await readWorkspace(async () => ({ stdout: "", code: 128 }), "/tmp"), undefined);
-  assert.equal(await readWorkspace(async () => { throw new Error("no git"); }, "/tmp"), undefined);
+  assert.equal(await workspaceReader(async () => ({ stdout: "", code: 128 }))("/tmp"), undefined);
+  assert.equal(await workspaceReader(async () => { throw new Error("no git"); })("/tmp"), undefined);
 });
