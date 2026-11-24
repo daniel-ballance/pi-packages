@@ -146,20 +146,32 @@ test("every reference is packed under its owner's skill, not discoverable as a c
   }
 });
 
+const removedCommands = new Set(registry.filter(row => row.action !== "emit").flatMap(row => {
+  const name = row.name ?? posix.basename(posix.dirname(row.path));
+  return [`/${name}`, `/skill:${name}`];
+}));
+
+function leftoverCommands(line) {
+  const words = line.split(/[\s`"'()[\],;!*<>]+/).map(word => word.replace(/[.?:]$/, ""));
+  return words.filter(word => removedCommands.has(word));
+}
+
+test("the independent leftover scan recognizes wrapped commands but not path segments", () => {
+  for (const [literal, expected] of [["Run `(/skill:unslop)`.", "/skill:unslop"], ["<instruction></teach>", "/teach"], ["Use **/sharpen**!", "/sharpen"]]) {
+    assert.deepEqual(leftoverCommands(literal), [expected], literal);
+  }
+  assert.deepEqual(leftoverCommands("docs/teach /teach.md /sharpen/file https://example.test/teach"), []);
+});
+
 test("no emitted file contains a removed command or a path to a retired skill directory", () => {
   const names = [...registry.filter(row => row.action === "reference").map(row => row.name), "automate-me", "grill-with-docs", "ketchup-video"];
   const oldPath = new RegExp(`(?:\\.\\./|\\bskills/)(?:${names.join("|")})/`);
-  const commands = new Set(registry.filter(row => row.action !== "emit").flatMap(row => {
-    const name = row.name ?? posix.basename(posix.dirname(row.path));
-    return [`/${name}`, `/skill:${name}`];
-  }));
   const problems = [];
   for (const root of ["skills", "agents"]) {
     for (const path of walk(join(cwd, root))) {
       const file = join(root, path), text = readFileSync(join(cwd, file), "utf8");
       for (const [i, line] of text.split("\n").entries()) {
-        const words = line.split(/[\s`"'()[\],;!]+/).map(word => word.replace(/[.?:]$/, ""));
-        const hits = words.filter(word => commands.has(word)), pathHit = line.match(oldPath);
+        const hits = leftoverCommands(line), pathHit = line.match(oldPath);
         if (pathHit) hits.push(pathHit[0]);
         for (const hit of hits) problems.push(`${file}:${i + 1}: ${hit}`);
       }
