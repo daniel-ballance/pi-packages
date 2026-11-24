@@ -151,6 +151,27 @@ test("a setup pin outside T3's short list gets an exact lookup before any family
   assert.deepEqual(queries, [{}, { search: id }]);
 });
 
+test("a truncated T3 listing searches missing panel hints once and only when diversity needs them", async t => {
+  for (const diverse of [false, true]) {
+    const searches: unknown[] = [];
+    const short = Array.from({ length: 8 }, (_, i) => t3Model(diverse && !i ? "gemini-3" : `gpt-${i}`, "high"));
+    const omitted = [t3Model("xai/grok-4.7", "high"), t3Model("anthropic/claude-opus-5-5", "high")];
+    const h = lookup(t, "t3", { t3: ({ search }: { search?: string }) => {
+      searches.push(search);
+      const models = search ? omitted.filter(m => m.id.includes(search)) : short;
+      return { providers: [{ ...provider("work", ...models), omittedModels: search ? 0 : omitted.length }] };
+    } });
+    for (let i = 0; i < 2; i++) {
+      const { roles, problems } = await h.resolve();
+      assert.ok(!problems.some(p => p.includes("cannot give every panel seat a distinct family")));
+      const panel = roles["arena runners"];
+      assert.ok(Array.isArray(panel));
+      assert.equal(new Set(panel.map(s => typeof s === "object" && s && family(s.model))).size, 2);
+    }
+    assert.deepEqual(searches, diverse ? [undefined] : [undefined, "claude-opus-5-5", "grok-4.7"]);
+  }
+});
+
 test("a reasoning toggle is not the model's advertised thinking level option", async t => {
   const model = { id: "gpt-6", options: [{ id: "adaptiveThinking", values: [true, false] }, { id: "thinking", values: ["high"] }] };
   const h = lookup(t, "t3", { pins: { "bug-fix": "work/gpt-6:high" }, t3: { providers: [{ providerInstanceId: "work", models: [model], canRunChildTask: true }] } });

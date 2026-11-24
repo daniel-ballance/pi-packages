@@ -155,11 +155,12 @@ function t3Selections(data: unknown) {
   if (!Array.isArray(catalog.providers)) throw new Error("no providers in capabilities response");
   const instances = new Set<string>();
   const choices: Selection[] = [];
-  let inherited: Selection | undefined;
+  let inherited: Selection | undefined, omitted = false;
   for (const provider of catalog.providers.map(record)) {
     if (typeof provider.providerInstanceId !== "string") continue;
     instances.add(provider.providerInstanceId);
     if (provider.canRunChildTask !== true) continue;
+    if (typeof provider.omittedModels === "number" && provider.omittedModels > 0) omitted = true;
     for (const model of array(provider.models).map(record)) {
       if (typeof model.id !== "string") continue;
       const base = { provider: provider.providerInstanceId, model: model.id };
@@ -167,7 +168,7 @@ function t3Selections(data: unknown) {
       choices.push(...t3Levels(base, model.options));
     }
   }
-  return { choices, instances, inherited, searched: new Set<string>() };
+  return { choices, instances, inherited, omitted, searched: new Set<string>() };
 }
 
 const CAPABILITIES = "mcp__t3-code__orchestrator_capabilities";
@@ -191,7 +192,7 @@ export function setupCatalog(pi: CatalogApi): string[] | undefined {
   return catalog.choices.filter(s => s.level).map(identity);
 }
 
-async function selections(pi: CatalogApi, ctx: RoleContext, pins: string[], policy: FilePolicy, signal?: AbortSignal): Promise<LiveCatalog> {
+async function selections(pi: CatalogApi, ctx: RoleContext, roles: Resolved["roles"], policy: FilePolicy, author?: string, signal?: AbortSignal): Promise<LiveCatalog> {
   if (detectHost() === "t3") {
     const query = async (args: { search?: string }) => {
       const { result, isError } = await ctx.executeTool(CAPABILITIES, args, { signal });
@@ -199,23 +200,37 @@ async function selections(pi: CatalogApi, ctx: RoleContext, pins: string[], poli
       return parseCatalog(result);
     };
     const catalog = t3Catalogs.get(pi) ?? await query({});
-    for (const pin of pins) {
+    const matchesModel = (s: Selection, name: string) => s.model === name || s.model.endsWith(`/${name}`);
+    const searchOnce = async (search: string) => {
+      if (catalog.searched.has(search)) return;
+      const extra = await query({ search });
+      catalog.searched.add(search);
+      for (const id of extra.instances) catalog.instances.add(id);
+      const known = new Set(catalog.choices.map(identity));
+      for (const s of extra.choices) {
+        if (matchesModel(s, search) && !known.has(identity(s))) catalog.choices.push(s);
+      }
+    };
+    for (const pin of Object.values(roles).flatMap(r => r.fromFile ? r.value : [])) {
       const { name } = pinParts(pin), slash = name.indexOf("/");
       if (slash < 0) continue;
       const instanceListed = catalog.instances.has(name.slice(0, slash));
       if (policy === "pin" && !instanceListed) continue;
       const foreign = policy === "foreign" || (policy === "legacy" && !instanceListed);
       if (catalog.choices.some(s => foreign ? foreignModel(s, name) : nameOf(s) === name || nameOf(s) === pin)) continue;
-      // A short listing isn't a refusal. Search once per missing pinned model,
-      // retaining only exact model ids, not unrelated hits from the search.
-      const search = name.slice(slash + 1);
-      if (catalog.searched.has(search)) continue;
-      const extra = await query({ search });
-      catalog.searched.add(search);
-      for (const id of extra.instances) catalog.instances.add(id);
-      const known = new Set(catalog.choices.map(identity));
-      for (const s of extra.choices) {
-        if ((s.model === search || s.model.endsWith(`/${search}`)) && !known.has(identity(s))) catalog.choices.push(s);
+      await searchOnce(name.slice(slash + 1));
+    }
+    if (catalog.omitted) for (const { value, fromFile } of Object.values(roles)) {
+      if (fromFile || !Array.isArray(value)) continue; // File seats got their exact lookups above.
+      const used: string[] = [];
+      for (const hint of value) {
+        const { found } = choose(hint, catalog, author, used);
+        if (found) used.push(modelFamily(found.model));
+      }
+      if (new Set(used.filter(f => KNOWN_FAMILY.test(f))).size === value.length) continue;
+      for (const hint of value) {
+        const { name, level } = hintParts(hint);
+        if (!catalog.choices.some(s => matchesModel(s, name) && (!level || s.level && rank(s.level) <= rank(level)))) await searchOnce(name);
       }
     }
     t3Catalogs.set(pi, catalog);
@@ -300,9 +315,9 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
   const roles: Record<string, string | Target | null | (string | Target | null)[]> = {};
   const problems = [...defaults.problems];
   let catalog: LiveCatalog;
-  const pins = Object.values(defaults.roles).flatMap(r => r.fromFile ? r.value : []);
+  const author = distinctFrom ? family(distinctFrom) : undefined;
   const policy = defaults.host === undefined ? "legacy" : defaults.host === roleHost() ? "pin" : "foreign";
-  try { catalog = await selections(pi, ctx, pins, policy, signal); }
+  try { catalog = await selections(pi, ctx, defaults.roles, policy, author, signal); }
   catch (error) {
     t3Catalogs.delete(pi);
     const source = detectHost() === "t3" ? "T3 catalog" : "catalog";
@@ -311,7 +326,6 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
   }
   const parent = catalog.instances ? catalog.inherited : catalog.choices.find(s =>
     s.provider === ctx.model?.provider && s.model === ctx.model.id && s.level === pi.getThinkingLevel());
-  const author = distinctFrom ? family(distinctFrom) : undefined;
   const parentId = catalog.inherited?.model ?? ctx.model?.id;
   const notes = new Map<string, Set<string>>();
   const note = (role: string, message: string) => {
