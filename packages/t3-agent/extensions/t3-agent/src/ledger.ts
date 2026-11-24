@@ -86,12 +86,17 @@ function forgeKey(host: unknown, repository: unknown, number: unknown): string |
   return `https://${authority}/${repo}/${route}/${number}`;
 }
 
-function keyFromForgeUrl(value: string): string | undefined {
+function forgeUrlParts(value: string): [host: string, repository: string, number: number] | undefined {
   if (value.length > 2048) return undefined;
   const url = URL.parse(value);
   if (url?.protocol !== "https:" || !forgeRoutes.has(url.host)) return undefined;
   const match = /^\/(.+?)\/(pull|pulls|pull-requests|-\/merge_requests|pullrequest)\/([1-9]\d*)(?:\/|$)/.exec(url.pathname);
-  return match && match[2] === forgeRoutes.get(url.host) ? forgeKey(url.host, match[1], Number(match[3])) : undefined;
+  return match && match[2] === forgeRoutes.get(url.host) ? [url.host, match[1], Number(match[3])] : undefined;
+}
+
+function keyFromForgeUrl(value: string): string | undefined {
+  const parts = forgeUrlParts(value);
+  return parts && forgeKey(...parts);
 }
 
 // The old URL-only writer could mistake a callback path for a repository. Match a later
@@ -334,8 +339,16 @@ export class Ledger {
 
   apply(update: Handle, unconfirmedIn?: string): void {
     const key = `${update.kind}:${scopedId(update)}`;
-    if (update.kind === "pr" && update.id.includes("@") && !update.id.startsWith("legacy:")) {
-      this.handles.delete(`pr:${scopedId({ ...update, id: legacyAlias(update.id) })}`);
+    if (update.kind === "pr" && !update.id.startsWith("legacy:")) {
+      const dropAlias = (id: string) => this.handles.delete(`pr:${scopedId({ ...update, id })}`);
+      const at = update.id.indexOf("@");
+      if (at >= 0) { // Structured self-hosted key: repo#number@host.
+        dropAlias(legacyAlias(update.id));
+        dropAlias(update.id.slice(0, at));
+      } else {
+        const parts = forgeUrlParts(update.id);
+        if (parts) dropAlias(`${parts[1]}#${parts[2]}`); // The receipt already canonicalized the repository.
+      }
     }
     const previous = this.handles.get(key);
     // Re-insert open receipts so iteration order is most recent last. Closed IDs need no cache.

@@ -179,7 +179,7 @@ test("PR watches and unwatches share a verified forge key across spellings and r
   const callback = "https://webhook.site/00000000-0000-4000-8000-000000000000/hook/pull/3";
   const pr = { host: "github.com", repository: "Org/Repo", number: 7 };
   const ledger = new Ledger();
-  const branch = [{ kind: "pr", id: callback, open: true }];
+  const branch = [callback, "org/repo#7"].map(id => ({ kind: "pr", id, open: true }));
   const step = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) => {
     const rows = observe(tool, input, result);
     assert.doesNotMatch(JSON.stringify(rows), /diff-file|webhook\.site/);

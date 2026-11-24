@@ -170,6 +170,29 @@ test("scoped handles replay as unconfirmed until observed; foreign watches, rewi
   assert.doesNotMatch((await startTurn(fork)).t3_agent!, /watching PR|taskId=d|scheduledTaskId=s|legacy-tab/);
 });
 
+test("unwatch by URL closes a replayed hostless PR on the same target only", async () => {
+  const session = SessionManager.inMemory();
+  for (const id of ["https://gitlab.com/org/repo/-/merge_requests/7", "Org/Repo#7", "org/repo#8"]) {
+    session.appendCustomEntry(ENTRY_TYPE, { kind: "pr", id, open: true, status: "watching" });
+  }
+  const f = fixture(T3, { sessionId: session.getSessionId(), branch: session.getBranch() });
+  await f.emit("session_start");
+  const url = "https://github.com/org/repo/pull/7";
+  const result = { host: "github.com", repository: "Org/Repo", number: 7, url, watching: false, wasWatching: true };
+  await toolResult(f, "unwatch_pull_request", { url, threadId: "other" }, result);
+  assert.match((await startTurn(f)).t3_agent!, /watching PR org\/repo#7/);
+  await toolResult(f, "unwatch_pull_request", { url }, result);
+  for (const e of (await f.emit("turn_end", { entries: [] })).entries) session.appendCustomEntry(e.customType, e.data);
+  const restart = fixture(T3, { sessionId: session.getSessionId(), branch: session.getBranch() });
+  await restart.emit("session_start");
+  for (const caller of [f, restart]) {
+    const text = (await startTurn(caller)).t3_agent!;
+    assert.doesNotMatch(text, /watching PR org\/repo#7/);
+    assert.match(text, /watching PR org\/repo#8/);
+    assert.match(text, /watching PR https:\/\/gitlab\.com\/org\/repo\/-\/merge_requests\/7/);
+  }
+});
+
 test("same schedule id on a linked environment is retained but never treated as the local schedule", async () => {
   const f = fixture(T3);
   await f.emit("session_start");
