@@ -14,7 +14,7 @@
         { "id": "names-skipped-test", "kind": "skipped-test" }
       ],
       "process": [
-        { "id": "ran-floor-check", "kind": "bash", "pattern": "^\\s*(?:cd\\s+[^;&|\\n]+\\s*&&\\s*)?(?:[^\\s;&|\"'\\x60]*/)?node\\s+(?:\"[^\"\\n]*\\/floor-check\\.mjs\"|'[^'\\n]*\\/floor-check\\.mjs'|(?:[^\\s;&|\"'\\x60]*\\/)?floor-check\\.mjs)(?=\\s|$)", "diagnostic": "(?:^|\\n)skipped-test test/sum\\.test\\.js:13\\b|\"category\":\\s*\"skipped-test\",\\s*\"path\":\\s*\"test/sum\\.test\\.js\",\\s*\"line\":\\s*13\\b" }
+        { "id": "ran-floor-check", "kind": "bash", "pattern": "^\\s*(?:cd\\s+[^;&|\\n]+\\s*&&\\s*)?(?:[A-Za-z_]\\w*=[^\\s;&|]*\\s+)*(?:[^\\s;&|\"'\\x60]*/)?node\\s+(?:\"[^\"\\n]*\\/floor-check\\.mjs\"|'[^'\\n]*\\/floor-check\\.mjs'|(?:[^\\s;&|\"'\\x60]*\\/)?floor-check\\.mjs)(?=\\s|$)", "diagnostic": "(?:^|\\n)skipped-test test/sum\\.test\\.js:13\\b|\"category\":\\s*\"skipped-test\",\\s*\"path\":\\s*\"test/sum\\.test\\.js\",\\s*\"line\":\\s*13\\b" }
       ]
     },
     {
@@ -45,7 +45,7 @@
       "prompt": "Before we build refunds, make something our PM can click through to try the refund states: requested, approved, rejected, and refunded. A partial refund can be approved more than once until the order is fully refunded.",
       "tools": "read,bash,edit,write,grep,find,ls,ask_user",
       "outcome": [
-        { "id": "structural-self-contained-prototype", "kind": "file", "pattern": "\\.[Hh][Tt][Mm][Ll]$", "count": 1, "verifyPrototype": true }
+        { "id": "self-contained-prototype-responds", "kind": "file", "pattern": "\\.[Hh][Tt][Mm][Ll]$", "count": 1, "verifyPrototype": true }
       ],
       "process": [
         { "id": "read-interactive-prototype", "kind": "read", "pattern": "interactive-prototype/SKILL\\.md" }

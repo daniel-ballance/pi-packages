@@ -71,7 +71,9 @@ test("the review needs the executed floor diagnostic, not a successful filename 
   const finding = bashEvents(project, `node "${script}"`);
   assert.equal(finding[1].isError, true);
   assert.equal(grade(check, eventTrace(finding)), true);
-  for (const command of [`ls "${script}"`, `node "${script}" --base missing`]) {
+  // The review playbook says to set GIT_OPTIONAL_LOCKS=0; a live run was scored as missing for doing so.
+  assert.equal(grade(check, eventTrace(bashEvents(project, `GIT_OPTIONAL_LOCKS=0 node "${script}" --json`))), true);
+  for (const command of [`ls "${script}"`, `node "${script}" --base missing`, `X=1 ls "${script}"`]) {
     assert.equal(grade(check, eventTrace(bashEvents(project, command))), false);
   }
 });
@@ -188,6 +190,24 @@ test("prototype checks apply to one usable HTML document, not scattered markers 
   rmSync(join(project, "b.html"));
   symlinkSync(join(outside, "external.html"), path);
   assert.equal(passes(), false, "a link to a document outside the submission is not self-contained");
+});
+
+const chromium = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].some(name => spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0);
+test("in a browser, the prototype check follows what clicks render, not how the script is written", { skip: !chromium && "no Chromium on PATH" }, t => {
+  const { passes, put } = fixture(t, "prototype-logic");
+  const highlight = `<ol><li id=requested class=on>Requested</li><li id=approved>Approved</li><li id=rejected>Rejected</li><li id=refunded>Refunded</li></ol>
+    <button data-to=approved>Approve</button><button data-to=rejected>Reject</button><button data-to=refunded>Refund</button>
+    <script>document.body.addEventListener("click", e => { const to = e.target.dataset.to; if (!to) return; for (const li of document.querySelectorAll("li")) li.className = li.id === to ? "on" : ""; });</script>`;
+  put("a.html", highlight);
+  assert.equal(passes(), true, "state shown by restyling a legend, with no assignment the structural check can see");
+  for (const [why, broken] of [
+    ["transitions that never run", html.replace("if (remaining > 0) state.value", "if (false) state.value").replace("if (remaining > 0) {", "if (false) {")],
+    ["an uncaught error while the page loads", html + "<script>undefined.toFixed(2);</script>"],
+    ["a page that never shows a refunded order", html.replace("'refunded'", "'approved'")],
+  ]) {
+    put("a.html", broken);
+    assert.equal(passes(), false, why);
+  }
 });
 
 const call = { tool: "mcp__context7__query_docs", args: { libraryId: "/vitest-dev/vitest/v3_2_4" }, result: "coverage.thresholds.lines configures line coverage", ok: true };

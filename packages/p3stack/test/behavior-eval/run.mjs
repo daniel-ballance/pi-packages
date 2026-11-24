@@ -143,7 +143,14 @@ export function grade(check, { calls, final }, project, beforeRun) {
     case "file": {
       const files = walk(project).filter(path => new RegExp(check.pattern).test(path));
       if (check.count !== undefined && files.length !== check.count) return false;
-      if (check.verifyPrototype) return files.length === 1 && lstatSync(join(project, files[0])).isFile() && runCheck("python3", [join(here, "oracles/prototype.py"), files[0]], project).status === 0;
+      if (check.verifyPrototype) {
+        if (files.length !== 1 || !lstatSync(join(project, files[0])).isFile()) return false;
+        // Drive the page in a browser when one is installed; exit 3 means none could be driven.
+        const driven = runCheck(process.execPath, [join(here, "oracles/prototype-browser.mjs"), files[0]], project).status;
+        if (driven === 0 || driven === 1) return driven === 0;
+        console.warn("prototype check: no browser could be driven; fell back to the structural check");
+        return runCheck("python3", [join(here, "oracles/prototype.py"), files[0]], project).status === 0;
+      }
       if (!check.contains && !check.absent) return check.count !== undefined || files.length > 0;
       return files.some(path => {
         const text = readFileSync(join(project, path), "utf8");
