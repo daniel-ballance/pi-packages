@@ -6,10 +6,10 @@ import todo from "../extensions/todo/index.js";
 type Handler = (event: unknown, ctx: unknown) => unknown;
 type Tool = { name: string; exposure?: string; execute: (...args: unknown[]) => Promise<any>; renderResult?: (...args: unknown[]) => unknown };
 
-function harness({ hasUI = true, branch = [] as unknown[], extensions = [todo] } = {}) {
+function harness({ hasUI = true, mode = "tui", branch = [] as unknown[], extensions = [todo] } = {}) {
   const tools: Tool[] = [], entries: { customType: string; data: unknown }[] = [], renderers: string[] = [];
   const handlers = new Map<string, Handler[]>();
-  const ui = { widgets: [] as unknown[], notices: [] as unknown[] };
+  const ui = { widgets: [] as unknown[], statuses: [] as unknown[], notices: [] as unknown[] };
   let allTools: { name: string }[] = [];
   const pi = {
     registerTool: (tool: Tool) => { tools.push(tool); },
@@ -18,9 +18,13 @@ function harness({ hasUI = true, branch = [] as unknown[], extensions = [todo] }
     on: (name: string, handler: Handler) => { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
     getAllTools: () => allTools,
   };
-  const uiApi = { setWidget: (key: string, lines: unknown) => ui.widgets.push([key, lines]), notify: (message: string, type: string) => ui.notices.push([message, type]) };
+  const uiApi = {
+    setWidget: (key: string, lines: unknown) => ui.widgets.push([key, lines]),
+    setStatus: (key: string, value: string | undefined) => ui.statuses.push([key, value]),
+    notify: (message: string, type: string) => ui.notices.push([message, type]),
+  };
   const ctx = {
-    hasUI,
+    hasUI, mode,
     get ui() { if (!hasUI) throw new Error("touched ui without UI"); return uiApi; },
     sessionManager: { getBranch: () => branch },
   };
@@ -104,11 +108,33 @@ test("the widget shows open work, clears when nothing is open, and no UI is touc
   assert.deepEqual(widget(undefined, plainTheme).render(80), [" Todo ──────────── 0/1", "  ○ 1. Frame"]);
   await h.call({ op: "update", id: 1, state: "done" });
   assert.deepEqual(h.ui.widgets.at(-1), ["todo", undefined]);
-  const headless = harness({ hasUI: false });
+  assert.deepEqual(h.ui.statuses, []);
+  const headless = harness({ hasUI: false, mode: "print" });
   await headless.call({ op: "set", items: ["Frame"] });
   await headless.call({ op: "update", id: 1, state: "in_progress" });
   await headless.emit("agent_end");
   assert.equal(headless.entries.length, 2);
+});
+
+test("RPC shows resolved/total and a bounded next step in a status, including after tree navigation", async () => {
+  const branch = [snapshot([{ id: 1, state: "pending", text: "Frame" }])];
+  const h = harness({ mode: "rpc", branch });
+  await h.emit("session_start");
+  assert.deepEqual(h.ui.statuses.at(-1), ["todo", "todo 0/1 · next: Frame"]);
+  await h.call({ op: "add", items: ["Review\n" + "🙂".repeat(64)] });
+  await h.call({ op: "update", id: 1, state: "skipped", note: "no longer needed" });
+  assert.deepEqual(h.ui.statuses.at(-1), ["todo", "todo 1/2 · next: Review " + "🙂".repeat(53)]);
+  const changes = h.ui.statuses.length;
+  await h.call({ op: "update", id: 2, note: "still waiting" });
+  assert.equal(h.ui.statuses.length, changes, "no duplicate status for a note-only change");
+  await h.call({ op: "update", id: 2, state: "done" });
+  assert.deepEqual(h.ui.statuses.at(-1), ["todo", undefined]);
+  await h.emit("session_tree");
+  assert.deepEqual(h.ui.statuses.at(-1), ["todo", "todo 0/1 · next: Frame"]);
+  branch.length = 0;
+  await h.emit("session_tree");
+  assert.deepEqual(h.ui.statuses.at(-1), ["todo", undefined]);
+  assert.deepEqual(h.ui.widgets, [], "RPC ignores component factories");
 });
 
 test("a run that ends with work in progress raises no warning: the widget already shows it", async () => {

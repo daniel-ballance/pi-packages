@@ -43,8 +43,17 @@ export default function todo(pi: ExtensionAPI) {
   // list have fallen behind the work.
   let workSinceTodo = false;
 
-  const showWidget = (ctx: ExtensionContext) => {
+  let lastStatus: string | undefined;
+  const showList = (ctx: ExtensionContext, restored = false) => {
     if (!ctx.hasUI) return;
+    if (ctx.mode !== "tui") {
+      const open = list.items.filter(isOpen), size = list.items.length;
+      const next = open[0]?.text.trim().replace(/\s+/g, " ");
+      const status = next && `todo ${size - open.length}/${size} · next: ${[...next].slice(0, 60).join("")}`;
+      if (restored || status !== lastStatus) ctx.ui.setStatus(ENTRY, status);
+      lastStatus = status;
+      return;
+    }
     const shown = list;
     // A component, not lines: Pi cuts a widget's lines at ten, and this one decides what to leave out.
     ctx.ui.setWidget(ENTRY, shown.items.some(isOpen) ? (_tui, theme) => ({ render: width => widgetLines(shown, width, theme), invalidate() {} }) : undefined);
@@ -73,7 +82,7 @@ export default function todo(pi: ExtensionAPI) {
       if (operation.op !== "get") {
         list = outcome.list;
         pi.appendEntry(ENTRY, { items: list.items, nextId: list.nextId });
-        showWidget(ctx);
+        showList(ctx);
       }
       // Answering the end-of-run check: models otherwise follow the update with a recap.
       if (settleNudged) return result(`${outcome.change}\n${SETTLED}`);
@@ -114,7 +123,7 @@ export default function todo(pi: ExtensionAPI) {
       const data = entry.data as { items?: Item[]; nextId?: number } | undefined;
       list = { items: data?.items ?? [], ...typeof data?.nextId === "number" ? { nextId: data.nextId } : {} };
     }
-    showWidget(ctx);
+    showList(ctx, true);
   };
   pi.on("session_start", rebuild);
   pi.on("session_tree", rebuild);

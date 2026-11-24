@@ -77,8 +77,9 @@ same way.
   each change is one tool-call line, such as `Item 3 is done. · 3/7 resolved`;
   expand it to see the whole list in number order, with notes. Items still in
   progress when a run ends stay in the widget; there is no separate warning.
-- **T3 Code and other RPC clients:** the tool result text is complete on its
-  own; the widget and the compact rendering are additions a client may ignore.
+- **T3 Code and other RPC clients:** while items are open, a `todo` status
+  shows the resolved/total count and the first open step in list order (up to
+  60 characters). It clears when no items remain open.
 - **Without UI** (print mode), nothing touches the UI; results are unchanged.
 
 Under T3 Code the tool stays active, because T3 gives Pi no todo tool of its
