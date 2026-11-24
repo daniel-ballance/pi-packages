@@ -5,7 +5,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { gitAt, gitEnv } from "../packages/p3stack/generator/git-env.mjs";
 import { piSdk } from "./pi-sdk.mjs";
@@ -45,7 +45,8 @@ function assertSkillMenu(actual: string[], native: string[], rows = registry) {
 
 async function load(packages: string[], base: string, options: { host?: typeof hosts[number]; agentDir?: string; extensions?: string[] } = {}) {
   const temp = tempRoot("pi-package-discovery-");
-  const previousHost = process.env.T3_MCP_URL;
+  const previousHost = process.env.T3_MCP_URL, previousChild = process.env.PI_SUBAGENT;
+  delete process.env.PI_SUBAGENT; // Exercise a parent launch even if a managed child invoked npm test.
   if (options.host === "t3") process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
   else delete process.env.T3_MCP_URL;
   const previousHome = process.env.HOME;
@@ -76,6 +77,7 @@ async function load(packages: string[], base: string, options: { host?: typeof h
       skillDiagnostics: loader.getSkills().diagnostics,
     };
   } finally {
+    if (previousChild === undefined) delete process.env.PI_SUBAGENT; else process.env.PI_SUBAGENT = previousChild;
     if (previousHost === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previousHost;
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
@@ -202,68 +204,82 @@ test("pnpm production workspace loads the root package without development depen
   }
 });
 
-test("the packed p3stack loads alone: its three extensions and its skills, with no claude-subscription", async () => {
-  const temp = tempRoot("p3stack-pack-");
+// Extract the actual npm artifact. Supply only the package's declared runtime
+// dependencies; the production install fixtures above test how they get there.
+function unpack(source: string, temp: string, dependencies: Record<string, string> = {}) {
+  const [pack] = Object.values<{ filename: string; files: { path: string }[] }>(JSON.parse(execFileSync("npm",
+    ["pack", "--json", "--ignore-scripts", "--pack-destination", temp], { cwd: source, encoding: "utf8" })));
+  execFileSync("tar", ["-xzf", join(temp, pack!.filename), "-C", temp]);
+  for (const name of Object.keys(dependencies)) {
+    const paths = createRequire(join(source, "package.json")).resolve.paths(name) ?? [];
+    const parent = paths.find(path => existsSync(join(path, name, "package.json")));
+    assert.ok(parent, `${source} cannot resolve ${name}`);
+    const target = join(temp, "node_modules", name);
+    mkdirSync(dirname(target), { recursive: true });
+    symlinkSync(join(parent, name), target, "junction");
+  }
+  return { packed: join(temp, "package"), files: pack!.files.map(f => f.path) };
+}
+
+test("a packed extension fails discovery if npm omits an import even when the entry ships", async () => {
+  const temp = tempRoot("broken-packed-extension-"), source = join(temp, "source");
   try {
-    const [pack] = Object.values<{ filename: string }>(JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", temp], {
-      cwd: join(root, "packages/p3stack"), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-    })));
-    execFileSync("tar", ["-xzf", join(temp, pack!.filename), "-C", temp]);
-    const packed = join(temp, "package");
-    const skill = join(packed, "subagents/skills/workflows");
-    const body = await readFile(join(skill, "SKILL.md"), "utf8");
-    const link = body.match(/\[the workflow contract\]\(([^)]+)\)/)?.[1];
-    assert.ok(link, "workflow skill links its required contract");
-    assert.match(await readFile(join(skill, link), "utf8"), /limits\.maxAttempts/);
-    for (const host of hosts) {
+    mkdirSync(join(source, "extensions"), { recursive: true });
+    await writeFile(join(source, "package.json"), JSON.stringify({ name: "broken-package", version: "1.0.0",
+      files: ["extensions/index.mjs"], pi: { extensions: ["./extensions/index.mjs"] } }));
+    await writeFile(join(source, "extensions/index.mjs"), 'export { default } from "./impl.mjs";');
+    await writeFile(join(source, "extensions/impl.mjs"), "export default function extension() {}");
+    assert.deepEqual((await load([source], source)).extensions, ["extensions/index.mjs"]);
+    const { packed } = unpack(source, temp);
+    await assert.rejects(load([packed], packed), /impl\.mjs/);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+for (const [name, dir] of Object.entries(packageDirs)) test(`${name} packs and loads its public resources`, async () => {
+  const source = join(root, dir), temp = tempRoot("pi-standalone-pack-");
+  try {
+    const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
+    const { packed, files } = unpack(source, temp, manifest.dependencies);
+    const extensions = manifest.pi.extensions.map((entry: string) => entry.replace(/^\.\//, ""));
+    assert.ok(extensions.length, `${name} declares an extension`);
+    for (const host of ["p3stack", "subagents", "t3-agent", "todo"].includes(name) ? hosts : ["cli"] as const) {
       const result = await load([packed], packed, { host });
-      assert.deepEqual(result.extensions, ["extensions/p3stack/index.ts", "subagents/extensions/subagents/index.ts", "todo/extensions/todo/index.ts"]);
-      assertSkillMenu(result.skills, nativeSkills(host));
-      assert.equal(result.skillPaths.tdd, "skills/tdd/SKILL.md");
-      assert.equal(result.skillPaths["regression-test"], undefined);
+      assert.deepEqual(result.extensions, extensions);
       assert.deepEqual(result.skillDiagnostics, []);
+      if (name === "p3stack") {
+        assert.deepEqual(result.extensions, rootExtensions.filter(path => path.startsWith(`${dir}/`)).map(path => relative(dir, path)));
+        assertSkillMenu(result.skills, nativeSkills(host));
+        assert.equal(result.skillPaths.tdd, "skills/tdd/SKILL.md");
+        assert.equal(result.skillPaths["regression-test"], undefined);
+      } else assert.deepEqual(result.skills, name === "subagents" ? nativeSkills(host) : []);
     }
-    assert.ok(existsSync(join(packed, "skills/tdd/references/regression-test.md")));
-  } finally {
-    await rm(temp, { recursive: true, force: true });
-  }
-});
-
-test("individual packages still discover their public resources", async () => {
-  for (const [name, dir] of Object.entries(packageDirs).filter(([name]) => name !== "p3stack")) {
-    for (const host of hosts) {
-      const result = await load([join(root, dir)], root, { host });
-      assert.deepEqual(result.extensions, [`${dir}/extensions/${name}/index.ts`]);
-      assert.deepEqual(result.skills, name === "subagents" ? nativeSkills(host) : []);
-    }
-  }
-});
-
-test("each tarball contains its declared extensions and public native resources", async () => {
-  for (const [name, dir] of Object.entries(packageDirs)) {
-    const path = join(root, dir);
-    const manifest = JSON.parse(await readFile(join(path, "package.json"), "utf8"));
-    const [pack] = Object.values<{ files: { path: string }[] }>(JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-      cwd: path, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-    })));
-    const files = pack!.files.map((file: { path: string }) => file.path);
-    for (const entry of manifest.pi.extensions) assert.ok(files.includes(entry.replace(/^\.\//, "")), `${name}: tarball is missing ${entry}`);
-    assert.ok(!files.some((file: string) => file.includes("node_modules/")));
-    assert.ok(!files.some((file: string) => /(^|\/)test\//.test(file)));
+    assert.ok(!files.some(file => file.includes("node_modules/")));
+    assert.ok(!files.some(file => /(^|\/)test\//.test(file)));
     if (name === "p3stack") {
-      for (const moved of ["claude-subscription", "computer-use", "self-reload", "web-search", "t3-agent"]) {
-        assert.ok(!files.some((file: string) => file.startsWith(`${moved}/`)), moved);
+      assert.ok(files.includes("skills/tdd/references/regression-test.md"));
+      const skill = join(packed, "subagents/skills/workflows");
+      const body = await readFile(join(skill, "SKILL.md"), "utf8");
+      const link = body.match(/\[the workflow contract\]\(([^)]+)\)/)?.[1];
+      assert.ok(link, "workflow skill links its required contract");
+      assert.match(await readFile(join(skill, link), "utf8"), /limits\.maxAttempts/);
+      const nestedPackages = [];
+      for (const path of files.filter(file => file.endsWith("/package.json"))) {
+        const child = JSON.parse(await readFile(join(packed, path), "utf8"));
+        if (child.pi) nestedPackages.push(child.name);
       }
+      assert.deepEqual(nestedPackages.sort(), ["subagents", "todo"]);
       assert.ok(files.includes("subagents/skills/subagents/SKILL.md"));
       assert.ok(files.includes("subagents/skills/workflows/SKILL.md"));
-      assert.ok(!files.some((file: string) => file.startsWith("subagents/skills/subagents/scripts/")));
     }
     if (name === "subagents") {
       assert.ok(files.includes("skills/subagents/SKILL.md"));
       assert.ok(files.includes("skills/subagents/reference/configuration.md"));
       assert.ok(files.includes("skills/subagents/reference/builtins.md"));
       assert.ok(files.includes("skills/workflows/SKILL.md"));
-      assert.ok(!files.some((file: string) => file.startsWith("skills/subagents/scripts/")), "research scripts must not ship");
     }
-  }
+    if (name === "p3stack" || name === "subagents") {
+      const guide = name === "p3stack" ? "subagents/skills/subagents/" : "skills/subagents/";
+      assert.ok(!files.some(f => f.startsWith(guide) && /\.(?:[cm]?[jt]s|py|sh)$/.test(f)), "the setup skill ships guidance, not research scripts");
+    }
+  } finally { await rm(temp, { recursive: true, force: true }); }
 });
