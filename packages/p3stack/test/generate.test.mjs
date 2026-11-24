@@ -405,6 +405,16 @@ test("an uninstalled root fails generation even when introduced by a patch", t =
   }
 });
 
+test("a noncanonical manifest path cannot masquerade as an installed root", t => {
+  const path = "skills\\not-installed.md";
+  const f = fixture({
+    "rules/manifest.json": manifest({ map: [{ from: "LICENSE", to: path }] }),
+    "rules/tokens.json": "[]", "rules/sections.json": "[]",
+  });
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), error => error.message.includes(path));
+});
+
 test("drift and install recognize previously owned licenses without sweeping unrelated licenses", t => {
   const { root, dispose } = fixture({ "LICENSE-superpowers": "stale pin\n", "LICENSE-local": "keep\n" });
   t.after(dispose);

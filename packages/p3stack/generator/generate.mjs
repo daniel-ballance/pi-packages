@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
 import { checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter } from "./check-registry.mjs";
@@ -221,9 +221,9 @@ function renderRegistry(files, { routes, chains }, put) {
 const GENERATED_ROOTS = ["LICENSE", "LICENSE-agent-skills", "LICENSE-matt-pocock", "LICENSE-superpowers", "agents", "skills"];
 
 function checkOutputPath(path) {
-  const parts = path.split(/[/\\]/);
-  if (!GENERATED_ROOTS.includes(parts[0]) || parts.some(part => !part || part === "." || part === "..")) {
-    throw new Error(`${path}: not an installed output path. Move it under a generated root, or explicitly declare its root in GENERATED_ROOTS.`);
+  const parts = path.split("/");
+  if (!GENERATED_ROOTS.includes(parts[0]) || path.includes("\\") || parts.some(part => !part || part === "." || part === "..")) {
+    throw new Error(`${path}: not an installed output path. Move it to a slash-separated path under a generated root, or explicitly declare its root in GENERATED_ROOTS.`);
   }
 }
 
@@ -313,7 +313,7 @@ export function generate({ packageDir, outDir }) {
   if (problems.length) throw new Error(problems.join("\n"));
   // Patches are rewritten under the caller's umask; keep only the executable bit.
   for (const path of walk(outDir)) {
-    checkOutputPath(path);
+    checkOutputPath(path.split(sep).join("/"));
     chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
   }
   const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
