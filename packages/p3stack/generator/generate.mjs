@@ -5,12 +5,16 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readd
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gitEnv } from "./git-env.mjs";
+import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
 import { checkRegistry, loadRegistry } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
 import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
-const readJson = (path, fallback) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
+function readJson(path, fallback) {
+  if (!existsSync(path)) return fallback;
+  try { return JSON.parse(readFileSync(path, "utf8")); }
+  catch (error) { throw new Error(`Cannot load ${path}: ${error.message}`, { cause: error }); }
+}
 
 const byName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
@@ -320,12 +324,8 @@ export function upstreamInfo(packageDir, source) {
   const { vendor, upstream } = source;
   if (!upstream) return undefined;
   const checkout = join(packageDir, upstream.checkout);
-  const git = (...args) => execFileSync("git", ["-C", checkout, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: gitEnv() }).trim();
-  const subtreePath = relative(checkout, join(packageDir, vendor)) || ".";
-  const hidden = git("ls-files", "-v", "-z", "--", subtreePath).split("\0").filter(entry => /^[a-zS] /.test(entry));
-  const changes = [git("-c", "core.fileMode=true", "status", "--porcelain=v1", "--untracked-files=all", "--ignored", "--ignore-submodules=none", "--", subtreePath), ...hidden].filter(Boolean).join("\n");
-  if (changes) throw new Error(`${upstream.checkout} has local changes; generation requires clean upstream inputs, including ignored files.\n${changes}`);
-  const commit = git("rev-parse", "HEAD");
+  requireCleanCheckout(checkout, relative(checkout, join(packageDir, vendor)) || ".");
+  const commit = gitAt(checkout, "rev-parse", "HEAD");
   const { name, version } = readJson(join(packageDir, vendor, "plugin.json"), {});
   const subtree = relative(upstream.checkout, vendor).split("\\").join("/");
   return { source: source.name, repository: upstream.repository, commit, subtree, name, version };
@@ -395,17 +395,18 @@ function main(args) {
       const problems = drift(packageDir, outDir);
       const recorded = pin === undefined ? undefined : readJson(manifestPath).p3stack?.upstream;
       if (recorded !== pin) problems.push(`package.json p3stack.upstream is "${recorded}", expected "${pin}"`);
-      for (const info of infos) problems.push(...gitlinkDrift(packageDir, sources.find(source => source.name === info.source), info));
+      const gitlinks = infos.flatMap(info => gitlinkDrift(packageDir, sources.find(source => source.name === info.source), info));
       if (readme !== undefined && infos.length) {
         if ([...readme.matchAll(README_PIN)].length !== 1) problems.push("README.md: expected one pair of p3stack:upstream pin markers");
         else if (pinnedReadme(readme, infos) !== readme) problems.push(`README.md: the upstream pins for ${infos.map(info => info.source).join(", ")} between the p3stack:upstream markers are stale`);
       }
-      if (problems.length === 0) {
+      if (!gitlinks.length && !problems.length) {
         const paths = walk(outDir);
         console.log(`Generated output is current. ${paths.length} files, ${paths.reduce((bytes, path) => bytes + statSync(join(outDir, path)).size, 0)} bytes.`);
         return 0;
       }
-      console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs.\n  ${problems.join("\n  ")}`);
+      if (gitlinks.length) console.error(`${gitlinks.join("\n")}\nConfirm the intended ref first. Restore the checkout to the staged pin, or stage the candidate gitlink if that update was authorized.`);
+      if (problems.length) console.error(`Generated output differs from a fresh generation. Run node generator/generate.mjs after confirming the pins.\n  ${problems.join("\n  ")}`);
       return 1;
     }
     installGenerated({ packageDir, outDir });
