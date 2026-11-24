@@ -7,6 +7,11 @@ node_modules
 # Parallel agent worktrees.
 .pi/worktrees/
 
+# Private routing and behavior eval receipts (may contain tool results).
+/packages/p3stack/test/eval-output/
+/packages/p3stack/test/behavior-eval/output/
+/packages/p3stack/test/routing-eval/fixtures/output/
+
 # Secrets
 .env
 *.env

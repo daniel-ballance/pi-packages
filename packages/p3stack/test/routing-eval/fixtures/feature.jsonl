@@ -1,0 +1,12 @@
+{"type":"session","version":3,"id":"fixture","cwd":"/project"}
+{"type":"agent_start"}
+{"type":"tool_execution_start","toolName":"read","toolCallId":"route","args":{"path":"/pkg/skills/p3stack-mode/SKILL.md","offset":1,"limit":30}}
+{"type":"tool_execution_start","toolName":"read","toolCallId":"ref","args":{"path":"/pkg/skills/p3stack-mode/references/floor.md"}}
+{"type":"tool_execution_end","toolName":"read","toolCallId":"ref","isError":false,"result":{"content":[{"type":"text","text":"Reference"}]}}
+{"type":"tool_execution_end","toolName":"read","toolCallId":"route","isError":false,"result":{"content":[{"type":"text","text":"Router"}]}}
+{"type":"tool_execution_start","toolName":"read","toolCallId":"mode","args":{"path":"/pkg/skills/poteto-mode/SKILL.md"}}
+{"type":"tool_execution_end","toolName":"read","toolCallId":"mode","isError":false,"result":{"content":[{"type":"text","text":"Playbooks"}]}}
+{"type":"tool_execution_start","toolName":"read","toolCallId":"book","args":{"path":"../pkg/skills/poteto-mode/playbooks/feature.md"}}
+{"type":"tool_execution_end","toolName":"read","toolCallId":"book","isError":false,"result":{"content":[{"type":"text","text":"Feature"}]}}
+{"type":"agent_end","willRetry":false}
+{"type":"agent_settled","aborted":false}
