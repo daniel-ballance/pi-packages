@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -11,7 +11,7 @@ import type {
   AuthContext,
   ProviderAuthInteraction,
 } from "@earendil-works/pi-ai";
-import { loadQuery, probe, subscriptionEnv } from "./sdk.js";
+import { loadQuery, packageVersion, probe, subscriptionEnv } from "./sdk.js";
 
 const SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
 
@@ -337,19 +337,6 @@ function childEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     if (typeof value === "string") env[name] = value;
   }
   return env;
-}
-
-let version: string | undefined;
-
-function packageVersion(): string {
-  version ??= readPackageVersion();
-  return version;
-}
-
-function readPackageVersion(): string {
-  const manifest: unknown = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
-  return typeof manifest === "object" && manifest !== null && "version" in manifest && typeof manifest.version === "string"
-    ? manifest.version : "0.0.0";
 }
 
 /**

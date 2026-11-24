@@ -1,21 +1,14 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config.js";
 import { registerClaudeCode } from "./delegate.js";
 import { SessionStore } from "./resume.js";
 import { ClaudeSubscription } from "./provider.js";
-import { installedSdkVersion, loadQuery, subscriptionEnv } from "./sdk.js";
+import { installedSdkVersion, loadQuery, packageVersion, subscriptionEnv } from "./sdk.js";
 import { readUsage, renderReport } from "./usage.js";
 import { registerWebTools } from "./webtools.js";
 
 const COMMAND = "claude-subscription";
-
-function packageVersion(): string {
-  const manifest: unknown = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
-  return typeof manifest === "object" && manifest !== null && "version" in manifest && typeof manifest.version === "string"
-    ? manifest.version : "0.0.0";
-}
 
 export default function claudeSubscription(pi: ExtensionAPI) {
   const version = packageVersion();
