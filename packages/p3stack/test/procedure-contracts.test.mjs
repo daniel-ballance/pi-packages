@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const read = path => readFileSync(new URL(`../skills/${path}`, import.meta.url), "utf8");
@@ -87,6 +91,9 @@ const ledgerPath = "p3stack-mode/references/execution-ledger.md";
 test("the audit trail reviews ledger rows; a shareable TSV is an export, not a second journal", () => {
   const ledger = read(ledgerPath), trail = read("p3stack-mode/references/show-me-your-work.md");
   const row = ledger.split("\n").find(line => line.includes("unit | attempt"));
+  assert.match(row, /\bts\b/);
+  assert.match(ledger, /UTC[^\n]*when[^\n]*decision/i);
+  assert.match(trail, /unit[^\n]*phase/i);
   for (const field of ["decision", "why", "evidence", "result", "head SHA", "pending gate"]) assert.ok(row.includes(field), field);
   assert.ok(trail.includes(`(../${ledgerPath})`));
   assert.match(trail, /export[^\n]*ledger rows/i);
@@ -94,6 +101,25 @@ test("the audit trail reviews ledger rows; a shareable TSV is an export, not a s
   assert.doesNotMatch(trail, /without proof in the transcript/);
   assert.match(skill("figure-it-out"), /execution-ledger\.md[^\n]*export/i);
   assert.doesNotMatch(trail, /a new chat starts a new run|first row has phase .start.|at .decisions\.tsv. in the work dir/i);
+});
+
+test("the decision export carries the original timestamps even when rows are exported together", t => {
+  const dir = mkdtempSync(join(tmpdir(), "p3stack-export-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "decisions.tsv");
+  const script = fileURLToPath(new URL("../skills/p3stack-mode/references/show-me-your-work/scripts/log.sh", import.meta.url));
+  const times = ["2020-03-02T10:00:00Z", "2020-03-02T10:05:00Z"];
+  for (const ts of times) execFileSync("bash", [script, file, ts, "measure", "change", "why", "@proof", "kept"]);
+  assert.deepEqual(readFileSync(file, "utf8").trimEnd().split("\n"), [
+    "ts\tphase\tdecision\twhy\tevidence\tresult", ...times.map(ts => ts + "\tmeasure\tchange\twhy\t'@proof\tkept"),
+  ]);
+});
+
+test("hillclimb fits each attempt and its gate evidence into the private ledger", () => {
+  const step = playbook("hillclimb").split("\n").find(line => line.startsWith("3. "));
+  for (const mapping of [/id in `attempt`/i, /hypothesis and note in `why`/, /change in `decision`/,
+    /test[^,]*in `evidence path`/, /before, after, delta and verdict[^.]*in `result`/]) assert.match(step, mapping);
+  assert.doesNotMatch(step, /gitignored/i);
 });
 
 test("coordinators record worker reports once, including iterative and autonomous work", () => {
