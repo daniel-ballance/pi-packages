@@ -68,7 +68,7 @@ test("update rewords one item, or sets a note, without changing its state", () =
   assert.deepEqual(noted.list.items[1], { id: 2, text: "Fan out to two", state: "in_progress", note: "waiting on one Child" });
 });
 
-test("remove deletes only items never started; a step not done is skipped instead", () => {
+test("remove checks the current state: only pending items can be removed", () => {
   let { list } = ok(apply(emptyList, { op: "set", items: ["Frame", "Fan out", "Fan out", "Report"] }));
   ({ list } = ok(apply(list, { op: "update", ids: [1], state: "done" })));
   ({ list } = ok(apply(list, { op: "update", ids: [2], state: "in_progress" })));
@@ -80,6 +80,8 @@ test("remove deletes only items never started; a step not done is skipped instea
     assert.match(refused.error, new RegExp(`item ${id} is (done|in progress); only pending items can be removed.*skipped.*reason`), "all or nothing");
   }
   assert.match((apply(list, { op: "remove", ids: [9] }) as { error: string }).error, /no item 9/);
+  const reset = ok(apply(list, { op: "update", ids: [2], state: "pending" })).list;
+  assert.equal(ok(apply(reset, { op: "remove", ids: [2] })).change, "Removed item 2.");
 });
 
 test("update takes several ids at once, all or nothing", () => {

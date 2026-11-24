@@ -12,9 +12,28 @@ export type Operation =
 
 export const STATES: readonly ItemState[] = ["pending", "in_progress", "done", "skipped"];
 export const emptyList: TodoList = { items: [] };
+export const isOpen = (item: Item) => item.state === "pending" || item.state === "in_progress";
 
 type Failure = { readonly error: string };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+
+const isId = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
+
+/** Session entries may predate nextId or belong to an incompatible writer. */
+export function isTodoList(data: unknown): data is TodoList {
+  if (!isRecord(data) || !Array.isArray(data.items)) return false;
+  const { nextId } = data;
+  if (nextId !== undefined && !isId(nextId)) return false;
+  const ids = new Set<number>();
+  for (const item of data.items) {
+    if (!isRecord(item) || !isId(item.id) || ids.has(item.id) || (nextId !== undefined && item.id >= nextId)) return false;
+    if (typeof item.text !== "string" || !item.text.trim() || !STATES.some(state => state === item.state)) return false;
+    if (item.note !== undefined && typeof item.note !== "string") return false;
+    if (item.state === "skipped" && !item.note?.trim()) return false;
+    ids.add(item.id);
+  }
+  return true;
+}
 
 function parseItems(items: unknown): readonly string[] | Failure {
   if (!Array.isArray(items) || items.length === 0) return { error: "needs a non-empty items array" };
@@ -80,7 +99,7 @@ export function apply(list: TodoList, operation: Operation): { readonly list: To
   switch (operation.op) {
     case "get": return { list, change: "" };
     case "set": {
-      const open = list.items.filter(item => item.state === "pending" || item.state === "in_progress").length;
+      const open = list.items.filter(isOpen).length;
       const items = operation.items.map((text, index): Item => ({ id: index + 1, text, state: "pending" }));
       return { list: { items, nextId: items.length + 1 }, change: `Set ${items.length} items${open ? `, replacing a list with ${open} open` : ""}.` };
     }
@@ -149,9 +168,10 @@ export function widgetRows(list: TodoList, limit: number): { readonly shown: rea
   return { shown, hidden: counts({ items: ordered.slice(shown.length) }) };
 }
 
-export function formatList(list: TodoList): string {
-  if (list.items.length === 0) return "Todo: no items";
+export function formatList(list: TodoList, openOnly = false): string {
+  if (!openOnly && list.items.length === 0) return "Todo: no items";
   const total = counts(list);
   const summary = `Todo: ${total.done} done, ${total.skipped} skipped, ${total.in_progress} in progress, ${total.pending} pending`;
-  return [summary, ...list.items.map(formatItem)].join("\n");
+  const items = openOnly ? list.items.filter(isOpen) : list.items;
+  return [summary, ...items.map(formatItem)].join("\n");
 }

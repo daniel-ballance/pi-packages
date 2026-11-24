@@ -1,10 +1,9 @@
 # todo
 
-A `todo` tool for Pi. The model keeps the current task's steps in a list where a
-step it started or decided against is never deleted: each one ends `done` or
-`skipped` with a reason. Only a pending item added by mistake can be removed. It
-is the todo list p3stack's playbooks copy their steps into, and it works on its
-own.
+A `todo` tool for Pi. Mark finished steps `done` and intentionally omitted
+steps `skipped` with a reason. Use `remove` for mistakes: it checks that the
+item is currently pending, not whether it was ever started. `set` replaces the
+whole list. The tool works on its own or with p3stack's playbooks.
 
 ## Tool
 
@@ -18,17 +17,17 @@ One tool, `todo`, with five operations:
 | `remove` | `id` or `ids` | Deletes `pending` items, all or none, such as a duplicate or a mistaken step. An item in progress, done or skipped can't be removed; a step the model decides not to do is `skipped` with a reason instead. Numbers are not reused. |
 | `get` | | Returns the list. |
 
-Every result is the complete list as plain text, for example:
+`set`, `get` and errors return the complete list as plain text. Successful
+`add`, `update` and `remove` return the change, counts for the entire list and
+only the items still open, for example:
 
 ```text
 Item 2 is skipped.
 Todo: 1 done, 1 skipped, 1 in progress, 0 pending
-[x] 1. Frame
-[-] 2. Fan out (skip: single slice)
 [>] 3. Report
 ```
 
-Results also carry `structuredContent` (`items`, `counts`) for codemode scripts.
+`structuredContent` (`items`, `counts`) and renderer `details` always carry the full list.
 An invalid operation, such as a skip without a reason or an unknown id, returns
 an error result with the unchanged list and changes nothing.
 
@@ -41,7 +40,8 @@ labelled as the extension's, says the user does not see it, and asks for no repl
 
 - **During a run:** after four turns with tool calls but no `todo` call while
   items are open, one short reminder of the count and the next open item. It
-  repeats only after the next `todo` call.
+  repeats only after the next `todo` call or in a new request. Calls to
+  `tools.todo` inside codemode scripts count as todo calls.
 - **At the end of a request:** if the request used the list, then used other
   tools after its last `todo` call, and items are still open, one more turn to
   mark them done or skipped. Items left open on purpose, for example waiting on
@@ -61,7 +61,7 @@ when the call arrives.
 
 Each change is stored as a session entry (`appendEntry`, type `todo`). On
 session start and after `/tree` navigation the list is rebuilt from the last
-entry on the active branch, so `/fork`, `/tree` and resumed sessions show the
+valid todo entry on the active branch, so `/fork`, `/tree` and resumed sessions show the
 list as it was at that point. Changes made from codemode scripts are stored the
 same way.
 
@@ -76,14 +76,13 @@ same way.
   each change is one tool-call line, such as `Item 3 is done. · 3/7 resolved`;
   expand it to see the whole list in number order, with notes. Items still in
   progress when a run ends stay in the widget; there is no separate warning.
-- **T3 Code and other RPC clients:** the tool result text is complete on its
-  own; the widget and the compact rendering are additions a client may ignore.
+- **T3 Code and other RPC clients:** while items are open, a `todo` status
+  shows the resolved/total count and the first open step in list order (up to
+  60 characters). It clears when no items remain open.
 - **Without UI** (print mode), nothing touches the UI; results are unchanged.
 
 Under T3 Code the tool stays active, because T3 gives Pi no todo tool of its
-own. If a T3 release adds one (`mcp__t3-code__*todo*`), this tool steps aside to
-`exposure: "deferred"`: still reachable through `tool_search` and codemode, but
-no longer declared next to T3's.
+own.
 
 ## Install
 
