@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { detectHost, registerHostAware } from "./src/host.js";
+import { registerHostAware } from "./src/host.js";
 import { apply, counts, emptyList, formatList, parseOperation, STATES, type Item, type TodoList } from "./src/list.js";
 import { resultLines, widgetLines } from "./src/render.js";
 
@@ -32,12 +32,9 @@ const isOpen = (item: Item) => item.state === "pending" || item.state === "in_pr
 const REMIND_AFTER_TURNS = 4;
 const SET_HINT = "Update items as you finish them: update with id, or ids for several at once; add appends new steps; codemode scripts can call tools.todo. Nothing marks them for you.";
 const SETTLED = "That answers the todo check. End your turn now without writing anything: your last reply to the user stands.";
-// T3 names its tools mcp__t3-code__<name>; a todo tool there would duplicate this one.
-const isT3Todo = (name: string) => /^mcp__t3[-_]code__.*todo/i.test(name);
 
 export default function todo(pi: ExtensionAPI) {
   let list: TodoList = emptyList;
-  let demoted = false;
   // Models set the list and then forget it while they work (seen with GPT and Claude
   // alike): nothing in their context mentions it again. So the extension does, once
   // after a few turns without a todo call, and once more before a run settles.
@@ -121,12 +118,6 @@ export default function todo(pi: ExtensionAPI) {
   };
   pi.on("session_start", rebuild);
   pi.on("session_tree", rebuild);
-
-  pi.on("before_agent_start", () => {
-    if (demoted || detectHost() !== "t3" || !pi.getAllTools().some(candidate => isT3Todo(candidate.name))) return;
-    demoted = true;
-    registerHostAware(pi, tool, { duplicatesT3: true });
-  });
 
   const openSummary = () => {
     const open = list.items.filter(isOpen);

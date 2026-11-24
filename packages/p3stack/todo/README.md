@@ -82,9 +82,7 @@ same way.
 - **Without UI** (print mode), nothing touches the UI; results are unchanged.
 
 Under T3 Code the tool stays active, because T3 gives Pi no todo tool of its
-own. If a T3 release adds one (`mcp__t3-code__*todo*`), this tool steps aside to
-`exposure: "deferred"`: still reachable through `tool_search` and codemode, but
-no longer declared next to T3's.
+own.
 
 ## Install
 

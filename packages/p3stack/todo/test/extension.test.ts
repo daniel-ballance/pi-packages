@@ -135,20 +135,17 @@ test("the tool is direct, and the feed shows each change once, as a one-line too
   assert.equal(render(failed, false).length, 1);
 });
 
-test("under T3 the tool steps aside, to tool_search and codemode, only when T3 offers its own todo tool", async () => {
+test("under T3 a todo-like catalog name never hides the task tracker or registers it twice", async () => {
   const previous = process.env.T3_MCP_URL;
   process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
   try {
     const h = harness();
-    h.setAllTools(["mcp__t3-code__delegate_task"]);
-    await h.emit("before_agent_start");
-    assert.equal(h.tool().exposure ?? "direct", "direct");
-    h.setAllTools(["mcp__t3-code__delegate_task", "mcp__t3-code__todo_write"]);
-    await h.emit("before_agent_start");
-    assert.equal(h.tool().exposure, "deferred");
-    const registrations = h.tools.length;
-    await h.emit("before_agent_start");
-    assert.equal(h.tools.length, registrations, "re-registered once");
+    for (const catalog of [["mcp__t3-code__delegate_task"], ["mcp__t3-code__list_todo_templates"], []]) {
+      h.setAllTools(catalog);
+      await h.emit("before_agent_start");
+      assert.equal(h.tools.length, 1);
+      assert.equal(h.tool().exposure ?? "direct", "direct");
+    }
   } finally {
     if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous;
   }
