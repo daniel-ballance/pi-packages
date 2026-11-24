@@ -235,6 +235,25 @@ test("patches apply after tokens and sections, and a stale patch fails with its 
   } finally { stale.dispose(); }
 });
 
+test("patch bytes and context matching do not depend on Git whitespace configuration", t => {
+  const header = ["--- a/skills/demo/SKILL.md", "+++ b/skills/demo/SKILL.md", "@@ -11,3 +11,3 @@"];
+  const patch = [...header, " ## Next", " ", "-Kept.", "+        Indented.", ""].join("\n");
+  const { root, dispose } = fixture({ "patches/demo.patch": patch });
+  t.after(dispose);
+  const env = { ...process.env, P3STACK_PACKAGE_DIR: root, GIT_CONFIG_COUNT: "3",
+    GIT_CONFIG_KEY_0: "core.whitespace", GIT_CONFIG_VALUE_0: "indent-with-non-tab",
+    GIT_CONFIG_KEY_1: "apply.whitespace", GIT_CONFIG_VALUE_1: "fix",
+    GIT_CONFIG_KEY_2: "apply.ignoreWhitespace", GIT_CONFIG_VALUE_2: "change" };
+  const run = () => spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8", env });
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(readFileSync(join(root, "skills/demo/SKILL.md"), "utf8"), /\n {8}Indented\.\n$/);
+  writeFileSync(join(root, "patches/demo.patch"), patch.replace(" ## Next", " ##    Next"));
+  const stale = run();
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /patch demo\.patch no longer applies/);
+});
+
 test("the coupling lint names every file, line and token a rule left behind", () => {
   const { root, out, dispose } = fixture({ "vendor/up/skills/demo/extra.md": "fine\nopen .cursor/rules\nCursor again\n", "rules/lint.json": JSON.stringify({ deny: ["Task tool", "Cursor", ".cursor"] }) });
   try {

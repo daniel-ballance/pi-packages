@@ -198,8 +198,10 @@ function applyPatches(patchesDir, outDir, problems) {
   for (const name of walk(patchesDir).filter(file => file.endsWith(".patch"))) {
     const patch = join(patchesDir, name);
     try {
-      execFileSync("git", ["apply", "--check", patch], { cwd: outDir, stdio: "pipe", env: gitEnv() });
-      execFileSync("git", ["apply", patch], { cwd: outDir, stdio: "pipe", env: gitEnv() });
+      const apply = ["-c", "apply.ignoreWhitespace=no", "apply", "--whitespace=nowarn"];
+      const options = { cwd: outDir, stdio: "pipe", env: gitEnv() };
+      execFileSync("git", [...apply, "--check", patch], options);
+      execFileSync("git", [...apply, patch], options);
     } catch (error) {
       problems.push(`patch ${name} no longer applies; rebase it: ${String(error.stderr ?? error.message).trim()}`);
     }
