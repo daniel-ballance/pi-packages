@@ -989,7 +989,7 @@ test("workflow results use the terminal response independently of retained progr
   } finally { await s.cleanup(); }
 });
 
-test("workflow response.md and validator inputs include the end of a long final answer", async () => {
+test("workflow artifacts keep complete answers but fan-in shares one inline budget", async () => {
   const s = await setup();
   try {
     const host = managerWorkflowHost(s.manager, workflowPolicy);
@@ -1000,13 +1000,15 @@ test("workflow response.md and validator inputs include the end of a long final 
     candidateDirectory(writer.candidate);
     const artifact = snapshot(writer.candidate, join(s.dir, "artifact"), reply);
     assert.ok((await readFile(join(artifact.path, "response.md"), "utf8")).includes("END-VERDICT"));
-    validator.inputs = { candidate: artifact };
+    validator.inputs = { first: artifact, second: snapshot(writer.candidate, join(s.dir, "second"), reply) };
     const [echo] = await host.agents([validator], [], signal);
-    assert.ok(echo.includes("END-VERDICT"), "the validator's actual prompt includes the tail");
+    assert.ok(!echo.includes("END-VERDICT"));
+    assert.ok(echo.includes(join(artifact.path, "response.md")) && echo.includes(join(s.dir, "second", "response.md")));
+    assert.ok([...echo].filter(c => c === "文").length <= 12000, "one input budget, not one per file");
   } finally { await s.cleanup(); }
 });
 
-test("a workflow job reports an unconfirmed worker close instead of claiming cleanup", async () => {
+test("a workflow job reports the original failure and an unconfirmed worker close", async () => {
   const s = await setup();
   try {
     const [job] = workflowJobs(s.dir);
@@ -1015,7 +1017,8 @@ test("a workflow job reports an unconfirmed worker close instead of claiming cle
       child.stop = async () => { delete (child as any).stop; throw new Error("exit not observed"); };
     };
     const host = managerWorkflowHost(s.manager, workflowPolicy);
-    await assert.rejects(host.agents([job], [], new AbortController().signal), /exit not observed/);
+    job.instructions = "empty-final";
+    await assert.rejects(host.agents([job], [], new AbortController().signal), /no final text[\s\S]*exit not observed/);
     assert.equal(s.manager.capacity().live, 1);
   } finally { await s.cleanup(); }
 });

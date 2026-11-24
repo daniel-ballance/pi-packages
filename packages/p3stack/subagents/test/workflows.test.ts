@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import cp from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { chmodSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -182,6 +186,28 @@ test("shutdown/reload does not replay; explicit retry preserves total allowance 
     await restored.control(id, "resume", ["a"]); const run = await settled(restored, id);
     assert.equal(run.status, "succeeded"); assert.equal(run.usedAttempts, 2); assert.equal(run.deadline, deadline);
   } finally { await restored?.shutdown(); await h.close(); }
+});
+
+test("command without a close event cannot block workflow shutdown", async t => {
+  const h = setup();
+  const child = Object.assign(new EventEmitter(), {stdout: new PassThrough(), stderr: new PassThrough(), unref() {},
+    kill: (signal: string) => { signals.push(signal); return true; }});
+  const signals: string[] = [];
+  let launched!: () => void;
+  const started = new Promise<void>(resolve => { launched = resolve; });
+  const spawn = t.mock.method(cp, "spawn", () => { launched(); return child; });
+  syncBuiltinESMExports();
+  try {
+    const id = idOf(h.engine.start(definition(h.root, [task("a"), {id: "check", kind: "check", input: "a", validator: {kind: "command", command: "unused"}}])));
+    await started;
+    const done = await Promise.race([h.engine.shutdown().then(() => true), sleep(5000).then(() => false)]);
+    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    assert.ok(done, "manager shutdown must be able to proceed");
+    const attempt = h.engine.get(id).steps.check.attempts.at(-1)!;
+    assert.match(attempt.error!, /unconfirmed/i);
+  } finally {
+    child.emit("close", null); spawn.mock.restore(); syncBuiltinESMExports(); await h.close();
+  }
 });
 
 test("synchronous run hold prevents queued dispatch; release alone never schedules", async () => {
