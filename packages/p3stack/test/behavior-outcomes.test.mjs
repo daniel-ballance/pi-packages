@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +23,53 @@ const goodSplit = `export function splitCents(n,p) {
   return Array.from({length:p}, (_,i) => q + (i >= p-n%p ? 1 : 0));
 }`;
 const exampleOnly = `export function splitCents(n,p) { return n===1000 && p===3 ? [333,333,334] : Array(p).fill(Math.floor(n/p)) }`;
+
+function bashEvents(project, command) {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync("bash", ["-c", command], { cwd: project, env, encoding: "utf8" });
+  assert.ifError(result.error);
+  return [
+    { type: "tool_execution_start", toolCallId: "b", toolName: "bash", args: { command } },
+    { type: "tool_execution_end", toolCallId: "b", isError: result.status !== 0, result: {
+      content: [{ type: "text", text: result.stdout + result.stderr }], } },
+  ];
+}
+const eventTrace = events => trace(events.map(e => JSON.stringify(e)).join("\n"));
+
+test("red evidence is a completed assertion failure before the first source edit", t => {
+  const { project } = fixture(t, "bug-red-first");
+  const check = cases.find(row => row.id === "bug-red-first").process.find(c => c.kind === "order");
+  const edit = [
+    { type: "tool_execution_start", toolCallId: "e", toolName: "edit", args: { path: "src/split.js" } },
+    { type: "tool_execution_end", toolCallId: "e", isError: false },
+  ];
+  const run = () => bashEvents(project, "node --test");
+  appendFileSync(join(project, "test/split.test.js"), '\ntest("does not throw an AssertionError", () => assert.ok(true));');
+  const green = run();
+  assert.equal(green[1].isError, false);
+  appendFileSync(join(project, "test/split.test.js"), '\ntest("all cents", () => assert.equal(splitCents(11,3).reduce((a,b)=>a+b),11));');
+  const red = run();
+  assert.equal(red[1].isError, true);
+  assert.match(red[1].result.content[0].text, /ERR_ASSERTION/);
+  assert.equal(grade(check, eventTrace([...red, ...edit])), true);
+  for (const events of [[...green, ...edit], [...edit, ...red], [red[0], ...edit, red[1]],
+    [...bashEvents(project, "node --test absent.js"), ...edit]]) {
+    assert.equal(grade(check, eventTrace(events)), false);
+  }
+});
+
+test("the review needs the executed floor diagnostic, not a successful filename lookup", t => {
+  const { project } = fixture(t, "floor-review");
+  const check = cases.find(row => row.id === "floor-review").process[0];
+  const script = fileURLToPath(new URL("../skills/p3stack-mode/scripts/floor-check.mjs", import.meta.url));
+  const finding = bashEvents(project, `node "${script}"`);
+  assert.equal(finding[1].isError, true);
+  assert.equal(grade(check, eventTrace(finding)), true);
+  for (const command of [`ls "${script}"`, `node "${script}" --base missing`]) {
+    assert.equal(grade(check, eventTrace(bashEvents(project, command))), false);
+  }
+});
 
 test("the shipped split oracle accepts a valid remainder order, not an example-only patch or the original loss", t => {
   const { passes, put, project } = fixture(t, "bug-red-first");
@@ -66,6 +115,11 @@ test("the review must identify the skipped empty-list test and preserve an alrea
   assert.equal(report("There is a skipped test in this repo."), false);
   assert.equal(report("No tests were skipped. sumAll([]) works."), false);
   assert.equal(report("The test for sumAll([]) is not skipped."), false);
+  assert.equal(report("The test for sumAll([]) does not use test.skip."), false);
+  for (const denial of ["isn't skipped", "was never actually skipped", "is no longer disabled"]) {
+    assert.equal(report(`The empty-list test for sumAll ${denial}.`), false);
+  }
+  assert.equal(report("Nothing in sum.test.js for sumAll on an empty list is skipped anymore."), false);
   assert.equal(check("unchanged-tree"), true);
   put("notes.txt", "unrequested\n");
   assert.equal(check("unchanged-tree"), false);
@@ -81,9 +135,20 @@ const html = `<output id="state">requested</output>
   reject.onclick = () => { if (remaining > 0) { remaining = 0; state.value = 'rejected'; } };</script>`;
 test("prototype checks apply to one usable HTML document, not scattered markers or external assets", t => {
   const { passes, put, project } = fixture(t, "prototype-logic");
+  const withSetter = html.replace("<script>", "<script>function setState(next) { state.value = next; } ")
+    .replace("state.value = (remaining -= 25) ? 'approved' : 'refunded'", "setState((remaining -= 25) ? 'approved' : 'refunded')")
+    .replace("state.value = 'rejected'", "setState('rejected')");
+  put("a.html", withSetter);
+  assert.equal(passes(), true, "handlers can change state through a named setter");
   put("a.html", html);
   assert.equal(passes(), true);
-  for (const broken of ["<button>Inert</button><!-- refunded -->", "<button>requested approved rejected refunded</button>",
+  const oracle = fileURLToPath(new URL("./behavior-eval/oracles/prototype.py", import.meta.url));
+  assert.match(spawnSync("python3", [oracle, "a.html"], { cwd: project, encoding: "utf8" }).stdout, /structural/i);
+  for (const broken of [html.replaceAll("<button", "<button disabled"),
+    '<p>requested approved rejected refunded</p><button onclick="return false">Next</button>',
+    '<button id="next">requested approved rejected refunded</button><script>next.onclick = () => {};</script>',
+    html.replace("approve.onclick = ", "const unused = ").replace("reject.onclick = ", "reject.onclick = () => {}; const alsoUnused = "),
+    "<button>Inert</button><!-- refunded -->", "<button>requested approved rejected refunded</button>",
     html + '<script type="module">import "./refund.js";</script>', html + "<ScRiPt SRC='refund.js'></SCRIPT>", html + "<link href=theme.css REL='preload stylesheet'>", html + '<style>@import url("theme.css");</style>']) {
     put("a.html", broken);
     assert.equal(passes(), false, broken);
@@ -135,6 +200,10 @@ test("the effective Vitest line threshold must be numeric 80 in the exported con
     put("vitest.config.ts", config(expr));
     assert.equal(passes(grounded), true);
   }
+  const manifest = JSON.parse(readFileSync(new URL("./behavior-eval/fixtures/source-grounding/base/package.json", import.meta.url)));
+  put("package.json", JSON.stringify({ ...manifest, scripts: { test: "echo 'vitest run --coverage'" } }));
+  assert.equal(passes(grounded), false, "the configured coverage run is still the project test command");
+  put("package.json", JSON.stringify(manifest));
   for (const bad of [config("{test:{coverage:{provider:'v8'}}}") + "\n// thresholds 80", config("{test:{coverage:{thresholds:{branches:80}}}}"), config("{test:{coverage:{thresholds:{lines:70}}}}")]) {
     put("vitest.config.ts", bad);
     assert.equal(passes(grounded), false);
