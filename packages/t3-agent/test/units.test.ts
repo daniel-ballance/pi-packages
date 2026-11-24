@@ -80,9 +80,26 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
   assert.equal(ledger.render(), undefined);
 });
 
+test("only titles supplied by the caller survive live observation and replay", () => {
+  const prompt = "Unpublished payroll plan for Project Sample";
+  const updates = [
+    ...observe("schedule_task", { prompt }, { scheduledTaskId: "s", title: prompt }),
+    ...observe("update_scheduled_task", { scheduledTaskId: "s", enabled: false }, { scheduledTaskId: "s", title: prompt }),
+    ...observe("create_threads", { threads: [{ prompt }, { prompt, title: "Second review" }] },
+      { threads: [{ threadId: "t1", title: prompt }, { threadId: "t2", title: prompt }] }),
+  ];
+  assert.doesNotMatch(JSON.stringify(updates), /Unpublished/);
+  const ledger = new Ledger();
+  rebuild(ledger, [{ kind: "schedule", id: "old", title: prompt, open: true }, ...updates]
+    .map(data => ({ type: "custom", customType: ENTRY_TYPE, data })));
+  assert.match(ledger.render()!, /Second review.*t2/);
+  assert.match(ledger.render()!, /scheduledTaskId=old/);
+  assert.doesNotMatch(ledger.render()!, /Unpublished/);
+});
+
 test("closing a handle discards its details before an id is reused", () => {
   const ledger = new Ledger();
-  ledger.apply({ kind: "schedule", id: "s", open: true, title: "Obsolete title" });
+  ledger.apply({ kind: "schedule", id: "s", open: true, explicitTitle: "Obsolete title" });
   ledger.apply({ kind: "schedule", id: "s", open: false });
   ledger.apply({ kind: "schedule", id: "s", open: true });
   assert.doesNotMatch(ledger.render()!, /Obsolete/);
@@ -98,7 +115,7 @@ test("a running delegate stays open until its result is read or it is cancelled"
   // A send to a finished child thread starts a new task; a send to a live thread does not.
   assert.deepEqual(observe("t3_thread_send", { message: "Fix the review findings" }, { threadId: "t", link: "<l>", status: "starting" }), []);
   observe("t3_thread_send", { message: "Fix the review findings" }, { taskId: "node:task-2", link: "<l>", status: "running" }).forEach(update => ledger.apply(update));
-  assert.deepEqual(ledger.open("delegate").map(handle => [handle.id, handle.title]), [["node:task-2", undefined]]);
+  assert.deepEqual(ledger.open("delegate").map(handle => [handle.id, handle.explicitTitle]), [["node:task-2", undefined]]);
 });
 
 test("T3's encoded task id survives create, status, cancel and branch replay verbatim", () => {

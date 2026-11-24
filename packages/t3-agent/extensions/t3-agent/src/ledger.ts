@@ -15,7 +15,7 @@ export interface Handle {
   kind: HandleKind;
   id: string;
   hostId?: string; // part of a device's identity
-  title?: string;
+  explicitTitle?: string; // Old `title` fields could contain prompt text; never replay them.
   link?: string;
   status?: State;
   open: boolean;
@@ -81,14 +81,14 @@ function receipt(data: unknown): Handle | undefined {
   const kind = raw.kind as HandleKind;
   const id = kind === "pr" ? prId(raw.id) : kind === "delegate" ? taskId(raw.id) : safeId(raw.id);
   if (!id) return undefined;
-  const title = safeTitle(raw.title);
+  const explicitTitle = safeTitle(raw.explicitTitle);
   const link = kind === "delegate" || kind === "thread" ? threadLink(raw.link) : undefined;
   const status = STATES.find(state => state === raw.status);
   const hostId = kind === "device" ? safeId(raw.hostId) : undefined;
   if (kind === "device" && raw.hostId !== undefined && !hostId) return undefined;
   // Older receipts confused pausing a schedule with deleting it.
   const open = kind === "schedule" && status === "paused" ? true : raw.open ?? true;
-  return { kind, id, open, ...(hostId && { hostId }), ...(title && { title }), ...(link && { link }), ...(status && { status }) };
+  return { kind, id, open, ...(hostId && { hostId }), ...(explicitTitle && { explicitTitle }), ...(link && { link }), ...(status && { status }) };
 }
 
 /** T3 returns its result as JSON text; prefer structured content when a newer bridge supplies it. */
@@ -157,7 +157,7 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       const id = result?.taskId ?? (tool === "task_status" ? input.taskId : undefined);
       if (!id || !result) return [];
       const delivered = result.workState === "result_available" && TERMINAL.some(state => state === result.status);
-      return [{ kind: "delegate", id, open: !delivered, title: tool === "delegate_task" ? input.title : undefined,
+      return [{ kind: "delegate", id, open: !delivered, explicitTitle: tool === "delegate_task" ? input.title : undefined,
         link: result.link, status: delivered ? result.status : result.workState ?? result.status }];
     }
     case "task_cancel": {
@@ -171,7 +171,7 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
       const id = text(result?.scheduledTaskId) ?? text(input.scheduledTaskId);
       if (!id) return [];
       const enabled = (result?.enabled ?? input.enabled) !== false;
-      return [{ kind: "schedule", id, title: result?.title ?? input.title, open: true, status: enabled ? "enabled" : "paused" }];
+      return [{ kind: "schedule", id, explicitTitle: input.title, open: true, status: enabled ? "enabled" : "paused" }];
     }
     case "delete_scheduled_task": {
       const id = result?.scheduledTaskId ?? input.scheduledTaskId;
@@ -187,14 +187,15 @@ function observations(tool: string, input: Json, result: Json | undefined): Json
     }
     case "t3_thread_launch": {
       const id = text(result?.threadId);
-      return id ? [{ kind: "thread", id, title: input.title, link: text(result?.link), open: true }] : [];
+      return id ? [{ kind: "thread", id, explicitTitle: input.title, link: text(result?.link), open: true }] : [];
     }
     case "create_threads": {
       const threads = Array.isArray(result?.threads) ? result.threads : [];
-      return threads.flatMap(thread => {
+      const requests = Array.isArray(input.threads) ? input.threads : [];
+      return threads.flatMap((thread, index) => {
         const value = record(thread);
         const id = text(value?.threadId) ?? text(value?.id);
-        return id ? [{ kind: "thread" as const, id, title: value?.title, link: text(value?.link), open: true }] : [];
+        return id ? [{ kind: "thread" as const, id, explicitTitle: record(requests[index])?.title, link: text(value?.link), open: true }] : [];
       });
     }
     case "preview_open": {
@@ -269,8 +270,8 @@ export class Ledger {
 }
 
 function handleLine(handle: Handle): string {
-  const { kind, title, id, status, link, hostId } = handle;
-  const label = title ? ` "${title}"` : "";
+  const { kind, explicitTitle, id, status, link, hostId } = handle;
+  const label = explicitTitle ? ` "${explicitTitle}"` : "";
   const state = status ? `, status ${status}` : "";
   switch (kind) {
     case "delegate": return `- delegate${label} taskId=${id}${state}${link ? ` link ${link}` : ""}`;

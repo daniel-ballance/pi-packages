@@ -231,7 +231,7 @@ test("T3 results feed the ledger, persist at the turn boundary and reach the pro
   await f.emit("tool_result", { toolName: "mcp__t3-code__html_render", toolCallId: "c2", isError: true, input: {}, content: [{ type: "text", text: "{\"taskId\":\"x\"}" }] });
   assert.deepEqual(f.statuses.at(-1), [STATUS_KEY, "t3-agent: full access · standard loadout · 1 delegate"]);
   const boundary = await f.emit("turn_end", { entries: [], continue: false });
-  assert.deepEqual(boundary.entries, [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "delegate", id: "node:task-1", open: true, title: "Review the branch", link: "<t3-thread://v2/e/t1>", status: "working" } }]);
+  assert.deepEqual(boundary.entries, [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "delegate", id: "node:task-1", open: true, explicitTitle: "Review the branch", link: "<t3-thread://v2/e/t1>", status: "working" } }]);
   assert.equal(await f.emit("turn_end", { entries: [], continue: false }), undefined);
   assert.match((await startTurn(f)).t3_agent!, /### Open T3 handles[\s\S]*delegate "Review the branch" taskId=node:task-1, status working/);
 });
