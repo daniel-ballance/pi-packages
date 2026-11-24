@@ -290,7 +290,7 @@ function applyPatches(patchesDir, outDir, problems) {
 
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-function referenceBody(text, path, name, owner) {
+function referenceBody(text, path, name) {
   const { description, name: declared } = skillFrontmatter(text, path);
   if (declared !== name || typeof description !== "string" || !description.trim()) throw new Error(`${path}: reference needs its registered name and description`);
   const body = text.slice(frontmatterBlock(text)[0].length).replace(/^(?:\r?\n)+/, "");
@@ -298,8 +298,9 @@ function referenceBody(text, path, name, owner) {
   const heading = fromMarkdown(body).children.find(node => node.type === "heading" && node.depth === 1);
   const title = heading ? body.slice(heading.position.start.offset, heading.position.end.offset) : `# ${name}`;
   const rest = heading ? body.slice(0, heading.position.start.offset) + body.slice(heading.position.end.offset) : body;
-  const trigger = description.trim().replace(new RegExp(`/skill:${escapeRegex(name)}(?![\\w-])`, "g"), `/skill:${owner} ${name}`);
-  return title + newline.repeat(2) + trigger + newline.repeat(2) + rest.replace(/^(?:\r?\n)+/, "");
+  const summary = description.trim().split(/(?<=[.!?])\s+/)
+    .filter(sentence => !/^Use (?:for\b|when the user (?:says|asks|wants)\b)/i.test(sentence)).join(" ");
+  return [title, summary, rest.replace(/^(?:\r?\n)+/, "")].filter(Boolean).join(newline.repeat(2));
 }
 
 // Link whole names and command spans, not substrings of a shell command. Keep
@@ -417,7 +418,7 @@ function relocateReferences(outDir, skills, owners) {
     if (contents === undefined) continue;
     let text = contents;
     if (path !== output && path.endsWith("/SKILL.md")) {
-      text = referenceBody(text, path, posix.basename(before), posix.basename(after));
+      text = referenceBody(text, path, posix.basename(before));
     }
     text = rebaseResources(text, path, output, moves, targets, linkTo);
     if (owners.has(path) && !["extra", "authored", "registry"].includes(owners.get(path)) && path.endsWith(".md")) {

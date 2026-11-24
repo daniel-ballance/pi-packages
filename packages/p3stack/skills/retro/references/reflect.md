@@ -1,6 +1,6 @@
 # Reflect
 
-Spawn three parallel review subagents over the active transcript, surface learnings, and route each to a concrete edit on an existing skill. Use when the user says reflect.
+Spawn three parallel review subagents over the active transcript, surface learnings, and route each to a concrete edit on an existing skill.
 
 Mine the current conversation for durable learnings, then route them into skill edits.
 

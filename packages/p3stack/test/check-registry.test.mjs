@@ -105,6 +105,14 @@ for (const heading of ["# Leaf", ""]) {
   });
 }
 
+test("a reference opens with its description, not its command or trigger phrases", t => {
+  const f = referenceFixture(t);
+  const description = 'Compare two notes. Use for /skill:leaf or "compare my notes". Keep both originals. Use when the user says leaf.';
+  f.write("vendor/demo/skills/leaf/SKILL.md", f.skill("leaf").replace("A fixture skill.", JSON.stringify(description)) + "\nUse for /skill:first after review.\n");
+  f.build();
+  assert.equal(readFileSync(join(f.outDir, "skills/first/references/leaf.md"), "utf8"), "# Fixture\n\nCompare two notes. Keep both originals.\n\nUse for /skill:first after review.\n");
+});
+
 test("directory links follow the entry or resource directory; line citations keep the line", t => {
   const f = referenceFixture(t);
   f.write("vendor/demo/skills/leaf/notes/example.md", "Example.\n");
