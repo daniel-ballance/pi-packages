@@ -34,7 +34,7 @@ Add `"builtin:mcp"` to allowed/selected extensions. Add an explicit policy grant
 
 This is an **optional fragment**, not a replacement policy. Match server names and original tool names to your existing native configuration. The example grants only two tools per server, not every Playwright capability. Exact names and a single trailing `*` prefix pattern are supported; `*` explicitly grants all nonrecursive tools on that server, including future additions. Patterns match **raw MCP tool names**, not sanitized `mcp__...` names. `subagent_*` raw tools are always excluded, even under `*`. Server names whose normalized namespaces collide are rejected.
 
-Spawn/worker composition must select `mcpServers: ["context7"]` (or the needed subset) and select `codemode` or `tool_search` with its matching built-in extension. MCP selections authorize only those servers' granted tools; the ordinary `tools` array still controls non-MCP tools. `tools: []` with no MCP selections disables tools.
+Spawn/worker composition must select `mcpServers: ["context7"]` (or the needed subset) and select `codemode` or `tool_search` with its matching built-in extension. MCP selections authorize only those servers' granted tools; the ordinary `tools` array still controls non-MCP tools. `tools: []` selects no optional tools; policy `alwaysTools` still apply.
 
 Defaults: no selected servers, no credential consent, no project MCP configuration. Unselected global/project/extension-registered servers never connect through this integration. Extension-registered servers, MCP resources and prompts are not supported grants. Native MCP `/mcp` management is suppressed in children; it cannot mutate config/auth or enable other servers.
 

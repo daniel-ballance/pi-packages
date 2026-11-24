@@ -4,7 +4,7 @@ A small parent-owned DAG scheduler built on the existing subagent manager. The p
 
 ## Getting started
 
-1. Use `/skill:workflows` and `subagent_catalog` to choose real allowed worker compositions.
+1. In a terminal Pi parent, check `subagent_catalog.features.workflows`. Use the catalog's composition menu to choose allowed workers; workflow workers cannot delegate or use `parent_send`, even through `alwaysTools`.
 2. Write a JSON definition using the examples below. Starting a workflow authorizes its listed tasks and commands within its limits; inspect the definition first.
 3. `subagent_workflow_start({"path":"/absolute/path/to/workflow.json"})` returns acceptance and a run ID. Execution continues while the parent is idle.
 4. `subagent_workflow_inspect({"id":"workflow-…"})` shows progress, attempts, child IDs, artifacts and latest validation. Add `step` for full attempt history. Omit `id` to list runs.
@@ -78,7 +78,7 @@ Checks evaluate the exact submitted artifact from `input`. Passing checks forwar
 This first version deliberately has a fixed **worker → check** body, not an arbitrary nested workflow language. Human approval belongs after a loop, not inside it. `maxIterations` is 1–100.
 
 - **repair:** The next iteration copies the previous failed candidate and receives validation feedback. Stop on pass. Iteration/total-attempt/deadline exhaustion is **not success**; downstream work stays pending.
-- **improve:** Requires `seed` and `direction: "min"|"max"`. First validate the seed to establish a passing numeric baseline. Every candidate starts from the best accepted artifact. Adopt only passing candidates with score improvement strictly greater than `minImprovement` (default 0); otherwise discard them as the next baseline, while retaining their artifacts/results. All decisions are recorded as keep/discard. Optionally stop at `target` (score ≤ target for min, ≥ target for max). Without a target, completing the planned iterations returns the best valid baseline; with an unmet target, exhaustion is reported honestly. Global attempt/deadline exhaustion always exhausts the run, even if a useful best candidate exists.
+- **improve:** Requires `seed` and `direction: "min"|"max"`. First validate the seed to establish a passing numeric baseline. Every candidate starts from the best accepted artifact. Adopt only passing candidates with score improvement strictly greater than `minImprovement` (default 0); otherwise discard them as the next baseline, while retaining their artifacts/results. All decisions are recorded as keep/discard. Optionally stop at `target` (score ≤ target for min, ≥ target for max). Without a target, completing the planned iterations returns the best valid baseline; with an unmet target, exhaustion is reported honestly. Running out of attempts before finishing, or reaching the deadline, exhausts the run even if a useful best candidate exists.
 
 Iteration counters, feedback, candidate artifacts and accepted baseline survive explicit continuation. Interrupted iterations consume their already-reserved iteration/attempt allowance; they are not invisibly repeated.
 
