@@ -14,6 +14,7 @@ T3 injects its own extension into every Pi it launches. The bridge owns the MCP 
 
 - T3 renders bash calls as command cards and edits as diffs, so the reply should not repeat them.
 - Waiting for T3 means ending the turn on a wake, not leaving an agent polling after the reply.
+- Codemode scripts batch tool calls with `Promise.allSettled` and read only paths known to exist. Twice, a script whose `Promise.all` rejected on a missing file while its other reads were running ended the Pi process, and T3 reported the turn as failed ("Pi process exited unexpectedly"). The cause inside Pi is not isolated, so the prompt tells the model to avoid the pattern.
 - The permission mode from `T3_PI_RUNTIME_MODE`. In supervised and auto-accept-edits threads, `read`, `grep`, `find`, `ls` and read-only T3 tools are exempt from bridge approval, so the model is told to search with them and to batch shell commands.
 - The workspace: repository root, branch, upstream, default branch, and whether Git reports a linked worktree under T3's worktree directory. Treat that as this thread's isolated checkout unless the user says otherwise; the layout is not proof of ownership.
 - Pi has no native subagent tool under T3, so wherever T3's guidance says "your native tool", Pi uses `delegate_task`.

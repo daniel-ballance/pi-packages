@@ -45,6 +45,7 @@ export function buildSection(state: PromptState): string {
     "The user reads this thread in T3 Code, not a terminal.",
     "- T3 shows each bash call as a command card and each edit or write as a diff. Your last message is the reply: say what changed and why, cite paths, and do not repeat diffs or long command output.",
     "- Do not leave an agent polling or sleeping after your reply. To act later, end the turn on a T3 wake: a delegate's completion, `watch_pull_request`, or `schedule_task`.",
+    "- In a codemode script, batch tool calls with `Promise.allSettled`, not `Promise.all`, and read only paths you know exist. A script that fails while its other calls are still running has ended the Pi process, and T3 then fails the whole turn.",
     permissionLine(state.mode),
     workspaceLine(state.workspace),
     "- After you open a pull request, call `link_pull_request` so T3 tracks it with this thread, or `watch_pull_request` when you will handle its checks and reviews.",

@@ -219,6 +219,7 @@ test("the prompt section states mode, workspace, loadout and open handles", () =
   assert.match(supervised, /### Open T3 handles[\s\S]*watching PR o\/r#1/);
 
   const full = buildSection({ mode: "full-access", declared: 31 });
+  assert.match(full, /batch tool calls with `Promise\.allSettled`, not `Promise\.all`/, "a failed batch has ended the Pi process");
   assert.match(full, /Permission mode: full access\. The bridge asks for no approval in this mode\./);
   assert.doesNotMatch(full, /no tool call asks the user|leave no background process/i);
   assert.match(full, /Declared T3 tools: 31\b/);
