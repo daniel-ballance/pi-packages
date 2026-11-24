@@ -2,17 +2,17 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext } from "node:test";
+import { afterEach, test, type TestContext } from "node:test";
 import { agentDir, DEFAULT_ROLES, family, liveRoles, registerRoles, resolveRoles, type RoleValue } from "../extensions/p3stack/src/roles.ts";
 import { registerSetup } from "../extensions/p3stack/src/setup.ts";
 
 const capabilities = "mcp__t3-code__orchestrator_capabilities";
 
-function env(t: TestContext, key: string, value?: string) {
-  const previous = process.env[key];
+function env(key: string, value?: string) {
   if (value === undefined) delete process.env[key]; else process.env[key] = value;
-  t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
 }
+const { PI_CODING_AGENT_DIR, T3_MCP_URL } = process.env;
+afterEach(() => { env("PI_CODING_AGENT_DIR", PI_CODING_AGENT_DIR); env("T3_MCP_URL", T3_MCP_URL); });
 
 function directories(t: TestContext) {
   const root = mkdtempSync(join(tmpdir(), "p3stack-roles-"));
@@ -20,12 +20,12 @@ function directories(t: TestContext) {
   const cwd = join(root, "project"), personal = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true });
   mkdirSync(personal);
-  env(t, "PI_CODING_AGENT_DIR", personal);
+  env("PI_CODING_AGENT_DIR", personal);
   return { cwd, personal: join(personal, "p3stack.json"), project: join(cwd, ".pi", "p3stack.json") };
 }
 
 function lookup(t: TestContext, host: "cli" | "t3", { models = [] as string[], t3 = undefined as unknown, pins = {} as Record<string, RoleValue>, parent = undefined as { provider: string; id: string } | undefined } = {}) {
-  env(t, "T3_MCP_URL", host === "t3" ? "http://127.0.0.1:1/mcp" : undefined);
+  env("T3_MCP_URL", host === "t3" ? "http://127.0.0.1:1/mcp" : undefined);
   const { cwd, personal } = directories(t);
   if (Object.keys(pins).length) writeFileSync(personal, JSON.stringify({ roles: pins }));
   const calls: string[] = [];
@@ -99,6 +99,12 @@ test("a setup pin outside T3's short list gets an exact lookup before any family
   assert.deepEqual(queries, [{}, { search: id }]);
 });
 
+test("a reasoning toggle is not the model's advertised thinking level option", async t => {
+  const model = { id: "gpt-6", options: [{ id: "adaptiveThinking", values: [true, false] }, { id: "thinking", values: ["high"] }] };
+  const h = lookup(t, "t3", { pins: { "bug-fix": "work/gpt-6:high" }, t3: { providers: [{ providerInstanceId: "work", models: [model], canRunChildTask: true }] } });
+  assert.deepEqual((await h.resolve()).roles["bug-fix"], target("work", model.id, "high"));
+});
+
 test("T3 cannot satisfy a thinking pin with unadvertised or higher effort", async t => {
   const h = lookup(t, "t3", { t3: { providers: [provider("pi", t3Model("gpt-6", "max"), t3Model("grok-4.7"))] },
     pins: { "bug-fix": "pi/gpt-6:high", "perf-issue": "pi/grok-4.7:low" } });
@@ -139,6 +145,13 @@ test("other-host pins are hints; an ambiguous Pi identity cannot select a T3 acc
   assert.deepEqual((await single.resolve()).roles["bug-fix"], target("account", "xai/grok-4.7", "high"));
 });
 
+test("a foreign unknown model id can match exactly without inventing a family", async t => {
+  const cli = lookup(t, "cli", { pins: { "bug-fix": "work/local/alias-v2:low" }, models: ["local/alias-v2:low"] });
+  assert.equal((await cli.resolve()).roles["bug-fix"], "local/alias-v2:low");
+  const t3 = lookup(t, "t3", { pins: { "bug-fix": "local/alias-v2:low" }, t3: { providers: [provider("work", t3Model("local/alias-v2", "low"))] } });
+  assert.deepEqual((await t3.resolve()).roles["bug-fix"], target("work", "local/alias-v2", "low"));
+});
+
 test("an unavailable panel pin drops only its seat and is reported once across roles", async t => {
   const missing = "api/gemini-3:high", allowed = "api/gpt-6:high";
   const h = lookup(t, "cli", { pins: { "bug-fix": missing, "perf-issue": missing, "arena runners": [missing, allowed] }, models: [allowed] });
@@ -176,6 +189,11 @@ test("family checks recognise prefixed ids but never claim independence for unkn
 test("a fallback judgment prefers another family even when the author is not a permitted child", async t => {
   const h = lookup(t, "cli", { parent: { provider: "author", id: "gpt-6" }, models: ["child/gpt-6:xhigh", "child/gemini-3:high"] });
   assert.equal((await h.resolve()).roles["judgment and prose"], "child/gemini-3:high");
+});
+
+test("an implicit fallback preference does not collapse an otherwise diverse panel", async t => {
+  const h = lookup(t, "cli", { parent: { provider: "author", id: "gpt-6" }, models: ["api/claude-opus-5-5:high", "api/gpt-6:high"] });
+  assert.deepEqual((await h.resolve()).roles["interrogate reviewers"], ["api/claude-opus-5-5:high", "api/gpt-6:high"]);
 });
 
 test("a panel prefers two verifiable families over a private alias", async t => {
@@ -274,8 +292,8 @@ test("without UI, setup reports a dry run without touching the role file", async
   assert.match(w.messages.join("\n"), /no UI.*nothing written/i);
 });
 
-test("the agent directory follows Pi for empty, tilde and explicit overrides", t => {
-  env(t, "PI_CODING_AGENT_DIR", "");
+test("the agent directory follows Pi for empty, tilde and explicit overrides", () => {
+  env("PI_CODING_AGENT_DIR", "");
   assert.equal(agentDir(), join(homedir(), ".pi", "agent"));
   process.env.PI_CODING_AGENT_DIR = "~/pi-tests";
   assert.equal(agentDir(), join(homedir(), "pi-tests"));

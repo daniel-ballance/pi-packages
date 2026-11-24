@@ -134,6 +134,17 @@ function terminalCatalog(pi: CatalogApi): Catalog | undefined {
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
+function t3Levels(base: Selection, options: unknown): Selection[] {
+  for (const option of array(options).map(record)) {
+    if (typeof option.id !== "string" || !/thinking|reasoning|effort/i.test(option.id)) continue;
+    const values = option.values ?? array(option.options).map(choice => record(choice).id);
+    const levels = array(values).filter((v): v is string => typeof v === "string" && LEVELS.includes(v));
+    const id = option.id;
+    if (levels.length) return levels.map(level => ({ ...base, level, option: id }));
+  }
+  return [base]; // usable without an explicit thinking request only
+}
+
 function t3Selections(data: unknown) {
   const catalog = record(data);
   if (!Array.isArray(catalog.providers)) throw new Error("no providers in capabilities response");
@@ -148,11 +159,7 @@ function t3Selections(data: unknown) {
       if (typeof model.id !== "string") continue;
       const base = { provider: provider.providerInstanceId, model: model.id };
       if (base.provider === catalog.inheritedProviderInstanceId && base.model === catalog.inheritedModel) inherited = base;
-      const thinking = array(model.options).map(record).find(o => typeof o.id === "string" && /thinking|reasoning|effort/i.test(o.id));
-      const values = thinking?.values ?? array(thinking?.options).map(choice => record(choice).id);
-      const levels = array(values).filter((v): v is string => typeof v === "string" && LEVELS.includes(v));
-      if (!levels.length) choices.push(base); // usable without an explicit thinking request only
-      for (const level of levels) choices.push({ ...base, level, option: String(thinking!.id) });
+      choices.push(...t3Levels(base, model.options));
     }
   }
   return { choices, instances, inherited, searched: new Set<string>() };
@@ -244,7 +251,7 @@ function scopedChoices(name: string, catalog: LiveCatalog): Selection[] {
   if (catalog.instances.has(prefix)) return catalog.choices.filter(s => s.provider === prefix);
   // A foreign Pi identity must match the model namespace on a single instance.
   // Never strip an unknown instance and redirect its pin to a bare model id.
-  const foreign = catalog.choices.filter(s => s.model.startsWith(prefix + "/") && modelFamily(s.model) === family(name));
+  const foreign = catalog.choices.filter(s => s.model === name || (s.model.startsWith(prefix + "/") && modelFamily(s.model) === family(name)));
   const matches = prefer(foreign, s => s.model === name);
   return new Set(matches.map(s => s.provider)).size === 1 ? matches : [];
 }
@@ -253,6 +260,7 @@ function choose(hint: string, fromFile: boolean, catalog: LiveCatalog, author?: 
   const { name, level } = hintParts(hint), wantedFamily = family(hint);
   function match(s: Selection): number {
     if (nameOf(s) === name) return 3; // exact (instance, whole model id) wins
+    if (!catalog.instances && name.slice(name.indexOf("/") + 1) === nameOf(s)) return 2; // foreign T3 pin
     if (s.model === name || (!name.includes("/") && s.model.split("/").at(-1) === name)) return 2;
     return modelFamily(s.model) === wantedFamily ? 1 : 0;
   }
@@ -260,8 +268,9 @@ function choose(hint: string, fromFile: boolean, catalog: LiveCatalog, author?: 
   const avoid = author ?? (!fromFile && !choices.some(match) ? fallbackAuthor : undefined);
   if (fromFile) choices = choices.filter(match);
   else {
-    if (avoid) choices = prefer(choices, s => independent(modelFamily(s.model), avoid));
+    if (author) choices = prefer(choices, s => independent(modelFamily(s.model), author));
     if (panelFamilies) choices = prefer(choices, s => KNOWN_FAMILY.test(s.model) && panelFamilies.every(f => independent(modelFamily(s.model), f)));
+    if (!author && avoid) choices = prefer(choices, s => independent(modelFamily(s.model), avoid));
   }
   const found = choices.sort((a, b) => match(b) - match(a) || rank(b.level) - rank(a.level))[0];
   const substituted = found && (match(found) < (fromFile ? 3 : 2) || (level && level !== found.level));
@@ -309,13 +318,14 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
       }
       if (avoid && !independent(f, avoid)) {
         if (!KNOWN_FAMILY.test(avoid) || !KNOWN_FAMILY.test(f)) note(role, `unknown family: cannot verify independence of ${identity(found)} from ${distinctFrom ?? avoid}`);
+        else if (!author && used.length) note(role, `this panel seat is in the author's ${avoid} family`);
         else note(role, fromFile ? `pin ${hint} stays in the author's ${avoid} family` : `no model outside the ${avoid} family is offered at this level or below`);
       }
       seats.push(catalog.instances ? (inherit ? null : asTarget(found)) : identity(found));
       used.push(f);
     }
     if (Array.isArray(value) && value.length > 1 && (used.length < value.length || used.some((f, i) => !KNOWN_FAMILY.test(f) || used.indexOf(f) !== i))) {
-      note(role, "cannot give every panel seat a distinct family within the available selections and role defaults");
+      note(role, `cannot give every panel seat a distinct family within the available selections and role defaults${author ? ` while avoiding ${author}` : ""}`);
     }
     if (seats.length) roles[role] = Array.isArray(value) ? seats : seats[0];
   }
