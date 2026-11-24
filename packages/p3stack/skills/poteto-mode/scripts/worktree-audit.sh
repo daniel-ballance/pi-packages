@@ -24,6 +24,7 @@ done
 
 repo="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 [ -z "$repo" ] && { echo "not in a git repo; pass a repo path" >&2; exit 1; }
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 cd "$repo" || exit 1
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "error: not a git repo: $repo" >&2; exit 1; }
 
@@ -49,12 +50,11 @@ origin/*) git fetch origin "+refs/heads/${base#origin/}:refs/remotes/$base" --qu
 esac
 git rev-parse --verify --quiet "$base^{commit}" >/dev/null 2>&1 || { echo "error: base ref not found: $base" >&2; exit 1; }
 
-# GNU coreutils (Linux, Homebrew gnubin) reads `stat -f` as file system status
-# and `date -r` as a file, so pick the stat and date flags once.
-if stat -c %Y / >/dev/null 2>&1; then
-	stat_fmt=(-c '%Y'); fmt_day() { date -d "@$1" '+%Y-%m-%d'; }
+# GNU and BSD date use different flags for epoch seconds.
+if date -d @0 >/dev/null 2>&1; then
+	fmt_day() { date -d "@$1" '+%Y-%m-%d'; }
 else
-	stat_fmt=(-f '%m'); fmt_day() { date -r "$1" '+%Y-%m-%d'; }
+	fmt_day() { date -r "$1" '+%Y-%m-%d'; }
 fi
 
 # PR state by branch, fetched once as [{number, state, head}] with a lowercase
@@ -70,35 +70,6 @@ elif raw=$(gh pr list --author "@me" --state all --limit 1000 \
 	printf '%s' "$raw" | jq '[.[] | {number, state: (.state | ascii_downcase), head: .headRefName}]' > "$prs" 2>/dev/null
 fi
 
-# A nested cwd has its own session directory. Check headers before reading
-# turns: the flat custom directory and encoded prefixes need not be unique.
-session_activity() {
-	local root dir file cwd encoded main_encoded header quoted ts latest=0
-	encoded=$(printf '%s' "${wt#/}" | sed 's#[/\\:]#-#g')
-	main_encoded=$(printf '%s' "${main_wt#/}" | sed 's#[/\\:]#-#g')
-	root=${PI_CODING_AGENT_SESSION_DIR:-${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/sessions}
-	[ ! -d "$root" ] || { [ -r "$root" ] && [ -x "$root" ]; } || return 1
-	for dir in "${PI_CODING_AGENT_SESSION_DIR:-/dev/null}" "$root/--$main_encoded--" \
-		"$root/--$encoded--" "$root/--$encoded-"*--; do
-		[ -d "$dir" ] || continue
-		[ -r "$dir" ] && [ -x "$dir" ] || return 1
-		for file in "$dir"/*.jsonl; do
-			[ -f "$file" ] || continue
-			header=$(head -n 1 "$file") && cwd=$(jq -er 'select(.type == "session") | .cwd' <<< "$header") || return 1
-			case "$cwd" in
-			"$wt"|"$wt"/*) ;; # A session started here.
-			"$main_wt"|"$main_wt"/*)
-				quoted=$(jq -Rn --arg path "$wt" '$path') || return 1
-				quoted=${quoted#\"}
-				grep -qF -e "${quoted%\"}/" -e "$quoted" "$file" || { [ $? -eq 1 ] && continue; return 1; } ;;
-			*) continue ;;
-			esac
-			ts=$(stat "${stat_fmt[@]}" "$file") || return 1
-			[ "$ts" -le "$latest" ] || latest=$ts
-		done
-	done
-	printf '%s\n' "$latest"
-}
 now=$(date +%s)
 
 echo "# base: $base"
@@ -153,7 +124,7 @@ while IFS= read -r -d '' field; do
 	fi
 
 	last="-"; recent=no
-	if last_ts=$(session_activity); then
+	if last_ts=$(node "$script_dir/worktree-session-activity.mjs" "$main_wt" "$wt"); then
 		if [ "$last_ts" -gt 0 ]; then
 			last=$(fmt_day "$last_ts") || last="?"
 			[ $(( (now - last_ts) / 86400 )) -gt 4 ] || recent=yes

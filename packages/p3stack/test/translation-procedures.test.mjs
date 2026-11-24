@@ -62,13 +62,24 @@ test("a failed status inspection cannot make a merged worktree safe", t => {
   assert.equal(rows()[0][7], "unknown");
 });
 
-test("a recent Pi session started in a worktree subdirectory holds the worktree", t => {
+test("a recent Pi session started in a worktree subdirectory holds the worktree without a forge or jq", t => {
   const { wt, env, rows } = auditFixture(t);
   const cwd = join(wt, "src");
   mkdirSync(cwd);
+  writeFileSync(join(env.HOME, "bin/jq"), "#!/bin/sh\nexit 127\n", { mode: 0o755 });
   const dir = join(env.PI_CODING_AGENT_DIR, "sessions", `--${cwd.slice(1).replaceAll("/", "-")}--`);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "session.jsonl"), JSON.stringify({ type: "session", cwd }) + "\n");
+  assert.equal(rows()[0][7], "verify-recent-chat");
+});
+
+test("moving session storage does not hide earlier activity in the default directory", t => {
+  const { wt, env, rows } = auditFixture(t);
+  const dir = join(env.PI_CODING_AGENT_DIR, "sessions", `--${wt.slice(1).replaceAll("/", "-")}--`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "session.jsonl"), JSON.stringify({ type: "session", cwd: wt }) + "\n");
+  env.PI_CODING_AGENT_SESSION_DIR = join(env.HOME, "moved sessions");
+  mkdirSync(env.PI_CODING_AGENT_SESSION_DIR);
   assert.equal(rows()[0][7], "verify-recent-chat");
 });
 

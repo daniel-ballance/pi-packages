@@ -13,7 +13,11 @@
  #
  # Usage: worktree-audit.sh [-b|--base <ref>] [repo-path]
  #   repo-path defaults to the current repo.
-@@ -27,8 +27,11 @@
+@@ -24,11 +24,15 @@
+ 
+ repo="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+ [ -z "$repo" ] && { echo "not in a git repo; pass a repo path" >&2; exit 1; }
++script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
  cd "$repo" || exit 1
  git rev-parse --git-dir >/dev/null 2>&1 || { echo "error: not a git repo: $repo" >&2; exit 1; }
  
@@ -27,7 +31,7 @@
  
  if [ -z "$base" ]; then
  	for cand in "$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" origin/main origin/master; do
-@@ -38,27 +41,26 @@
+@@ -38,27 +42,25 @@
  	echo "warn: no -b given; MERGED checks against $base" >&2
  fi
  
@@ -43,14 +47,16 @@
  esac
  git rev-parse --verify --quiet "$base^{commit}" >/dev/null 2>&1 || { echo "error: base ref not found: $base" >&2; exit 1; }
  
- # GNU coreutils (Linux, Homebrew gnubin) reads `stat -f` as file system status
- # and `date -r` as a file, so pick the stat and date flags once.
- if stat -c %Y / >/dev/null 2>&1; then
+-# GNU coreutils (Linux, Homebrew gnubin) reads `stat -f` as file system status
+-# and `date -r` as a file, so pick the stat and date flags once.
+-if stat -c %Y / >/dev/null 2>&1; then
 -	stat_fmt=(-c '%Y %n'); fmt_day() { date -d "@$1" '+%Y-%m-%d'; }
-+	stat_fmt=(-c '%Y'); fmt_day() { date -d "@$1" '+%Y-%m-%d'; }
++# GNU and BSD date use different flags for epoch seconds.
++if date -d @0 >/dev/null 2>&1; then
++	fmt_day() { date -d "@$1" '+%Y-%m-%d'; }
  else
 -	stat_fmt=(-f '%m %N'); fmt_day() { date -r "$1" '+%Y-%m-%d'; }
-+	stat_fmt=(-f '%m'); fmt_day() { date -r "$1" '+%Y-%m-%d'; }
++	fmt_day() { date -r "$1" '+%Y-%m-%d'; }
  fi
  
  # PR state by branch, fetched once as [{number, state, head}] with a lowercase
@@ -61,7 +67,7 @@
  if command -v origin >/dev/null 2>&1 \
  	&& raw=$(origin pr list --author "@me" --state all --limit 1000 \
  		--json number,status,headRef 2>/dev/null); then
-@@ -67,68 +69,111 @@
+@@ -67,68 +69,82 @@
  	--json number,state,headRefName 2>/dev/null); then
  	printf '%s' "$raw" | jq '[.[] | {number, state: (.state | ascii_downcase), head: .headRefName}]' > "$prs" 2>/dev/null
  fi
@@ -70,35 +76,6 @@
 -# Transcripts dir: ~/.cursor/projects/<slugified-repo-path>/agent-transcripts.
 -slug=$(printf '%s' "$main_wt" | sed 's#^/##; s#/#-#g')
 -transcripts="$HOME/.cursor/projects/$slug/agent-transcripts"
-+# A nested cwd has its own session directory. Check headers before reading
-+# turns: the flat custom directory and encoded prefixes need not be unique.
-+session_activity() {
-+	local root dir file cwd encoded main_encoded header quoted ts latest=0
-+	encoded=$(printf '%s' "${wt#/}" | sed 's#[/\\:]#-#g')
-+	main_encoded=$(printf '%s' "${main_wt#/}" | sed 's#[/\\:]#-#g')
-+	root=${PI_CODING_AGENT_SESSION_DIR:-${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/sessions}
-+	[ ! -d "$root" ] || { [ -r "$root" ] && [ -x "$root" ]; } || return 1
-+	for dir in "${PI_CODING_AGENT_SESSION_DIR:-/dev/null}" "$root/--$main_encoded--" \
-+		"$root/--$encoded--" "$root/--$encoded-"*--; do
-+		[ -d "$dir" ] || continue
-+		[ -r "$dir" ] && [ -x "$dir" ] || return 1
-+		for file in "$dir"/*.jsonl; do
-+			[ -f "$file" ] || continue
-+			header=$(head -n 1 "$file") && cwd=$(jq -er 'select(.type == "session") | .cwd' <<< "$header") || return 1
-+			case "$cwd" in
-+			"$wt"|"$wt"/*) ;; # A session started here.
-+			"$main_wt"|"$main_wt"/*)
-+				quoted=$(jq -Rn --arg path "$wt" '$path') || return 1
-+				quoted=${quoted#\"}
-+				grep -qF -e "${quoted%\"}/" -e "$quoted" "$file" || { [ $? -eq 1 ] && continue; return 1; } ;;
-+			*) continue ;;
-+			esac
-+			ts=$(stat "${stat_fmt[@]}" "$file") || return 1
-+			[ "$ts" -le "$latest" ] || latest=$ts
-+		done
-+	done
-+	printf '%s\n' "$latest"
-+}
  now=$(date +%s)
  
  echo "# base: $base"
@@ -151,8 +128,15 @@
 +	if [ "$base_current" = yes ] && [ -n "$head" ]; then
 +		git merge-base --is-ancestor "$head" "$base" 2>/dev/null
 +		case $? in 0) merged=YES ;; 1) merged=no ;; esac
-+	fi
-+
+ 	fi
+-	recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
+ 
+-	case "$dirty" in wip:*) bucket=hold-wip ;; *)
+-		case "$pr" in */open|*/draft) bucket=hold-open-pr ;; *)
+-			if [ "$recent" = yes ]; then bucket=verify-recent-chat
+-			elif [ "$merged" = YES ] || [ "$pr" != "-" ]; then bucket=safe
+-			else bucket=review; fi ;;
+-		esac ;;
 +	# Porcelain v1 quotes embedded newlines. Count records, never split a path.
 +	dirty=unknown
 +	if porcelain=$(git -C "$wt" status --porcelain=v1 --untracked-files=all --ignored --ignore-submodules=none); then
@@ -176,25 +160,18 @@
 +		else remote="?"; fi
 +	else [ $? -eq 1 ] && remote=no-remote || remote="?"; fi ;;
 +	*) remote="?" ;;
-+	esac
-+
+ 	esac
+ 
 +	pr="-"
 +	if [ -n "$branch" ]; then
 +		if [ -s "$prs" ] && matches=$(jq -r --arg b "$branch" \
 +			'.[] | select(.head==$b) | "#\(.number)/\(.state)"' "$prs"); then
 +			[ -z "$matches" ] || pr=${matches%%$'\n'*}
 +		else pr="?"; fi
- 	fi
--	recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
- 
--	case "$dirty" in wip:*) bucket=hold-wip ;; *)
--		case "$pr" in */open|*/draft) bucket=hold-open-pr ;; *)
--			if [ "$recent" = yes ]; then bucket=verify-recent-chat
--			elif [ "$merged" = YES ] || [ "$pr" != "-" ]; then bucket=safe
--			else bucket=review; fi ;;
--		esac ;;
++	fi
++
 +	last="-"; recent=no
-+	if last_ts=$(session_activity); then
++	if last_ts=$(node "$script_dir/worktree-session-activity.mjs" "$main_wt" "$wt"); then
 +		if [ "$last_ts" -gt 0 ]; then
 +			last=$(fmt_day "$last_ts") || last="?"
 +			[ $(( (now - last_ts) / 86400 )) -gt 4 ] || recent=yes
@@ -211,8 +188,8 @@
 +		elif [ "$merged" = YES ]; then bucket=safe
 +		else bucket=review; fi ;;
 +	    esac ;;
- 	esac
- 
++	esac
++
 +	# Preserve a single display row even for names containing control characters.
 +	[[ "$wt" != *[[:cntrl:]]* ]] || printf -v wt '%q' "$wt"
  	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
@@ -221,3 +198,60 @@
 -
 -rm -f "$prs"
 +done < "$tmp/worktrees" | sort -t$'\t' -k1,1 -rh
+--- /dev/null
++++ b/skills/poteto-mode/scripts/worktree-session-activity.mjs
+@@ -0,0 +1,54 @@
++// Print the newest matching Pi session mtime (epoch seconds), or zero if none.
++import { open, readdir, stat } from "node:fs/promises";
++import { homedir } from "node:os";
++import { join } from "node:path";
++
++const [main, wt] = process.argv.slice(2);
++const encoded = path => `--${path.replace(/^\//, "").replace(/[/\\:]/g, "-")}--`;
++const below = (cwd, root) => cwd === root || cwd.startsWith(root + "/");
++const needle = JSON.stringify(wt).slice(1, -1);
++
++async function touched(file) {
++  const handle = await open(file, "r");
++  try {
++    let header = true;
++    for await (const line of handle.readLines()) {
++      if (header) {
++        // Encoded cwd names can collide; a custom directory can hold several projects.
++        const entry = JSON.parse(line);
++        if (entry.type !== "session" || typeof entry.cwd !== "string") throw Error(`Invalid session header: ${file}`);
++        if (below(entry.cwd, wt)) return true;
++        if (!below(entry.cwd, main)) return false;
++        header = false;
++      } else if (line.includes(needle + "/") || line.includes(needle + '"')) return true;
++    }
++    if (header) throw Error(`Empty session file: ${file}`);
++    return false;
++  } finally { await handle.close(); }
++}
++
++const custom = process.env.PI_CODING_AGENT_SESSION_DIR;
++const defaultRoot = join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi/agent"), "sessions");
++const mainDir = encoded(main), worktreeDir = encoded(wt), nestedPrefix = worktreeDir.slice(0, -2) + "-";
++const dirs = new Set();
++for (const root of new Set([defaultRoot, custom].filter(Boolean))) {
++  let entries;
++  try { entries = await readdir(root, { withFileTypes: true }); }
++  catch (error) { if (error.code === "ENOENT") continue; throw error; }
++  if (root === custom) dirs.add(root); // Explicit session directories can be flat.
++  for (const { name } of entries) {
++    if (name === mainDir || name === worktreeDir || (name.startsWith(nestedPrefix) && name.endsWith("--"))) {
++      dirs.add(join(root, name));
++    }
++  }
++}
++let newest = 0;
++for (const dir of dirs) {
++  for (const entry of await readdir(dir, { withFileTypes: true })) {
++    if (!entry.name.endsWith(".jsonl") || entry.isDirectory()) continue;
++    const file = join(dir, entry.name);
++    if (!entry.isFile()) throw Error(`Not a regular session file: ${file}`);
++    if (await touched(file)) newest = Math.max(newest, (await stat(file)).mtimeMs);
++  }
++}
++console.log(Math.floor(newest / 1000));
