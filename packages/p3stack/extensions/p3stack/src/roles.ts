@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { Type } from "typebox";
+import { detectHost } from "./host.ts";
 import type { Context, Pi } from "./mode.ts";
 
 export type RoleValue = string | string[];
@@ -111,7 +112,7 @@ interface RoleContext {
   isProjectTrusted(): boolean;
   modelRegistry: { getAvailable(): ModelInfo[] };
   model?: { provider: string; id: string };
-  executeTool: Context["executeTool"];
+  executeTool(name: string, args: Record<string, unknown>, options?: { signal?: AbortSignal }): ReturnType<Context["executeTool"]>;
 }
 
 export function readCatalog(pi: CatalogApi): Catalog | undefined {
@@ -145,18 +146,17 @@ function t3Selections(data: unknown): Selection[] {
   });
 }
 
-async function selections(pi: CatalogApi, ctx: RoleContext, problems: string[]): Promise<Selection[]> {
-  if (pi.getAllTools().some(tool => tool.name === "mcp__t3-code__orchestrator_capabilities")) {
-    const outcome = await ctx.executeTool("mcp__t3-code__orchestrator_capabilities", {});
-    if (outcome.isError) problems.push("T3 catalog call failed, using the subagents catalog");
-    else {
-      const result = outcome.result;
-      const payload = record(result.structuredContent);
-      if (result.isError || payload.isError) throw new Error("T3 catalog call failed");
-      const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
-      const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
-      return t3Selections(data);
-    }
+const CAPABILITIES = "mcp__t3-code__orchestrator_capabilities";
+
+async function selections(pi: CatalogApi, ctx: RoleContext, signal?: AbortSignal): Promise<Selection[]> {
+  if (detectHost() === "t3") {
+    const { result, isError } = await ctx.executeTool(CAPABILITIES, {}, { signal });
+    const payload = record(result.structuredContent);
+    if (isError || result.isError || payload.isError) throw new Error("capabilities call failed");
+    const content = array(payload.content ?? result.content).map(record).filter(part => part.type === "text").map(part => part.text).join("\n");
+    const data = Array.isArray(payload.providers) ? payload : payload.structuredContent ?? JSON.parse(content);
+    if (!Array.isArray(record(data).providers)) throw new Error("no providers in capabilities response");
+    return t3Selections(data);
   }
   const catalog = readCatalog(pi);
   if (!catalog && pi.getAllTools().some(tool => tool.name === "subagent_catalog")) throw new Error("subagents catalog did not reply");
@@ -199,13 +199,17 @@ function diversify(selection: Selection, catalog: Selection[], avoid: string): S
   return others.filter(entry => at(entry) <= wanted).sort((a, b) => at(b) - at(a))[0] ?? others.sort((a, b) => at(a) - at(b))[0];
 }
 
-export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?: string) {
+export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?: string, signal?: AbortSignal) {
   const defaults = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
   const roles: Record<string, string | Target | (string | Target)[]> = {};
   const problems = [...defaults.problems];
   let catalog: Selection[];
-  try { catalog = await selections(pi, ctx, problems); }
-  catch (error) { return { source: defaults.source, budget: defaults.budget, roles, problems: [...problems, `catalog unavailable, ${String(error)}`] }; }
+  try { catalog = await selections(pi, ctx, signal); }
+  catch (error) {
+    const source = detectHost() === "t3" ? "T3 catalog" : "catalog";
+    problems.push(`${source} unavailable (${(error as Error).message}). Blocked roles: ${Object.keys(defaults.roles).join("; ")}.`);
+    return { source: defaults.source, budget: defaults.budget, roles, problems };
+  }
   const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}:${pi.getThinkingLevel()}` : undefined;
   for (const [role, { value }] of Object.entries(defaults.roles)) {
     const avoid = distinctFrom ? family(distinctFrom) : undefined;
@@ -232,10 +236,10 @@ export function registerRoles(pi: Pi) {
     description: "Resolve every p3stack role against the live catalog. Return exact provider/model:thinking identities or ready T3 targets, and report unavailable roles. Pass distinctFrom with the author's model to get reviewers from another model family.",
     promptSnippet: "p3stack_roles resolves role models against the live delegation catalog.",
     parameters: Type.Object({ distinctFrom: Type.Optional(Type.String({ description: "The author's model or model family. Reviewers, judges, and adversaries pass it so each role resolves to a different family when the catalog offers one." })) }, { additionalProperties: false }),
-    reachesTools: () => ["mcp__t3-code__orchestrator_capabilities"],
+    reachesTools: () => detectHost() === "t3" ? [CAPABILITIES] : [],
     outputSchema: Type.Object({ source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), problems: Type.Array(Type.String()) }),
-    async execute(_call: string, args: { distinctFrom?: string } | undefined, _signal: unknown, _update: unknown, ctx: Context) {
-      const resolved = await liveRoles(pi, ctx, args?.distinctFrom?.trim() || undefined);
+    async execute(_call: string, args: { distinctFrom?: string } | undefined, signal: AbortSignal | undefined, _update: unknown, ctx: Context) {
+      const resolved = await liveRoles(pi, ctx, args?.distinctFrom?.trim() || undefined, signal);
       const lines = Object.entries(resolved.roles).map(([role, value]) => `${role}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
       const head = `Role defaults from ${resolved.source}${resolved.budget ? ` (budget ${resolved.budget})` : ""}.`;
       return { content: [{ type: "text", text: [head, ...resolved.problems, ...lines].join("\n") }], details: resolved, structuredContent: resolved };
