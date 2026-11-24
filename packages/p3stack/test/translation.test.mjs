@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { generate } from "../generator/generate.mjs";
+import { gitEnv } from "../generator/git-env.mjs";
 import { lintHosts } from "../generator/lint-hosts.mjs";
 
 const pkg = fileURLToPath(new URL("..", import.meta.url));
@@ -147,4 +149,56 @@ test("constraints describes the standards and spec axes and grilling's question 
   assert.doesNotMatch(skill, /five axes|one-question-at-a-time/);
   assert.match(skill, /code-review[^\n]*standards[^\n]*spec/i);
   assert.match(skill, /rounds[^\n]*grilling|grilling[^\n]*rounds/i);
+});
+
+test("code-review's Git inputs cover the index, working tree and new files, or the committed range", t => {
+  const repo = mkdtempSync(join(tmpdir(), "p3stack-review-"));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const env = gitEnv({ ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" });
+  const git = (...args) => execFileSync("git", args, { cwd: repo, env, encoding: "utf8" });
+  const commit = () => git("-c", "user.name=fixture", "-c", "user.email=fixture@example.org", "commit", "-qm", "fixture");
+  git("init", "-q");
+  writeFileSync(join(repo, "tracked"), "base\n");
+  git("add", "tracked");
+  commit();
+  const base = git("rev-parse", "HEAD").trim();
+
+  // Execute the read-only Git commands named by the procedure, not a shell
+  // transcript. The old three-dot diff returns no evidence for this change.
+  const step = read("skills/code-review/SKILL.md").split("### 2.")[0];
+  const commands = [...step.matchAll(/`git ((?:diff|ls-files|status)\b[^`\n]*)`/g)].map(m => m[1]);
+  const run = command => git(...command.replaceAll(/<(?:fixed-point|base)>/g, base).split(" "));
+  writeFileSync(join(repo, "tracked"), "staged content\n");
+  git("add", "tracked");
+  writeFileSync(join(repo, "tracked"), "unstaged content\n");
+  const path = "new file.txt";
+  writeFileSync(join(repo, path), "new content\n");
+
+  const wip = commands.filter(c => c.startsWith("diff")).map(run).join("\n");
+  assert.match(wip, /\+staged content/);
+  assert.match(wip, /\+unstaged content/);
+  const status = commands.find(c => c.startsWith("status "));
+  assert.ok(status);
+  assert.notEqual(run(status), "");
+  const others = commands.find(c => c.startsWith("ls-files "));
+  assert.ok(others);
+  assert.deepEqual(run(others).split("\0"), [path, ""]);
+  assert.match(step, /untracked[^\n]*contents/i);
+
+  git("add", ".");
+  commit();
+  assert.equal(run(status), "");
+  const committed = commands.find(c => c.startsWith("diff") && c.includes("HEAD"));
+  assert.ok(committed);
+  assert.match(run(committed), /\+new content/);
+});
+
+test("both code-review briefs receive the captured input, without a prerequisite commit", () => {
+  const review = read("skills/code-review/SKILL.md");
+  for (const brief of ["Standards", "Spec"]) {
+    const prompt = review.split(`**${brief} subagent prompt**`)[1].split("\n\n", 3)[1];
+    assert.match(prompt, /captured/i);
+    assert.doesNotMatch(prompt, /diff command/);
+  }
+  assert.doesNotMatch(read("skills/implement/SKILL.md"), /uncommitted changes would be missed/);
 });

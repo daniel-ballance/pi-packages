@@ -65,5 +65,11 @@
     "heading": "## Parent orchestration",
     "overlay": "thermos/parent-orchestration.md",
     "upstream": "267818c1c466"
+  },
+  {
+    "file": "skills/code-review/SKILL.md",
+    "heading": "### 1. Pin the fixed point",
+    "overlay": "code-review/capture-input.md",
+    "upstream": "f4a615d42acf"
   }
 ]
