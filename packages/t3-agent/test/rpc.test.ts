@@ -92,6 +92,25 @@ test("RPC get_commands discovers the six shortcut templates only with the T3 mar
     ? ["t3-babysit", "t3-chart", "t3-fanout", "t3-handoff", "t3-review", "t3-ship"] : []);
 });
 
+test("T3's command-discovery Pi lists the shortcuts and the status command, and nothing else", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "t3-agent-probe-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  // T3 Code 0.1.9's discovery launch: no T3_MCP_URL, but its own T3CODE_* environment.
+  const run = (args: string[]) => {
+    const child = spawnSync(process.execPath, [cli, "--mode", "rpc", ...args, "--no-extensions", "--no-context-files", "-e", extension], {
+      cwd: dir, env: { PATH: process.env.PATH, HOME: dir, PI_CODING_AGENT_DIR: join(dir, "agent"), PI_TELEMETRY: "0", T3CODE_HOME: dir },
+      input: '{"id":"commands","type":"get_commands"}\n', encoding: "utf8", timeout: 20_000,
+    });
+    assert.equal(child.status, 0, child.stderr);
+    const reply = child.stdout.trim().split("\n").map(line => JSON.parse(line)).find(e => e.id === "commands");
+    assert.equal(reply?.success, true);
+    return reply.data.commands.map((c: { name: string; source: string }) => `${c.source}:${c.name}`).sort();
+  };
+  assert.deepEqual(run(["--no-session", "--offline"]), ["extension:t3-agent",
+    ...["t3-babysit", "t3-chart", "t3-fanout", "t3-handoff", "t3-review", "t3-ship"].map(name => `prompt:${name}`), "skill:skill:t3-code"]);
+  assert.deepEqual(run(["--no-session"]), [], "a session-less Pi that is not T3's offline probe stays inert");
+});
+
 test("under a real Pi RPC session the prompt section, loadout and ledger reach the model", { timeout: 60_000 }, async t => {
   const dir = await mkdtemp(join(tmpdir(), "t3-agent-rpc-"));
   const agentDir = join(dir, "agent");

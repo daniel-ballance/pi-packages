@@ -40,3 +40,14 @@ export function modeLabel(mode: RuntimeMode): string {
     default: return "supervised";
   }
 }
+
+/**
+ * T3 Code 0.1.9 builds the composer's `/` menu from a short-lived `pi --mode rpc --no-session --offline`
+ * that it starts without T3_MCP_URL but under its own `T3CODE_*` environment. That process runs no session.
+ */
+export function isT3CommandDiscovery(env: Environment = process.env, argv: readonly string[] = process.argv): boolean {
+  if (env.T3_MCP_URL) return false;
+  const mode = argv.indexOf("--mode");
+  return mode >= 0 && argv[mode + 1] === "rpc" && argv.includes("--no-session") && argv.includes("--offline") &&
+    Object.keys(env).some(name => name.startsWith("T3CODE_") && env[name]);
+}

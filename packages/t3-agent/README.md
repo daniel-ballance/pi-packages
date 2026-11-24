@@ -2,7 +2,7 @@
 
 Tunes Pi for [T3 Code](https://github.com/pingdotgg/t3code). With this package, Pi knows what the T3 user sees, which permission mode is in force, and what Git reports about the checkout. It can call the T3 tools it needs without a search round trip, and it keeps track of the T3 objects it creates.
 
-**It does nothing unless T3 launched Pi.** T3 sets `T3_MCP_URL` for the Pi processes it starts; the shared host helper ([`shared/host.ts`](../../shared/host.ts)) reads it. In a terminal the extension returns before it registers anything: no tools, commands, prompt text, skills or prompt templates.
+**It does nothing unless T3 launched Pi.** T3 sets `T3_MCP_URL` for the Pi processes it starts; the shared host helper ([`shared/host.ts`](../../shared/host.ts)) reads it. In a terminal the extension returns before it registers anything: no tools, commands, prompt text, skills or prompt templates. One exception serves T3's composer: T3 Code 0.1.9 builds its `/` menu from a short-lived `pi --mode rpc --no-session --offline` that it starts without `T3_MCP_URL` but with its own `T3CODE_*` variables. In that process t3-agent names its skill, its prompt templates and `/t3-agent`, and nothing else.
 
 ## How it relates to T3's bridge
 
@@ -55,7 +55,7 @@ The ledger keeps bounded identifiers, caller-supplied titles, states and checked
 
 **The `t3-code` skill** maps each job (child agents, threads, worktrees, PRs, schedules, secrets, charts, browser and device previews, attachments, projects) to the T3 tool that does it. It also states the rules no single tool description gives.
 
-**Prompt templates** for T3 workflows. Type these in the running thread. The composer's `/` menu can use a different command list: T3 Code 0.1.9 discovers workspace commands in an ephemeral Pi process without `T3_MCP_URL`.
+**Prompt templates** for T3 workflows. Type these in the running thread, or pick them from the composer's `/` menu.
 
 | Command | Does |
 | --- | --- |
