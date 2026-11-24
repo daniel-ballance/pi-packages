@@ -14,7 +14,7 @@ With routing on, the extension points Pi to [p3stack-mode](../packages/p3stack/s
 
 The session branch saves the grant. An explicit request for full autonomy can raise it for one task. Without a grant from the extension, the router uses the default grant. See the [operator commands](../packages/p3stack/README.md#choose-who-decides) to change the saved grant. Each provider request carries at most the current user request's routing reminder. Turning routing off removes earlier hidden routing reminders from model input without editing the session log. The skills remain available.
 
-The [brief hook](adr/0006-mechanical-procedures-become-tools.md) uses the saved grant. For a task-only increase, the parent writes `Task grant: full-autonomy` in the brief.
+The [brief hook](adr/0006-mechanical-procedures-become-tools.md) uses the saved grant unless the parent sets a task grant. In a terminal, put `Task grant: full-autonomy` or `Task grant: default` first in the assignment. Under T3, replace the grant line in the prepared header; the approved task is sent unchanged.
 
 ## What depends on the host
 

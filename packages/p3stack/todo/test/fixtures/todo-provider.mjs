@@ -14,7 +14,10 @@ export default function (pi) {
         system: getCurrentSystemPrompt(context.messages), messages: context.messages,
       }) + "\n");
       const last = context.messages.at(-1);
-      const text = typeof last.content === "string" ? last.content : last.content?.find(c => c.type === "text")?.text ?? "";
+      // A start can include extension-authored user-role notes after the assignment.
+      const userBlock = context.messages.slice(context.messages.findLastIndex(m => m.role !== "user") + 1);
+      const text = userBlock.flatMap(m => typeof m.content === "string" ? [m.content] : m.content.filter(c => c.type === "text").map(c => c.text))
+        .flatMap(s => s.split("\n")).findLast(line => /^(CALL|RUN) /.test(line)) ?? "";
       let content = [{ type: "text", text: "ok" }], stopReason = "stop";
       if (last.role === "user" && text.startsWith("RUN ")) steps = JSON.parse(text.slice(4));
       const args = last.role === "user" && text.startsWith("CALL ") ? JSON.parse(text.slice(5)) : steps.shift();

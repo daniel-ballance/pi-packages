@@ -13,8 +13,8 @@ const agentRecipe = join(packageDir, "agents", "poteto-agent.md");
 
 export default function p3stack(pi: ExtensionAPI) {
   const isOn = registerMode(pi, modeSkill);
-  registerBrief(pi, isOn, modeSkill, agentRecipe);
+  const briefHeaders = registerBrief(pi, isOn, modeSkill, agentRecipe);
   registerAsk(pi);
-  registerRoles(pi);
+  registerRoles(pi, briefHeaders);
   registerSetup(pi);
 }

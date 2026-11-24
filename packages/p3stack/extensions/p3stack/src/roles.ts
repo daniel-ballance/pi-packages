@@ -377,7 +377,7 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
 const targetSchema = Type.Object({ providerInstanceId: Type.String(), model: Type.String(), options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), value: Type.String() }))) });
 const selectionSchema = Type.Union([Type.String(), targetSchema, Type.Null()]);
 
-export function registerRoles(pi: ExtensionAPI) {
+export function registerRoles(pi: ExtensionAPI, briefHeaders?: () => { work: string; report: string } | undefined) {
   if (detectHost() === "t3") {
     const clear = () => { t3Catalogs.delete(pi); };
     pi.on("session_start", clear);
@@ -395,12 +395,15 @@ export function registerRoles(pi: ExtensionAPI) {
     promptSnippet: "p3stack_roles resolves role models against the live delegation catalog.",
     parameters: Type.Object({ distinctFrom: Type.Optional(Type.String({ description: "The author's model or model family. Reviewers, judges, and adversaries pass it so each role resolves to a different family when the catalog offers one." })) }, { additionalProperties: false }),
     reachesTools: () => detectHost() === "t3" ? [CAPABILITIES] : [],
-    outputSchema: Type.Object({ source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), problems: Type.Array(Type.String()) }),
+    outputSchema: Type.Object({ ...(briefHeaders && { briefHeaders: Type.Optional(Type.Object({ work: Type.String(), report: Type.String() })) }), source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), problems: Type.Array(Type.String()) }),
     async execute(_call, args, signal, _update, ctx) {
       const resolved = await liveRoles(pi, ctx, args?.distinctFrom?.trim() || undefined, signal);
       const lines = Object.entries(resolved.roles).map(([role, value]) => `${role}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
       const head = `Role defaults from ${resolved.source}${resolved.budget ? ` (budget ${resolved.budget})` : ""}.`;
-      return { content: [{ type: "text", text: [head, ...resolved.problems, ...lines].join("\n") }], details: resolved, structuredContent: resolved };
+      const headers = briefHeaders?.();
+      const result = { ...resolved, ...(headers && { briefHeaders: headers }) };
+      if (headers) lines.push(`briefHeaders: ${JSON.stringify(headers)}`);
+      return { content: [{ type: "text", text: [head, ...resolved.problems, ...lines].join("\n") }], details: result, structuredContent: result };
     },
   });
 }
