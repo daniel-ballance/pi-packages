@@ -5,11 +5,12 @@ import { modeFooter } from "./footer.ts";
 import { detectHost } from "./host.ts";
 
 interface Ui {
-  select(title: string, options: string[]): Promise<string | undefined>;
-  input(title: string, placeholder?: string): Promise<string | undefined>;
+  select: ExtensionUIContext["select"];
+  input: ExtensionUIContext["input"];
   confirm(title: string, message: string): Promise<boolean>;
   notify(message: string, type?: "info" | "warning" | "error"): void;
   setFooter: ExtensionUIContext["setFooter"];
+  setStatus: ExtensionUIContext["setStatus"];
 }
 export interface Context {
   cwd: string;
@@ -44,13 +45,24 @@ export type Grant = "default" | "autonomous";
 const GRANTS: readonly Grant[] = ["default", "autonomous"];
 /** The router's grant column names full autonomy `full-autonomy`. */
 export const grantToken = (grant: Grant) => grant === "autonomous" ? "full-autonomy" : "default";
-const USAGE = "Usage: /p3stack on [default|autonomous] | grant <default|autonomous> | off | status | doctor";
-
 export function registerMode(pi: Pi, potetoSkill: string) {
+  const host = detectHost();
+  const usage = `/p3stack on [default|autonomous] | grant <default|autonomous> | off | status${host === "t3" ? " | doctor" : ""}`;
   const modeSkill = resolve(dirname(potetoSkill), "../p3stack-mode/SKILL.md");
   let modeOn = false, grant: Grant = "default";
+  let footer: ReturnType<typeof modeFooter> | undefined;
   const showMode = (ctx: Context) => {
-    if (ctx.hasUI && ctx.mode === "tui" && detectHost() === "cli") ctx.ui.setFooter(modeOn ? modeFooter(ctx, pi.events, () => grant) : undefined);
+    if (!ctx.hasUI) return;
+    if (ctx.mode !== "tui" || host !== "cli") {
+      ctx.ui.setStatus(MODE, modeOn ? `p3stack · ${grantToken(grant)}` : undefined);
+    } else if (modeOn) {
+      const next = modeFooter(ctx, pi.events, () => grant, () => { footer = undefined; });
+      ctx.ui.setFooter(next.factory);
+      footer = next;
+    } else if (footer) {
+      ctx.ui.setFooter(undefined);
+      footer = undefined;
+    }
   };
   const rebuild = (_event: unknown, ctx: Context) => {
     modeOn = false;
@@ -66,22 +78,36 @@ export function registerMode(pi: Pi, potetoSkill: string) {
   const state = () => modeOn ? `p3stack is on (${grantToken(grant)} grant).` : "p3stack is off.";
   pi.on("session_start", rebuild);
   pi.on("session_tree", rebuild);
+  if (host === "cli") {
+    for (const event of ["turn_end", "session_compact", "session_info_changed", "model_select", "thinking_level_select"]) {
+      pi.on(event, () => footer?.refresh());
+    }
+  }
   pi.on("before_agent_start", event => {
+    footer?.refresh(true); // No settings-change event: refresh compaction settings at the next request.
     const sections = event?.systemPromptOptions?.sections as Record<string, string> | undefined;
     if (sections) {
-      if (modeOn) sections[MODE] = `Read ${modeSkill} and follow it. Grant: ${grantToken(grant)}.`;
+      if (modeOn) sections[MODE] = `Read ${modeSkill} and follow it. Grant: ${grantToken(grant)}. Host: ${host === "cli" ? "terminal" : "t3"}.`;
       else delete sections[MODE];
     }
     if (!modeOn || event?.messageType !== "user") return;
-    return { message: { customType: "p3stack-turn", display: false, content: `[p3stack-mode is on, grant: ${grantToken(grant)}] Before anything else, route this request. Read ${modeSkill} if you have not read it in this session, select its matching route, read that target, and follow it. Before delegating, call \`p3stack_roles\` for the role models. Only a question about the mode itself skips this.` } };
+    return { message: { customType: "p3stack-turn", display: false, content: `Automated note from the p3stack extension, not the user. For this request only: read ${modeSkill}, then read and follow its matching target. Skip routing for mode questions. Use p3stack_roles before delegating.` } };
   });
   pi.registerCommand("p3stack", {
-    description: "Turn p3stack-mode on or off, set its grant, show status, or write the T3 contract report. /p3stack on [default|autonomous] | grant <default|autonomous> | off | status | doctor",
+    description: `Control p3stack-mode and its grant. ${usage}`,
     handler: async (args, ctx) => {
       const [want = "", value, ...rest] = args.trim().split(/\s+/);
-      if (want === "doctor") {
+      if (want === "doctor" && value === undefined) {
+        if (host !== "t3") {
+          if (ctx.hasUI) ctx.ui.notify("This session was not launched by T3 Code.", "info");
+          return;
+        }
         const file = doctor(pi);
         if (ctx.hasUI) ctx.ui.notify(`Wrote ${file}`, "info");
+        return;
+      }
+      if (want === "grant" && !modeOn) {
+        if (ctx.hasUI) ctx.ui.notify("p3stack is off. Use /p3stack on default or /p3stack on autonomous to turn it on with a grant.", "info");
         return;
       }
       const requested = value as Grant | undefined;
@@ -90,7 +116,7 @@ export function registerMode(pi: Pi, potetoSkill: string) {
         (want === "grant" && requested !== undefined && GRANTS.includes(requested)) ||
         ((want === "off" || want === "status" || !want) && requested === undefined));
       if (!valid) {
-        if (ctx.hasUI) ctx.ui.notify(USAGE, "info");
+        if (ctx.hasUI) ctx.ui.notify(`Usage: ${usage}`, "info");
         return;
       }
       if (want === "on" || want === "off" || want === "grant") {
