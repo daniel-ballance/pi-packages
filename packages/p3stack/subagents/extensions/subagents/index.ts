@@ -163,8 +163,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     },
     ended: (reason, state, requested) => {
       if (!requested) {
+        pi.appendEntry("subagent-loop-end", { task: state.task, reason });
         try { pi.sendMessage({ customType: "subagent-loop-end", content: `LOOP ENDED — ${JSON.stringify(state.task)} ${reason}.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" }); }
-        catch { pi.appendEntry("subagent-loop-end", { task: state.task, reason }); }
+        catch { /* The reason is already in session history. */ }
       }
       if (!requested && context?.hasUI) context.ui.notify(`Loop ended: ${reason}`, "info");
       showLoop();
@@ -292,6 +293,12 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     notifications?.wake();
     loops?.settled();
     if (ctx.isIdle()) herdr?.parent(false);
+  });
+  pi.on("message_start", event => {
+    if ("customType" in event.message && event.message.customType === "subagent-loop-tick") {
+      loops?.delivered((event.message.details as { id?: string } | undefined)?.id);
+      showLoop();
+    }
   });
   pi.on("message_end", event => {
     if ("customType" in event.message && event.message.customType === "subagent-report") {

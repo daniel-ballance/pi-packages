@@ -2,13 +2,15 @@
 // the model stops the loop or a policy bound ends it. Ticks only reach an idle
 // parent; one that falls due during a turn waits for the turn to settle.
 
+import { randomUUID } from "node:crypto";
+
 export interface LoopPolicy { enabled: boolean; minIntervalMs: number; maxIterations: number; maxDurationMs: number }
 export interface LoopRequest { task: string; intervalMs: number; maxIterations?: number; maxDurationMs?: number }
 export interface LoopState {
   task: string; intervalMs: number; iteration: number; maxIterations: number;
   startedAt: number; deadline: number; nextAt: number; due: boolean;
 }
-export interface LoopTick { task: string; iteration: number; maxIterations: number; intervalMs: number; deadline: number }
+export interface LoopTick { id: string; task: string; iteration: number; maxIterations: number; intervalMs: number; deadline: number }
 
 const LIMITS = {
   minIntervalMs: [1_000, 86_400_000], maxIterations: [1, 10_000], maxDurationMs: [60_000, 604_800_000],
@@ -43,6 +45,7 @@ export interface LoopOptions {
 export class LoopController {
   private state?: LoopState;
   private timer?: Timer;
+  private awaiting?: string;
   private readonly clock: () => number;
   private readonly setTimer: (run: () => void, ms: number) => Timer;
   private readonly clearTimer: (timer: Timer) => void;
@@ -90,6 +93,7 @@ export class LoopController {
     if (this.timer !== undefined) this.clearTimer(this.timer);
     this.timer = undefined;
     this.state = undefined;
+    this.awaiting = undefined;
   }
 
   // One timer, for whichever comes first: the next tick or the deadline. A tick
@@ -117,13 +121,25 @@ export class LoopController {
     if (this.timer !== undefined) this.clearTimer(this.timer);
     this.timer = undefined;
     state.due = false;
-    state.iteration++;
+    const id = this.awaiting = randomUUID(), iteration = state.iteration + 1;
+    // Pi's void sendMessage swallows asynchronous delivery errors. Arm the
+    // receipt deadline before sending: even a synchronous receipt must count.
+    this.timer = this.setTimer(() => {
+      if (this.awaiting === id) this.end(`could not confirm tick ${iteration} delivery: no message_start before timeout`);
+    }, Math.min(10_000, state.deadline - this.clock()));
     try {
-      this.options.send({ task: state.task, iteration: state.iteration, maxIterations: state.maxIterations, intervalMs: state.intervalMs, deadline: state.deadline });
+      this.options.send({ id, task: state.task, iteration, maxIterations: state.maxIterations, intervalMs: state.intervalMs, deadline: state.deadline });
     } catch (error) {
-      this.end(`could not confirm tick ${state.iteration} delivery: ${error}`);
-      return;
+      if (this.awaiting === id) this.end(`could not confirm tick ${iteration} delivery: ${error}`);
     }
+  }
+
+  delivered(id: unknown) {
+    const state = this.state;
+    if (!state || !this.awaiting || id !== this.awaiting) return;
+    this.awaiting = undefined;
+    this.clearTimer(this.timer); this.timer = undefined;
+    state.iteration++;
     if (state.iteration >= state.maxIterations) { this.end(`reached ${state.maxIterations} ticks`); return; }
     state.nextAt = this.clock() + state.intervalMs;
     this.schedule();

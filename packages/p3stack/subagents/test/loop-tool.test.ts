@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { AgentSession, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { asHost } from "./host-env.js";
 import { tempRoot } from "./support/temp-root.js";
@@ -24,13 +24,26 @@ function harness(policy: Record<string, unknown>, hasUI = true, deliveryError?: 
     ui: { notify: (text: string) => notices.push(text), setStatus: (key: string, text?: string) => statuses.push([key, text]) },
     sessionManager: { getEntries: () => [], getSessionId: () => "s" },
   };
+  let runtime!: Pick<ExtensionAPI, "sendMessage">;
+  const sdkErrors: string[] = [];
+  // Exercise Pi's real void binding: rejected sendCustomMessage promises go to
+  // the runner's error channel, not the extension that called sendMessage.
+  (AgentSession.prototype as any)._bindExtensionCore.call({
+    sendCustomMessage: async (message: any, options: any) => {
+      if (deliveryError) throw new Error(deliveryError);
+      sent.push({ message, options });
+      if (message.customType === "subagent-loop-tick") {
+        for (const fn of handlers.get("message_start") ?? []) fn({message: {...message, role: "custom"}}, ctx);
+      }
+    },
+  }, { bindCore: (core: typeof runtime) => {runtime = core;}, emitError: (e: {event: string}) => sdkErrors.push(e.event) });
   asHost("cli", () => {
     subagents({
       registerFlag() {}, getFlag() { return false; },
       on(name: string, handler: Function) { handlers.set(name, [...handlers.get(name) ?? [], handler]); },
       registerTool(tool: any) { tools.set(tool.name, tool); },
       registerCommand(name: string, command: any) { commands.set(name, command); },
-      sendMessage(message: any, options: any) { if (deliveryError) throw new Error(deliveryError); sent.push({ message, options }); },
+      sendMessage: runtime.sendMessage,
       appendEntry(type: string, data: any) { entries.push({ type, data }); },
       getAllTools: () => inventory, getCommands: () => [],
       events: { on: () => () => {} },
@@ -44,7 +57,7 @@ function harness(policy: Record<string, unknown>, hasUI = true, deliveryError?: 
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
     rmSync(agentDir, { recursive: true, force: true });
   };
-  return { tools, commands, call, emit, sent, entries, notices, statuses, ctx, dispose };
+  return { tools, commands, call, emit, sent, sdkErrors, entries, notices, statuses, ctx, dispose };
 }
 
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
@@ -96,9 +109,13 @@ test("a closed delivery queue leaves a loop-end record even when its notice cann
     t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
     await h.call({ op: "start", task: "check CI", intervalSeconds: 1 });
     t.mock.timers.tick(1000);
+    await Promise.resolve();
+    assert.deepEqual(h.sdkErrors, ["send_message"]);
+    assert.equal((await h.call({ op: "status" })).details.iteration, 0, "a submitted tick isn't confirmed");
+    t.mock.timers.tick(10_000);
     assert.match(text(await h.call({ op: "status" })), /no loop is running/i);
     assert.equal(h.entries.at(-1)?.type, "subagent-loop-end");
-    assert.match(h.entries.at(-1)?.data.reason, /tick.*queue closed/i);
+    assert.match(h.entries.at(-1)?.data.reason, /tick.*delivery.*message_start/i);
   } finally { await h.dispose(); }
 });
 
