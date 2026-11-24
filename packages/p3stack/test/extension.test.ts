@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
-import { createAgentSession, DefaultResourceLoader, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { ExtensionRunner, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import p3stack from "../extensions/p3stack/index.ts";
 import type { Context } from "../extensions/p3stack/src/mode.ts";
@@ -65,7 +65,17 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
   const dispose = () => { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; rmSync(root, { recursive: true, force: true }); };
-  return { root, cwd, agentDir, ctx, tools, commands, emit, results, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
+  return { root, cwd, agentDir, ctx, tools, commands, handlers, emit, results, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
+}
+function hostHarness(host: "terminal" | "t3", options?: Parameters<typeof harness>[0]) {
+  const previous = process.env.T3_MCP_URL;
+  if (host === "terminal") delete process.env.T3_MCP_URL;
+  else process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+  const h = harness(options);
+  return { ...h, dispose() {
+    h.dispose();
+    if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous;
+  } };
 }
 const text = (result: { content: { text: string }[] }) => result.content.map(part => part.text).join("\n");
 
@@ -75,7 +85,7 @@ test("each extension module registers its own job without loading unrelated feat
   const { registerAsk } = await import("../extensions/p3stack/src/ask.ts");
   const { registerSetup } = await import("../extensions/p3stack/src/setup.ts");
   const { registerRoles } = await import("../extensions/p3stack/src/roles.ts");
-  const mode = harness({ factory: pi => { const on = registerMode(pi, "router.md"); registerBrief(pi, on, "router.md", "agent.md"); } });
+  const mode = hostHarness("terminal", { factory: pi => { const on = registerMode(pi, "router.md"); registerBrief(pi, on, "router.md", "agent.md"); } });
   try {
     assert.equal(mode.tools.size, 0);
     await mode.command("p3stack", "on");
@@ -108,7 +118,8 @@ test("with a subagents catalog, only its identities are offered, at the highest 
   assert.deepEqual(candidates("unlimited", [], catalog), ["xai/grok-4.7:high", "p/deep:xhigh"]);
 });
 
-test("p3stack_roles answers with the role table as text, from the file or the default hints", async () => {
+test("p3stack_roles answers with the role table as text, from the file or the default hints", async t => {
+  t.after(asHost("cli"));
   const h = harness({ files: { "agent/p3stack.json": { budget: "large (xhigh)", roles: { "swarm workers": "xai/grok-4.7:xhigh" } } } });
   try {
     const result = await h.call("p3stack_roles", {});
@@ -120,7 +131,8 @@ test("p3stack_roles answers with the role table as text, from the file or the de
   } finally { h.dispose(); }
 });
 
-test("a trusted project's file wins over the personal one, and a broken file is reported, not used", async () => {
+test("a trusted project's file wins over the personal one, and a broken file is reported, not used", async t => {
+  t.after(asHost("cli"));
   const project = harness({ trusted: true, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "xai/grok-4.7:low" } }, "agent/p3stack.json": { roles: { "bug-fix": "xai/grok-4.7:high" } } } });
   try { assert.match(text(await project.call("p3stack_roles", {})), /bug-fix: xai\/grok-4\.7:low/); } finally { project.dispose(); }
   const untrusted = harness({ trusted: false, files: { "project/.pi/p3stack.json": { roles: { "bug-fix": "a/b:low" } } } });
@@ -137,7 +149,8 @@ test("a trusted project's file wins over the personal one, and a broken file is 
   } finally { broken.dispose(); }
 });
 
-test("roles resolve against the live allowlist, clamp thinking down, and report missing selections", async () => {
+test("roles resolve against the live allowlist, clamp thinking down, and name substitutions", async t => {
+  t.after(asHost("cli"));
   const catalog = { spawnEnabled: true, models: ["xai/grok-4.7:high", "claude/claude-opus-5-5:xhigh"] };
   const h = harness({ subagents: catalog });
   try {
@@ -148,12 +161,13 @@ test("roles resolve against the live allowlist, clamp thinking down, and report 
     catalog.models = ["xai/grok-4.7:low"];
     const second = (await h.call("p3stack_roles", {})).structuredContent;
     assert.equal(second.roles["swarm workers"], "xai/grok-4.7:low");
-    assert.equal(second.roles["judgment and prose"], undefined);
-    assert.match(second.problems.join("\n"), /judgment and prose.*no live catalog selection/);
+    assert.equal(second.roles["judgment and prose"], "xai/grok-4.7:low");
+    assert.match(second.problems.join("\n"), /judgment and prose.*substituted xai\/grok-4\.7:low for claude-opus-5-5-xhigh/);
   } finally { h.dispose(); }
 });
 
-test("distinctFrom moves each role off the author's family when the catalog offers another, and says so", async () => {
+test("distinctFrom moves each role off the author's family when the catalog offers another, and says so", async t => {
+  t.after(asHost("cli"));
   assert.equal(family("claude/claude-opus-5-5:xhigh"), "claude");
   assert.equal(family("xai/grok-4.7"), "grok");
   assert.equal(family("openai-codex/gpt-6-astra"), "gpt");
@@ -167,15 +181,16 @@ test("distinctFrom moves each role off the author's family when the catalog offe
     assert.equal(roles["judgment and prose"], "openai-codex/gpt-6-astra:xhigh", "the closest level outside the family");
     assert.equal(roles["swarm workers"], "xai/grok-4.7:high", "already outside the family");
     assert.deepEqual(roles["interrogate reviewers"], ["openai-codex/gpt-6-astra:xhigh", "xai/grok-4.7:high"]);
-    assert.match(text(result), /judgment and prose: substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude\//);
+    assert.match(text(result), /judgment and prose.*substituted openai-codex\/gpt-6-astra:xhigh for claude-opus-5-5-xhigh to differ from claude\//);
     catalog.models = ["claude/claude-opus-5-5:xhigh"];
     const only = await h.call("p3stack_roles", { distinctFrom: "claude" });
     assert.equal(only.structuredContent.roles["judgment and prose"], "claude/claude-opus-5-5:xhigh");
-    assert.match(text(only), /judgment and prose: no model outside the claude family is offered/);
+    assert.match(text(only), /judgment and prose.*no model outside the claude family is offered/);
   } finally { h.dispose(); }
 });
 
-test("a registered T3 catalog takes precedence and returns ready targets with advertised thinking options", async () => {
+test("under T3, roles return ready targets with advertised thinking options", async t => {
+  t.after(asHost("t3"));
   const h = harness({ subagents: { spawnEnabled: true, models: [] }, t3: { providers: [
     { providerInstanceId: "pi-main", canRunChildTask: true, models: [
       { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "low" }, { id: "high" }] }] },
@@ -190,19 +205,21 @@ test("a registered T3 catalog takes precedence and returns ready targets with ad
   } finally { h.dispose(); }
 });
 
-test("T3 bridge MCP envelopes resolve roles and preserve the inherited target without guessing options", async () => {
+test("T3 bridge MCP envelopes distinguish inheriting the parent from requesting an unoffered level", async t => {
+  t.after(asHost("t3"));
   const h = harness({ t3: { content: [], structuredContent: {
     inheritedProviderInstanceId: "pi-main", inheritedModel: "claude/claude-opus-5-5",
     providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude/claude-opus-5-5" }] }],
   } }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
   try {
     const roles = (await h.call("p3stack_roles", {})).structuredContent.roles;
-    assert.deepEqual(roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5" });
-    assert.deepEqual(roles["bug-fix"], roles["judgment and prose"]);
+    assert.equal(roles["judgment and prose"], undefined);
+    assert.equal(roles["bug-fix"], null, "omit target to inherit, including the parent's settings");
   } finally { h.dispose(); }
 });
 
-test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or text", async () => {
+test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or text", async t => {
+  t.after(asHost("t3"));
   const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [
     { id: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "xhigh" }] }] },
     { id: "xai/grok-4.7", options: [{ id: "thinkingLevel", type: "select", options: [{ id: "high" }] }] },
@@ -222,12 +239,13 @@ test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or te
       const result = await h.call("p3stack_roles", {});
       assert.deepEqual(result.structuredContent.roles["judgment and prose"], { providerInstanceId: "pi-main", model: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", value: "xhigh" }] });
       assert.equal(Object.keys(result.structuredContent.roles).length, 17);
-      assert.deepEqual(result.structuredContent.problems, []);
+      assert.match(result.structuredContent.problems.join("\n"), /grok-4\.7:high.*grok-4\.7-xhigh-fast/);
     } finally { h.dispose(); }
   }
 });
 
-test("a failed Pi tool-call outcome reports the T3 failure and resolves the subagents allowlist", async () => {
+test("a failed T3 catalog call blocks every role even with a registered subagents allowlist", async t => {
+  t.after(asHost("t3"));
   const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude/claude-opus-5-5" }] }] };
   const h = harness({ t3: capabilities, subagents: { spawnEnabled: true, models: ["claude/claude-opus-5-5:low", "xai/grok-4.7:low"] } });
   h.ctx.executeTool = async (name, args) => {
@@ -241,15 +259,14 @@ test("a failed Pi tool-call outcome reports the T3 failure and resolves the suba
   };
   try {
     const result = await h.call("p3stack_roles", {});
-    assert.equal(result.structuredContent.roles["judgment and prose"], "claude/claude-opus-5-5:low");
-    assert.equal(result.structuredContent.roles["swarm workers"], "xai/grok-4.7:low");
-    assert.equal(Object.keys(result.structuredContent.roles).length, 17);
-    assert.equal(result.structuredContent.problems.length, 1);
-    assert.match(text(result), /T3 catalog call failed/);
+    assert.deepEqual(result.structuredContent.roles, {});
+    assert.match(text(result), /T3 catalog unavailable/);
+    for (const role of Object.keys(DEFAULT_ROLES)) assert.ok(text(result).includes(role));
   } finally { h.dispose(); }
 });
 
-test("inherit-parent resolves to an exact permitted identity and disabled catalogs never invent a model", async () => {
+test("inherit-parent resolves to an exact permitted identity and disabled catalogs never invent a model", async t => {
+  t.after(asHost("cli"));
   const h = harness({ parent: { provider: "claude", id: "claude-opus-5-5" }, files: { "agent/p3stack.json": { roles: { "bug-fix": "inherit-parent" } } } });
   try { assert.equal((await h.call("p3stack_roles", {})).structuredContent.roles["bug-fix"], "claude/claude-opus-5-5:xhigh"); } finally { h.dispose(); }
   for (const subagents of ["old", { spawnEnabled: false, models: ["xai/grok-4.7:xhigh"] }] as Subagents[]) {
@@ -262,25 +279,25 @@ test("inherit-parent resolves to an exact permitted identity and disabled catalo
   }
 });
 
-test("the mode toggle persists, adds a prompt section while on, and shows only in the terminal", async () => {
-  const h = harness();
+test("the mode toggle persists, adds only the router section and reminds the model beside user requests", async () => {
+  const h = hostHarness("terminal");
   try {
     await h.command("p3stack", "on");
     assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "default" } });
-    assert.deepEqual(h.statuses, [], "no status row is added");
     assert.deepEqual(h.footers, [], "no footer is set outside the terminal");
     assert.deepEqual(h.notices.at(-1), ["p3stack is on (default grant).", "info"]);
     const event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
     const section = event.systemPromptOptions.sections["p3stack"];
-    assert.match(section, /^Read .*skills\/p3stack-mode\/SKILL\.md and follow it\. Grant: default\.$/);
+    assert.match(section, /^Read .*skills\/p3stack-mode\/SKILL\.md and follow it\. Grant: default\. Host: terminal\.$/);
     assert.doesNotMatch(section, /Role models|bug-fix|grok|claude/);
     assert.equal(section.split("\n").length, 1, "only the router belongs in the section");
     const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
     assert.equal(reminders.length, 1, "each user turn gets a reminder beside the request");
     assert.equal(reminders[0].display, false);
-    assert.match(reminders[0].content, /^\[p3stack-mode is on, grant: default\] Before anything else, route this request\. Read .*p3stack-mode\/SKILL\.md/);
-    assert.match(reminders[0].content, /call `p3stack_roles` for the role models/);
-    assert.doesNotMatch(reminders[0].content, /role models above/);
+    assert.match(reminders[0].content, /automated note from the p3stack extension, not from the user/i);
+    assert.match(reminders[0].content, /route this request: read .*p3stack-mode\/SKILL\.md unless its text is already in your context/i);
+    assert.match(reminders[0].content, /If the user's message answers, approves or corrects the task already in progress, continue that task instead/);
+    assert.match(reminders[0].content, /p3stack_roles/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
     await h.command("p3stack", "off");
     assert.deepEqual(h.notices.at(-1), ["p3stack is off.", "info"]);
@@ -296,20 +313,51 @@ test("the mode toggle persists, adds a prompt section while on, and shows only i
   } finally { resumed.dispose(); }
 });
 
-test("the grant is explicit mode state: set with on or grant, persisted, injected, and rejected when malformed", async () => {
+test("Pi keeps the router, grant and host after an earlier handler forces a user or custom request's prompt", async () => {
+  for (const host of ["terminal", "t3"] as const) {
+    const h = hostHarness(host);
+    try {
+      await h.command("p3stack", "on autonomous");
+      const earlier = new Map([["before_agent_start", [() => ({ systemPrompt: "Earlier forced prompt" })]]]);
+      const runner = { extensions: [{ path: "first", handlers: earlier }, { path: "p3stack", handlers: h.handlers }],
+        createContext: () => h.ctx, emitError: assert.fail };
+      for (const trigger of [
+        { messageType: "user", prompt: "Go ahead" },
+        { messageType: "custom", message: { role: "custom", customType: "completion", content: "Done", display: true, timestamp: 1 } },
+      ] as const) {
+        const { systemPromptOptions, messages } = await ExtensionRunner.prototype.emitBeforeAgentStart.call(runner as never, trigger, { cwd: h.cwd });
+        assert.match(systemPromptOptions.forceSystemPrompt!, new RegExp(`^Earlier forced prompt\\n\\nRead .*p3stack-mode/SKILL\\.md and follow it\\. Grant: full-autonomy\\. Host: ${host}\\.$`));
+        assert.equal(messages.length, trigger.messageType === "user" ? 1 : 0);
+      }
+    } finally { h.dispose(); }
+  }
+});
+
+test("grant while off cannot arm the next run", async () => {
   const h = harness();
+  try {
+    for (const args of ["grant autonomous", "grant"]) {
+      await h.command("p3stack", args);
+      assert.deepEqual(h.entries, []);
+      assert.match(h.notices.at(-1)![0], /p3stack is off.*\/p3stack on autonomous/i);
+    }
+    await h.command("p3stack", "on");
+    assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "default" } });
+  } finally { h.dispose(); }
+});
+
+test("the grant is explicit mode state: set with on or grant, persisted, injected, and rejected when malformed", async () => {
+  const h = hostHarness("t3");
   try {
     await h.command("p3stack", "on autonomous");
     assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "autonomous" } });
     assert.deepEqual(h.notices.at(-1), ["p3stack is on (full-autonomy grant).", "info"]);
     let event = await h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
-    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: full-autonomy\.$/);
-    const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
-    assert.match(reminders[0].content, /^\[p3stack-mode is on, grant: full-autonomy\]/);
+    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: full-autonomy\. Host: t3\.$/);
     await h.command("p3stack", "grant default");
     assert.deepEqual(h.entries.at(-1), { customType: "p3stack", data: { on: true, grant: "default" } });
     event = await h.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
-    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: default\.$/);
+    assert.match(event.systemPromptOptions.sections["p3stack"], / Grant: default\. Host: t3\.$/);
     await h.command("p3stack", "grant autonomous");
     await h.command("p3stack", "off");
     await h.command("p3stack", "on");
@@ -328,56 +376,104 @@ test("the grant is explicit mode state: set with on or grant, persisted, injecte
     try {
       await resumed.emit("session_start");
       const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
-      assert.match(event.systemPromptOptions.sections["p3stack"], new RegExp(`Grant: ${expected}\\.$`), JSON.stringify(data));
+      assert.match(event.systemPromptOptions.sections["p3stack"], new RegExp(`Grant: ${expected}\\. Host:`), JSON.stringify(data));
     } finally { resumed.dispose(); }
   }
 });
 
-test("delegated briefs carry the grant, the brief contract for writers, and the review stance for readers", async () => {
-  const h = harness();
-  try {
-    await h.command("p3stack", "on autonomous");
-    const writer: any = { toolName: "subagent_spawn", input: { task: "Build it.", tools: ["read", "edit"] } };
-    await h.emit("tool_call", writer);
-    assert.match(writer.input.task, /done predicate/);
-    assert.match(writer.input.task, /Do not spawn your own reviewer/);
-    assert.match(writer.input.task, /Grant: full-autonomy\.\n\nBuild it\.$/);
-    for (const event of [{ toolName: "subagent_spawn", input: { task: "Review it.", tools: ["read"] } }, { toolName: "mcp__t3-code__delegate_task", input: { role: "review", task: "Review it." } }] as any[]) {
-      await h.emit("tool_call", event);
-      assert.match(event.input.task, /author's conclusions are not evidence/);
-      assert.match(event.input.task, /measured, inferred, or guess/);
-      assert.match(event.input.task, /Grant: full-autonomy\.\n\nReview it\.$/);
-      assert.doesNotMatch(event.input.task, /done predicate/);
-    }
-  } finally { h.dispose(); }
-});
+const delegation = { terminal: "subagent_spawn", t3: "mcp__t3-code__delegate_task" } as const;
+for (const host of ["terminal", "t3"] as const) {
+  test(`${host} decorates only its native delegation tool, only while on`, async () => {
+    const h = hostHarness(host);
+    const task = "Inspect the importer.";
+    try {
+      const local = { toolName: delegation[host], input: { task } };
+      await h.emit("tool_call", local);
+      assert.equal(local.input.task, task);
+      await h.command("p3stack", "on");
+      const foreign = { toolName: delegation[host === "terminal" ? "t3" : "terminal"], input: { task } };
+      await h.emit("tool_call", foreign);
+      assert.equal(foreign.input.task, task);
+      await h.emit("tool_call", local);
+      assert.match(local.input.task, /Grant: default\./);
+    } finally { h.dispose(); }
+  });
 
-test("the parent is told when an implementation brief named no interfaces or done predicate", async () => {
-  const h = harness();
-  try {
-    await h.command("p3stack", "on");
-    const result = (id: string) => ({ toolCallId: id, content: [{ type: "text", text: "spawned" }], structuredContent: { id: "child-1" }, details: { d: 1 } });
-    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "thin", input: { task: "Fix the export.", tools: ["read", "edit"] } });
-    const [note] = await h.results("tool_result", result("thin"));
-    assert.equal(note.content[0].text, "spawned");
-    assert.match(note.content[1].text, /^p3stack: this brief named no interfaces and no done predicate\. .*check them in its report/);
-    assert.deepEqual(note.structuredContent, { id: "child-1" }, "structured content survives");
-    assert.deepEqual(await h.results("tool_result", result("thin")), [], "noted once");
-    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "full", input: { task: "Fix the export. Interfaces: exportCsv(rows). Done when `npm test` prints 0 failures.", tools: ["read", "edit"] } });
-    assert.deepEqual(await h.results("tool_result", result("full")), []);
-    await h.emit("tool_call", { toolName: "subagent_spawn", toolCallId: "reader", input: { task: "Audit it.", tools: ["read"] } });
-    assert.deepEqual(await h.results("tool_result", result("reader")), [], "read-only briefs are not held to the implementation contract");
-    await h.emit("tool_call", { toolName: "mcp__t3-code__delegate_task", toolCallId: "t3", input: { task: "Build the importer.", role: "implementation" } });
-    assert.match((await h.results("tool_result", result("t3")))[0].content[1].text, /named no interfaces and no done predicate/);
-  } finally { h.dispose(); }
-});
+  test(`${host} replaces only a leading brief header and uses the current grant`, async () => {
+    const h = hostHarness(host);
+    const task = `\nUpdate the example citing ${join(import.meta.dirname, "../agents/poteto-agent.md")}.\n\nKeep this spacing.\n`;
+    const event = { toolName: delegation[host], input: { task } };
+    try {
+      await h.command("p3stack", "on autonomous");
+      await h.emit("tool_call", event);
+      assert.match(event.input.task, /^<p3stack-brief>Grant: full-autonomy\./);
+      assert.ok(event.input.task.endsWith("</p3stack-brief>\n\n" + task));
+      const first = event.input.task;
+      await h.emit("tool_call", event);
+      assert.equal(event.input.task, first);
+      await h.command("p3stack", "grant default");
+      event.input.task = "\n" + first;
+      await h.emit("tool_call", event);
+      assert.equal(event.input.task, first.replace("Grant: full-autonomy.", "Grant: default."));
+      for (const separator of ["\r\n\r\n", "\n", " ", ""]) {
+        event.input.task = first.slice(0, first.indexOf("</p3stack-brief>") + "</p3stack-brief>".length).replaceAll("\n", "\r\n") + separator + "Update it.";
+        await h.emit("tool_call", event);
+        assert.deepEqual(event.input.task.match(/Grant: [\w-]+\./g), ["Grant: default."]);
+        assert.ok(event.input.task.endsWith("Update it."));
+      }
+      event.input.task = "Discuss this quoted brief:\n" + first;
+      await h.emit("tool_call", event);
+      assert.ok(event.input.task.endsWith("Discuss this quoted brief:\n" + first));
+    } finally { h.dispose(); }
+  });
+
+  test(`${host} sends the full stance at the limit and blocks with the exact excess above it`, async () => {
+    const h = hostHarness(host);
+    const limit = host === "terminal" ? 30_000 : 120_000;
+    try {
+      await h.command("p3stack", "on autonomous");
+      for (const role of ["implementation", "review"]) {
+        const assignment = host === "t3" ? { role } : { tools: [role === "review" ? "read" : "edit"] };
+        const event = (task: string) => ({ toolName: delegation[host], input: { ...assignment, task } });
+        const sample = event("Do it.");
+        await h.emit("tool_call", sample);
+        const header = sample.input.task.slice(0, -"Do it.".length);
+        assert.match(header, role === "review" ? /report-only/ : /assigned unit|brief contract/);
+        const body = "x".repeat(limit - header.length);
+        const fits = event(body);
+        assert.deepEqual(await h.results("tool_call", fits), []);
+        assert.equal(fits.input.task, header + body);
+        for (const excess of [1, header.length]) {
+          const raw = body + "x".repeat(excess), over = event(raw);
+          const [blocked] = await h.results("tool_call", over);
+          assert.equal(blocked?.block, true);
+          assert.match(blocked.reason, new RegExp(`shorten .* by ${excess} characters?\\b`, "i"));
+          assert.equal(over.input.task, raw);
+        }
+      }
+    } finally { h.dispose(); }
+  });
+
+  test(`${host} passes the tool result through without grading the brief by keywords`, async () => {
+    const h = hostHarness(host);
+    try {
+      await h.command("p3stack", "on");
+      for (const task of ["No interfaces yet. No acceptance criteria.", "Export parse(s: string): Row. Run npm test; 12 passed. Check the CLI output."]) {
+        await h.emit("tool_call", { toolName: delegation[host], toolCallId: "dispatch", input: { task, tools: ["edit"] } });
+        assert.deepEqual(await h.results("tool_result", { toolName: delegation[host], toolCallId: "dispatch", content: [{ type: "text", text: "spawned" }] }), []);
+      }
+    } finally { h.dispose(); }
+  });
+}
 
 test("the TUI sets a footer while on and restores the stock footer while off or switching branches", async () => {
   const restore = asTerminal(), branch: unknown[] = [];
   const h = harness({ mode: "tui", branch });
   try {
     await h.emit("session_start");
-    assert.equal(h.footers.at(-1), undefined);
+    await h.emit("session_tree");
+    await h.command("p3stack", "off");
+    assert.deepEqual(h.footers, [], "do not clear another extension's footer");
     await h.command("p3stack", "on");
     assert.equal(typeof h.footers.at(-1), "function");
     await h.command("p3stack", "off");
@@ -392,36 +488,39 @@ test("the TUI sets a footer while on and restores the stock footer while off or 
   } finally { h.dispose(); restore(); }
 });
 
-test("T3 never sets a terminal footer or status row", async () => {
-  const previous = process.env.T3_MCP_URL;
-  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
-  try {
-    for (const mode of ["rpc", "tui"]) {
-      const h = harness({ mode });
-      try {
-        await h.emit("session_start");
-        await h.command("p3stack", "on");
-        await h.command("p3stack", "off");
-        assert.deepEqual(h.footers, []);
-        assert.deepEqual(h.statuses, []);
-      } finally { h.dispose(); }
-    }
-  } finally { if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
+test("non-TUI mode status follows toggles and the active branch, including under T3", async () => {
+  for (const [host, mode] of [["terminal", "rpc"], ["t3", "rpc"], ["t3", "tui"]] as const) {
+    const entry = { type: "custom", customType: "p3stack", data: { on: true, grant: "autonomous" } };
+    const branch = [entry];
+    const h = hostHarness(host, { mode, branch });
+    try {
+      await h.emit("session_start");
+      await h.command("p3stack", "grant default");
+      await h.command("p3stack", "off");
+      await h.emit("session_tree");
+      branch.length = 0;
+      await h.emit("session_tree");
+      await h.emit("session_start");
+      assert.deepEqual(h.statuses, [
+        ["p3stack", "p3stack · full-autonomy"], ["p3stack", "p3stack · default"], ["p3stack", undefined],
+        ["p3stack", "p3stack · full-autonomy"], ["p3stack", undefined], ["p3stack", undefined],
+      ]);
+      assert.deepEqual(h.footers, []);
+    } finally { h.dispose(); }
+  }
 });
 
 test("the on footer prefixes the directory and matches Pi's stock rendering byte for byte", async () => {
   const restore = asTerminal(), h = harness({ mode: "tui" });
-  const settingsManager = SettingsManager.inMemory();
   const sessionManager = SessionManager.inMemory(h.cwd);
-  const resourceLoader = new DefaultResourceLoader({ cwd: h.cwd, agentDir: h.agentDir, settingsManager, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true });
   const model: NonNullable<ExtensionContext["model"]> = { provider: "footer-fixture", id: "model-🅿️", name: "Footer fixture", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 272000, maxTokens: 1000 };
-  const { session } = await createAgentSession({ cwd: h.cwd, agentDir: h.agentDir, model, thinkingLevel: "low", sessionManager, settingsManager, resourceLoader });
+  const state = { model, thinkingLevel: "low" };
   try {
     initTheme("dark", false);
     const { theme } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
     const contextUsage = { tokens: 23000, contextWindow: 272000, percent: 8.5 };
-    mock.method(session, "getContextUsage", () => contextUsage);
-    Object.assign(h.ctx, { model, thinkingLevel: session.thinkingLevel, sessionManager, getContextUsage: () => contextUsage });
+    const session = { model, state, sessionManager, getContextUsage: () => contextUsage, modelRuntime: { isUsingSubscription: () => false } };
+    Object.assign(h.ctx, { model, thinkingLevel: state.thinkingLevel, sessionManager, getContextUsage: () => contextUsage });
     let branch: string | null = "p3stack/pr-04-mode-extension", renders = 0;
     let changed = () => {};
     const footerData = { getGitBranch: () => branch, getExtensionStatuses: () => new Map<string, string>(), getAvailableProviderCount: () => 2, onBranchChange: (callback: () => void) => { changed = callback; return () => { changed = () => {}; }; } };
@@ -431,13 +530,18 @@ test("the on footer prefixes the directory and matches Pi's stock rendering byte
     const tui = new TuiMainScreen(new ProcessTerminal());
     mock.method(tui, "requestRender", () => { renders++; });
     const footer = factory!(tui, theme, footerData);
-    const stock = new FooterComponent(session, footerData);
+    const reads = [mock.method(SettingsManager, "create"), mock.method(sessionManager, "getEntries"), mock.method(h.ctx, "getContextUsage"), mock.method(footerData, "getGitBranch")];
+    for (let i = 0; i < 10; i++) { footer.invalidate(); footer.render(200); }
+    assert.deepEqual(reads.map(read => read.mock.callCount()), [0, 0, 0, 0], "render does not load settings, scan the session or query git");
+    // Stock consumes only the session data above; no agent or provider needs to run.
+    const stock = new FooterComponent(session as unknown as ConstructorParameters<typeof FooterComponent>[0], footerData);
     const prefix = "🅿️ ";
     assert.equal(footer.render(200)[0], prefix + stock.render(200)[0]);
     for (const percent of [0, 75, 95, null]) {
       Object.assign(contextUsage, { percent });
       for (const enabled of [true, false]) {
         writeFileSync(join(h.agentDir, "settings.json"), JSON.stringify({ compaction: { enabled } }));
+        await h.emit("before_agent_start");
         stock.setAutoCompactEnabled(enabled);
         for (const width of [200, 100, 40, 10, 3, 1]) {
           footer.invalidate();
@@ -451,131 +555,133 @@ test("the on footer prefixes the directory and matches Pi's stock rendering byte
       }
     }
     sessionManager.appendSessionInfo("named session");
+    await h.emit("session_info_changed");
     branch = null;
+    const beforeBranch = renders;
     changed();
-    assert.equal(renders, 1);
+    assert.equal(renders, beforeBranch + 1);
     assert.equal(footer.render(200)[0], prefix + stock.render(200)[0]);
     sessionManager.appendMessage({ role: "assistant", api: model.api, provider: model.provider, model: model.id, content: [], usage: { input: 1234, output: 56, cacheRead: 3000, cacheWrite: 400, totalTokens: 4690, cost: { input: 0.1, output: 0.02, cacheRead: 0.03, cacheWrite: 0.04, total: 0.19 } }, stopReason: "stop", timestamp: Date.now() });
+    await h.emit("turn_end");
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
     model.provider = "kimi-coding";
+    await h.emit("model_select");
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
     assert.match(stripTerminalSequences(footer.render(200)[1]!), /\$0\.190 \(sub\)/);
     model.reasoning = false;
+    await h.emit("model_select");
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
     Object.assign(h.ctx, { thinkingLevel: "off" });
-    session.setThinkingLevel("off");
+    state.thinkingLevel = "off";
     model.reasoning = true;
+    await h.emit("thinking_level_select");
     assert.equal(footer.render(200)[1], stock.render(200)[1]);
-    footer.dispose?.();
+    footer.dispose?.(); // Another extension took over the footer.
+    const afterDispose = renders;
     changed();
-    assert.equal(renders, 1);
-  } finally { session.dispose(); h.dispose(); restore(); mock.restoreAll(); }
+    assert.equal(renders, afterDispose);
+    await h.command("p3stack", "off");
+    assert.deepEqual(h.footers, [factory], "a disposed footer is no longer ours to clear");
+  } finally { h.dispose(); restore(); mock.restoreAll(); }
 });
 
-test("while the mode is on, delegated briefs start with the poteto-agent recipe, once", async () => {
-  const h = harness();
+test("terminal briefs keep the local writer contract or report-only review stance", async () => {
+  const h = hostHarness("terminal");
   try {
-    const spawn: any = { toolName: "subagent_spawn", input: { task: "Fix the bug." } };
-    await h.emit("tool_call", spawn);
-    assert.equal(spawn.input.task, "Fix the bug.", "mode off: untouched");
-    await h.command("p3stack", "on");
-    await h.emit("tool_call", spawn);
-    assert.match(spawn.input.task, /^Before any work, read .*agents\/poteto-agent\.md.*\n\nFix the bug\.$/s);
-    const again = spawn.input.task;
-    await h.emit("tool_call", spawn);
-    assert.equal(spawn.input.task, again, "not prefixed twice");
-    const t3: any = { toolName: "mcp__t3-code__delegate_task", input: { task: "Review it." } };
-    await h.emit("tool_call", t3);
-    assert.match(t3.input.task, /poteto-agent\.md/);
-  } finally { h.dispose(); }
-});
-
-test("a Child with neither edit, write nor subagent_spawn gets the short read-only recipe instead of the full skill", async () => {
-  const h = harness();
-  try {
-    await h.command("p3stack", "on");
-    const reader: any = { toolName: "subagent_spawn", input: { task: "Audit stats.ts.", tools: ["read", "bash", "grep"] } };
-    await h.emit("tool_call", reader);
-    assert.match(reader.input.task, /^You are a read-only delegate in a poteto-mode run\. .*Do not read the poteto-mode skill.*\n\nAudit stats\.ts\.$/s);
-    assert.doesNotMatch(reader.input.task, /poteto-agent\.md/);
-    const again = reader.input.task;
-    await h.emit("tool_call", reader);
-    assert.equal(reader.input.task, again, "not prefixed twice");
-    const writer: any = { toolName: "subagent_spawn", input: { task: "Fix it.", tools: ["read", "edit"] } };
-    await h.emit("tool_call", writer);
-    assert.match(writer.input.task, /^Before any work, read .*poteto-agent\.md/s, "an editing Child keeps the full recipe");
-    const coordinator: any = { toolName: "subagent_spawn", input: { task: "Coordinate the audit.", tools: ["read", "subagent_spawn", "subagent_wait"] } };
-    await h.emit("tool_call", coordinator);
-    assert.match(coordinator.input.task, /poteto-agent\.md/, "a coordinator delegates, so it keeps the full recipe");
-    const t3: any = { toolName: "mcp__t3-code__delegate_task", input: { task: "Audit it.", tools: ["read"] } };
-    await h.emit("tool_call", t3);
-    assert.match(t3.input.task, /poteto-agent\.md/, "T3 tasks have no tool list, so they keep the full recipe");
-  } finally { h.dispose(); }
-});
-
-test("T3 research and review roles get a short recipe while writing and unspecified roles keep the full recipe", async () => {
-  const h = harness();
-  try {
-    await h.command("p3stack", "on");
-    for (const role of ["research", "review", "implement", undefined]) {
-      const event = { toolName: "mcp__t3-code__delegate_task", input: { role, task: "Inspect the change." } };
-      await h.emit("tool_call", event);
-      if (role === "research" || role === "review") {
-        assert.match(event.input.task, /^You are a read-only delegate/);
-        assert.doesNotMatch(event.input.task, /poteto-agent\.md/);
-      } else assert.match(event.input.task, /^Before any work, read .*poteto-agent\.md/);
-      const once = event.input.task;
-      await h.emit("tool_call", event);
-      assert.equal(event.input.task, once);
+    await h.command("p3stack", "on autonomous");
+    for (const tools of [["read", "bash"], ["read", "edit"], ["write"], ["subagent_spawn"]]) {
+      const task = (await h.emit("tool_call", { toolName: delegation.terminal, input: { tools, task: "Inspect it." } })).input.task;
+      assert.match(task, /Grant: full-autonomy\./);
+      if (tools.includes("bash")) {
+        assert.match(task, /report-only delegate/);
+        assert.match(task, /Do not read the poteto-mode skill, start a playbook, or delegate/);
+        assert.match(task, /author's conclusions are not evidence/);
+        assert.match(task, /measured, inferred, or guess/);
+        assert.match(task, /review-stance\.md/);
+        assert.doesNotMatch(task, /poteto-agent\.md|read-only delegate|input to your parent's decision/);
+      } else {
+        assert.match(task, /read .*agents\/poteto-agent\.md/);
+        assert.match(task, /brief-contract\.md/);
+        assert.match(task, /done predicate/);
+        assert.match(task, /Do not spawn your own reviewer/);
+      }
     }
   } finally { h.dispose(); }
 });
 
-test("doctor records every T3 tool exposure, the bridge hash, and explicit provider-before-bridge ordering", async () => {
-  const h = harness({ extraTools: [
+test("T3 briefs are self-contained for every role", async () => {
+  const h = hostHarness("t3");
+  try {
+    await h.command("p3stack", "on autonomous");
+    for (const role of ["research", "review", "implementation", "design", "test", "general", undefined]) {
+      const task = (await h.emit("tool_call", { toolName: delegation.t3, input: { role, task: "Inspect the change." } })).input.task;
+      assert.match(task, /Grant: full-autonomy\./);
+      assert.match(task, /Task grant:[^\n]*line[^\n]*sets the grant for this task/i);
+      assert.doesNotMatch(task, /poteto|SKILL\.md|\.md\b|read-only|\/[^< ]+\//);
+      if (role === "research" || role === "review") {
+        assert.match(task, /report-only/i);
+        assert.match(task, /contract.*author's summary/i);
+        assert.match(task, /measured, inferred, or guess/);
+        assert.match(task, /file:line/);
+      } else {
+        assert.match(task, /assigned unit and the procedures this brief assigns/i);
+        assert.match(task, /no other playbook and no reviewer of your own/i);
+        assert.match(task, /assumptions.*brief is silent/i);
+        assert.match(task, /evidence for each claim/i);
+      }
+    }
+  } finally { h.dispose(); }
+});
+
+test("doctor is neither advertised nor run in a terminal", async () => {
+  const h = hostHarness("terminal");
+  try {
+    await h.command("p3stack", "doctor");
+    assert.equal(existsSync(join(h.agentDir, "p3stack", "t3-contract.json")), false);
+    assert.match(h.notices.at(-1)![0], /not launched by T3 Code/i);
+    assert.doesNotMatch(h.commands.get("p3stack").description, /doctor|T3/i);
+    await h.command("p3stack", "help");
+    assert.doesNotMatch(h.notices.at(-1)![0], /doctor|T3/i);
+  } finally { h.dispose(); }
+});
+
+test("doctor records all T3 exposures and bridge provenance, not launch argument order", async () => {
+  const h = hostHarness("t3", { extraTools: [
     { name: "mcp__t3-code__delegate_task", exposure: "direct" },
     { name: "mcp__t3-code__hidden", exposure: "hidden" },
     { name: "mcp__other__tool", exposure: "codemode" },
   ] });
-  const argv = process.argv, previous = process.env.T3_PI_MCP_EXTENSION_PATH;
-  const bridge = join(h.root, "bridge.ts"), provider = join(h.root, "claude-subscription", "index.ts");
+  const previous = process.env.T3_PI_MCP_EXTENSION_PATH;
+  const bridge = join(h.root, "bridge.ts"), file = join(h.agentDir, "p3stack", "t3-contract.json");
   writeFileSync(bridge, "bridge content\n");
   process.env.T3_PI_MCP_EXTENSION_PATH = bridge;
   try {
-    for (const [args, expected] of [
-      [["-e", provider, "--extension", bridge], true],
-      [[`--extension=${bridge}`, `--extension=${provider}`], false],
-      [["a prompt naming", provider, bridge], false],
-    ] as [string[], boolean][]) {
-      process.argv = ["node", "pi", ...args];
-      await h.command("p3stack", "doctor");
-      const report = JSON.parse(readFileSync(join(h.agentDir, "p3stack", "t3-contract.json"), "utf8"));
-      assert.deepEqual(report.tools, [{ name: "mcp__t3-code__delegate_task", exposure: "direct" }, { name: "mcp__t3-code__hidden", exposure: "hidden" }]);
-      assert.equal(report.extension.sha256, createHash("sha256").update("bridge content\n").digest("hex"));
-      assert.equal(report.claudeSubscriptionBeforeBridge, expected);
-    }
+    assert.match(h.commands.get("p3stack").description, /doctor/);
+    await h.command("p3stack", "doctor extra");
+    assert.match(h.notices.at(-1)![0], /^Usage: .*doctor/);
+    assert.equal(existsSync(file), false);
+    await h.command("p3stack", "doctor");
+    const report = JSON.parse(readFileSync(file, "utf8"));
+    assert.deepEqual(report.tools, [{ name: "mcp__t3-code__delegate_task", exposure: "direct" }, { name: "mcp__t3-code__hidden", exposure: "hidden" }]);
+    assert.deepEqual(report.extension, { path: bridge, sha256: createHash("sha256").update("bridge content\n").digest("hex") });
+    assert.equal("claudeSubscriptionBeforeBridge" in report, false);
+    assert.deepEqual(report.problems, [], "claude-subscription is optional");
+
+    delete process.env.T3_PI_MCP_EXTENSION_PATH;
+    await h.command("p3stack", "doctor");
+    const missing = JSON.parse(readFileSync(file, "utf8"));
+    assert.equal(missing.extension.sha256, null);
+    assert.match(missing.problems.join("\n"), /T3_PI_MCP_EXTENSION_PATH is not set/);
   } finally {
-    process.argv = argv;
     if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
     h.dispose();
   }
-  const terminal = harness({ hasUI: false });
-  delete process.env.T3_PI_MCP_EXTENSION_PATH;
-  try {
-    await terminal.command("p3stack", "doctor");
-    const report = JSON.parse(readFileSync(join(terminal.agentDir, "p3stack", "t3-contract.json"), "utf8"));
-    assert.deepEqual(report.tools, []);
-    assert.equal(report.extension.sha256, null);
-    assert.equal(report.claudeSubscriptionBeforeBridge, false);
-  } finally {
-    if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
-    terminal.dispose();
-  }
 });
 
-test("doctor counts the claude-subscription files Pi loaded and reports anything but one", async () => {
+
+test("doctor matches real provider paths and flags only multiple distinct copies", async () => {
   const commands: LoadedCommand[] = [];
-  const h = harness({ commands });
+  const h = hostHarness("t3", { commands });
   const file = (install: string) => {
     const path = join(h.root, install, "packages/claude-subscription/extensions/claude-subscription/index.ts");
     mkdirSync(dirname(path), { recursive: true });
@@ -589,8 +695,9 @@ test("doctor counts the claude-subscription files Pi loaded and reports anything
     for (const [registered, files, flagged] of [
       [[loaded(checkout), loaded(checkout, "claude-login"), loaded(join(h.root, "web-search/index.ts"), "search")], [checkout], false],
       [[loaded(checkout), loaded(clone)], [checkout, clone], true],
+      [[loaded(linked)], [checkout], false],
       [[loaded(checkout), loaded(linked)], [checkout], false],
-      [[{ ...loaded(checkout), source: "prompt" }], [], true],
+      [[{ ...loaded(checkout), source: "prompt" }], [], false],
     ] as [LoadedCommand[], string[], boolean][]) {
       commands.splice(0, commands.length, ...registered);
       await h.command("p3stack", "doctor");
@@ -615,11 +722,57 @@ test("ask_user asks through the UI, and without one says to apply the stated def
   } finally { headless.dispose(); }
 });
 
-function asTerminal() {
+test("ask_user distinguishes a literal Other option from a free-text invitation", async () => {
+  const label = "Other (type an answer)";
+  const h = harness({ answers: [label, label, "custom choice"] });
+  try {
+    assert.equal(text(await h.call("ask_user", { question: "Which?", options: [label] })), `The human chose: ${label}`);
+    assert.deepEqual(h.asked, [`Which? [${label}]`]);
+    assert.equal(text(await h.call("ask_user", { question: "Which?", options: [label], allowOther: true })), "The human answered: custom choice");
+    assert.deepEqual(h.asked.slice(1), [`Which? [${label}]`, "Which?"]);
+  } finally { h.dispose(); }
+});
+
+test("ask_user never treats an unanswered question without a default as approval", async () => {
+  for (const hasUI of [false, true]) {
+    const h = harness({ hasUI });
+    try {
+      const answer = text(await h.call("ask_user", { question: "Which?" }));
+      assert.match(answer, /do not treat silence as approval/i);
+      assert.match(answer, /take the option that changes least, or stop and say what is needed/i);
+    } finally { h.dispose(); }
+  }
+});
+
+test("ask_user sends the tool's abort signal to every dialog and propagates cancellation", async () => {
+  const h = harness();
+  try {
+    for (const kind of ["select", "input", "other"]) {
+      const controller = new AbortController(), seen: string[] = [];
+      const dialog = (method: string, opts?: { signal?: AbortSignal }) => {
+        assert.equal(opts?.signal, controller.signal);
+        seen.push(method);
+        if (method === "select" && kind === "other") return "Other (type an answer)";
+        controller.abort();
+        return undefined; // Pi resolves a cancelled dialog without an answer.
+      };
+      const ui = {
+        select: async (_title: string, _options: string[], opts?: { signal?: AbortSignal }) => dialog("select", opts),
+        input: async (_title: string, _placeholder?: string, opts?: { signal?: AbortSignal }) => dialog("input", opts),
+      };
+      const args = { question: "Which?", options: kind === "input" ? undefined : ["one"], allowOther: kind === "other", default: "one" };
+      await assert.rejects(h.tools.get("ask_user").execute("call", args, controller.signal, undefined, { ...h.ctx, ui }), { name: "AbortError" });
+      assert.deepEqual(seen, kind === "other" ? ["select", "input"] : [kind]);
+    }
+  } finally { h.dispose(); }
+});
+
+function asHost(host: "cli" | "t3") {
   const previous = process.env.T3_MCP_URL;
-  delete process.env.T3_MCP_URL;
-  return () => { if (previous !== undefined) process.env.T3_MCP_URL = previous; };
+  if (host === "cli") delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+  return () => { if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; };
 }
+const asTerminal = () => asHost("cli");
 
 test("/p3stack-setup maps a budget and two models onto every role and writes the file", async () => {
   const restore = asTerminal();
@@ -644,19 +797,18 @@ test("/p3stack-setup keeps review and prose roles at high thinking or above on t
     assert.equal(written.roles["swarm workers"], "xai/grok-4.7:medium");
     assert.equal(written.roles["interrogate reviewers"][0], "claude/claude-opus-5-5:high");
     assert.match(h.asked.find(question => question.startsWith("Model for judgment"))!, /claude-opus-5-5:high/);
-    assert.match(h.notices.at(-1)![0], /Review and prose roles stay at high thinking or above/);
+    assert.match(h.notices.at(-1)![0], /Judgment roles: claude\/claude-opus-5-5:high/);
   } finally { h.dispose(); restore(); }
 });
 
-test("/p3stack-setup defers to the skill under T3 and does nothing without a UI", async () => {
-  const previous = process.env.T3_MCP_URL;
-  process.env.T3_MCP_URL = "http://127.0.0.1:1/mcp";
+test("/p3stack-setup needs a T3 catalog receipt and never prompts without UI", async t => {
+  t.after(asHost("t3"));
   const h = harness();
   try {
     await h.command("p3stack-setup");
-    assert.match(h.notices.at(-1)![0], /\/skill:setup-pstack/);
+    assert.match(h.notices.at(-1)![0], /No T3 catalog.*p3stack_roles.*rerun \/p3stack-setup/s);
     assert.deepEqual(h.asked, []);
-  } finally { h.dispose(); if (previous === undefined) delete process.env.T3_MCP_URL; else process.env.T3_MCP_URL = previous; }
+  } finally { h.dispose(); }
   const headless = harness({ hasUI: false });
   try { await headless.command("p3stack-setup"); } finally { headless.dispose(); }
 });

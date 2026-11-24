@@ -3,6 +3,7 @@ import { mkdirSync, realpathSync, writeFileSync, rmSync, symlinkSync } from "nod
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { builtInPolicy, DEFAULT_POLICY, loadedExtensions, SubagentPolicy, parsePolicy, type PolicyEnvironment } from "../extensions/subagents/src/policy.js";
+import { authorizeWorkflow, parseWorkflow } from "../extensions/subagents/src/workflow-definition.js";
 import { tempRoot } from "./support/temp-root.js";
 
 test("built-in policy is a multi-provider menu with delegation, nesting and loops on, for use with no setup", () => {
@@ -63,6 +64,64 @@ function fixture() {
   const global = join(agentDir, "subagents.json"), project = join(cwd, ".pi/subagents.json");
   return { root, cwd, environment, global, project, put: (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value)), cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
+
+test("a tool from a loaded extension is selectable with its advertised resource or absent", () => {
+  const f = fixture();
+  try {
+    const todo = join(f.root, "todo.ts");
+    writeFileSync(todo, "export default () => {}");
+    f.environment.tools = () => ["read", "todo", "codemode"];
+    f.environment.toolSources = () => ({ read: "builtin:read", todo, codemode: "builtin:codemode" });
+    const loaded = loadedExtensions([{ sourceInfo: { path: todo } }]);
+    f.environment.builtIn = builtInPolicy(loaded);
+    f.environment.loadedExtensions = () => loaded;
+    const builtIn = new SubagentPolicy(f.environment);
+    const select = { tools: ["todo"], model: TEST_MODELS[0].id };
+    assert.ok(builtIn.catalog().tools.includes("todo"));
+    assert.equal(builtIn.catalog().toolExtensions.todo, todo);
+    assert.throws(() => builtIn.compile(f.cwd, select), /requires selecting/);
+    assert.deepEqual(builtIn.compile(f.cwd, { ...select, extensions: [todo] }).childPolicy!.toolSources, { todo });
+    // Do not add an extension grant to a user's policy.
+    f.put(f.global, { version: 1, models: TEST_MODELS, tools: ["read", "todo", "codemode"] });
+    const user = new SubagentPolicy(f.environment);
+    assert.deepEqual(user.catalog().tools, ["read"]);
+    assert.ok(user.diagnostics.some(d => d.includes("todo") && d.includes(todo)));
+    f.put(f.global, { ...user.config, maxChildren: 1, extensions: ["builtin:codemode"] });
+    const managed = new SubagentPolicy(f.environment);
+    assert.equal(managed.catalog().toolExtensions.codemode, "builtin:codemode");
+    assert.equal(managed.compile(f.cwd, { ...select, tools: ["codemode"], extensions: ["builtin:codemode"] }).childPolicy!.toolSources.codemode, f.environment.guardPath);
+  } finally { f.cleanup(); }
+});
+
+test("an explicit null is not an omitted policy field", () => {
+  const f = fixture();
+  try {
+    for (const field of ["workingDirectories", "extensions", "skills", "themes", "promptTemplates", "tools", "alwaysExtensions", "alwaysTools", "maxDepth"]) {
+      f.put(f.project, { version: 1, models: TEST_MODELS, [field]: null });
+      const p = new SubagentPolicy(f.environment);
+      assert.equal(p.catalog().spawnEnabled, false, field);
+      assert.ok(p.diagnostics.some(d => d.includes(field)), field);
+    }
+  } finally { f.cleanup(); }
+});
+
+test("workflow authorization refuses delegation and forced parent messaging before dispatch", () => {
+  const f = fixture();
+  try {
+    for (const forbidden of ["subagent_list", "parent_send"]) {
+      f.put(f.global, { ...DEFAULT_POLICY, tools: [forbidden], alwaysTools: forbidden === "parent_send" ? [forbidden] : [] });
+      const policy = new SubagentPolicy(f.environment);
+      const worker = { model: TEST_MODELS[0].id, tools: forbidden === "parent_send" ? [] : [forbidden] };
+      for (const validator of [false, true]) {
+        const task = { id: "w", kind: "task", instructions: "review", worker };
+        const check = { id: "check", kind: "check", input: "w", validator: { kind: "agent", instructions: "check", worker } };
+        const def = parseWorkflow({ version: 1, name: "invalid", cwd: f.cwd, limits: { concurrency: 1, maxAttempts: 2, timeoutSeconds: 2 },
+          steps: validator ? [{ ...task, worker: { ...worker, tools: [] } }, check] : [task] });
+        assert.throws(() => authorizeWorkflow(def, policy), new RegExp(forbidden));
+      }
+    }
+  } finally { f.cleanup(); }
+});
 
 test("built-in fallback remains usable, denies unlisted levels, and never substitutes an available model", () => {
   const f = fixture();

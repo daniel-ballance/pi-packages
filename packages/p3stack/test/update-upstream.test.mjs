@@ -108,6 +108,8 @@ test("check compares the second source checkout with its staged gitlink", () => 
     const drift = f.run(generateCli, "--check");
     assert.equal(drift.status, 1);
     assert.match(drift.stderr, /second.*gitlink/);
+    assert.match(drift.stderr, /confirm.*(?:restore|check out).*stage.*authorized/is);
+    assert.doesNotMatch(drift.stderr, /Run node generator\/generate\.mjs/);
     assert.match(drift.stderr, new RegExp(pin));
     assert.match(drift.stderr, new RegExp(tip));
     git(f.pkg, "add", "vendor/second");
@@ -173,6 +175,24 @@ test("a named-source bump moves only that checkout and uses only its scope", () 
     assert.doesNotMatch(result.stdout, / -> skills\/demo\/SKILL\.md/);
     assert.match(readFileSync(join(pkg, "skills/second/SKILL.md"), "utf8"), /# Changed/);
   } finally { dispose(); }
+});
+
+test("one update classifies the shared checkout's delta for both sources, including borrowed paths", t => {
+  const f = fixture();
+  t.after(f.dispose);
+  const manifest = JSON.parse(f.read("rules/manifest.json"));
+  manifest.sources.push({ name: "sibling", upstream: manifest.sources[0].upstream, vendor: "vendor/up/other",
+    map: [{ from: "README.md", to: "skills/sibling/README.md" }] });
+  write(f.pkg, {
+    "rules/manifest.json": JSON.stringify(manifest),
+    "rules/borrowed.json": JSON.stringify([{ source: "sibling", path: "README.md", by: ["authored/note.md"] }]),
+  });
+  const first = f.head(), tip = f.commit({ "other/README.md": "New sibling idea.\n" }, "only the sibling changed");
+  const result = f.bump("cursor-plugins");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.head(), tip);
+  assert.ok(result.stdout.includes(`${first.slice(0, 7)} -> ${tip.slice(0, 7)}`));
+  assert.match(result.stdout, /sibling.*\n\s*M other\/README\.md -> skills\/sibling\/README\.md \[borrowed by authored\/note\.md/);
 });
 
 test("the pinned commit fills {{upstream.commit}} in rules and the README pin markers", () => {
@@ -272,6 +292,8 @@ test("update refuses a checkout with local changes, and an unknown ref", () => {
     const dirty = run(updateCli);
     assert.equal(dirty.status, 1);
     assert.match(dirty.stderr, /local changes/);
+    assert.match(dirty.stderr, /(?:copy|save|preserve).*outside/i);
+    assert.doesNotMatch(dirty.stderr, /discard/i);
     assert.equal(head(), sha);
   } finally { dispose(); }
 });
@@ -302,6 +324,18 @@ for (const [state, dirty] of Object.entries({
     assert.equal(git(checkout, "status", "--porcelain"), "");
   },
 })) {
+  test(`update refuses ${state} before fetching or moving the checkout`, t => {
+    const f = fixture();
+    t.after(f.dispose);
+    const checkout = join(f.pkg, "vendor/up"), pin = f.head();
+    f.commit({ "other/README.md": "New remote commit.\n" }, "advance remote");
+    dirty(checkout);
+    const result = f.bump("cursor-plugins");
+    assert.equal(git(checkout, "rev-parse", "refs/remotes/origin/main"), pin, "must not fetch");
+    assert.equal(f.head(), pin, "must not check out");
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /vendor\/up has local changes/);
+  });
   test(`generation refuses ${state} upstream content without writing outputs or pins`, () => {
     const { root, pkg, run, read, dispose } = fixture();
     try {
@@ -331,6 +365,31 @@ for (const [state, dirty] of Object.entries({
     } finally { dispose(); }
   });
 }
+
+test("update preflights the whole moving checkout and other generation inputs", t => {
+  const f = fixture();
+  t.after(f.dispose);
+  const checkout = join(f.pkg, "vendor/up"), second = addSecondSource(f), pin = f.head();
+  f.commit({ "other/README.md": "New remote commit.\n" }, "advance remote");
+  for (const [repo, file] of [[checkout, "other/ignored.md"], [second, "up/skills/demo/ignored.md"]]) {
+    write(repo, { ".git/info/exclude": `${file}\n`, [file]: "Keep me.\n" });
+    const result = f.bump("cursor-plugins");
+    assert.equal(result.status, 1, result.stdout);
+    assert.ok(result.stderr.includes(file), result.stderr);
+    assert.equal(git(checkout, "rev-parse", "origin/main"), pin);
+    rmSync(join(repo, file));
+  }
+});
+
+test("a generator input that cannot be loaded is not diagnosed as upstream rule drift", t => {
+  const f = fixture();
+  t.after(f.dispose);
+  write(f.pkg, { "rules/sections.json": "not json" });
+  const result = f.bump("cursor-plugins");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /rules\/sections\.json/);
+  assert.doesNotMatch(result.stderr, /names a rule, section or patch/);
+});
 
 test("direct generation ignores local changes outside the consumed upstream subtree", () => {
   const { pkg, run, read, dispose } = fixture();

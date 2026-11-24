@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Read-only worktree prune audit. Classifies every git worktree by size, merge
-# state, uncommitted work, remote/PR state, and the most recent chat that
-# operated in it. Emits a table sorted by size with a suggested bucket. Never
-# deletes anything; deletion stays a human-gated step in the playbook.
+# Worktree prune audit. Fetches the base when it is an origin ref. Classifies
+# every git worktree by size, merge state, uncommitted work, remote/PR state,
+# and the most recent chat that operated in it. Emits a table sorted by size.
+# Never deletes a worktree; deletion stays a human-gated step in the playbook.
 #
-# Usage: worktree-audit.sh [-b|--base <ref>] [repo-path]
+# Usage: worktree-audit.sh [-b|--base <ref>] [--session-dir <dir>] [repo-path]
 #   repo-path defaults to the current repo.
 #   -b sets the ref the MERGED column checks against (e.g. origin/integration).
 #   Without it the base is origin/HEAD, then origin/main, then origin/master.
@@ -12,10 +12,19 @@
 #   merge into; pass -b when they differ.
 set -u
 
+# A caller (including a Git hook) may have selected a different repo or index.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_SHALLOW_FILE \
+  GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_PREFIX GIT_CEILING_DIRECTORIES \
+  GIT_CONFIG GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+
 base=""
+session_args=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 	-b|--base) [ $# -ge 2 ] || { echo "error: $1 needs a ref" >&2; exit 2; }; base="$2"; shift 2 ;;
+	--session-dir) [ -n "${2:-}" ] || { echo "error: $1 needs a directory" >&2; exit 2; }
+		case "$2" in /*|\~*) session_args=(--session-dir "$2") ;; *) session_args=(--session-dir "$PWD/$2") ;; esac; shift 2 ;;
 	-h|--help) sed -n '2,/^set -u/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
 	-*) echo "error: unknown option: $1" >&2; exit 2 ;;
 	*) break ;;
@@ -24,11 +33,15 @@ done
 
 repo="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 [ -z "$repo" ] && { echo "not in a git repo; pass a repo path" >&2; exit 1; }
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 cd "$repo" || exit 1
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "error: not a git repo: $repo" >&2; exit 1; }
 
-# Main worktree is the first entry; everything else is a candidate.
-main_wt=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')
+# Keep Git's NUL-delimited paths intact; never audit a partial listing.
+tmp=$(mktemp -d) || exit 1
+trap 'rm -f "$tmp/worktrees" "$tmp/prs"; rmdir "$tmp"' EXIT
+git worktree list --porcelain -z > "$tmp/worktrees" || exit 1
+main_wt=""
 
 if [ -z "$base" ]; then
 	for cand in "$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" origin/main origin/master; do
@@ -38,27 +51,25 @@ if [ -z "$base" ]; then
 	echo "warn: no -b given; MERGED checks against $base" >&2
 fi
 
-# The base drives the merge check. The fetch is best-effort (stale is fine for
-# a first pass) and runs before the check, since -b may name a branch not
-# fetched yet. The explicit refspec creates it even in a single-branch clone.
+# Fetch before resolving a remote base; a stale ref cannot clear a worktree.
+base_current=yes
 case "$base" in
 origin/*) git fetch origin "+refs/heads/${base#origin/}:refs/remotes/$base" --quiet 2>/dev/null \
-	|| echo "warn: could not fetch $base; merged column may be stale" >&2 ;;
+	|| { base_current=no; echo "warn: could not fetch $base" >&2; } ;;
 esac
 git rev-parse --verify --quiet "$base^{commit}" >/dev/null 2>&1 || { echo "error: base ref not found: $base" >&2; exit 1; }
 
-# GNU coreutils (Linux, Homebrew gnubin) reads `stat -f` as file system status
-# and `date -r` as a file, so pick the stat and date flags once.
-if stat -c %Y / >/dev/null 2>&1; then
-	stat_fmt=(-c '%Y %n'); fmt_day() { date -d "@$1" '+%Y-%m-%d'; }
+# GNU and BSD date use different flags for epoch seconds.
+if date -d @0 >/dev/null 2>&1; then
+	fmt_day() { date -d "@$1" '+%Y-%m-%d'; }
 else
-	stat_fmt=(-f '%m %N'); fmt_day() { date -r "$1" '+%Y-%m-%d'; }
+	fmt_day() { date -r "$1" '+%Y-%m-%d'; }
 fi
 
 # PR state by branch, fetched once as [{number, state, head}] with a lowercase
 # state. Origin when its CLI can read this repo's PRs, otherwise gh. Empty when
 # neither can.
-prs=$(mktemp)
+prs="$tmp/prs"
 if command -v origin >/dev/null 2>&1 \
 	&& raw=$(origin pr list --author "@me" --state all --limit 1000 \
 		--json number,status,headRef 2>/dev/null); then
@@ -67,81 +78,96 @@ elif raw=$(gh pr list --author "@me" --state all --limit 1000 \
 	--json number,state,headRefName 2>/dev/null); then
 	printf '%s' "$raw" | jq '[.[] | {number, state: (.state | ascii_downcase), head: .headRefName}]' > "$prs" 2>/dev/null
 fi
-[ -s "$prs" ] || echo "[]" > "$prs"
 
-# Pi keeps each session under <agent dir>/sessions/--<path>--, where <path> is the
-# session's working directory without its leading slash and with / \ : as -.
-# A session started inside a worktree is filed under that worktree's path.
-# PI_CODING_AGENT_SESSION_DIR moves storage; search it flat and per directory.
-session_dirs() {
-	local encoded
-	encoded="--$(printf '%s' "$1" | sed 's#^/##; s#[/\\:]#-#g')--"
-	if [ -n "${PI_CODING_AGENT_SESSION_DIR:-}" ]; then
-		printf '%s\n' "$PI_CODING_AGENT_SESSION_DIR" "$PI_CODING_AGENT_SESSION_DIR/$encoded"
-	fi
-	printf '%s\n' "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/sessions/$encoded"
-}
 now=$(date +%s)
 
 echo "# base: $base"
 printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 
-git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt; do
-	[ "$wt" = "$main_wt" ] && continue
+while IFS= read -r -d '' field; do
+	case "$field" in 'worktree '*) wt=${field#worktree } ;; *) continue ;; esac
+	if [ -z "$main_wt" ]; then main_wt=$wt; continue; fi
 
-	size=$(du -sh "$wt" 2>/dev/null | awk '{print $1}')
+	size=$(du -sh "$wt" 2>/dev/null) && size=${size%%[[:space:]]*} || size="?"
 	head=$(git -C "$wt" rev-parse HEAD 2>/dev/null)
 	head_ts=$(git -C "$wt" log -1 --format='%ct' HEAD 2>/dev/null || echo 0)
 	age=$([ "$head_ts" -gt 0 ] 2>/dev/null && echo "$(( (now - head_ts) / 86400 ))d" || echo "?")
 
-	# Squash-merged branches are not ancestors of the base, so PR state is the
-	# real signal; merge-base only catches fast-forward/rebase merges.
-	git merge-base --is-ancestor "$head" "$base" 2>/dev/null && merged=YES || merged=no
-
-	# Distinguish real WIP (tracked edits) from disposable untracked scratch.
-	porcelain=$(git -C "$wt" status --porcelain 2>/dev/null)
-	if [ -z "$porcelain" ]; then dirty=clean
-	elif printf '%s\n' "$porcelain" | grep -qv '^??'; then
-		dirty="wip:$(printf '%s\n' "$porcelain" | grep -cv '^??')"
-	else dirty="scratch:$(printf '%s\n' "$porcelain" | grep -c '^??')"; fi
-
-	branch=$(git -C "$wt" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
-	if [ -z "$branch" ]; then remote=detached
-	elif git -C "$wt" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-		[ "$(git -C "$wt" rev-parse "origin/$branch" 2>/dev/null)" = "$head" ] \
-			&& remote=pushed \
-			|| remote="ahead$(git -C "$wt" rev-list --count "origin/$branch..HEAD" 2>/dev/null)"
-	else remote=no-remote; fi
-
-	pr=$([ -n "$branch" ] && jq -r --arg b "$branch" \
-		'.[] | select(.head==$b) | "#\(.number)/\(.state)"' "$prs" 2>/dev/null | head -1)
-	[ -z "$pr" ] && pr="-"
-
-	# Most recent chat whose transcript operated in this worktree. Match path
-	# followed by "/" or a quote so glint-482 does not match glint-482-r37.
-	last="-"; last_ts=0
-	dirs=()
-	while IFS= read -r d; do [ -d "$d" ] && dirs+=("$d"); done \
-		< <({ session_dirs "$main_wt"; session_dirs "$wt"; } | sort -u)
-	if [ "${#dirs[@]}" -gt 0 ]; then
-		f=$(grep -rlF -e "${wt}/" -e "${wt}\"" "${dirs[@]}" 2>/dev/null \
-			| while IFS= read -r file; do stat "${stat_fmt[@]}" "$file" 2>/dev/null; done \
-			| sort -rn | head -1)
-		if [ -n "$f" ]; then last_ts=$(echo "$f" | awk '{print $1}')
-			last=$(fmt_day "$last_ts" 2>/dev/null); fi
+	merged="?"
+	if [ "$base_current" = yes ] && [ -n "$head" ]; then
+		git merge-base --is-ancestor "$head" "$base" 2>/dev/null
+		case $? in 0) merged=YES ;; 1) merged=no ;; esac
 	fi
-	recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
 
-	case "$dirty" in wip:*) bucket=hold-wip ;; *)
-		case "$pr" in */open|*/draft) bucket=hold-open-pr ;; *)
-			if [ "$recent" = yes ]; then bucket=verify-recent-chat
-			elif [ "$merged" = YES ] || [ "$pr" != "-" ]; then bucket=safe
-			else bucket=review; fi ;;
-		esac ;;
+	# Porcelain v1 quotes embedded newlines. Count records, never split a path.
+	dirty=unknown; ignored_dirs="?"
+	if top=$(git -C "$wt" rev-parse --show-toplevel) && [ "$top" -ef "$wt" ] \
+		&& flags=$(git -C "$wt" ls-files -v) \
+		&& porcelain=$(git -C "$wt" status --porcelain=v1 --untracked-files=all --ignored=matching --ignore-submodules=none); then
+		wip=0; untracked=0; ignored_files=0; ignored_dirs=0
+		while IFS= read -r entry; do
+			case "$entry" in [a-zS]' '*) ((wip++)) ;; esac
+		done <<< "$flags"
+		while IFS= read -r entry; do
+			case "$entry" in
+			'') ;;
+			'?? '*) ((untracked++)) ;;
+			'!! '*/|'!! '*'/"') ((ignored_dirs++)) ;; # Git may quote the directory name.
+			'!! '*) ((ignored_files++)) ;;
+			*) ((wip++)) ;;
+			esac
+		done <<< "$porcelain"
+		dirty=""
+		[ "$wip" -eq 0 ] || dirty="wip:$wip"
+		[ "$untracked" -eq 0 ] || dirty="untracked:$untracked${dirty:+,$dirty}"
+		[ "$ignored_files" -eq 0 ] || dirty="ignored-files:$ignored_files${dirty:+,$dirty}"
+		dirty=${dirty:-clean}
+	fi
+
+	branch=$(git -C "$wt" symbolic-ref --quiet --short HEAD 2>/dev/null)
+	case $? in
+	1) remote=detached ;;
+	0) if tip=$(git -C "$wt" rev-parse --verify --quiet "refs/remotes/origin/$branch"); then
+		if [ "$tip" = "$head" ]; then remote=pushed
+		elif count=$(git -C "$wt" rev-list --count "$tip..$head"); then remote="ahead$count"
+		else remote="?"; fi
+	else [ $? -eq 1 ] && remote=no-remote || remote="?"; fi ;;
+	*) remote="?" ;;
 	esac
 
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$wt"
-done | sort -t$'\t' -k1,1 -rh
+	pr="-"
+	if [ -n "$branch" ]; then
+		if [ -s "$prs" ] && matches=$(jq -r --arg b "$branch" \
+			'.[] | select(.head==$b) | "#\(.number)/\(.state)"' "$prs"); then
+			[ -z "$matches" ] || pr=${matches%%$'\n'*}
+		else pr="?"; fi
+	fi
 
-rm -f "$prs"
+	last="-"; recent=no
+	if last_ts=$(node "$script_dir/worktree-session-activity.mjs" "$main_wt" "$wt" ${session_args[@]+"${session_args[@]}"}); then
+		if [ "$last_ts" -gt 0 ]; then
+			last=$(fmt_day "$last_ts") || last="?"
+			[ $(( (now - last_ts) / 86400 )) -gt 4 ] || recent=yes
+		fi
+	else last="?"; fi
+
+	case "$dirty" in
+	unknown) bucket=unknown ;;
+	ignored-files:*) bucket=hold-ignored ;;
+	untracked:*) bucket=hold-untracked ;;
+	wip:*) bucket=hold-wip ;;
+	*)  case "$pr" in */open|*/draft) bucket=hold-open-pr ;; *)
+		if [ "$recent" = yes ]; then bucket=verify-recent-chat
+		elif [[ "$size $age $merged $remote $pr $last" == *'?'* ]]; then bucket=unknown
+		elif [ "$merged" = YES ]; then bucket=safe
+		else bucket=review; fi ;;
+	    esac ;;
+	esac
+
+	[ "$last" != "?" ] || bucket=unknown
+
+	# Preserve a single display row even for names containing control characters.
+	[[ "$wt" != *[[:cntrl:]]* ]] || printf -v wt '%q' "$wt"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$size" "$age" "$merged" "$dirty,ignored-dirs:$ignored_dirs" "$remote" "$pr" "$last" "$bucket" "$wt"
+done < "$tmp/worktrees" | sort -t$'\t' -k1,1 -rh

@@ -1,55 +1,37 @@
 # About p3stack
 
-p3stack gives Pi routed engineering workflows and the subagents and todo components they need. The repository root installs it with four standalone packages. Each component keeps its own tests, so a path move is cheaper to verify than a code merge.
+p3stack is one of the [six packages in the root install](../README.md#included-resources). Its workflows use two nested components: subagents and todo. You can also [install p3stack alone](../packages/p3stack/README.md#install-choices-and-setup), without a subscription provider.
 
-## The registry decides what ships
+## What ships
 
-[`registry/skills.json`](../packages/p3stack/registry/skills.json) records each source skill's emitted name or drop reason. The source pins live under [`rules/`](../packages/p3stack/rules/). The generator translates the two vendored upstreams and adds the Pi-owned files from `extra/` and `authored/`.
+The [source manifest](../packages/p3stack/rules/manifest.json) maps five source names to four upstream checkouts. Two names share the Cursor checkout. Cursor, Matt Pocock, and Addy Osmani supply skills. Superpowers is [watch only](adr/0005-vendor-narrowly-or-watch-only.md). p3stack also supplies its own skills and router.
 
-[`check-registry.mjs`](../packages/p3stack/generator/check-registry.mjs) rejects unclassified skills, duplicate emitted names, missing route or chain targets, and changed chain anchors. Load-time filters do not decide which upstream skill wins. Pocock's `tdd` keeps its name, while pstack's version emits as `regression-test`.
+Git submodule entries pin the upstream commits. The [package README](../packages/p3stack/README.md#license-and-upstreams) mirrors them. The [skill registry](../packages/p3stack/registry/skills.json) records each emitted name or drop reason. For example, Pocock's `tdd` keeps its name and pstack's emits as `regression-test`. Edit the [generator inputs](../packages/p3stack/AGENTS.md), not the generated skills or agent recipes.
 
-The committed `skills/` tree is generated output. A correction belongs in a rule, overlay, patch, registry row, or authored source, followed by regeneration. The check rejects hand edits.
+## How a request reaches a playbook
 
-## The router chooses the procedure
+With routing on, the extension points Pi to [p3stack-mode](../packages/p3stack/skills/p3stack-mode/SKILL.md). The model selects a [route](../packages/p3stack/registry/routes.json) for the request and grant first. A small, fully specified task is done there and then. For every other route it reads poteto-mode in full, then the route's target. The generator inserts each [chain](../packages/p3stack/registry/chains.json) row into its playbook at the named step, marked **p3stack only**, so the model reads a playbook's added steps in place. A bug without a failing reproduction goes to diagnosis first, which stops at a confirmed cause; the Bug fix playbook then implements once. [House policies](adr/0004-house-policies-win-over-vendored-defaults.md) settle conflicts between skills.
 
-`/p3stack on` makes the mode extension point the model at [`p3stack-mode`](../packages/p3stack/skills/p3stack-mode/SKILL.md). That skill reads poteto-mode and applies p3stack's route and chain tables. The route chooses the first workflow for a request. A chain adds required steps inside a workflow.
+The session branch saves the grant. An explicit request for full autonomy can raise it for one task. Without a grant from the extension, the router uses the default grant. See the [operator commands](../packages/p3stack/README.md#choose-who-decides) to change the saved grant. Turning routing off stops new reminders. The skills remain available.
 
-The grant is explicit session state. `/p3stack on autonomous` or `/p3stack grant autonomous` selects full autonomy, and the extension states `Grant: default` or `Grant: full-autonomy` in the system prompt and in every delegated brief. The router's **House policies** section settles conflicts between routed skills (authority, questions, validation, migration, testing, review independence, context, style), and it wins over any of them.
+The [brief hook](adr/0006-mechanical-procedures-become-tools.md) uses the saved grant. For a task-only increase, the parent writes `Task grant: full-autonomy` in the brief.
 
-[`registry/routes.json`](../packages/p3stack/registry/routes.json) and [`registry/chains.json`](../packages/p3stack/registry/chains.json) are the source tables. The generator renders their references and the router. The routing eval checks the model's first reads on fixture prompts instead of assuming that prompt precedence works.
+## What depends on the host
 
-Disabling the mode removes the router reminder. It does not unload the extensions or remove explicitly invoked skills.
+Skills ask for capabilities such as delegation. Read the [shared host map](../packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md), then only the matching section for [terminal Pi](../packages/p3stack/extra/skills/poteto-mode/references/host-terminal.md) or [T3 Code](../packages/p3stack/extra/skills/poteto-mode/references/host-t3.md). Terminal Pi uses the subagents Manager. Under T3, the native Manager and its skills stay out of the session.
 
-## Four sources, two ways in
+`p3stack_roles` reads the first valid role file: `.pi/p3stack.json` in a trusted project, then `p3stack.json` in Pi's agent directory. It resolves roles against the host's catalog and reports substitutions or missing choices. A failed T3 lookup does not fall back to terminal models. [Interactive setup](../packages/p3stack/README.md#install-choices-and-setup) writes the personal file on either host. Without a UI it writes nothing.
 
-p3stack vendors pstack and Matt Pocock's skills as before, plus `addyosmani/agent-skills` narrowly (four skills) and `obra/superpowers` watch only (license plus [`rules/borrowed.json`](../packages/p3stack/rules/borrowed.json)). [ADR 0005](adr/0005-vendor-narrowly-or-watch-only.md) records why. The router's House policies settle conflicts between them ([ADR 0004](adr/0004-house-policies-win-over-vendored-defaults.md)).
+The static T3 check uses [the recorded contract](../packages/p3stack/rules/t3-pin.json), not a running host. For inventory and live behavior checks, see [Verify host compatibility](../packages/p3stack/docs/landing/t3-settings.md#verify-host-compatibility).
 
-## Evals measure routing before and after a change
+## How to verify a change
 
-`npm run check` runs a static routing check over the descriptions of model-invoked skills: realistic prompts must rank their skill, negatives must lose to their owner, and descriptions must not collide. `npm run eval:routing` runs the live routing eval, which spends tokens: three runs per prompt, passing at two of three, with the rate reported, since a single run hides flaky routes. Fixtures can set a grant and their own read limit, and only skill and playbook reads count toward it. `node generator/lint-authored.mjs` keeps model slugs and harness tool names out of p3stack's own files. `npm run eval:behavior` runs four tasks in fixture repositories with the mode on and off and grades what the agent did, not what it said: whether a review ran floor-check, whether a bug got a red reproduction before the fix, whether a click-through request produced one self-contained HTML file, and whether version-sensitive config came from fetched, versioned docs. A change rejected on eval evidence goes in [`docs/evals/rejected.md`](evals/rejected.md).
+The offline description lint checks whether the advertised skills' names and descriptions distinguish example prompts. It does not run the router. A graded routing attempt passes only if the first skill and playbook reads succeed in the expected order. The behavior eval checks the deliverable in a fixture, with routing on or off. It reports process evidence separately: calling the expected tool cannot make a broken result pass.
 
-## The host map owns runtime differences
+See the [runner contracts](../packages/p3stack/AGENTS.md#evals) and [eval decision log](evals/README.md). For current-pin audits and explicit upstream bumps, use [maintain-p3stack](../packages/p3stack/authored/skills/maintain-p3stack/SKILL.md).
 
-A terminal Pi session uses the subagents extension for children. T3 supplies its own delegation and scheduling. The shared host helper detects T3 from its launch environment, and the host map gives each capability its concrete operation.
+## Why install from the root?
 
-[`host-capabilities.md`](../packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md) is the authored map. Tool names and T3-specific procedure belong there rather than in scattered skills. Role models come from `p3stack_roles` and the `p3stack.json` defaults, not a duplicated static table in the mode prompt.
+Pi installs a Git repository, not a subdirectory. The root manifest loads the resources of its six packages in one install. [`scripts/root-package.mjs`](../scripts/root-package.mjs) generates that list from `piBundle` and each member's manifest. The root check detects drift.
 
-The default T3 checker validates [`rules/t3-pin.json`](../packages/p3stack/rules/t3-pin.json) and the host map without reading installed state. Its release and bridge hash retain historical provenance, not acceptance criteria. `--installed` reports optional diagnostics; `--doctor <dump>` checks required tools and exposures against a live inventory. The host map also requires review of live schemas and behavior, which doctor cannot prove. Missing capabilities or incompatible behavior blocks maintenance. Host lint rejects backend tool names outside the map.
-
-## Maintenance lands source changes and reverts failures
-
-[`maintain-p3stack`](../packages/p3stack/authored/skills/maintain-p3stack/SKILL.md) starts with a clean tree and green checks on current pins. An audit reports source status without opening a PR. An explicit bump updates a source, reads its upstream scope, repairs rules by failure class, and regenerates the output.
-
-The procedure checks the generated diff, registry, loader, static host contract, live T3 capabilities and behavior when under T3, and routing when route or chain rules changed. Changed-source notes go under [`docs/bumps/`](../packages/p3stack/docs/bumps/README.md). A green PR lands: an admin squash merge, then the root check on `main` at the merge commit. A red check reverts the merge through a second PR. The procedure never updates Pi or T3. Dependency refreshes use the separate repository procedure.
-
-## The root installs six packages, and mcp-client is not one
-
-Pi 1.3.0 installs a Git source by cloning the whole repository and reading only the root `package.json`. It cannot install a subdirectory. The root manifest therefore loads claude-subscription, p3stack, computer-use, self-reload, web-search, and t3-agent. Each package's own `pi` block stays the source of its resources. `scripts/root-package.mjs` generates the root block from the `piBundle` list, because a hand-written root list would repeat six manifests and drift from them.
-
-p3stack keeps subagents and todo nested, because its workflows need them. The other five packages stand alone. p3stack also installs by itself, and a session without claude-subscription is a valid setup.
-
-subagents asks Pi which claude-subscription file it loaded instead of looking beside itself. A policy entry `loaded:claude-subscription` resolves to the file behind that extension's commands and tools. One `subagents.json` therefore works in a checkout, a Git clone, and a T3 launch, and a child loads the same copy as its parent.
-
-`packages/mcp-client` stays separate. It replaces Pi's MCP implementation to provide protocol features the built-in client cannot expose through public hooks. That replacement also changes management, authentication, and timeout behavior. Enabling it by default would make the packaging change an MCP migration. The root package therefore keeps native MCP and leaves the replacement an explicit choice.
-
-[Configure T3 on each machine](../packages/p3stack/docs/landing/t3-settings.md) gives the T3 launch argument for each install method.
+For a child that uses claude-subscription, `loaded:claude-subscription` selects the extension file its parent loaded. The same child policy works for Git and checkout installs. The root keeps native MCP. The separate [mcp-client package](../packages/mcp-client/README.md) replaces it and changes authentication, management, and timeout behavior.

@@ -1,6 +1,6 @@
 ---
 name: poteto-help
-description: Guides users through pstack setup, /skill:poteto-mode, and picking the skill, playbook, or principle for a task. Type /skill:poteto-help with a question.
+description: Help with p3stack in Pi. Enable the router with /p3stack on or pick a standalone skill. Type /skill:poteto-help with a question.
 disable-model-invocation: true
 ---
 
@@ -8,23 +8,23 @@ disable-model-invocation: true
 
 Answer the user's question about pstack, hand them a prompt they can send, and link the file the answer came from. For a help question, don't start the work. The user asked how, and a pstack run spends real tokens, so let them send the prompt.
 
-A message that asks for work, such as "use pstack to fix this bug", is not a help question. Read [`poteto-mode`](../poteto-mode/SKILL.md), do the work under it, and mention once that starting each task with `/skill:poteto-mode` keeps it on.
+A message that asks for work, such as "use pstack to fix this bug", is not a help question. If routing is on, follow the router. If it is off, honor an explicit skill request; tell the user `/p3stack on` enables routing for this session.
 
-This file maps questions to the skills and guide pages that hold the answers. Those files own the details. Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed package, which the user may not be able to open, so give the user the file's public copy: `https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/` followed by its path.
+Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed package, which the user may not be able to open, so give the user the file's public copy: `https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/` followed by its path.
 
 ## Find out what they need
 
 Infer the need from the message and the conversation. A named situation, such as "which skill reviews a PR?", goes straight to its section. If the need is still unclear, ask one multiple-choice question with these options, then answer only the section they pick:
 
 - Get set up
-- Start a task with `/skill:poteto-mode`
+- Start a task with `/p3stack on`
 - Pick a skill for a situation
 - Fix a run that went wrong
 - Make pstack my own
 
 Check the state that changes the answer, and mention it only when it does:
 
-- No role defaults file (`~/.pi/agent/p3stack.json` or a trusted `.pi/p3stack.json`) means `/skill:setup-pstack` hasn't run for this user, so every role uses its default model.
+- Without a valid [role defaults file](../poteto-mode/references/host-capabilities.md#models-and-role-defaults), p3stack resolves each skill's model hint against the available catalog.
 - No `verify-*` skill or other app harness in the project means agents have no scripted way to drive the app. Mention `/skill:create-verification-skill` when the question is about proving a change works.
 - No formal verification skill in the project means no property is checked past what tests reach. Mention `/skill:create-formal-verification-skill` when the question is about a race, an invariant, or another case tests rarely hit. When one exists and the code it covers changed after the commit it records as last in sync, mention `/skill:maintain-formal-verification-skill` if the question touches that code.
 
@@ -36,28 +36,28 @@ When the role defaults file is missing and it matters, ask whether the user want
 ## Get set up
 
 1. The collection installs p3stack with `subagents` and `todo`. To install p3stack alone, run `pi install` with its path or git URL, then `/reload`.
-2. Run [`/skill:setup-pstack`](../setup-pstack/SKILL.md). It asks for a thinking budget, maps a model to each role, and writes `~/.pi/agent/p3stack.json`. Skills read it on their next delegation. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
-3. Start a real task with `/skill:poteto-mode`, a goal, and a check that can pass or fail.
+2. Run [`/skill:setup-pstack`](../setup-pstack/SKILL.md). It asks for a thinking budget and writes your choices to the [role defaults file](../poteto-mode/references/host-capabilities.md#models-and-role-defaults). Skills use them on their next delegation. Then it offers once each to generate a verification skill and a formal verification skill for the project, unless the project already has one.
+3. Type `/p3stack on`, then send a goal and a check that can pass or fail.
 
-Installing changes nothing until the user invokes a skill. Only `/skill:setup-pstack` loads from the user's words. The [README](../../README.md) has the details, and upstream's [guide page 1](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/01-setup.md) explains the ideas (written for Cursor). Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).
+Pi can select model-visible skills from the request even with the router off. Use `/skill:<name>` to request any installed skill explicitly. The [README](../../README.md) has the details, and upstream's [guide page 1](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/01-setup.md) explains the ideas (written for Cursor). Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).
 
 If cost is the worry, say where the tokens go and how to spend fewer. p3stack spends extra tokens on subagents and review panels. Rerun `/skill:setup-pstack` and pick a smaller budget or cheaper models. A role set to `auto` or `inherit-parent` runs on the chat's model, which saves tokens when the chat runs on a cheaper model. A shorter panel list runs fewer subagents, one for each entry. Save `/skill:poteto-mode` for work that needs rigor.
 
 p3stack runs in Pi, in a terminal or launched by T3 Code. Skills that delegate (`/skill:poteto-mode`, `/skill:how`, `/skill:why`, `/skill:teach` and the routed skills) need a delegation backend: the `subagents` package in a terminal, T3's own tools under T3. The [host capabilities](../poteto-mode/references/host-capabilities.md) list what each host provides and what a skill does when a capability is missing.
 
-## Start a task with `/skill:poteto-mode`
+## Start a task in Pi
 
-`/skill:poteto-mode` matches the task to a playbook, copies the playbook's steps into the todo list, and runs the other skills as the steps need them. A step it skips stays in the list as `skip: <reason>`. A good prompt states the goal and how to tell it's done. It doesn't list skills, because a hand-written sequence tends to drop or reorder steps the playbook would keep. Read [`references/prompting.md`](references/prompting.md) before you help word one. Upstream's [guide page 2](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/02-poteto-mode.md) has examples.
+Type `/p3stack on default` to enable the [router](../p3stack-mode/SKILL.md) with the default grant. Bare `/p3stack on` keeps the last grant. Then send the goal and a check that can pass or fail. The router selects the skill or playbook; there is no need to prefix every task. Under the default grant the agent asks about product choices. Use `/p3stack on autonomous` for the other grant: the agent makes covered choices and reports them. Explicit operator gates and irreversible actions still pause.
 
-`/skill:poteto-mode` attaches the skill to one message. It fades as the chat moves on, so start each new task with `/skill:poteto-mode`. Mid-chat, "new task" makes the mode match a fresh playbook. `/skill:poteto-mode` already briefs the subagents its playbook steps spawn per the [poteto-agent recipe](../../agents/poteto-agent.md). To get the same style from a subagent of your own, brief it with the same recipe.
+Type `/p3stack off` to turn the router off. For one skill with the mode off, use `/skill:<name>`, for example `/skill:how`. To help word the task, read [Word the prompt](references/prompting.md).
 
 ## Pick a skill
 
-The default answer is `/skill:poteto-mode`, which runs most of the others when its steps need them. Name a skill directly when the user wants more or less of something than the playbook gives. Read the skill before you recommend it, and give one example prompt.
+For a routed task, recommend `/p3stack on`. The table below suggests standalone skills. Name a skill directly when the user wants more or less of something than the playbook gives. Read the skill before you recommend it, and give one example prompt.
 
 | The user wants to | Skill |
 |---|---|
-| Do any non-trivial task with rigor | [`/skill:poteto-mode`](../poteto-mode/SKILL.md) |
+| Route a task to its skill or playbook | [`/p3stack on`](../p3stack-mode/SKILL.md#routes) |
 | Check that the agent understood their goal and the problem before it starts | [`/skill:in-your-own-words`](../in-your-own-words/SKILL.md) |
 | Get a prompt rewritten deeper, not bigger, before sending it: what a top professional would add, their raw material and methods, and an outside check. It returns the prompt and doesn't do the task | [`/skill:sharpen`](../sharpen/SKILL.md) |
 | Know how code works now, or where new code should live | [`/skill:how`](../how/SKILL.md) |
@@ -91,7 +91,7 @@ The default answer is `/skill:poteto-mode`, which runs most of the others when i
 | Stop agents from repeating the same mistakes in this repo | [`/skill:correct`](../correct/SKILL.md) |
 | Find their way around pstack | `/skill:poteto-help` |
 
-If a skill directory next to this one is missing from the table, read its frontmatter and route by its description. The `principle-*` directories are covered under principles below.
+Consult the [router](../p3stack-mode/SKILL.md#routes) for other requests, including reviewing someone else's PR. For a standalone skill, check its description. The `principle-*` directories are covered under principles below.
 
 Close calls:
 
@@ -110,7 +110,7 @@ Not in pstack:
 
 ## Playbooks and principles
 
-Playbooks are step lists inside `/skill:poteto-mode`, not skills, so they have no slash command. Inside `/skill:poteto-mode`, describing the task picks one, and these phrases name one directly:
+Playbooks are procedures, not slash commands. With the router on, describe the task. For example:
 
 - "babysit this pr" or "check on pr 123" runs Babysit. It drives the PR to merge-ready and stops there. It doesn't merge unless the user asks to merge, land, or ship.
 - "land the stack" runs Shipping.
@@ -119,9 +119,9 @@ Playbooks are step lists inside `/skill:poteto-mode`, not skills, so they have n
 - "full autopilot on this queue" runs Autopilot-full. "autopilot, don't merge" runs Autopilot-stack.
 - "run the eval playbook" runs Eval.
 
-The Playbooks section of [`poteto-mode`](../poteto-mode/SKILL.md) lists every playbook and when it applies. [Guide page 6](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
+The [Pi router](../p3stack-mode/SKILL.md#routes) maps each routed request and grant to a first skill or playbook. [Guide page 6](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
 
-pstack has no planning skill. For work that spans phases or stacked PRs, asking `/skill:poteto-mode` for a plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/skill:architect` settles it in code first.
+With routing on, asking for a multi-PR plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/skill:architect` settles it in code first.
 
 Principles are one-rule skills that `/skill:poteto-mode` reads and cites in its replies. The user rarely invokes one. They steer with the names instead, as in "apply prove it works. show me the real output." Typing `/skill:principle-<name>` still loads one on demand. [Guide page 8](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/08-principles.md) lists them.
 
@@ -129,11 +129,11 @@ Principles are one-rule skills that `/skill:poteto-mode` reads and cites in its 
 
 | Symptom | Fix |
 |---|---|
-| The mode stopped applying after a few turns | It attaches to one message. Start each task with `/skill:poteto-mode`. |
+| The mode stopped applying after a few turns | Check `/p3stack status`. Use `/p3stack on` to enable routing in this session. |
 | A question got treated as the next step of the last task | Say "new task", or say the turn doesn't need the mode. |
 | A new model choice had no effect | Skills read the role defaults on each delegation. Check the file `/skill:setup-pstack` wrote. |
 | Runs cost more than expected | See the cost paragraph under Get set up. |
-| A skill didn't load on its own | Only `/skill:setup-pstack` loads from the user's words. The others load when the user types them or when `/skill:poteto-mode` runs them, and it doesn't run every skill. |
+| A skill didn't load on its own | Pi can select model-visible skills from the request even with the router off. Use `/skill:<name>` to request any installed skill explicitly. |
 | Parallel agents overwrote each other | Give each agent its own worktree (**Isolation** in the host capabilities). |
 | An overnight run moved but finished nothing | A wake loop needs a check that can pass or fail, not a duration. See [guide page 7](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/07-overnight.md). |
 | The reply claims success from a green build | Ask for the real command, flow, stored value, or profile. That's the prove-it-works principle. |

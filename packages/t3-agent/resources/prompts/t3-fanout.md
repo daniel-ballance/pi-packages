@@ -2,10 +2,12 @@
 description: Split a task into independent parts and run each as a parallel delegate in its own worktree
 argument-hint: "<task>"
 ---
-Run this task as parallel parts: $@
+Split the task, delegate disjoint parts and merge the verified results locally; open no pull request.
+Task: $@
 
-1. Split it into parts that change disjoint files and can each be verified alone. If it does not split that way, say so and do it in this thread.
-2. Commit whatever the parts depend on: a worktree child starts from your last commit and sees no uncommitted changes.
-3. Call `orchestrator_capabilities` once. Start each part with `delegate_task`, `isolation:"worktree"`, `mode:"async"`, its own `clientRequestId`, and a brief that stands alone: the goal, the files it owns, how to verify it, and to commit on its branch and report the branch name.
-4. End the turn. As each result wakes you, review its branch, merge it into this thread's branch, and run the checks. Stop a part you no longer need with `task_cancel`.
-5. When every part is merged and the checks pass, reply with what each part changed.
+When p3stack's routing reminder is present in this request, follow the playbook it routes to for the procedure, within this stop line.
+Without that reminder:
+
+1. Split by file ownership and independent checks. If the work cannot be split safely, do it in this thread.
+2. Commit any prerequisites. Use `orchestrator_capabilities`, then one async `delegate_task` per part with `isolation:"worktree"`, its own `clientRequestId`, goal, files and checks. Ask for a commit and branch name.
+3. Finish dispatching the wave, keep each `taskId` and follow its `next`. Yield while waiting. On a completion wake, read `task_status`, verify the part and merge it locally. Cancel unneeded parts with `task_cancel`. Run the combined checks and report the result.

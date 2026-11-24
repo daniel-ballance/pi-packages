@@ -12,4 +12,4 @@ We added two upstreams in different ways. `addyosmani/agent-skills` is vendored 
 
 ## Consequences
 
-Two more submodules and licenses ship with the package. The registry classifies every upstream skill of both sources. Each new source has its own checkout and its own maintenance PR.
+The maintainer checkout includes the submodules. The runtime tarball ships the licenses and emitted files, not the submodules. A Git install does not initialize them. Generating from pinned sources preserves attribution and lets unchanged prose follow upstream without a hand-maintained fork. Rules handle changes in meaning, such as how to delegate, that renaming a tool would miss.

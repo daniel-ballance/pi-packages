@@ -2,13 +2,15 @@
 // the model stops the loop or a policy bound ends it. Ticks only reach an idle
 // parent; one that falls due during a turn waits for the turn to settle.
 
+import { randomUUID } from "node:crypto";
+
 export interface LoopPolicy { enabled: boolean; minIntervalMs: number; maxIterations: number; maxDurationMs: number }
 export interface LoopRequest { task: string; intervalMs: number; maxIterations?: number; maxDurationMs?: number }
 export interface LoopState {
   task: string; intervalMs: number; iteration: number; maxIterations: number;
   startedAt: number; deadline: number; nextAt: number; due: boolean;
 }
-export interface LoopTick { task: string; iteration: number; maxIterations: number; intervalMs: number; deadline: number }
+export interface LoopTick { id: string; task: string; iteration: number; maxIterations: number; intervalMs: number; deadline: number }
 
 const LIMITS = {
   minIntervalMs: [1_000, 86_400_000], maxIterations: [1, 10_000], maxDurationMs: [60_000, 604_800_000],
@@ -43,6 +45,7 @@ export interface LoopOptions {
 export class LoopController {
   private state?: LoopState;
   private timer?: Timer;
+  private awaiting?: string;
   private readonly clock: () => number;
   private readonly setTimer: (run: () => void, ms: number) => Timer;
   private readonly clearTimer: (timer: Timer) => void;
@@ -64,7 +67,7 @@ export class LoopController {
     const maxDurationMs = request.maxDurationMs ?? policy.maxDurationMs;
     if (!Number.isInteger(maxDurationMs) || maxDurationMs < 1 || maxDurationMs > policy.maxDurationMs) throw new Error(`maxDurationMs must be at most ${policy.maxDurationMs}.`);
     // Also keeps every timer delay within Node's range (policy durations cap at 7 days).
-    if (request.intervalMs > maxDurationMs) throw new Error(`The interval must be no longer than the run (${maxDurationMs} ms).`);
+    if (request.intervalMs >= maxDurationMs) throw new Error(`The interval must be shorter than the run (${maxDurationMs} ms).`);
     const startedAt = this.clock();
     this.state = { task, intervalMs: request.intervalMs, iteration: 0, maxIterations, startedAt, deadline: startedAt + maxDurationMs, nextAt: startedAt + request.intervalMs, due: false };
     this.schedule();
@@ -90,6 +93,7 @@ export class LoopController {
     if (this.timer !== undefined) this.clearTimer(this.timer);
     this.timer = undefined;
     this.state = undefined;
+    this.awaiting = undefined;
   }
 
   // One timer, for whichever comes first: the next tick or the deadline. A tick
@@ -117,8 +121,33 @@ export class LoopController {
     if (this.timer !== undefined) this.clearTimer(this.timer);
     this.timer = undefined;
     state.due = false;
+    const id = this.awaiting = randomUUID(), iteration = state.iteration + 1;
+    // Pi's void sendMessage swallows asynchronous delivery errors. Arm the
+    // receipt deadline before sending: even a synchronous receipt must count.
+    const awaitReceipt = () => {
+      this.timer = this.setTimer(() => {
+        this.timer = undefined;
+        if (this.awaiting !== id) return;
+        // A busy parent has the tick queued behind compaction, run preparation or a run in
+        // progress: it will still be delivered, so keep waiting until the loop's deadline.
+        if (!this.options.idle() && this.clock() < state.deadline) { awaitReceipt(); return; }
+        this.end(`could not confirm tick ${iteration} delivery: no message_start before timeout`);
+      }, Math.max(0, Math.min(10_000, state.deadline - this.clock())));
+    };
+    awaitReceipt();
+    try {
+      this.options.send({ id, task: state.task, iteration, maxIterations: state.maxIterations, intervalMs: state.intervalMs, deadline: state.deadline });
+    } catch (error) {
+      if (this.awaiting === id) this.end(`could not confirm tick ${iteration} delivery: ${error}`);
+    }
+  }
+
+  delivered(id: unknown) {
+    const state = this.state;
+    if (!state || !this.awaiting || id !== this.awaiting) return;
+    this.awaiting = undefined;
+    this.clearTimer(this.timer); this.timer = undefined;
     state.iteration++;
-    this.options.send({ task: state.task, iteration: state.iteration, maxIterations: state.maxIterations, intervalMs: state.intervalMs, deadline: state.deadline });
     if (state.iteration >= state.maxIterations) { this.end(`reached ${state.maxIterations} ticks`); return; }
     state.nextAt = this.clock() + state.intervalMs;
     this.schedule();

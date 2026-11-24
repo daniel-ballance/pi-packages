@@ -1,16 +1,13 @@
 # Execution ledger
 
-Conversation memory does not survive compaction. A run that delegates more than one unit of work keeps a ledger, so a controller that loses its place never redoes finished work.
+Before dispatching a long-running unit or a multi-unit plan, allocate **one private run directory** under the [host map's Store](../poteto-mode/references/host-capabilities.md). For example, create `$store/runs`, then use `mktemp -d "$store/runs/run-XXXXXXXX"`. Its basename is the unique run ID; a branch can serve many runs.
 
-**Where.** `<store>/runs/<run-id>/ledger.md`, with the store from **Store** in the poteto-mode host capabilities (`poteto-mode/references/host-capabilities.md`). Use the branch or plan name as the run id. Put the ledger's absolute path in every brief that reports into it.
+The coordinator alone writes `ledger.md` there. Record the run ID, repository, checkout, grant and requested scope. Workers return reports; the coordinator saves them or records a retrievable artifact path. Append a row for each transition:
 
-**Format.** The first line names the run: `# Ledger: <plan, spec, or ticket graph>`. Then append one line per event, never edit earlier lines:
+`unit | attempt | child ID | checkout | branch | base SHA | head SHA | state | evidence path | pending gate`
 
-- `Unit <id>: dispatched <child> base <sha7>`
-- `Unit <id>: complete <base7>..<head7>, review clean` or `, <K> parked`
-- `Ruling: <what you decided> | <why> | <what it costs if wrong>` for each judgement call you made instead of asking
-- `Parked: <finding> | <why it stays open>`
+Use full commit IDs. Mark an unknown field pending rather than inventing a value. Record dispatch before waiting; record completion, failure, hold, cancellation or supersession as observed. Tie each review verdict, ruling and parked dispute to its unit, attempt and reviewed head.
 
-**Recovery.** After compaction or in a new session, read the ledger and `git log` before anything else, and trust them over your memory. The commits a ledger names exist even when you no longer remember making them.
+**Recovery.** Match the run ID and checkout. Verify the base and head refs, branch tip, and cited artifacts against the last row. Reconcile live or held children and inspect their effects before redispatching. A dispatched job is not a failed job. If its outcome is unknown, keep it pending; continue from the last verified gate, not from memory.
 
-**Close.** When the run lands, move each ruling that a future reader would need into an ADR (**domain-modeling**), then delete the run directory. The decision trail from **show-me-your-work** is the audit record and stays; the ledger is only for recovery.
+**Close.** Preserve evidence cited by tickets, PRs, rulings and handoffs. Move durable decisions to the decision record, update any evidence links and verify their new targets. Delete only this run's directory, and only when no retained record or live job still points at its evidence.

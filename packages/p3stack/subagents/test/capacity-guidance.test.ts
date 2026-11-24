@@ -16,7 +16,7 @@ test("a nested spawn at the live cap is told not to retry, and a root spawn is n
   writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(root, "pi.mjs"))} "$@"\n`, { mode: 0o700 });
   writeFileSync(join(root, "pi.mjs"), readFileSync(new URL("./fixtures/compact-spawn-pi.mjs", import.meta.url)));
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({
-    version: 1, models: [{ id: "p/m:off" }], tools: ["subagent_spawn"], maxDepth: 2, maxChildren: 1, workingDirectories: ["."],
+    version: 1, models: [{ id: "p/m:off" }], tools: ["subagent_spawn", "subagent_wait", "subagent_read"], maxDepth: 2, maxChildren: 1, workingDirectories: ["."],
   }));
   const previousAgent = process.env.PI_CODING_AGENT_DIR;
   const previousPath = process.env.PATH;
@@ -44,7 +44,7 @@ test("a nested spawn at the live cap is told not to retry, and a root spawn is n
     const spawn = (name: string, task: string, toolsSelected: string[]) => tools.get("subagent_spawn")!.execute("c", {
       name, task, cwd: repo, model: "p/m:off", tools: toolsSelected,
     }, undefined, undefined, ctx);
-    const coordinator = await spawn("coordinator", "stay", ["subagent_spawn"]);
+    const coordinator = await spawn("coordinator", "stay", ["subagent_spawn", "subagent_wait", "subagent_read"]);
     await assert.rejects(spawn("root-extra", "again", []), (thrown: unknown) => {
       const message = messageOf(thrown);
       assert.match(message, /Live-child capacity reached \(limit 1\)\. Inspect before closing idle workers; held work requires discussion\. Recovery:/);

@@ -1,109 +1,123 @@
 # Host capabilities
 
-p3stack skills name a capability, never a tool. This file maps each capability to the tools of the host you run in. Pi in a terminal has `subagent_*` tools from the `subagents` package. Pi launched by T3 Code has `mcp__t3-code__*` tools and no `subagent_*` tools. Use the section for the tools you have. When your host has no tool for a capability, apply the fallback given here and say so in your reply. Never assume a tool exists.
+Use `Host: terminal` or `Host: t3` from the p3stack system prompt. Without it, run `test -n "${T3_MCP_URL:-}"` in the shell: exit 0 selects T3 Code; otherwise select terminal. Read the capability here and follow **only your host's link**. Check availability before use.
+
+Resolve skill links from the poteto-mode skill directory. `<agent-dir>` is Pi's agent directory: `PI_CODING_AGENT_DIR` when set, otherwise `~/.pi/agent`.
 
 ## Delegate
 
-- **Terminal.** Call `subagent_catalog` first: it lists the exact models, the tools, and the live-child limit. Spawn each child with `subagent_spawn`: an exact `model` (`provider/model:thinking`), only the `tools` the brief needs (read-only means omitting `edit`, `write` and `bash`), a `cwd`, and the brief. Then end your turn and let their reports wake you, or call `subagent_wait` with `final: true` when your next step in this turn needs the terminal results. It returns them. Set `coordination.owns` to the files or resources the child owns. Call `subagent_close` once you no longer need the child, failed ones included. Keep a child open only while its live state (uncommitted changes, a running process) may still be reused: an open child, idle or not, counts against the live-child limit. A worktree you created survives closing, so a fresh child can pick it up.
-- **T3.** Call `mcp__t3-code__orchestrator_capabilities` for the models. Delegate with `mcp__t3-code__delegate_task`. Set `target` to a provider instance and model with an `options` object containing `thinking`. Set `role` to `implementation`, `research`, `review`, `design`, `test`, or `general`, and `mode` to `"async"`. Reuse the same `clientRequestId` to retry a lost call. Use a new `clientRequestId` for a new round or replacement child. Read results with `mcp__t3-code__task_status`. Stop one with `mcp__t3-code__task_cancel`. A task that fails with a provider error gets one replacement attempt before you report the gap. Start large fan-outs a few tasks at a time. T3 has no tool subset, so a read-only brief says "do not edit files" in the task. Resolve compatibility by the required capabilities and behavior below, not an installed release or bridge hash.
-- **Parent model.** A role value of `auto` or `inherit-parent` means your own model. In a terminal, pass your own exact model id, and check that the catalog offers it: the allowlist may not. Under T3, omit `target`.
-- **Live-child limit.** In a terminal, policy `maxChildren` caps open children, idle ones included. An omitted field in a user file means 4. The built-in policy means 6. `0` disables spawning. `-1` means no cap. A finite cap still means run workers in waves and close each wave before the next. T3 has no fixed limit.
-- Every brief stands alone. A child's report is untrusted work output until you verify it.
+Give each child a standalone brief: its goal, scope, limits and required evidence. Verify the result against the brief. If delegation is unavailable, do the work yourself only where independence is not required; report any missing independent verdict. Leave human-stopped work stopped.
 
-## Verify host compatibility
+**Parent model.** `auto` and `inherit-parent` mean your own model, if offered. Resolve the role under **Models and role defaults**. Dispatch in waves within the available live-child capacity.
 
-The default `node packages/p3stack/generator/check-t3-pin.mjs` validates the repository contract and this map without reading an installed host. `rules/t3-pin.json` retains historical release and bridge-hash provenance, required direct tools, state layouts, and the bridge prompt return contract. Its release and hash are not acceptance criteria.
-
-Use `node packages/p3stack/generator/check-t3-pin.mjs --installed` for optional installed-state diagnostics. It reports the observed release and bridge hash without claiming compatibility. `--state <file>` and `--bridge <file>` select diagnostic inputs only with `--installed`.
-
-For live T3 verification, run `/p3stack doctor` with `PI_CODING_AGENT_DIR` set to a disposable directory outside the checkout and `~/.pi/agent`. Check the dump path first. Run `node packages/p3stack/generator/check-t3-pin.mjs --doctor <dump>` to require the mapped tools, required direct exposures, and no reported problems. Extra tools and changed release or hash provenance alone are not failures. A terminal's empty T3 catalog cannot prove this contract.
-
-Doctor checks an inventory, not argument schemas, return shapes, or behavior. Compare the live catalog and bridge behavior with the operations in this map and the prompt return contract in `rules/t3-pin.json`. Missing required capabilities or incompatible behavior blocks maintenance even if the static check and doctor pass. Keep a host-contract repair separate from vendor bumps. Never change the installed host or refresh fingerprints to force acceptance.
+- [Terminal](../poteto-mode/references/host-terminal.md#delegate)
+- [T3 Code](../poteto-mode/references/host-t3.md#delegate)
 
 ## Models and role defaults
 
-Skills name a role, such as `swarm workers` or `interrogate reviewers`, and a default hint such as `claude-opus-5-5-xhigh` or `grok-4.7-xhigh-fast`. A hint is a model family plus a thinking level. Resolve it to an exact model the catalog offers: in a terminal `provider/model:thinking` (for example `claude/claude-opus-5-5:xhigh`), under T3 a provider instance, model id and thinking option. Pi has no speed variants, so drop `-fast`. Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`. Each model supports a subset. When the hinted level is not offered, use the closest offered level below it.
+Call `p3stack_roles` for the skill's role. For a reviewer, judge or adversary, pass the author's model as `distinctFrom`. Use the returned selection for each seat. Report unresolved roles and relevant `problems`, including substitutions and missing diversity. A skill default is a hint; a model, provider or setting the user requested is a requirement. If unavailable, report it rather than substituting.
 
-When the catalog offers no model of the hinted family, do not retry the hint. Use another offered model, preferring a different family from yours when the role is a reviewer or judge, and name the substitution in your reply. When the catalog offers nothing usable for the role, report the role as blocked and ask for a role default or allowlist change.
+Without the resolver, read the first valid role file: `.pi/p3stack.json` in a trusted project, then `<agent-dir>/p3stack.json`. An absent role uses the skill's hint. Match defaults to the live catalog; report any role you cannot fill.
 
-A role value written on the other host is a hint, not an identity: a T3 value (`<provider instance>/<model>:<thinking>`) in a terminal, or a Pi value (`provider/model:thinking`) under T3. Match its model family and thinking level as above. The role defaults file is shared by both hosts and holds whatever the last setup wrote.
-
-Reviewers, judges, and adversaries come from a different model family than the author: call `p3stack_roles` with `distinctFrom` set to the author's model, and it substitutes another family where the catalog offers one and reports each substitution.
-
-Role defaults: call `p3stack_roles` when it exists. Otherwise read `.pi/p3stack.json` in a trusted project, else `~/.pi/agent/p3stack.json`. The file is `{"budget": "...", "roles": {"<role>": "<model>" or ["<model>", ...]}}`. A missing file or role means the skill's default hint.
+- [Terminal](../poteto-mode/references/host-terminal.md#models-and-role-defaults)
+- [T3 Code](../poteto-mode/references/host-t3.md#models-and-role-defaults)
 
 ## Isolation
 
-- **Terminal.** When `subagent_spawn` takes a `worktree` option, pass `worktree: true` (or `{base, branch}`) with a `cwd` inside the repository. The child runs in a new checkout under `.pi/worktrees/` on a new branch, made from your current commit unless `base` names another; uncommitted edits are not copied, so commit first. Merging, and removing the checkout and its branch, stay with you: closing the child leaves both. Without that option (an older subagents), create the checkout yourself with `git worktree add .pi/worktrees/<name> -b <branch> <base>`, then delegate with `cwd` set to it.
-- **T3.** Pass `isolation: "worktree"`. The checkout starts from your last commit; uncommitted edits are not copied, so commit first. To start from another branch or SHA, tell the child to fetch and check it out before any other work.
+Use separate checkouts for independent writes. A new checkout contains committed work, not dirty edits. For uncommitted work, give reviewers read-only access to the scoped changes in place; report any they cannot inspect.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#isolation)
+- [T3 Code](../poteto-mode/references/host-t3.md#isolation)
 
 ## Nesting
 
-- **Terminal.** `subagent_catalog` says whether a child you spawn may delegate: as a child, read its `delegation.childrenMayDelegate`; as the root (no `delegation` block), check that `maxDepth` is above 1. When it may, you may give a coordinator child the delegation tools the catalog lists (`subagent_spawn`, `subagent_wait`, `subagent_read`, `subagent_close`, and others as needed): it manages only its own children, you are not told about them except their questions for the human, and closing or halting it does the same to everything below it. Otherwise, or when the catalog reports neither (an older subagents), a child you spawn cannot delegate. Then never delegate a coordinator, a child whose job is to run a skill that itself delegates (`how`, `why`, `swarm`, `arena`, `architect`, `interrogate`, `reflect`, `teach`): run that skill yourself, so its subagents are your children. A child told to run such a skill runs its steps itself, one after another, and says so in its report. Express deeper sub-coordination as a workflow with `subagent_workflow_start`, or keep one level.
-- **T3.** A child may delegate. `mcp__t3-code__task_cancel` also stops everything the task delegated.
+Keep fan-out with the parent unless a coordinator needs children and can manage them. A child unable to delegate reports any step it could not perform independently.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#nesting)
+- [T3 Code](../poteto-mode/references/host-t3.md#nesting)
 
 ## Store
 
-Durable run state that is not part of the repository (decision trails, orchestration boards, plan drafts, subagent records) lives under `~/.pi/agent/p3stack/--<path>--/`, with `<path>` encoded as for **Session history**. Put the absolute store path in every brief that writes to it; a child does not know it otherwise.
+Keep off-repo state in `<agent-dir>/p3stack/--<path>--/`, with the cwd encoded as in **Session history**. Under that store, keep each run's briefs, reports and [execution ledger](../p3stack-mode/references/execution-ledger.md) in `runs/<run-id>/`. Retire the run directory after landing and promoting its rulings.
 
-Run state lives under `<store>/runs/<run-id>/`: the execution ledger (`ledger.md`, per `p3stack-mode/references/execution-ledger.md`), child reports, and briefs. Delete a run's directory once it lands and its rulings are promoted.
+- [Terminal](../poteto-mode/references/host-terminal.md#store)
+- [T3 Code](../poteto-mode/references/host-t3.md#store)
 
 ## Wake and loop
 
-- **Terminal, on a clock.** When `subagent_catalog` shows `loops` enabled, use `subagent_loop`: `op: "start"` with a `task` that says what each tick checks and when to stop, an `intervalSeconds` no shorter than the catalog's minimum, and, if you want them tighter than the catalog's bounds, `maxIterations` and `maxDurationMinutes`. Call `op: "stop"` once the stop condition holds. A tick starts a turn only when you are idle; one loop runs at a time, and a reload stops it. Without loops, delegate a watcher child whose brief is "every N minutes, check X; report when Y", and give it a deadline.
-- **Terminal, on an event.** Delegate a watcher child whose brief is "watch X and report when Y". Its result wakes you when it settles. With loops enabled, a long loop tick is the fallback heartbeat in case the watcher dies.
-- **T3.** Call `mcp__t3-code__schedule_task` with a `prompt` and a structured `schedule` object. Use `{"type":"interval","everyMs":3600000}` for an interval, `{"type":"fixed_time","timeOfDay":"09:00","weekdays":[1,2,3,4,5]}` for wall-clock time, or `{"type":"webhook"}` for a webhook. Do not pass JSON text as `schedule`. Runs return to this thread by default. Report the returned cadence and next run time, or the webhook URL. Call `mcp__t3-code__delete_scheduled_task` with `scheduledTaskId` when done. For a pull request, use `mcp__t3-code__watch_pull_request` per **Pull requests**.
+For authorized recurring work, set a trigger, stop condition and deadline. Stop on success, deadline or operator stop. For a child's result use **Delegate** instead.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#wake-and-loop)
+- [T3 Code](../poteto-mode/references/host-t3.md#wake-and-loop)
 
 ## Ask the human
 
-Ask only for a product or preference call no experiment can settle. Use `ask_user` when it exists; it works in a terminal and under T3. Without it, ask in your reply and stop. Offer the choices the skill names; if the interface cannot take several answers to one question, ask it as separate questions or say "choose any".
+Use `ask_user` for a product or preference call no experiment can settle. If the tool is absent, ask in your reply. If it returns a default, state what you used; a default is not approval. Leave an unanswered approval gate pending. Never solicit credentials in chat or a brief.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#ask-the-human)
+- [T3 Code](../poteto-mode/references/host-t3.md#ask-the-human)
 
 ## Todo
 
-Use the `todo` tool when it exists. Without it, keep a Markdown checklist in your reply and update it as steps change. Never delete a step; mark it skipped with a reason.
+Track playbook steps in order. Mark omitted steps skipped with a reason. Without a task list tool, update a Markdown checklist in your reply.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#todo)
+- [T3 Code](../poteto-mode/references/host-t3.md#todo)
 
 ## Fetch official docs
 
-For the version the project pins, get the specific documentation, not a homepage or a search snippet. Try these in order and cite the URL beside the code it justifies:
+Verify against the project's pinned version. In Context7, resolve the library ID, select the version if listed and query one concept at a time. Otherwise fetch the specific official page; if its URL is unknown, search with `site:` on the official domain first. Cite the URL and version beside the code it justifies. Keep private code and credentials out of queries. If the version cannot be verified, say so.
 
-1. **context7**, when the `context7` MCP server is configured (reach it through codemode or `tool_search`): `resolve_library_id`, then `query_docs` with one concept per call. It returns code and source URLs in seconds. It serves the default branch unless the library id names a version (`/org/project/<version>`), so pass the pinned version when the resolver lists it, and say so when it does not.
-2. **Fetch a known official page** with `curl -sL <url>` in `bash` when you know the docs URL. Pages run from tens of kilobytes to over a megabyte, so save the page and `grep` the section you need rather than reading it whole.
-3. **`web_search`** with a `site:` filter for the official domain, to find the page URL, then step 2. DuckDuckGo blocks bursts and can keep blocking an address for minutes: send one query at a time, and on `[blocked]` do not retry; fall back to steps 1 and 2.
-
-When none of these works, say the pattern is unverified against current docs. Both hosts use the same tools when they are present.
+- [Terminal](../poteto-mode/references/host-terminal.md#fetch-official-docs)
+- [T3 Code](../poteto-mode/references/host-t3.md#fetch-official-docs)
 
 ## Read and search
 
-Use your host's read and search tools (`read`, `grep`, `find`, `ls`, or `bash`) wherever a skill says to read, search or follow a call chain.
+Search for the symbol or path, then read the matching file and relevant callers.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#read-and-search)
+- [T3 Code](../poteto-mode/references/host-t3.md#read-and-search)
 
 ## Drive the app
 
-Prove a change on the real surface, the way a user would. Use the project's verification skill (a `verify-*` skill; create one with `/skill:create-verification-skill`) or its existing harness. Otherwise drive the surface directly: a CLI or TUI through `bash`, a web UI through a browser driver such as a Playwright MCP server, a macOS app through the `computer-use` package where installed. Under T3, `mcp__t3-code__preview_*` drive a web preview. A surface you cannot drive is a risk you report, not a pass.
+Use the project's verification skill or harness. For a prototype, check walkthroughs and free-play controls or each UI variant and its switcher through a permitted driver. Hand back the actual file path or URL; distinguish what you exercised from what remains unverified.
 
-For an interactive prototype, open what the human will open. A logic prototype is one local HTML file: load it as `file://<absolute path>` in the browser driver, click through every walkthrough and the free-play buttons, and capture the state panel after each step. A UI prototype is a route on the `prototype/<name>` worktree's dev server: start the server from that worktree, load the route with each `?variant=` value, switch variants with the floating bar, and screenshot each. Under T3, use `mcp__t3-code__preview_*` for the dev-server URL. Hand the human the same file path or URL you checked.
+Without a browser driver, still open a local HTML file in an installed headless browser and read its console: `chromium --headless --enable-logging=stderr --dump-dom "file://<absolute path>" 2>&1 >/dev/null | grep -i uncaught`. An uncaught error is a failed demo. Running the page's script outside a browser does not show that the page loads; say so if that is all you could do.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#drive-the-app)
+- [T3 Code](../poteto-mode/references/host-t3.md#drive-the-app)
 
 ## Visuals
 
-- **Terminal.** Write the file and give its path.
-- **T3.** Check a self-contained HTML page with `mcp__t3-code__html_preview`, then publish it with `mcp__t3-code__html_render`. The page appears above your reply. Do not restate it.
-- No image-generation tool is guaranteed on either host. When a skill asks for a generated picture and none is available, draw it as SVG, HTML or a Mermaid diagram and say you substituted.
+If image generation is unavailable, offer SVG, HTML or Mermaid and name the substitution. Distinguish an inline illustration from a file the human needs to reuse.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#visuals)
+- [T3 Code](../poteto-mode/references/host-t3.md#visuals)
 
 ## Pull requests
 
-- **Terminal.** Poll with `gh pr checks` and `gh pr view`, or delegate a watcher child that does.
-- **T3.** Call `mcp__t3-code__link_pull_request` as soon as a pull request exists. Call `mcp__t3-code__watch_pull_request` only when you are asked to babysit it. Act on each wake and call `mcp__t3-code__unwatch_pull_request` before handing the work back. Call `mcp__t3-code__list_thread_pull_requests` before handback to confirm the linked PR and watch state. Only the root thread can watch. A child that owns a pull request polls with `gh` instead, or reports and lets the root watch.
+Use the project's active forge for PR state. A status check is one observation. Watch only for an authorized babysit, and stop at its agreed end. Babysitting is not permission to merge.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#pull-requests)
+- [T3 Code](../poteto-mode/references/host-t3.md#pull-requests)
 
 ## Session history
 
-Pi stores each session as a `.jsonl` file under `~/.pi/agent/sessions/--<path>--/`, where `<path>` is the working directory without its leading `/` and with `/`, `\` and `:` replaced by `-`. A `sessionDir` setting or `PI_CODING_AGENT_SESSION_DIR` moves them. The first line is a `session` header; turns are `message` entries, and one file can hold several branches (`id`/`parentId`). Read only the directory for this project's working directory. Never read other projects' sessions.
+Pi parent sessions default to `<agent-dir>/sessions/--<path>--/*.jsonl`. Encode the absolute cwd by dropping the leading slash and replacing `/`, `\` and `:` with `-`. Honor overrides in order: `--session-dir`, `PI_CODING_AGENT_SESSION_DIR`, `sessionDir`. Check the session header's cwd before reading messages, especially in a shared directory. Follow `id`/`parentId` for the relevant branch; read only this project's in-scope history.
 
-A child's session is elsewhere. In a terminal, `subagent_list` gives each child's session file (under `~/.pi/agent/subagents/<parent-session-id>/`). Under T3, find in-scope threads with `mcp__t3-code__t3_thread_search` or `mcp__t3-code__t3_thread_list`. Use `parentThreadId` to establish the parent relationship before reading a child's history. Read that history with `mcp__t3-code__t3_thread_read` on its child thread. Keep the parent Pi session and T3 child history in scope. Do not search unrelated threads.
+- [Terminal](../poteto-mode/references/host-terminal.md#session-history)
+- [T3 Code](../poteto-mode/references/host-t3.md#session-history)
 
 ## Author a skill
 
-Write it in Pi's skill format: a directory named for the skill with a `SKILL.md` whose frontmatter `name` matches the directory and whose `description` says what it does and when to load it; links relative to the skill directory. Follow the `writing-for-agents` skill. Run `lint-skill` on the directory when the pi-packages repository is available (`node scripts/lint-skill/lint-skill.mjs <directory>` from its root). Then test it: write three prompts that should load the skill and three that should not, run each in a fresh session, and revise the description until the right ones load. A path-shaped trigger (file types, directories) goes in the description; Pi has no path-based activation.
+Follow [writing-for-agents](../writing-for-agents/SKILL.md). Match the `SKILL.md` frontmatter name to its directory and resolve links from that directory. For a model-invoked skill, test the description against prompts that should and should not load it; for an explicit invocation, test the named command. Run live evaluations only with authorization.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#author-a-skill)
+- [T3 Code](../poteto-mode/references/host-t3.md#author-a-skill)
 
 ## Run a workflow
 
-- **Terminal.** When `subagent_catalog` lists the workflow tools, a procedure with a template under `p3stack-mode/workflows/` can run as a workflow: fill the template with `p3stack-mode/scripts/workflow-template.mjs` (see the README beside the templates), start it with `subagent_workflow_start`, follow it with `subagent_workflow_inspect`, and pause, resume, or cancel it with `subagent_workflow_control`. The run continues while you are idle, and its completion notice wakes you. Treat every worker output as unverified until a check or your own review confirms it.
-- **T3.** There is no workflow engine. Follow the skill's prose procedure, delegating each step per **Delegate**, and say in your reply that the workflow template was not available.
+When the template engine or required worker resources are unavailable, follow the skill's prose procedure. Report any required check you could not reproduce.
+
+- [Terminal](../poteto-mode/references/host-terminal.md#run-a-workflow)
+- [T3 Code](../poteto-mode/references/host-t3.md#run-a-workflow)

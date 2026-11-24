@@ -64,6 +64,77 @@ test("removing a worktree created for a failed spawn also deletes its new branch
   } finally { dispose(); }
 });
 
+test("rollback leaves unrelated stale worktree registrations alone", () => {
+  const { root, git, dispose } = repo();
+  try {
+    const stale = createWorktree({ cwd: root, name: "elsewhere" });
+    rmSync(stale.path, { recursive: true });
+    removeWorktree(createWorktree({ cwd: root, name: "failed" }));
+    assert.ok(git("worktree", "list", "--porcelain").includes(stale.path));
+  } finally { dispose(); }
+});
+
+test("failed creation cannot claim an existing checkout even at the same path, branch and commit", () => {
+  const { root, git, dispose } = repo();
+  try {
+    const plan = planWorktree({ cwd: root, name: "same" });
+    git("worktree", "add", "-b", plan.branch, plan.path, plan.commit);
+    assert.throws(() => createWorktree(plan));
+    assert.ok(existsSync(join(plan.path, "README.md")));
+    assert.equal(git("rev-parse", plan.branch), plan.commit);
+  } finally { dispose(); }
+});
+
+test("rollback does not adopt a checkout raced into place after branch creation", { skip: process.platform === "win32" }, () => {
+  const { root, git, dispose } = repo();
+  try {
+    const plan = planWorktree({ cwd: root, name: "race" });
+    const hook = join(root, ".git/hooks/reference-transaction");
+    writeFileSync(hook, `#!/bin/sh
+[ "$1" = committed ] || exit 0
+grep -F 'refs/heads/${plan.branch}' >/dev/null || exit 0
+git -c core.hooksPath=/dev/null worktree add -- '${plan.path}' '${plan.branch}'
+`, { mode: 0o755 });
+    assert.throws(() => createWorktree(plan));
+    assert.ok(existsSync(join(plan.path, "README.md")), "the competing checkout survived");
+    assert.equal(git("rev-parse", plan.branch), plan.commit);
+  } finally { dispose(); }
+});
+
+test("git unavailable on rollback is reported with both the path and branch", () => {
+  const { root, dispose } = repo();
+  const previousPath = process.env.PATH;
+  try {
+    const tree = createWorktree({ cwd: root, name: "no-git" });
+    process.env.PATH = join(root, "empty");
+    assert.throws(() => removeWorktree(tree), (error: Error) => error.message.includes(tree.path) && error.message.includes(tree.branch));
+    assert.ok(existsSync(tree.path));
+  } finally { process.env.PATH = previousPath; dispose(); }
+});
+
+test("a failure before checkout registration also rolls back the branch", () => {
+  const { root, git, dispose } = repo();
+  try {
+    const plan = planWorktree({ cwd: root, name: "blocked" });
+    writeFileSync(join(root, ".pi"), "not a directory");
+    assert.throws(() => createWorktree(plan));
+    assert.equal(git("branch", "--list", plan.branch), "");
+  } finally { dispose(); }
+});
+
+test("rollback refuses a changed checkout or commit and identifies it for manual cleanup", () => {
+  for (const changed of ["branch", "commit"]) {
+    const { root, git, dispose } = repo();
+    try {
+      const tree = createWorktree({ cwd: root, name: "changed" });
+      if (changed === "branch") git("-C", tree.path, "checkout", "-qb", "elsewhere");
+      else git("-C", tree.path, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "new work", "--allow-empty");
+      assert.throws(() => removeWorktree(tree), (error: Error) => error.message.includes(tree.path) && error.message.includes(tree.branch));
+      assert.ok(existsSync(join(tree.path, "README.md")));
+    } finally { dispose(); }
+  }
+});
+
 test("the base is resolved to a commit first, so a different base really is the starting point", () => {
   const { root, git, dispose } = repo();
   try {

@@ -7,7 +7,8 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { git as runGit, gitEnv } from "./git.js";
-import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { detectHost } from "../extensions/subagents/src/host.js";
+import { DefaultResourceLoader, SettingsManager, type ResourcesDiscoverResult } from "@earendil-works/pi-coding-agent";
 import { tempRoot } from "./support/temp-root.js";
 
 const root = fileURLToPath(new URL("../../../..", import.meta.url));
@@ -36,7 +37,8 @@ const packageDirs: Record<string, string> = {
 const p3stackSkills = readdirSync(join(root, "packages/p3stack/skills"), { withFileTypes: true })
   .filter(entry => entry.isDirectory() && existsSync(join(root, "packages/p3stack/skills", entry.name, "SKILL.md")))
   .map(entry => entry.name);
-const expectedSkills = ["subagents", "workflows", ...p3stackSkills].sort();
+const nativeSkills = detectHost() === "cli" ? ["subagents", "workflows"] : [];
+const expectedSkills = [...nativeSkills, ...p3stackSkills].sort();
 
 async function load(packages: string[], base: string, options: { agentDir?: string; extensions?: string[] } = {}) {
   const temp = tempRoot("pi-package-discovery-");
@@ -51,6 +53,16 @@ async function load(packages: string[], base: string, options: { agentDir?: stri
     });
     await loader.reload();
     assert.deepEqual(loader.getExtensions().errors, []);
+    // reload() loads package manifests and factories. A session then extends the
+    // loader with resources_discover results; exercise that boundary without opening Pi.
+    const native = loader.getExtensions().extensions.find(ext => ext.path.endsWith("/extensions/subagents/index.ts"));
+    if (native) {
+      assert.ok(!loader.getSkills().skills.some(s => ["subagents", "workflows"].includes(s.name)), "native skills are not static resources");
+      for (const discover of native.handlers.get("resources_discover") ?? []) {
+        const result = await discover({ type: "resources_discover", cwd: temp, reason: "startup" }, { mode: "rpc" }) as ResourcesDiscoverResult;
+        loader.extendResources({ skillPaths: result.skillPaths?.map(path => ({ path, metadata: { source: native.path, scope: "temporary", origin: "top-level" } })) });
+      }
+    }
     return {
       extensions: loader.getExtensions().extensions.map(extension => relative(base, extension.path)),
       skills: loader.getSkills().skills.map(skill => skill.name).sort(),
@@ -82,7 +94,7 @@ function publish(bare: string, work: string) {
   runGit(["clone", "--quiet", "--bare", work, bare], { stdio: "pipe" });
 }
 
-test("retired research and skill-report files are absent; the operational proposal remains", async () => {
+test("retired research and skill-report files are absent", async () => {
   for (const path of [
     ".pi/model-selection.json",
     "scripts/skill-report.mjs",
@@ -95,7 +107,6 @@ test("retired research and skill-report files are absent; the operational propos
   ]) {
     await assert.rejects(stat(join(root, path)), { code: "ENOENT" }, path);
   }
-  assert.ok((await stat(join(root, "packages/p3stack/subagents/proposals/2026-10-01-builtin-extensions-and-0.99-upgrade.md"))).isFile());
 });
 
 test("project settings do not reference the retired pi-pocock-skills package", async () => {
@@ -137,7 +148,7 @@ test("pi install git:github.com/daniel-ballance/pi-packages loads the six packag
     assert.deepEqual(result.extensions, rootExtensions);
     assert.deepEqual(result.skills, expectedSkills);
     assert.equal(result.skillPaths.tdd, "packages/p3stack/skills/tdd/SKILL.md");
-    assert.equal(result.skillPaths.subagents, "packages/p3stack/subagents/skills/subagents/SKILL.md");
+    assert.equal(result.skillPaths.subagents, nativeSkills.length ? "packages/p3stack/subagents/skills/subagents/SKILL.md" : undefined);
     assert.deepEqual(result.skillDiagnostics, []);
     for (const dir of ["", ...Object.values(packageDirs)]) {
       await assert.rejects(readFile(join(installed, dir, "node_modules/@earendil-works/pi-coding-agent/package.json")), dir || "root");
@@ -192,7 +203,13 @@ test("the packed p3stack loads alone: its three extensions and its skills, with 
       cwd: join(root, "packages/p3stack"), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
     })));
     execFileSync("tar", ["-xzf", join(temp, pack!.filename), "-C", temp]);
-    const result = await load([join(temp, "package")], join(temp, "package"));
+    const packed = join(temp, "package");
+    const skill = join(packed, "subagents/skills/workflows");
+    const body = await readFile(join(skill, "SKILL.md"), "utf8");
+    const link = body.match(/\[the workflow contract\]\(([^)]+)\)/)?.[1];
+    assert.ok(link, "workflow skill links its required contract");
+    assert.match(await readFile(join(skill, link), "utf8"), /limits\.maxAttempts/);
+    const result = await load([packed], packed);
     assert.deepEqual(result.extensions, ["extensions/p3stack/index.ts", "subagents/extensions/subagents/index.ts", "todo/extensions/todo/index.ts"]);
     assert.deepEqual(result.skills, expectedSkills);
     assert.equal(result.skillPaths.tdd, "skills/tdd/SKILL.md");
@@ -206,7 +223,7 @@ test("individual packages still discover their public resources", async () => {
   for (const [name, dir] of Object.entries(packageDirs).filter(([name]) => name !== "p3stack")) {
     const result = await load([join(root, dir)], root);
     assert.deepEqual(result.extensions, [`${dir}/extensions/${name}/index.ts`]);
-    assert.deepEqual(result.skills, name === "subagents" ? ["subagents", "workflows"] : []);
+    assert.deepEqual(result.skills, name === "subagents" ? nativeSkills : []);
   }
 });
 
@@ -215,6 +232,11 @@ test("every package has resource directories and packs its declared extension im
     const path = join(root, dir);
     const manifest = JSON.parse(await readFile(join(path, "package.json"), "utf8"));
     for (const type of ["extensions", "skills", "prompts", "themes"]) {
+      if (name === "p3stack" && ["prompts", "themes"].includes(type)) {
+        assert.equal(manifest.pi[type], undefined);
+        await assert.rejects(stat(join(path, type)), { code: "ENOENT" });
+        continue;
+      }
       await readdir(join(path, type));
       assert.ok(Array.isArray(manifest.pi[type]), `${name}: missing pi.${type}`);
     }

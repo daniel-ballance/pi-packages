@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -33,13 +33,13 @@ test("a changed borrowed upstream path is flagged for review in a bump", async (
   assert.equal(borrowedNote(borrowed, "agent-skills", "skills/a/SKILL.md"), "");
 });
 
-test("registry admits 22 Pocock, 57 pstack, five owner, and four agent-skills skills with reasons for every drop", () => {
-  const skills = rows();
-  for (const [source, count] of [["matt-pocock", 22], ["cursor-plugins", 57], ["owner-plugins", 5], ["agent-skills", 4]]) {
-    assert.equal(skills.filter(row => row.source === source && row.action === "emit").length, count, source);
-  }
-  assert.equal(skills.filter(row => row.action === "drop").length, 60);
-  assert.equal(skills.filter(row => row.source === "superpowers" && row.action === "emit").length, 0, "superpowers is watch only");
+test("registry admissions match the shipped skills, including narrow and watch-only sources", () => {
+  const skills = rows(), admitted = skills.filter(row => row.action === "emit");
+  const shipped = readdirSync(new URL("../skills/", import.meta.url), { withFileTypes: true }).filter(entry => entry.isDirectory());
+  assert.deepEqual(new Set(admitted.map(row => row.name)), new Set(shipped.map(entry => entry.name)));
+  const from = source => new Set(admitted.filter(row => row.source === source).map(row => row.name));
+  assert.deepEqual(from("agent-skills"), new Set(["constraints", "source-grounding", "security-hardening", "instrumentation"]));
+  assert.deepEqual(from("superpowers"), new Set(), "superpowers is watch only");
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.path === "skills/in-progress/software-factory/SKILL.md").action, "drop");
   for (const row of skills) assert.ok(row.reason.trim(), `${row.source}/${row.path}`);
   assert.equal(skills.find(row => row.source === "matt-pocock" && row.name === "implement").invocation, "user");
@@ -118,19 +118,119 @@ test("generation copies registered authored skills and validates their invocatio
   assert.throws(() => generate({ packageDir: f.root, outDir }), /release\/SKILL.md has a different invocation/);
 });
 
-test("generation renders routes and chains from their registry rows", t => {
+const example = "\n```yaml\n---\nname: first\ndescription: Example, not metadata.\ndisable-model-invocation: true\n---\n```\n";
+
+for (const [field, header] of [
+  ["name", "description: Real description."],
+  ["description", "name: first"],
+  ["invocation", "name: first\ndescription: Real description."],
+]) {
+  test(`a fenced example cannot supply the registered ${field}`, t => {
+    const f = fixture(t);
+    if (field === "invocation") f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
+    const body = field === "invocation" ? example : example.replace("disable-model-invocation: true\n", "");
+    f.write("skills/first/SKILL.md", `---\n${header}\n---\n${body}`);
+    const result = f.run();
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, new RegExp(`first/SKILL.md.*${field}`));
+  });
+}
+
+test("registry accepts quoted and folded frontmatter fields without reading the fenced example", t => {
   const f = fixture(t);
-  f.write("vendor/demo/skills/poteto-mode/SKILL.md", f.skill("poteto-mode"));
-  f.write("vendor/demo/skills/poteto-mode/playbooks/feature.md", "Implement the sketch.\n");
-  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], path: "skills/poteto-mode/SKILL.md", name: "poteto-mode" }]);
+  f.write("skills/first/SKILL.md", "---\nname: 'first' # literal name\ndescription: >-\n  A folded\n  description.\n---\n" + example);
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("registry reads resolved YAML aliases and edits invocation at its use site", t => {
+  const f = fixture(t), path = "skills/first/SKILL.md";
+  const source = "---\nmetadata:\n  label: &name first\n  blurb: &blurb A fixture skill.\n  manual: &flag true\nname: *name\ndescription: *blurb\ndisable-model-invocation: *flag # local flag\n---\n" + example;
+  f.write("registry/chains.json", []);
+  f.write(`vendor/demo/${path}`, source);
   const outDir = join(f.root, "out");
   generate({ packageDir: f.root, outDir });
-  const routes = readFileSync(join(outDir, "skills/p3stack-mode/references/routes.md"), "utf8");
-  const chains = readFileSync(join(outDir, "skills/p3stack-mode/references/chains.md"), "utf8");
-  assert.match(routes, /\[first\]\(\.\.\/first\/SKILL.md\)/);
-  assert.match(chains, /first-chain/);
-  assert.match(chains, /Implement the sketch\./);
-  assert.match(chains, /\[playbooks\/feature.md\]\(\.\.\/poteto-mode\/playbooks\/feature.md\)/);
+  assert.equal(readFileSync(join(outDir, path), "utf8"), source.replace("*flag # local", "false # local"));
+  f.write("registry/skills.json", [{ ...f.skills[0], invocation: "user" }]);
+  generate({ packageDir: f.root, outDir });
+  assert.equal(readFileSync(join(outDir, path), "utf8"), source);
+});
+
+for (const invocation of ["model", "user"]) {
+  test(`generation sets ${invocation} invocation only in frontmatter and preserves the body bytes`, t => {
+    const f = fixture(t), path = "skills/first/SKILL.md";
+    const fields = "name: first\ndescription: First.\n";
+    const header = invocation === "model" ? fields + "disable-model-invocation: true\n" : fields;
+    f.write(`vendor/demo/${path}`, (`---\n${header}---\n` + example).replaceAll("\n", "\r\n"));
+    f.write("registry/skills.json", [{ ...f.skills[0], invocation }]);
+    f.write("registry/chains.json", []);
+    const outDir = join(f.root, "out");
+    generate({ packageDir: f.root, outDir });
+    const text = readFileSync(join(outDir, path), "utf8");
+    assert.ok(text.endsWith(example.replaceAll("\n", "\r\n")), "the example should be byte-identical");
+    assert.equal(/^disable-model-invocation: true\r?$/m.test(text.slice(0, text.indexOf("\r\n---\r\n"))), invocation === "user");
+  });
+}
+
+const featurePath = "skills/poteto-mode/playbooks/feature.md";
+
+test("mixed LF and CRLF cannot misplace a chain row", t => {
+  const f = fixture(t), outDir = join(f.root, "out");
+  f.write(`extra/${featurePath}`, "# Feature\r\n\n1. Prep.\n2. Implement the sketch.\n3. Ship.\n");
+  assert.throws(() => generate({ packageDir: f.root, outDir }), /feature\.md.*mixed line endings/i);
+});
+
+test("chains surround the whole step, in registry order, without renumbering its neighbors", t => {
+  const f = fixture(t), outDir = join(f.root, "out");
+  const step = "2. Implement the sketch. Keep this sentence.\n\n   - Keep the nested list.\n\n   Keep this paragraph too.";
+  f.write(`extra/${featurePath}`, `1. Design.\n${step}\n3. Ship.\n`);
+  const rows = ["before", "after", "before", "after"].map((position, i) => ({
+    id: `chain-${i}`, playbook: "playbooks/feature.md", anchor: "Implement the sketch.", position, skill: "first", when: `Condition ${i}.`,
+  }));
+  f.write("registry/chains.json", rows);
+  generate({ packageDir: f.root, outDir });
+  const playbook = readFileSync(join(outDir, featurePath), "utf8");
+  const tokens = ["1. Design.", "Condition 0.", "Condition 2.", step, "Condition 1.", "Condition 3.", "3. Ship."];
+  let start = 0;
+  for (const token of tokens) {
+    const offset = playbook.indexOf(token, start);
+    assert.notEqual(offset, -1, token);
+    start = offset + token.length;
+  }
+  for (const { when } of rows) {
+    const lines = playbook.split("\n").filter(line => line.includes(when));
+    assert.equal(lines.length, 1, when);
+    assert.match(lines[0], /p3stack.*\]\(\.\.\/first\/SKILL\.md\)/i);
+  }
+});
+
+for (const [location, text] of [
+  ["another step's sentence", "1. Hold here: Implement the sketch.\n"],
+  ["a continuation paragraph", "1. Review first.\n\n   Implement the sketch.\n"],
+  ["a nested step", "1. Review first.\n   - Implement the sketch.\n"],
+  ["a fenced example", "```\nImplement the sketch.\n```\n"],
+]) {
+  test(`generation rejects a chain anchor inside ${location}`, t => {
+    const f = fixture(t);
+    f.write(`extra/${featurePath}`, text);
+    assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), /first-chain.*anchor.*step.*feature\.md/i);
+  });
+}
+
+test("routes may use the same request under distinct grants", t => {
+  const f = fixture(t);
+  f.write("registry/routes.json", ["default", "full-autonomy"].map(grant => ({ request: "plan", grant, target: "first" })));
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("an authored file cannot be silently overwritten by the rendered router", t => {
+  const f = fixture(t), path = "skills/p3stack-mode/SKILL.md";
+  f.write(`authored/${path}`, f.skill("p3stack-mode"));
+  f.write(`authored/${path}.tmpl`, f.skill("p3stack-mode") + "{{routes}}\n");
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], source: "p3stack", path, name: "p3stack-mode" }]);
+  f.write("registry/chains.json", []);
+  assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), /SKILL\.md:.*authored.*registry/);
 });
 
 test("registry admits an explicit router playbook target and rejects a missing one", t => {
@@ -243,6 +343,14 @@ test("registry check reports emitted, dropped, and zero unclassified skills", t 
 for (const [name, mutate, diagnostic] of [
   ["unclassified skill", f => f.write("vendor/demo/skills/unclassified/SKILL.md", f.skill("unclassified")), /unclassified.*skills\/unclassified\/SKILL.md/i],
   ["duplicate name", f => { f.write("vendor/demo/skills/second/SKILL.md", f.skill("second")); f.write("registry/skills.json", [...f.skills, { ...f.skills[0], path: "skills/second/SKILL.md" }]); }, /duplicate emitted name.*first/i],
+  ["invalid route grant", f => f.write("registry/routes.json", [{ request: "build", grant: "maybe", target: "first" }]), /route.*build.*grant.*maybe/i],
+  ["duplicate route key", f => f.write("registry/routes.json", ["first", "playbooks/feature.md"].map(target => ({ request: "build", grant: "default", target }))), /duplicate route.*build.*default/i],
+  ["duplicate chain id", f => {
+    const chain = JSON.parse(readFileSync(join(f.root, "registry/chains.json"), "utf8"))[0];
+    f.write("registry/chains.json", [chain, { ...chain, position: "after" }]);
+  }, /duplicate chain.*first-chain/i],
+  ["route with both an action and a target", f => f.write("registry/routes.json", [{ request: "ambiguous", grant: "any", action: "Stay here.", target: "first" }]), /route.*ambiguous.*target.*action/i],
+  ["blank route action", f => f.write("registry/routes.json", [{ request: "blank", grant: "any", action: " " }]), /route.*blank.*action/i],
   ["missing route target", f => f.write("registry/routes.json", [{ request: "broken", grant: "any", target: "absent" }]), /route.*broken.*absent/i],
   ["doubled anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the sketch.\nImplement the sketch.\n"), /chain.*first-chain.*anchor.*2/i],
   ["missing anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the revised sketch.\n"), /chain.*first-chain.*anchor.*0/i],

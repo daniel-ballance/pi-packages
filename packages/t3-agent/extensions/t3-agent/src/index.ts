@@ -1,10 +1,10 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_CONFIG, LOADOUTS, readConfig, type Config, type Loadout } from "./config.ts";
 import { detectHost } from "./host.ts";
-import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, type HandleUpdate } from "./ledger.ts";
-import { desiredTools, nextActive } from "./loadout.ts";
+import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, trackRunTab, type Handle } from "./ledger.ts";
+import { desiredTools, manageableTool, nextActive } from "./loadout.ts";
 import { buildSection, SECTION } from "./prompt.ts";
 import { modeLabel, runtimeMode, t3ToolName, T3_PREFIX, type Environment } from "./runtime.ts";
 import { readWorkspace, type Workspace } from "./workspace.ts";
@@ -12,10 +12,7 @@ import { readWorkspace, type Workspace } from "./workspace.ts";
 export const STATUS_KEY = "t3-agent";
 export const LOADOUT_ENTRY = "t3-agent.loadout";
 export const REMINDER_TYPE = "t3-agent.reminder";
-/** The bridge already declares these; the prompt does not list them again. */
-const BRIDGE_DIRECT = new Set(["orchestrator_capabilities", "delegate_task", "task_status"]);
-/** Above this many, the prompt says "every T3 tool" instead of listing names. */
-const MAX_LISTED = 16;
+const MANAGED_ENTRY = "t3-agent.managed-tools";
 
 const resources = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "resources");
 
@@ -32,9 +29,8 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
   let problemsReported = false;
   let sessionLoadout: Loadout | undefined;
   let managed = new Set<string>();
-  let declared: string[] = [];
   let workspace: Workspace | undefined;
-  let pending: HandleUpdate[] = [];
+  let pending: Handle[] = [];
   let openedThisRun = new Set<string>();
   let reminded = false;
 
@@ -45,13 +41,24 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     promptPaths: [join(resources, "prompts")],
   }));
 
-  const applyLoadout = () => {
-    const desired = desiredTools({ loadout: loadout(), extra: config.tools, mode, ledger, allTools: pi.getAllTools() });
+  const activeT3Tools = () => pi.getActiveTools().filter(name => name.startsWith(T3_PREFIX));
+  const activeToolsReport = () => {
+    const names = activeT3Tools().map(name => name.slice(T3_PREFIX.length));
+    return `Active T3 tools: ${names.length}${names.length ? ` (${names.join(", ")})` : ""}.`;
+  };
+  const applyLoadout = (ctx: ExtensionContext) => {
+    const allTools = pi.getAllTools().filter(tool => manageableTool(tool, ctx.model?.api));
+    const eligible = new Set(allTools.map(tool => tool.name));
+    const desired = desiredTools({ loadout: loadout(), extra: config.tools, mode, ledger, allTools });
     const before = pi.getActiveTools();
-    const next = nextActive(before, desired, managed);
-    managed = next.managed;
+    const next = nextActive(before, desired, new Set([...managed].filter(name => eligible.has(name))));
     if (next.changed) pi.setActiveTools(next.active);
-    declared = pi.getActiveTools().filter(name => name.startsWith(T3_PREFIX) && !BRIDGE_DIRECT.has(name.slice(T3_PREFIX.length)));
+    const actual = next.changed ? pi.getActiveTools() : before;
+    const owned = [...next.managed].filter(name => actual.includes(name));
+    if (managed.size !== owned.length || owned.some(name => !managed.has(name))) {
+      managed = new Set(owned);
+      pi.appendEntry(MANAGED_ENTRY, owned);
+    }
   };
 
   const statusText = () => {
@@ -63,15 +70,25 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     ].filter(([count]) => (count as number) > 0).map(([count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`);
     return [`t3-agent: ${modeLabel(mode)}`, `${loadout()} loadout`, ...counts].join(" · ");
   };
-  const refreshStatus = (ctx: ExtensionContext) => ctx.ui.setStatus(STATUS_KEY, statusText());
+  let lastStatus: string | undefined;
+  const refreshStatus = (ctx: ExtensionContext) => {
+    if (!ctx.hasUI) return;
+    const status = statusText();
+    if (status === lastStatus) return;
+    ctx.ui.setStatus(STATUS_KEY, status);
+    lastStatus = status;
+  };
 
   const restore = (ctx: ExtensionContext) => {
     const branch = ctx.sessionManager.getBranch() as Entry[];
     rebuild(ledger, branch);
     sessionLoadout = undefined;
+    managed = new Set();
     for (const entry of branch) {
+      if (entry.type !== "custom") continue;
+      if (entry.customType === MANAGED_ENTRY && Array.isArray(entry.data)) managed = new Set(entry.data.filter(name => typeof name === "string"));
       const value = (entry.data as { loadout?: unknown } | undefined)?.loadout;
-      if (entry.type === "custom" && entry.customType === LOADOUT_ENTRY && LOADOUTS.includes(value as Loadout)) sessionLoadout = value as Loadout;
+      if (entry.customType === LOADOUT_ENTRY && LOADOUTS.includes(value as Loadout)) sessionLoadout = value as Loadout;
     }
   };
 
@@ -83,34 +100,33 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     ({ config, problems } = readConfig(ctx.cwd, ctx.isProjectTrusted()));
     restore(ctx);
     await refreshWorkspace(ctx);
-    applyLoadout();
+    applyLoadout(ctx);
     refreshStatus(ctx);
   });
 
   pi.on("session_tree", (_event, ctx) => {
     restore(ctx);
-    applyLoadout();
+    applyLoadout(ctx);
     refreshStatus(ctx);
   });
 
   // A model change can reset the loadout the bridge reconciles; reapply ours after it.
-  pi.on("model_select", () => applyLoadout());
+  pi.on("model_select", (_event, ctx) => applyLoadout(ctx));
 
   pi.on("before_agent_start", async (event, ctx) => {
     openedThisRun = new Set();
     reminded = false;
     // T3 drops notices outside a turn, so report configuration problems on the first turn.
-    if (!problemsReported && problems.length > 0) {
+    if (ctx.hasUI && !problemsReported && problems.length > 0) {
       problemsReported = true;
       ctx.ui.notify(`t3-agent configuration:\n${problems.join("\n")}`, "warning");
     }
     await refreshWorkspace(ctx);
-    applyLoadout();
+    applyLoadout(ctx);
     const section = buildSection({
       mode,
       workspace,
-      declared: declared.length > MAX_LISTED ? [] : declared,
-      allDeclared: declared.length > MAX_LISTED,
+      active: activeT3Tools().length,
       ledger: ledger.render(),
     });
     const options = event.systemPromptOptions;
@@ -124,22 +140,20 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
   pi.on("tool_result", (event, ctx) => {
     const tool = t3ToolName(event.toolName);
     if (tool === undefined || event.isError) return undefined;
-    const updates = observe(tool, event.input, resultPayload(event.content, event.structuredContent));
+    const result = resultPayload(event.content, event.structuredContent);
+    trackRunTab(openedThisRun, tool, event.input, result);
+    const updates = observe(tool, event.input, result, ledger);
     if (updates.length === 0) return undefined;
     for (const update of updates) {
       ledger.apply(update);
       pending.push(update);
-      if (update.kind === "preview") {
-        if (update.open) openedThisRun.add(update.id);
-        else openedThisRun.delete(update.id);
-      }
     }
-    applyLoadout();
+    applyLoadout(ctx);
     refreshStatus(ctx);
     return undefined;
   });
 
-  const flush = (): SessionBoundaryDraft[] => {
+  const flush = () => {
     const drafts = pending.map(data => ({ type: "custom" as const, customType: ENTRY_TYPE, data }));
     pending = [];
     return drafts;
@@ -164,7 +178,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
       entries: [...entries, {
         type: "custom_message",
         customType: REMINDER_TYPE,
-        content: `You opened T3 preview tab ${tabs} during this turn and it is still open. Close it with \`t3_preview_close\` before you reply, unless the user asked to keep it open or is using it; in that case reply without closing it.`,
+        content: `Automated note from the t3-agent extension, not from the user: you opened T3 preview tab ${tabs} during this turn and it is still open. Close it with \`t3_preview_close\` before you reply, unless the user asked to keep it open or is using it; in that case reply without closing it.`,
         display: false,
       }],
       continue: true,
@@ -178,53 +192,60 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     getArgumentCompletions: prefix => ["status", "ledger", ...LOADOUTS.map(name => `loadout ${name}`), "forget all"]
       .filter(value => value.startsWith(prefix)).map(value => ({ value, label: value })),
     handler: async (args, ctx) => {
+      const notify = (message: string, type: "info" | "warning") => {
+        if (ctx.hasUI) ctx.ui.notify(message, type);
+        else pi.sendMessage({ customType: "t3-agent.command", content: message, display: true }, { triggerTurn: false });
+      };
       const [verb = "status", value] = args.trim().split(/\s+/).filter(Boolean);
       if (verb === "loadout") {
         if (!LOADOUTS.includes(value as Loadout)) {
-          ctx.ui.notify(`Usage: /t3-agent loadout ${LOADOUTS.join("|")}. Current: ${loadout()}.`, "warning");
+          notify(`Usage: /t3-agent loadout ${LOADOUTS.join("|")}. Current: ${loadout()}.`, "warning");
           return;
         }
         sessionLoadout = value as Loadout;
         pi.appendEntry(LOADOUT_ENTRY, { loadout: sessionLoadout });
-        applyLoadout();
+        applyLoadout(ctx);
         refreshStatus(ctx);
-        ctx.ui.notify(`t3-agent loadout: ${sessionLoadout} for this session. Declared T3 tools: ${declared.map(name => name.slice(T3_PREFIX.length)).join(", ") || "the bridge's three only"}.`, "info");
+        notify(`t3-agent loadout: ${sessionLoadout} for this session. ${activeToolsReport()}`, "info");
         return;
       }
       if (verb === "forget") {
-        const target = value ?? "";
-        const closing = ledger.open().filter(handle => target === "all" || handle.id === target);
+        const closing = ledger.forget(value ?? "");
         if (closing.length === 0) {
-          ctx.ui.notify("Usage: /t3-agent forget <id|all>. Nothing open matched.", "warning");
+          notify("Usage: /t3-agent forget <id|all>. Nothing open matched.", "warning");
           return;
         }
-        for (const handle of closing) {
-          ledger.apply({ kind: handle.kind, id: handle.id, open: false });
-          pi.appendEntry(ENTRY_TYPE, { kind: handle.kind, id: handle.id, open: false });
-        }
-        applyLoadout();
+        for (const draft of flush()) pi.appendEntry(draft.customType, draft.data);
+        for (const close of closing) pi.appendEntry(ENTRY_TYPE, close);
+        applyLoadout(ctx);
         refreshStatus(ctx);
-        ctx.ui.notify(`Forgot ${closing.length} T3 handle${closing.length === 1 ? "" : "s"}. This closes nothing in T3.`, "info");
+        notify(`Forgot ${closing.length} T3 handle${closing.length === 1 ? "" : "s"}. This closes nothing in T3.`, "info");
         return;
       }
       if (verb === "ledger") {
-        ctx.ui.notify(ledger.render() ?? "No open T3 handles in this session.", "info");
+        const pages = ledger.pages();
+        for (const page of pages.length ? pages : ["No open T3 handles in this session."]) notify(page, "info");
         return;
       }
       if (verb !== "status") {
-        ctx.ui.notify("Usage: /t3-agent [status | ledger | loadout lean|standard|full | forget <id|all>]", "warning");
+        notify("Usage: /t3-agent [status | ledger | loadout lean|standard|full | forget <id|all>]", "warning");
         return;
       }
-      ctx.ui.notify(statusReport(), "info");
+      notify(statusReport(), "info");
     },
   });
 
-  const statusReport = () => [
-    `t3-agent is active: T3 Code launched this Pi (T3_MCP_URL is set).`,
-    `Permission mode: ${modeLabel(mode)}.`,
-    `Loadout: ${loadout()}${sessionLoadout ? " (set for this session)" : ""}. Declared T3 tools beyond the bridge's: ${declared.map(name => name.slice(T3_PREFIX.length)).join(", ") || "none"}.`,
-    workspace ? `Workspace: ${workspace.root}${workspace.branch ? ` on ${workspace.branch}` : ""}${workspace.t3Managed ? " (T3 worktree)" : workspace.linked ? " (linked worktree)" : ""}.` : "Workspace: not a git checkout.",
-    `Open handles:\n${ledger.render() ?? "none"}`,
-    ...(problems.length > 0 ? [`Configuration problems:\n${problems.join("\n")}`] : []),
-  ].join("\n");
+  const statusReport = () => {
+    const catalog = new Set(pi.getAllTools().filter(tool => tool.exposure !== "hidden").map(tool => tool.name));
+    const missing = config.tools.filter(name => !catalog.has(T3_PREFIX + name));
+    return [
+      `t3-agent is active: T3 Code launched this Pi (T3_MCP_URL is set).`,
+      `Permission mode: ${modeLabel(mode)}.`,
+      `Loadout: ${loadout()}${sessionLoadout ? " (set for this session)" : ""}. ${activeToolsReport()}`,
+      workspace ? `Workspace: ${workspace.root}${workspace.branch ? ` on ${workspace.branch}` : ""}${workspace.t3Managed ? " (linked worktree under T3's worktree directory)" : workspace.linked ? " (linked worktree)" : ""}.` : "Workspace: not a git checkout.",
+      `Open handles:\n${ledger.render() ?? "none"}`,
+      ...(problems.length > 0 ? [`Configuration problems:\n${problems.join("\n")}`] : []),
+      ...(missing.length ? [`Configured tools not in the current catalog: ${missing.join(", ")}.`] : []),
+    ].join("\n");
+  };
 }

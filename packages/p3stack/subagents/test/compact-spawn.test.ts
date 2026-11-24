@@ -5,6 +5,8 @@ import { test } from "node:test";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents/index.js";
 import { subagentRenderers } from "../extensions/subagents/src/render.js";
+import { Workflows } from "../extensions/subagents/src/workflows.js";
+import { SubagentManager } from "../extensions/subagents/src/manager.js";
 import { asHost } from "./host-env.js";
 import { tempRoot } from "./support/temp-root.js";
 
@@ -23,7 +25,7 @@ async function withSpawn(run: (spawn: (args: Record<string, unknown>) => Promise
   writeFileSync(join(bin, "pi"), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(root, "compact-spawn-pi.mjs"))} "$@"\n`, { mode: 0o700 });
   writeFileSync(join(root, "compact-spawn-pi.mjs"), readFileSync(new URL("./fixtures/compact-spawn-pi.mjs", import.meta.url)));
   writeFileSync(join(agentDir, "subagents.json"), JSON.stringify({
-    version: 1, models: [{ id: "p/m:off" }], tools: ["subagent_spawn"], maxDepth: 2, workingDirectories: ["."],
+    version: 1, models: [{ id: "p/m:off" }], tools: ["subagent_spawn", "subagent_wait", "subagent_read"], maxDepth: 2, workingDirectories: ["."],
   }));
   const previousAgent = process.env.PI_CODING_AGENT_DIR;
   const previousPath = process.env.PATH;
@@ -48,15 +50,36 @@ async function withSpawn(run: (spawn: (args: Record<string, unknown>) => Promise
     });
     await run((args) => tools.get("subagent_spawn")!.execute("c", args, undefined, undefined, ctx), repo, root);
   } finally {
-    for (const handler of handlers.get("session_shutdown") ?? []) await handler({}, ctx);
-    if (previousAgent === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previousAgent;
-    process.env.PATH = previousPath;
-    delete process.env.SPAWN_PROOF;
-    delete process.env.SPAWN_TASK_FILE;
-    rmSync(root, { recursive: true, force: true });
+    try { for (const handler of handlers.get("session_shutdown") ?? []) await handler({}, ctx); }
+    finally {
+      if (previousAgent === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previousAgent;
+      process.env.PATH = previousPath;
+      delete process.env.SPAWN_PROOF;
+      delete process.env.SPAWN_TASK_FILE;
+      rmSync(root, { recursive: true, force: true });
+    }
   }
 }
+
+test("manager shutdown still runs if workflow shutdown rejects", async (t) => {
+  t.mock.method(Workflows.prototype, "shutdown", async () => { throw new Error("workflow cleanup failed"); });
+  const cleanup = t.mock.method(SubagentManager.prototype, "shutdown");
+  await assert.rejects(withSpawn(async () => {}), /workflow cleanup failed/);
+  assert.equal(cleanup.mock.callCount(), 1);
+});
+
+test("a consumed first input returns a compact handled/no-work spawn receipt", { skip: process.platform === "win32" }, async () => {
+  await withSpawn(async (spawn, repo) => {
+    const { details } = await spawn({ name: "consumed", task: "CONSUME", cwd: repo, model: "p/m:off", tools: [] });
+    assert.equal(details.disposition, "handled");
+    assert.equal(details.workStarted, false);
+    assert.equal(details.status, "idle");
+    const handled = await spawn({ name: "handled", task: "/handled-work", cwd: repo, model: "p/m:off", tools: [] });
+    assert.equal(handled.details.disposition, "handled");
+    assert.equal("workStarted" in handled.details, false);
+  });
+});
 
 test("a spawn with a 2KB task returns neither the task nor sessionFile, under 1KB, and the card still shows name, state and model", { timeout: 20000, skip: process.platform === "win32" }, async () => {
   assert.equal(Buffer.byteLength(task), 2048);
@@ -88,7 +111,7 @@ test("a proxied spawn returns the same compact entry", { timeout: 20000, skip: p
     process.env.SPAWN_PROOF = proof;
     process.env.SPAWN_TASK_FILE = join(root, "task.txt");
     const direct = await spawn({ name: "size-probe", task, cwd: repo, model: "p/m:off", tools: [] });
-    const coordinator = await spawn({ name: "coordinator", task: "delegate", cwd: repo, model: "p/m:off", tools: ["subagent_spawn"] });
+    const coordinator = await spawn({ name: "coordinator", task: "delegate", cwd: repo, model: "p/m:off", tools: ["subagent_spawn", "subagent_wait", "subagent_read"] });
     const proxied = JSON.parse(readFileSync(proof, "utf8")) as Record<string, unknown>;
     const proxiedText = JSON.stringify(proxied, null, 2);
     assert.equal(proxiedText.includes(marker), false, proxiedText);

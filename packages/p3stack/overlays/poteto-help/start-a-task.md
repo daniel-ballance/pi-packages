@@ -1,5 +1,5 @@
-## Start a task with `/skill:poteto-mode`
+## Start a task in Pi
 
-`/skill:poteto-mode` matches the task to a playbook, copies the playbook's steps into the todo list, and runs the other skills as the steps need them. A step it skips stays in the list as `skip: <reason>`. A good prompt states the goal and how to tell it's done. It doesn't list skills, because a hand-written sequence tends to drop or reorder steps the playbook would keep. Read [`references/prompting.md`](references/prompting.md) before you help word one. Upstream's [guide page 2](https://github.com/cursor/plugins/blob/{{upstream.commit}}/pstack/docs/guide/02-poteto-mode.md) has examples.
+Type `/p3stack on default` to enable the [router](../p3stack-mode/SKILL.md) with the default grant. Bare `/p3stack on` keeps the last grant. Then send the goal and a check that can pass or fail. The router selects the skill or playbook; there is no need to prefix every task. Under the default grant the agent asks about product choices. Use `/p3stack on autonomous` for the other grant: the agent makes covered choices and reports them. Explicit operator gates and irreversible actions still pause.
 
-`/skill:poteto-mode` attaches the skill to one message. It fades as the chat moves on, so start each new task with `/skill:poteto-mode`. Mid-chat, "new task" makes the mode match a fresh playbook. `/skill:poteto-mode` already briefs the subagents its playbook steps spawn per the [poteto-agent recipe](../../agents/poteto-agent.md). To get the same style from a subagent of your own, brief it with the same recipe.
+Type `/p3stack off` to turn the router off. For one skill with the mode off, use `/skill:<name>`, for example `/skill:how`. To help word the task, read [Word the prompt](references/prompting.md).

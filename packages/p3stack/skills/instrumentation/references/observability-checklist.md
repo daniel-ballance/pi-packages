@@ -1,6 +1,6 @@
 # Observability Checklist
 
-Quick reference for instrumenting production code. Use alongside the `observability-and-instrumentation` skill.
+Quick reference for instrumenting production code. Use alongside [instrumentation](SKILL.md).
 
 ## Table of Contents
 
@@ -89,4 +89,4 @@ Before a feature ships to production, all of the following are true:
 - [ ] A request can be traced across every service it touches
 - [ ] On-call knows where the runbooks are
 
-For launch-day monitoring sequence and rollback triggers, see the `shipping-and-launch` skill.
+For launch-day monitoring sequence and rollback triggers, see your launch process.

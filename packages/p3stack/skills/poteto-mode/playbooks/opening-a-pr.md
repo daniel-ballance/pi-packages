@@ -1,12 +1,12 @@
 ### Opening a PR
 
-Invoked at the end of every other playbook.
+Run this only when the request or the playbook's own delivery step calls for a pull request, never after a read-only investigation, review, design or plan.
 
-**Worktree.** Work from a git worktree off main. Subagents inherit it. Multiple children on the same branch each get their own worktree, or `git fetch && git reset --hard origin/<branch>` between them. Dirty branch with unrelated work: patch out, fresh worktree, apply. Snarled worktree: reset from main, redo minimally.
+**Worktree.** Work from a git worktree off main. Give each writing child its own worktree and branch. If a checkout has unrelated changes, leave it intact and start from the intended base in a fresh worktree.
 
 **Commits.** Commit liberally. Rebase into small, ordered commits before opening PRs. Each commit is a future PR: landable, ordered to tell the story. Amend when the fix belongs in a just-made commit. New commit when separable. Commit bodies don't restate the subject.
 
-**PRs.** Run a slop-strip pass over the diff before commit and `/skill:no-comments` before review. Write every PR title, description, and commit body with `/skill:technical-writing` (every layer except Diátaxis, and apply the STE vocabulary rules: one word per action, keep articles, a plain verb over `-ing` where one works), then apply `/skill:unslop`.
+**PRs.** Run slop-strip before commit and `/skill:no-comments` before review; skip each pass already completed on this head with no later edits. After any edit, commit the change, rerun the [floor](../p3stack-mode/references/floor.md) and affected checks, then obtain a verdict on the changed diff. Reuse a verdict only for its reviewed base and head. Write every PR title, description, and commit body with `/skill:technical-writing` (every layer except Diátaxis, and apply the STE vocabulary rules: one word per action, keep articles, a plain verb over `-ing` where one works), then apply `/skill:unslop`.
 
 **Titles.** Conventional Commits `type(scope): subject`, no trailing period. Type such as `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, or `perf`. Scope is the area, such as `pstack` or `poteto-mode`. Subject is short, imperative, and names a real symbol when one carries the change, for example `fix(pstack): retarget opening-a-pr babysit trigger`.
 
@@ -33,4 +33,4 @@ Read **Pull requests** in the [host capabilities](references/host-capabilities.m
 
 **Babysit.** Opening a PR does not start a babysit. Post the URL and keep building. Finish the phase or stack first. Run a separate babysit pass only when the user asks for one after the whole stack exists. A babysit for each new PR stalls the build and spends checks on commits later waves restart. Push back when feedback drifts from intent.
 
-A subagent that opens a PR runs a slop-strip pass and `/skill:no-comments`, doing their steps itself when it cannot delegate (**Nesting** in the [host capabilities](references/host-capabilities.md)), and posts the URL. It returns to the parent without babysitting, unless it is an Autopilot-full or Autopilot-stack owner. That owner's brief assigns the babysit loop and is the ask `playbooks/babysit.md` waits for. The owner starts the loop after its code-ready report, reports merge-ready, and is exempt from the rules here and in `playbooks/babysit.md` that hold babysitting until a whole stack is built.
+A child opening a PR performs any outstanding checks itself when it cannot delegate (see **Nesting** in the [host capabilities](references/host-capabilities.md)), then posts the URL. It returns to the parent without babysitting, unless it is an Autopilot-full or Autopilot-stack owner. That owner's brief assigns the babysit loop and is the ask `playbooks/babysit.md` waits for. The owner starts the loop after its code-ready report, reports merge-ready, and is exempt from the rules here and in `playbooks/babysit.md` that hold babysitting until a whole stack is built.

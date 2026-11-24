@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Poteto mode
 
-Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's absolute path in every `poteto-agent` prompt.
+Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's absolute path in terminal `poteto-agent` prompts.
 
 ## Non-negotiables
 
@@ -25,13 +25,13 @@ Remaining triggers:
 - Any prose surface, your reply to the user included → the **unslop** skill. Write the reply per **Writing the reply**. Agent-facing prose also follows the skill-authoring procedure (**Author a skill** in the host capabilities).
 - Docs, RFCs, readmes, PR descriptions, or commit messages → the **technical-writing** skill (`/skill:technical-writing`).
 - Before commit → a slop-strip pass over the diff (remove AI-generated noise).
-- Before review → the **no-comments** skill (`/skill:no-comments`).
+- Before review on a write-authorized route → the **no-comments** skill (`/skill:no-comments`).
 - Shipping UI / IDE / CLI → the matching control skill. See **Drive the app** in the host capabilities. For bug fixes, reproduce first on the same surface yourself. Hand to the user only under the narrow Bug fix step 1 exception.
 - Running a benchmark, measuring perf yourself, or reporting a speedup or regression you measured → the **benchmark-checklist** skill before you report or act on the number.
 - Any PR-status request ("babysit this", "get it green", "address the bugbot comments", and most often "check on PR X" or "anything outstanding on X") → the **Babysit** playbook (`playbooks/babysit.md`). Never triggered by merely opening a PR. Declare its mode before polling. The playbook's step 1 owns the request-to-mode mapping. Reaching for `drive` inside a phase agent stops that agent finishing its turn.
 - Asked to land or ship a green stack → the **Shipping** playbook (`playbooks/shipping.md`). Green is not safe. Nothing gets armed before an independent per-PR verdict, and only the contiguous verified run from the root lands.
 - Bugbot or the agentic security review commented → skeptical posture. They catch real bugs and also file non-issues and nitpicks, so assess each on its merits and dismiss noise with a concrete reason instead of churning code. Triage fix / dismiss / ask per `references/bugbot-triage.md`.
-- Broken skill mid-task → fix it in its own PR. Don't block. Don't silently work around it.
+- Broken skill mid-task on a write-authorized route → fix it in its own PR. Don't block. Don't silently work around it.
 - Long, autonomous, or multi-phase work, or any task the user steps away from to review later ("going to bed", "trust it when i'm back", "loop until X") → a decision trail via the **show-me-your-work** skill. Commit it when stakes need an auditable record. Keep it local otherwise.
 
 ## Principles
@@ -89,15 +89,13 @@ Read the leaf skill in full for any principle you apply. Each entry names when i
 
 ## Subagents
 
-**Brief every subagent you spawn inside a playbook step per the [poteto-agent recipe](../../agents/poteto-agent.md)** (code-writing delegates, ad-hoc helpers). The recipe makes the child read this file first, so put this file's absolute path in every brief. The chat that receives `/skill:poteto-mode` runs the playbook. Never delegate the playbook itself. Routed workflow skills (`how`, `why`, `interrogate`, `reflect`, `swarm`) compose their own subagents for diverse-model review. Respect what the skill prescribes, don't override it with the poteto-agent recipe.
+Run the playbook in the chat that received it. Delegate units within a step per [Delegate](references/host-capabilities.md#delegate). If a routed skill needs its own fan-out, check [Nesting](references/host-capabilities.md#nesting) before assigning it to a child.
 
-**Defaults for every delegation.** Delegate per **Delegate** in the [host capabilities](references/host-capabilities.md): run subagents in the background, including steers and resumes, and wait for their results, pass file pointers rather than inlined context, give each only the tools its brief needs, and name an explicit model per role (configurable via `/skill:setup-pstack`. Defaults `grok-4.7-xhigh-fast` for code, `claude-opus-5-5-xhigh` for prose and judgment; resolve these hints per **Models and role defaults**). Code delegates tier by difficulty. The hardest changes (cross-cutting design, gnarly concurrency, subtle algorithms) go to your strongest judgment model (`claude-opus-5-5-xhigh`), whether the task needs judgment on vague intent or is a precisely specified sequence of steps to execute to the letter. Trivial mechanical edits go to your fast code model. Roles in the role defaults override these defaults and the model choices in the routed skills (`how`, `why`, `arena`, `swarm`, `architect`, `interrogate`, `reflect`). A role with no entry keeps its default, and a role of `inherit-parent` or `auto` runs on your own model. Each code playbook's model comes from its role (`feature, refactoring`, `bug-fix`, `perf-issue`, or `hillclimb`), and the hardest changes read `hardest tasks`. Prose and judgment read `judgment and prose`.
+Choose the role, not a model tweak. Use the code playbook's role (`feature, refactoring`, `bug-fix`, `perf-issue` or `hillclimb`), `hardest tasks` for the hardest changes, `judgment and prose` for judgment or writing, and `swarm workers` for verification. For a routed skill use its named roles. Use the selection `p3stack_roles` returns per [Models and role defaults](references/host-capabilities.md#models-and-role-defaults).
 
-**Match the model to the job.** Before each spawn, start from the role's entry or default and pick the thinking level the job needs. The `/skill:setup-pstack` budget sets each role's starting level, xhigh by default. Raise it one step, up to max, for the hardest or subtlest work. Lower it one step for judgment and two or more steps for routine work. Pi has no fast variants, so a `-fast` hint means the same model at the same level. Verification is the exception and stays on the `swarm workers` model and level (`grok-4.7-xhigh-fast` by default). Change only the thinking level and keep the family the role names, so a diverse panel stays diverse. If the model does not offer that level, use the closest level it offers below it. A role on `auto` or `inherit-parent` stays on your own model. If the catalog does not offer the adjusted model, do not try another adjustment. Use the role's entry or default and say so. If that is unavailable too, use the calling skill's fallback. Never retry an entry the catalog or host has rejected. When the skill has no fallback, or exhausts it without another instruction, use the closest available model in the role's family, else your own model, and say so. If no model is usable, report the role as blocked.
+With p3stack on, the extension adds the session grant and host-appropriate writer or report-only instructions. Supply the assignment, not a second header: goal, interfaces, owned files, constraints, done check and expected evidence. Pass file pointers per your host's [Store](references/host-capabilities.md#store). Without the header, state the grant and stance in the brief yourself.
 
-You own every subagent's work. Review the diff and write your own summary, don't pass through what it said. A second opinion is the same prompt against a different model. Agreement is high-signal.
-
-**Fresh subagents by default.** Give new work to a fresh subagent with consolidated scope, meaning the original brief, every later directive, and the prior agent's report and branch. This holds for a fix round, a follow-up, a retry, and the next queue item. Resume, message, or queue a follow-up on an existing subagent only when the new work strictly needs state that lives in that agent and is costly to move: its local checkout, its uncommitted changes, or a process it still runs, such as a dev server, a simulator, or a babysit watcher. A stop or hold order to a running agent is not reuse. A role such as a PR owner outlives its agent. Once that agent returns, a fresh agent takes the role's next round. Interrupt-chained resumes silently drop directives, so fire a fresh subagent with consolidated scope rather than trusting a "done" summary.
+Start a fresh child for each new round. Include amended scope, prior evidence and the branch; reuse a worker only for live state the new task needs, such as uncommitted work or a running process. Use a fresh reviewer for a recheck. Verify the diff or evidence yourself and report your conclusion.
 
 ## Writing the reply
 
@@ -119,6 +117,6 @@ Comments follow the same rule as the reply. Write them clean as you go. Keep a c
 
 ## Playbooks
 
-With p3stack-mode active, its route and chain tables own workflow selection. Finish reading this skill, then read that router's selected first target. A skill target needs no additional playbook. Apply supporting triggers only after that target. The router's grant rules govern interviews.
+With p3stack-mode active, its route table owns workflow selection. Finish reading this skill, then read the target the router selected. A skill target needs no additional playbook. In a playbook, a step marked **p3stack only** applies; read its link when its condition holds. The router's grant rules govern interviews.
 
 For standalone poteto-mode, choose the matching file under `playbooks/`. Read it and copy its steps verbatim into the todo list before starting. Keep a skipped step with its reason. Use `figure-it-out` when no playbook fits.

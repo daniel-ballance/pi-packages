@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import subagents from "../extensions/subagents/index.js";
 import { asHost } from "./host-env.js";
 
-test("parsed opt-out prevents all native initialization, not just tool exposure", () => {
+test("parsed opt-out prevents all native initialization, not just tool exposure", () => asHost("cli", () => {
   const hooks = new Map<string, Function[]>();
   const tools: unknown[] = [], commands: string[] = [], flags: string[] = [];
   let disabled = false; // CLI flag values arrive after the factory runs.
@@ -21,15 +21,15 @@ test("parsed opt-out prevents all native initialization, not just tool exposure"
   for (const handler of hooks.get("session_start") ?? []) handler({}, context);
   assert.deepEqual(tools, []);
   assert.deepEqual(commands, []);
-  assert.deepEqual([...hooks.keys()], ["session_start"]); // No notifications, workflow or shutdown hooks.
-});
+  assert.deepEqual([...hooks.keys()].filter(name => name !== "resources_discover"), ["session_start"]); // No manager hooks.
+}));
 
 test("a T3-launched session prevents native initialization without the flag", () => {
   asHost("t3", () => {
     const hooks = new Map<string, Function[]>();
-    const tools: unknown[] = [], commands: string[] = [];
+    const tools: unknown[] = [], commands: string[] = [], flags: string[] = [];
     subagents({
-      registerFlag() {}, getFlag() { return false; },
+      registerFlag(name: string) { flags.push(name); }, getFlag() { return false; },
       on(name: string, handler: Function) { hooks.set(name, [...hooks.get(name) ?? [], handler]); },
       registerTool(tool: unknown) { tools.push(tool); },
       registerCommand(name: string) { commands.push(name); },
@@ -38,11 +38,12 @@ test("a T3-launched session prevents native initialization without the flag", ()
     for (const handler of hooks.get("session_start") ?? []) handler({}, context);
     assert.deepEqual(tools, []);
     assert.deepEqual(commands, []);
-    assert.deepEqual([...hooks.keys()], ["session_start"]);
+    assert.deepEqual([...hooks.keys()], []);
+    assert.deepEqual(flags, ["disable-native-subagents"]);
   });
 });
 
-test("unflagged startup registers the existing tools once", () => {
+for (const mode of ["print", "json"]) test(`${mode} mode exposes no native tools, commands or skills`, () => asHost("cli", () => {
   const hooks = new Map<string, Function[]>();
   const tools: string[] = [], commands: string[] = [];
   subagents({
@@ -53,13 +54,9 @@ test("unflagged startup registers the existing tools once", () => {
     events: { on: () => () => {} },
   } as unknown as ExtensionAPI);
   const start = hooks.get("session_start")![0];
-  const ctx = { mode: "print" } as ExtensionContext;
-  asHost("cli", () => { start({}, ctx); start({}, ctx); });
-  assert.equal(tools.length, 19);
-  assert.ok(tools.includes("subagent_spawn"));
-  assert.ok(tools.includes("subagent_loop"));
-  assert.ok(commands.includes("loop"));
-  assert.ok(tools.includes("subagent_workflow_start"));
-  assert.ok(commands.includes("subagents"));
-  assert.ok(hooks.has("session_shutdown"));
-});
+  const ctx = { mode } as ExtensionContext;
+  start({}, ctx); start({}, ctx);
+  for (const discover of hooks.get("resources_discover") ?? []) assert.deepEqual(discover({}, ctx)?.skillPaths ?? [], []);
+  assert.deepEqual(tools, []);
+  assert.deepEqual(commands, []);
+}));

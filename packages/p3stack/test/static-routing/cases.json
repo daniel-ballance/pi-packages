@@ -1,6 +1,7 @@
 {
   "rankOneFloor": 0.95,
   "collisionThreshold": 0.4,
+  "pending": [],
   "cases": [
     { "skill": "code-review",
       "positive": [
@@ -161,6 +162,26 @@
       "negative": [
         { "prompt": "Research the provider's rate limits and write a cited markdown file.", "owner": "research" },
         { "prompt": "Build the parser test-first with red-green-refactor.", "owner": "tdd" }
+      ] },
+    { "skill": "subagents",
+      "positive": [
+        { "prompt": "Set up subagents.json so my children can use the Claude model." },
+        { "prompt": "Why can't I spawn a child with this model and thinking level? Diagnose the policy." },
+        { "prompt": "Which tools and resources should this child agent get? Help me compose it." }
+      ],
+      "negative": [
+        { "prompt": "Configure pstack models for each role.", "owner": "setup-pstack" },
+        { "prompt": "Review my branch against main before I open the PR.", "owner": "code-review" }
+      ] },
+    { "skill": "workflows",
+      "positive": [
+        { "prompt": "Write a workflow that fans out three workers and validates their results." },
+        { "prompt": "Run a bounded repair loop until the validator passes." },
+        { "prompt": "Set up a keep-or-discard improvement experiment with an evaluator." }
+      ],
+      "negative": [
+        { "prompt": "Write the failing test first, then implement the parser.", "owner": "tdd" },
+        { "prompt": "Set up subagents.json for this project.", "owner": "subagents" }
       ] }
   ]
 }

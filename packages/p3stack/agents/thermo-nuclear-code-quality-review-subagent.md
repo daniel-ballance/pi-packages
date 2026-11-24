@@ -1,6 +1,6 @@
 ---
 name: thermo-nuclear-code-quality-review-subagent
-description: Thermo-nuclear code quality audit (maintainability, structure, 1k-line rule, spaghetti, code-judo). Invoked delegated child after a parent gathers diff and file contents. Loads rubric from the thermo-nuclear-code-quality-review skill in the Thermos plugin.
+description: Thermo-nuclear code quality audit (maintainability, structure, 1k-line rule, spaghetti, code-judo). The parent supplies the diff, changed files and installed thermo-nuclear-code-quality-review rubric.
 ---
 
 # Thermo-Nuclear Code Quality Review
@@ -9,7 +9,7 @@ You are a **delegated child**. The parent agent already collected git output and
 
 ## Rubric
 
-1. Load the `thermo-nuclear-code-quality-review` skill (shipped in the Thermos plugin) and treat its `SKILL.md` as the **complete** rubric — tone, approval bar, output ordering, code-judo / 1k-line / spaghetti rules.
+1. Read the [thermo-nuclear-code-quality-review rubric](../skills/thermo-nuclear-code-quality-review/SKILL.md) supplied by the parent and treat it as the **complete** rubric — tone, approval bar, output ordering, code-judo / 1k-line / spaghetti rules.
 2. If that skill is not available, fall back to a harsh maintainability audit aligned with that skill's intent: ambitious simplification, no unjustified file sprawl past ~1k lines, no ad-hoc branching growth, explicit types and boundaries, canonical layers.
 
 ## Work
@@ -20,4 +20,4 @@ You are a **delegated child**. The parent agent already collected git output and
 
 ## Parent orchestration
 
-Gather the branch diff and changed files first. Delegate a read-only child with this recipe and the scoped evidence through **Delegate** in p3stack's host capabilities.
+Children: skip this section. Parent: gather the branch diff and changed files first. Delegate a read-only child with this recipe and the scoped evidence through **Delegate** in p3stack's host capabilities.

@@ -10,8 +10,8 @@ its own tests. `packages/mcp-client/` stays a separate optional replacement for 
 ### Structure
 
 **Package**:
-A directory of Pi resources (extensions, skills, prompts, themes) declared through
-a `pi` manifest and loaded as one unit.
+A directory of Pi resources loaded as one unit. Packages in this repository list
+their resources in a `pi` manifest. Pi also supports discovery by directory convention.
 _Avoid_: plugin, bundle, module
 
 **Root package**:
@@ -41,8 +41,8 @@ _Avoid_: profile, role, preset, template (all of these are explicitly rejected:
 a fixed profile is a ceiling on what the Parent can build)
 
 **Allowlist**:
-The policy ceiling in `subagents.json` declaring what a Parent may compose. Highest
-priority existing file wins as a whole-file replacement; nothing merges.
+The policy ceiling on what a Parent may compose. The highest-priority applicable
+`subagents.json` replaces the built-in policy as a whole.
 _Avoid_: config, settings, permissions
 
 **Catalog**:
@@ -59,10 +59,9 @@ _Avoid_: sandbox, non-recursion guard (a Child may now delegate within `maxDepth
 
 **Delegation depth**:
 How far below the root Parent a Child sits; the root Parent's own Children have
-depth 1. The policy's `maxDepth` (default 1) bounds it. A Child above the deepest
-level may be given proxied delegation tools: it then composes Children of its own,
-but only through the one root Manager, only from the same Allowlist, and acts only
-on its own subtree.
+depth 1. The built-in policy permits depth 2. A user policy that omits `maxDepth`
+permits depth 1. A Child below the limit can delegate within its own subtree
+through the [root Manager](docs/adr/0002-nesting-through-one-root-manager.md).
 _Avoid_: recursion, nesting level, sub-agent of a sub-agent
 
 ### Lifecycle
@@ -125,7 +124,7 @@ wall-clock deadline. One Run executes per Parent at a time.
 _Avoid_: job, task (a Task is a step inside a Run)
 
 **Step**:
-A node in the Run's DAG. Either a Task or a Check.
+A node in a Run's dependency graph: a Task, a Check, or a loop with a bounded worker-and-check body.
 _Avoid_: stage, phase, node
 
 **Task**:
@@ -139,13 +138,13 @@ agent rubric, or a human.
 _Avoid_: gate, review, assertion
 
 **Worker**:
-A Child bound to one Task by the workflow runtime. Closed when its Task or group
-finishes. Workers are not persistent orchestrators.
+A Child assigned work by the workflow runtime. The runtime closes Workers when
+their Task or group finishes, except Workers held for human supervision.
 _Avoid_: agent, executor, subagent
 
 **Candidate directory**:
-The fresh directory a Worker is given to write into. Source and evaluators are read
-only to the Worker; artifacts are the only thing that flows onward.
+The fresh directory for a Worker's output. Workers must write only there. This
+rule does not make the source or evaluators read-only at the OS level.
 _Avoid_: workspace, sandbox (it is not one)
 
 **Attempt**:
@@ -161,73 +160,58 @@ _Avoid_: manual gate, approval step
 ### Host parity
 
 **Host**:
-What launched Pi: a terminal (`cli`) or T3 Code (`t3`, detected by `T3_MCP_URL`).
-Packages ask the shared host helper, never the environment directly.
+What launched Pi: a terminal (`cli`) or T3 Code (`t3`). The shared helper
+identifies T3 by its nonempty `T3_MCP_URL`.
 _Avoid_: mode (Pi's `--mode rpc` is a transport; T3 also runs Pi over RPC), platform
 
 **Contract**:
-The host-neutral capability a skill is written against: delegate, wait, cancel,
-isolate in a worktree, wake, ask the human, track a todo. Skills name contracts and
-resolve them through one lookup reference, never a backend tool name inline.
+The capability a skill asks for, such as delegating or asking the human.
 _Avoid_: interface, API
+
+**Host map**:
+The [shared capability reference](packages/p3stack/extra/skills/poteto-mode/references/host-capabilities.md) and its two host-specific files. A skill reads the shared entry and follows only its own host's link for the operation or fallback.
 
 **Backend**:
 The host-native tool that satisfies a Contract on one Host, such as `subagent_spawn`
-in a terminal or T3's `delegate_task` under T3. Each Contract has one Backend per
-Host; a gap on one Host is stated in the skill, not papered over.
+in a terminal or T3's `delegate_task` under T3. Some capabilities lack a
+backend on one host.
 _Avoid_: adapter, driver, provider (Pi uses that word for model providers)
 
 **Duplicated primitive**:
-A tool whose Contract T3 already satisfies natively. Under T3 it is registered with
-`deferred` exposure: reachable through tool search and codemode, absent from the
-prompt. Under the CLI it is registered as usual.
+A package tool whose capability T3 also supplies. Native subagents registers no delegation tools under T3, whereas `todo` stays direct on both hosts.
 _Avoid_: hidden, disabled (both mean unreachable, which deferred is not)
 
 **Loadout**:
-The set of T3 tools t3-agent declares to the model beyond the three the bridge
-declares (`lean`, `standard` or `full`), plus the tools its open Handles make
-relevant. Declaring a tool activates one the bridge registered `deferred`; it does
-not change its exposure.
+The tools t3-agent activates for a session, based on the chosen preset and open Handles. It tracks its own additions separately from the bridge's active tools.
 _Avoid_: toolset, profile
 
 **Handle**:
-A T3 object a session created and must still act on or clean up: a delegated task,
-a schedule, a watched pull request, a launched thread, a preview tab, a device.
-t3-agent records Handles from T3 tool results so their ids survive compaction.
+A T3 object identified in a tool result, such as a delegated task, schedule, watched pull request, thread, preview tab, or device. A recorded tab is not necessarily the caller's to close.
 _Avoid_: resource (Pi uses that word for skills, prompts and themes), task (one kind of Handle)
 
 **Role default**:
-The model, with thinking level, that one p3stack role uses unless the skill or the
-human says otherwise, kept in the role file `p3stack.json`. A hint for choosing a Composition's
-model, not a Composition: tools, resources and directories are still chosen per
-Child, and the Allowlist still bounds the model.
+The model and thinking level requested for a p3stack role, from a role file or a built-in hint. It guides model selection, not the whole Composition, and remains subject to the host's catalog.
 _Avoid_: profile, preset (see Composition)
 
 ### Routing
 
 **Route**:
-A row in `registry/routes.json` that sends one kind of request, under one Grant, to
-the first skill or playbook the router reads.
+A row that matches the requested deliverable and Grant to a first read or an inline action.
 _Avoid_: mapping, dispatch
 
 **Chain**:
-A row in `registry/chains.json` that inserts a required read at an exact anchor in
-a playbook, so another source's skill or a p3stack reference joins that playbook
-without editing it.
+A conditional read that the generator inserts before or after a named playbook step. The model follows the **p3stack only** instruction when its condition holds.
 _Avoid_: hook, step (the playbook's own numbered items are steps)
 
 **Grant**:
-The authority a p3stack session runs under: `default` (product calls go to the
-human) or `full-autonomy` (the agent decides covered calls and reports them).
-Explicit session state set with `/p3stack on [default|autonomous]` or
-`/p3stack grant`, stated in the system prompt and every delegated brief.
-Irreversible actions and operator gates pause under both.
+Who decides covered product choices: the human under `default`, or the agent under `full-autonomy`, with operator gates intact. An explicit request can raise the Grant for one task without changing the session branch's saved Grant.
 _Avoid_: mode (the mode is on or off), autonomy level
 
+**Brief**:
+A parent's instructions for one delegated assignment, including scope, limits, and the evidence to return. The [brief header](docs/adr/0006-mechanical-procedures-become-tools.md) carries the saved Grant; the parent states any task-only increase in the brief itself.
+
 **House policy**:
-One of the router's numbered rules that settles a conflict between routed skills
-(authority, questions, validation, migration, testing, review independence,
-context, style). It wins over any routed skill.
+One of the router's numbered rules that takes precedence over a routed skill, for example the rule that a review ends at a report.
 
 **Floor**:
 The part of the quality bar that holds with no setup and under every Grant: no new
@@ -236,10 +220,11 @@ thresholds. `floor-check.mjs` checks it; `floor-ok: <reason>` explains a line.
 _Avoid_: quality gate (that is a project's whole `CONSTRAINTS.md` bar)
 
 **Ledger**:
-The append-only recovery file of one run in the store: dispatches, completions,
-rulings, parked findings. Read first after compaction; deleted when the run lands
-and its rulings are promoted to ADRs.
+The [execution ledger](packages/p3stack/skills/p3stack-mode/references/execution-ledger.md) is the coordinator's private, append-only record of attempts, checkouts, commit IDs, evidence, and pending gates for a long-running unit or multi-unit plan. The T3 handle ledger instead records the last observed state of Handles on a session branch.
 _Avoid_: decision trail (that is the audit record `show-me-your-work` keeps)
+
+**Description lint**:
+An offline vocabulary check that ranks example prompts against the names and descriptions of model-invoked skills. A passing rank is not an observed routing decision.
 
 **Interactive prototype**:
 A prototype a human tries and judges: a single shareable HTML file around a
@@ -267,8 +252,7 @@ _Avoid_: results, findings (use those for what the Parent has verified)
 ## Flagged ambiguities
 
 - **"agent"** was used loosely for the Parent, a Child, and Pi itself. Resolved:
-  say **Parent** or **Child**. "Agent" appears only in the tool namespace
-  (`subagent_*`) and in package descriptions.
+  prefer **Parent** or **Child** when the distinction matters.
 - **"subagent"** was used both for the running process and for the package/tool
   prefix. Resolved: the running thing is a **Child**; `subagent` is namespace only.
 - **"worker"** was used for any Child doing anything. Resolved: **Worker** only

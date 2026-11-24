@@ -11,16 +11,18 @@ const rule =
 const validPlan = `# Demo
 
 ## How to read this
-One box is one unit of work and names the evidence. Check a box only when its evidence exists. See playbooks/.
+One box is one unit of work and names the evidence. Check a box only when its evidence exists. See playbooks/autopilot-full.md.
 ${rule}
 
 ## Program checklist
 ### Arm the program
+${["poteto-mode/playbooks/autopilot-full.md", "swarm/SKILL.md", "poteto-mode/playbooks/opening-a-pr.md"]
+	.map(path => `- [ ] Installed file. \`${join(import.meta.dirname, "../..", path)}\``).join("\n")}
 ### Spawn owners
 ### PR mechanics
 ### Verdict and merge
 ### Boot recipe
-\`git show origin/main:\` one-hour wake loop status message
+one-hour wake loop status message
 
 ## PR 1
 **Depends on.** None.

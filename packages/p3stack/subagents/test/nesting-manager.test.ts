@@ -41,6 +41,7 @@ test("a coordinator and its subtree delegate nothing while it is being closed or
     const closing = t.manager.close(t.b); // The fence is set before the first await.
     assert.throws(() => open(t.b), /being cancelled or closed/);
     assert.throws(() => open(t.c), /being cancelled or closed/);
+    await assert.rejects(t.manager.send(t.c, "no new work in a closing subtree"), /being cancelled or closed/);
     open(t.a);
     await closing;
     assert.equal(t.manager.get(t.c).status, "stopped");
@@ -117,6 +118,29 @@ test("a coordinator's read leaves its Child's input request for the root; the ro
   } finally { await t.cleanup(); }
 });
 
+test("an implicit wait selects only the caller's drainable children", async () => {
+  const t = await settledTree();
+  try {
+    await t.manager.send(t.a, "until-abort");
+    assert.deepEqual(await t.manager.wait([], "any", 0), { wake: "timeout", ids: [t.a] });
+    assert.deepEqual(await t.manager.wait([], "any", 0, undefined, undefined, t.a), { wake: "settled", ids: [t.b] });
+    await t.stopOnly(t.b);
+    assert.deepEqual(await t.manager.wait([], "any", 0), { wake: "settled", ids: [t.a, t.c] }, "C now routes to the root");
+  } finally { await t.cleanup(); }
+});
+
+test("a root wait scoped to a coordinator names the descendant needing root intervention", async () => {
+  const t = await settledTree();
+  try {
+    await t.manager.send(t.a, "until-abort");
+    await t.manager.send(t.c, "ui");
+    assert.equal((await t.manager.wait([t.c], "any", 2000)).wake, "input");
+    assert.deepEqual(await t.manager.wait([t.a], "any", 0), { wake: "input", ids: [t.a, t.c] });
+    await t.manager.intervene(t.c, "halt");
+    assert.deepEqual(await t.manager.wait([t.a], "any", 0), { wake: "hold", ids: [t.a, t.c] });
+  } finally { await t.cleanup(); }
+});
+
 test("a nested report waits for its parent, and reaches the root if that parent stops first", async () => {
   const wakes: Notice[] = [];
   const t = await settledTree(undefined, notice => wakes.push(notice));
@@ -154,6 +178,43 @@ test("a subtree abort or close reports descendants it could not confirm", async 
     assert.deepEqual(closed.subtreeFailures, [`${t.b}: Error: stop failed`]);
   } finally { delete manager.abortOne; delete manager.closeOne; await t.cleanup(); }
 });
+
+test("a halt reports the target separately from every unconfirmed descendant, including an existing failed hold", async () => {
+  const t = await settledTree();
+  const manager = t.manager as any;
+  try {
+    const abortOne = manager.abortOne.bind(manager);
+    manager.abortOne = async (record: AgentRecord) => {
+      if (record.id !== t.a) throw new Error("no acknowledgement");
+      return abortOne(record);
+    };
+    await manager.intervene(t.c, "halt");
+    const result = await manager.intervene(t.a, "halt");
+    assert.equal(result.hold.outcome, "failed", "inspector and command use this outcome");
+    assert.equal(result.targetOutcome, "confirmed");
+    assert.equal(result.outcome, "unconfirmed");
+    for (const id of [t.b, t.c]) {
+      assert.ok(result.subtreeFailures.some((detail: string) => detail.includes(id)));
+      assert.ok(result.hold.detail.includes(id), "shown by both operator interfaces");
+      assert.ok(manager.pendingNotices().at(-1).text.includes(id), "aggregate notice");
+    }
+  } finally { delete manager.abortOne; await t.cleanup(); }
+});
+
+for (const op of ["abort", "close"] as const) {
+  test(op + " reports descendant failures even if the target fails too", async () => {
+    const t = await settledTree();
+    const manager = t.manager as any, method = op + "One";
+    try {
+      manager[method] = async () => { throw new Error("not confirmed"); };
+      const result = await manager[op](t.a);
+      assert.equal(result.outcome, "unconfirmed");
+      assert.equal(result.targetOutcome, "unconfirmed");
+      assert.match(result.targetDetail, /not confirmed/);
+      assert.deepEqual(result.subtreeFailures.map((line: string) => line.split(":")[0]).sort(), [t.b, t.c].sort());
+    } finally { delete manager[method]; await t.cleanup(); }
+  });
+}
 
 test("a delegated reply always fits one pipe frame", () => {
   const small = { agents: [{ id: "a" }] };

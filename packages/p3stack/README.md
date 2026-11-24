@@ -1,57 +1,61 @@
 # p3stack
 
-The Pi package for routed engineering workflows and their runtime tools. It combines generated skills from Cursor's pstack and Matt Pocock with Pi-owned procedures, a mode extension, and the nested subagents and todo components.
+Tell Pi what you want to build, fix, or review. With p3stack on, Pi chooses an engineering playbook and can delegate work. For example, a bug report without a failing reproduction starts with diagnosis rather than an edit. The same playbooks work in terminal Pi and under T3 Code.
 
-See the [repository README](../../README.md) for the frozen install, supported runtime, checks, and component list. [About p3stack](../../docs/p3stack.md) explains the registry, router, host map, and maintenance loop. Maintainers must follow [AGENTS.md](AGENTS.md).
+## Try it on your next change
 
-## Install and enable
-
-The repository root installs p3stack with claude-subscription, computer-use, self-reload, and web-search. Use the root unless you want p3stack alone.
+With Node.js 22.19 or newer, Pi installed, and a model configured, run:
 
 ```sh
 pi install git:github.com/daniel-ballance/pi-packages
 ```
 
-p3stack also installs by itself. It then loads its mode extension, subagents, todo, and the p3stack and subagents skills. Complete the workspace dependency install before loading a local checkout.
+Open Pi in a repository with an uncommitted change. Send these as **two messages**:
 
-```sh
-pi install /path/to/pi-packages/packages/p3stack
+```text
+/p3stack on
+Review my uncommitted change before I open a PR. Show me the evidence for each finding. Don't edit files or open a PR.
 ```
 
-Do not configure p3stack from two copies, such as the Git source and a local checkout. Pi then loads each extension twice, and a tool registered twice stops Pi from starting. mcp-client is not included.
+Look for a review of your diff, including any skipped tests or weakened checks, not just a review plan. No changes yet? Try “Explain where requests enter this repo and trace one to storage. Don't change any files.”
 
-Run `/p3stack on` to enable the router with the default grant, or `/p3stack on autonomous` for full autonomy. `/p3stack grant <default|autonomous>` changes the grant while the mode is on, and bare `on` keeps the last grant. The grant is session state: the extension writes it into the system prompt (`Grant: default` or `Grant: full-autonomy`) and the router uses it rather than guessing from phrasing. In print or JSON mode, pass the command and task in the same invocation so mode state survives until the prompt. `/p3stack off` removes the mode reminder. `/p3stack status` reports the mode and grant. In the terminal TUI, an `auto` marker follows `🅿️ ` under full autonomy. `/p3stack doctor` writes a T3 contract report to `~/.pi/agent/p3stack/t3-contract.json`: the loaded T3 tools, the T3 bridge extension's hash, and problems such as claude-subscription not loading from exactly one file. In the terminal TUI, the directory line starts with `🅿️ ` while enabled, with no added status row. Toggle notices read `p3stack is on.` or `p3stack is off.`.
+`/p3stack off` stops automatic routing. You can still use individual skills, such as `/skill:tdd`. Run `pi list` in your shell to check the install. In Pi, `/p3stack status` reports whether routing is on. When on, the mode and grant appear in the terminal footer marker or as a status near the composer in T3 Code.
 
-`skills/p3stack-mode/SKILL.md` chooses the route, then reads poteto-mode and the selected procedure. Pocock's `tdd` keeps its name. pstack's older `tdd` is emitted as `regression-test`. The registry decides names and exclusions before loading, with no global skill filters.
+## Choose who decides
 
-## Resolve role models
+| In Pi | Effect |
+|---|---|
+| `/p3stack on default` | Ask me about product choices. A fresh session starts with routing off and this grant. Bare `on` reuses the last grant. |
+| `/p3stack on autonomous` | Decide covered choices and report them. Explicit operator gates and irreversible actions still pause. |
+| `/p3stack grant default` | Change the saved grant while routing is on. The other choice is `autonomous`. If routing is off, the command changes nothing and says so. |
 
-`/p3stack-setup` selects role defaults in a terminal. Under T3, use `/skill:setup-pstack` to read its catalog. The role file is `~/.pi/agent/p3stack.json`, or `.pi/p3stack.json` in a trusted project.
+An explicit request for full autonomy raises the grant for that task without changing the saved grant. In print or JSON mode, pass the switch and task in the same invocation:
 
-`p3stack_roles` resolves hints against the live catalog. The mode reminder asks for that tool rather than copying a static role table into every prompt. A project-local role file is ignored when the project is untrusted.
+```sh
+pi --mode json --no-session '/p3stack on default' 'Explain how requests enter this repository. Do not edit files.'
+```
 
-## Use the host contract
+## Install choices and setup
 
-The skills name capabilities and read [`host-capabilities.md`](skills/poteto-mode/references/host-capabilities.md) for the operation on their host. Terminal sessions use the nested subagents component. T3 supplies delegation and scheduling, and subagents stays inactive there.
+The Git command installs the [six-package collection](https://github.com/daniel-ballance/pi-packages#install-from-github). To install **only p3stack** from a checkout, run from the repository root:
 
-A personal `subagents.json` replaces built-in policy as a whole. When children use the Claude provider, name it as `loaded:claude-subscription` in the extension allowlist and the `providerExtensions` mapping. That reference resolves to the file this parent loaded, on any machine. See the [configuration reference](subagents/skills/subagents/reference/configuration.md). Policy does not provide an OS sandbox.
+```sh
+npm ci --ignore-scripts
+pi install "$PWD/packages/p3stack"
+```
 
-T3 loads claude-subscription through a launch argument as well as the package. Follow [Configure T3 on each machine](docs/landing/t3-settings.md) so both name the same file. Do not point a live provider at an unlanded worktree.
+Choose one source, not both. Use Git or a checkout for the TypeScript playbook helpers. Node does not run them directly under `node_modules`.
 
-## Run helper scripts
+To set child model defaults, run `/p3stack-setup` in interactive Pi on either host. Terminal Pi uses the included subagents catalog when available. T3 Code uses its own delegation catalog. If the session has no T3 catalog yet, ask Pi to call `p3stack_roles` once, then rerun setup.
 
-The playbook helpers run under Node.js 22.19.0 or newer. Node does not strip TypeScript inside `node_modules`, so use a local checkout or a Git checkout rather than an npm-installed copy. The frozen workspace install supplies `commander`. `watch-pr` needs `gh`. `worktree-audit.sh` needs `git`, `jq`, and `gh`.
+Setup writes `p3stack.json` in Pi's agent directory (`PI_CODING_AGENT_DIR` when set, otherwise `~/.pi/agent`). For a T3 startup or duplicate-provider problem, see [T3 setup and `/p3stack doctor`](https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/docs/landing/t3-settings.md).
 
-Generated upstream output lives in `skills/`. Change its rules or authored inputs, then regenerate. Never edit generated output directly.
+## Maintainers
 
-## Maintain p3stack
+Read [how routing works](https://github.com/daniel-ballance/pi-packages/blob/main/docs/p3stack.md) and [where to edit and how to check](https://github.com/daniel-ballance/pi-packages/blob/main/packages/p3stack/AGENTS.md). The installed `skills/` tree is generated. In a development checkout, `/skill:maintain-p3stack` audits the current pins. Request an upstream bump explicitly to change them.
 
-Run `/skill:maintain-p3stack` to audit current pins and the authored registry. A clean audit reports each source, changes no files, and opens no PR. It does not claim that remote upstream is unchanged.
+## License and upstreams
 
-Request an explicit upstream bump to continue through scope review, generator repairs, and checks to a landed source-update PR: merged, verified on `main`, and reverted if that check fails. Sources sharing a checkout stay in one PR. Independent sources get separate PRs. See the [procedure](authored/skills/maintain-p3stack/SKILL.md), [nightly prompt](authored/skills/maintain-p3stack/references/nightly.md), and [bump notes](docs/bumps/README.md).
-
-## License
-
-MIT. See [LICENSE](LICENSE), [LICENSE-matt-pocock](LICENSE-matt-pocock), [LICENSE-agent-skills](LICENSE-agent-skills), and [LICENSE-superpowers](LICENSE-superpowers). Upstream pins follow.
+MIT. See [LICENSE](LICENSE), [LICENSE-matt-pocock](LICENSE-matt-pocock), [LICENSE-agent-skills](LICENSE-agent-skills), and [LICENSE-superpowers](LICENSE-superpowers).
 
 <!-- p3stack:upstream -->`cursor/plugins` [`3dbd22f`](https://github.com/cursor/plugins/tree/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack), pstack 0.15.36; `mattpocock/skills` [`5863806`](https://github.com/mattpocock/skills/tree/5863806dd4e15c63174bee4e7515a4256792ecfa); `cursor/plugins` [`3dbd22f`](https://github.com/cursor/plugins/tree/3dbd22ff12742fb28c9700b9760baa29ed41dc13); `addyosmani/agent-skills` [`39b723c`](https://github.com/addyosmani/agent-skills/tree/39b723ceebf81474d0557c1fecd01eddab585563), agent-skills 0.6.16; `obra/superpowers` [`22f0b46`](https://github.com/obra/superpowers/tree/22f0b463e7a5e579904dd6211a520321035526f7)<!-- /p3stack:upstream -->.

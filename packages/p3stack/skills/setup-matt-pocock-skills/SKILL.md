@@ -21,8 +21,8 @@ This is a prompt-driven skill, not a deterministic script. Explore, present what
 Look at the current repo to understand its starting state. Read whatever exists; don't assume:
 
 - `git remote -v` and `.git/config`: is this a GitHub repo? Which one?
-- `AGENTS.md` and `CLAUDE.md` at the repo root: does either exist? Is there already an `## Agent skills` section in either?
-- `GLOSSARY.md` and `GLOSSARY-MAP.md` at the repo root. Inspect any legacy domain glossary or map there and the pointers in `docs/agents/domain.md`. If a legacy file exists, offer to `git mv` it to its `GLOSSARY` name and update those pointers.
+- The repo-root instruction files in step 4's order. Does the first file Pi loads already have an `## Agent skills` section?
+- `GLOSSARY.md` and `GLOSSARY-MAP.md` at the repo root. Inspect any legacy domain glossary or map there and the pointers in `docs/agents/domain.md`. If a legacy file exists, offer to `git mv` it to its `GLOSSARY` name and update those pointers. The Bash renames are `git mv -- {CONTEXT,GLOSSARY}.md` and `git mv -- {CONTEXT,GLOSSARY}-MAP.md`. Move only an existing source after confirmation; do not overwrite an existing glossary.
 - `docs/adr/` and any `src/*/docs/adr/` directories
 - `docs/agents/`: does this skill's prior output already exist?
 - `.scratch/`: a sign that a local-markdown issue tracker convention is already in use
@@ -66,7 +66,7 @@ Offer **multi-context** (a root `GLOSSARY-MAP.md` pointing to per-context `GLOSS
 
 Show the user a draft of:
 
-- The `## Agent skills` block to add to whichever of `CLAUDE.md` / `AGENTS.md` is being edited (see step 4 for selection rules)
+- The `## Agent skills` block to add to the instruction file selected in step 4
 - The contents of `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and `docs/agents/triage-labels.md` (the last only when `triage` is installed)
 
 Let them edit before writing.
@@ -75,11 +75,7 @@ Let them edit before writing.
 
 **Pick the file to edit:**
 
-- If `CLAUDE.md` exists, edit it.
-- Else if `AGENTS.md` exists, edit it.
-- If neither exists, ask the user which one to create; don't pick for them.
-
-Never create `AGENTS.md` when `CLAUDE.md` already exists (or vice versa); always edit the one that's already there.
+Edit the first existing repo-root instruction file Pi loads, in this order: `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD`. If none exists, propose `AGENTS.md` and confirm before creating it.
 
 If an `## Agent skills` block already exists in the chosen file, update its contents in-place rather than appending a duplicate. Don't overwrite user edits to the surrounding sections.
 

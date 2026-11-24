@@ -22,9 +22,7 @@
     "extensions": [
       "./extensions/subagents/index.ts"
     ],
-    "skills": [
-      "./skills"
-    ],
+    "skills": [],
     "prompts": ["./prompts/**/*.md"],
     "themes": ["./themes/**/*.json"]
   },

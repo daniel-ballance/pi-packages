@@ -103,10 +103,10 @@ test("source-scoped token rules rewrite only that source and global rules still 
 
 test("a source-scoped token minimum cannot count matches from another source", () => {
   const { root, out, dispose } = twoSources({
-    "rules/tokens.json": JSON.stringify([{ id: "only-other", source: "other", min: 1, find: "Cursor-only", replace: "Pi" }]),
+    "rules/tokens.json": JSON.stringify([{ id: "only-other", source: "other", files: "SKILL\\.md$", min: 1, find: "Cursor-only", replace: "Pi" }]),
   });
   try {
-    assert.throws(() => generate({ packageDir: root, outDir: out }), /only-other: 0 matches, expected at least 1/);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /only-other: 0 matches, expected at least 1.*source: other.*files: SKILL\\\.md\$/);
   } finally { dispose(); }
 });
 
@@ -120,6 +120,12 @@ test("source names must be nonempty and unique", () => {
       assert.equal(existsSync(out), false);
     } finally { dispose(); }
   }
+});
+
+test("a malformed source exclusion names its manifest rule", t => {
+  const f = fixture({ "rules/manifest.json": manifest({ exclude: ["("] }) });
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /rules\/manifest\.json.*cursor-plugins.*exclude.*Invalid regular expression/i);
 });
 
 test("a token rule with an unknown source fails even without a minimum", () => {
@@ -144,7 +150,9 @@ test("tokens, sections and the file map produce the translated tree", () => {
 
 test("slash commands discover emitted skill paths, including new skills and principles, without rewriting other tokens", () => {
   const rule = JSON.parse(readFileSync(new URL("../rules/tokens.json", import.meta.url), "utf8")).find(({ id }) => id === "slash-skill");
+  const paths = "~~~http\nGET /future-check HTTP/1.1\n~~~\n\n[run](\n /future-check \"doc\") and <a href=\"/future-check\">here</a>\n";
   const { root, out, read, dispose } = fixture({
+    "vendor/up/skills/demo/paths.md": paths + "\nRun `/future-check`.\n",
     "vendor/up/skills/future-check/SKILL.md": "# Future\n\nRun /future-check and /principle-future.\n",
     "vendor/up/skills/principle-future/SKILL.md": "# Principle\n",
     "vendor/up/skills/omitted/SKILL.md": "# Omitted\n",
@@ -160,6 +168,7 @@ test("slash commands discover emitted skill paths, including new skills and prin
     generate({ packageDir: root, outDir: out });
     assert.equal(read("skills/future-check/SKILL.md"), "# Future\n\nRun /skill:future-check and /skill:principle-future.\n");
     assert.equal(read("agents/helper.md"), "Run /skill:future-check.\n");
+    assert.equal(read("skills/demo/paths.md"), paths + "\nRun `/skill:future-check`.\n");
     assert.equal(read("skills/demo/launcher"), 'entry=$(dirname "$self")/future-check.ts\n');
     assert.equal(read("skills/demo/commands.md"), "/skill:demo /skill:future-check /skill:principle-future /not-a-skill /omitted /principle-missing\n/skill:future-check docs/future-check https://example.test/future-check ./future-check ../future-check /future-check-more /future-check_word\n");
   } finally { dispose(); }
@@ -183,7 +192,7 @@ test("slash command discovery with no emitted skills cannot match a bare slash",
 test("a token rule that stops matching upstream fails with its id", () => {
   const { root, out, dispose } = fixture({ "vendor/up/skills/demo/SKILL.md": "---\nname: Demo\n---\n\n## Subagents\n\nx\n" });
   try {
-    assert.throws(() => generate({ packageDir: root, outDir: out }), /task-tool: 0 matches, expected at least 1/);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /task-tool: 0 matches, expected at least 1.*all sources.*all files/);
   } finally { dispose(); }
 });
 
@@ -220,6 +229,87 @@ test("a leaf section ends at the next heading of the same or a higher level, and
   } finally { leaf.dispose(); }
 });
 
+function sectionFixture(text, rule, tokens = []) {
+  const file = "skills/demo/SKILL.md";
+  return fixture({
+    [`vendor/up/${file}`]: text,
+    "rules/tokens.json": JSON.stringify(tokens),
+    "rules/sections.json": JSON.stringify([{ file, overlay: "demo/subagents.md", ...rule }]),
+    "rules/lint.json": "{\"deny\":[]}",
+  });
+}
+
+test("a token that turns a sibling into a child cannot expand a hashed overlay", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nMust survive.\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "demote", min: 1, find: "^## Next$", flags: "m", replace: "### Next" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /"## Pick" is not a leaf.*### Next/);
+});
+
+test("a token cannot make an overlay consume the body of a vanished sibling heading", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nNever part of Pick.\n\n## Last\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "remove-heading", min: 1, find: "## Next", replace: "Next:" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /section rule: skills\/demo\/SKILL.md:.*Pick.*boundary/);
+});
+
+test("a token may rename an unoverlaid sibling without moving the boundary", t => {
+  const raw = "## Pick\n\nOld.\n\n## Next\n\nKeep me.\n";
+  const f = sectionFixture(raw, { heading: "## Pick", upstream: sectionHash(raw, "## Pick") }, [
+    { id: "rename-heading", min: 1, find: "## Next", replace: "## Renamed" },
+  ]);
+  t.after(f.dispose);
+  generate({ packageDir: f.root, outDir: f.out });
+  assert.ok(f.read("skills/demo/SKILL.md").endsWith("## Renamed\n\nKeep me.\n"));
+});
+
+test("two overlays cannot claim the same leaf", t => {
+  const f = fixture({});
+  t.after(f.dispose);
+  const path = join(f.root, "rules/sections.json"), [rule] = JSON.parse(readFileSync(path, "utf8"));
+  writeFileSync(path, JSON.stringify([rule, rule]));
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /duplicate section.*skills\/demo\/SKILL.md.*Subagents/i);
+});
+
+test("a Setext child in the raw section is refused, even if a token removes its underline", t => {
+  const raw = "# Pick\n\nOld.\n\nDetail\n------\n\nKeep this.\n";
+  const f = sectionFixture(raw, { heading: "# Pick", upstream: sectionHash(raw, "# Pick") }, [
+    { id: "strip-underline", min: 1, find: "------", replace: "" },
+  ]);
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), /"# Pick" is not a leaf.*Detail/);
+});
+
+test("a Setext section ends at its sibling and a fenced underline stays in the hashed leaf", t => {
+  const leaf = "Pick\n====\n\n```md\nFake\n----\n```\n";
+  const sibling = "Next\n====\n\nKeep this.\n";
+  const f = sectionFixture(leaf + "\n" + sibling, { heading: "Pick", upstream: sectionHash(leaf, "Pick") });
+  t.after(f.dispose);
+  generate({ packageDir: f.root, outDir: f.out });
+  assert.equal(f.read("skills/demo/SKILL.md"), "## Subagents\n\nPi delegation.\n\n" + sibling);
+});
+
+for (const [name, rule, diagnostic] of [
+  ["missing hash", {}, /(?:missing|expected|required).*upstream hash/i],
+  ["absent raw heading and hash", { upstreamHeading: "## Typo" }, /upstream heading "## Typo" not found/],
+  ["absent raw heading", { upstreamHeading: "## Typo", upstream: "123456789abc" }, /upstream heading "## Typo" not found/],
+  ["non-heading raw line", { upstreamHeading: "Old.", upstream: "123456789abc" }, /upstream heading "Old\." not found/],
+]) {
+  test(`section rejects ${name} without suggesting an undefined hash`, t => {
+    const f = sectionFixture("## Pick\n\nOld.\n", { heading: "## Pick", ...rule });
+    t.after(f.dispose);
+    assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), error => {
+      assert.match(error.message, diagnostic);
+      assert.doesNotMatch(error.message, /undefined/);
+      return true;
+    });
+  });
+}
+
 test("patches apply after tokens and sections, and a stale patch fails with its name", () => {
   const patch = [
     "--- a/skills/demo/SKILL.md", "+++ b/skills/demo/SKILL.md", "@@ -11,3 +11,3 @@", " ## Next", " ", "-Kept.", "+Patched.", "",
@@ -233,6 +323,26 @@ test("patches apply after tokens and sections, and a stale patch fails with its 
   try {
     assert.throws(() => generate({ packageDir: stale.root, outDir: stale.out }), /0001-demo\.patch/);
   } finally { stale.dispose(); }
+});
+
+test("patch bytes and context matching do not depend on Git whitespace configuration", t => {
+  const header = ["--- a/skills/demo/SKILL.md", "+++ b/skills/demo/SKILL.md", "@@ -11,3 +11,3 @@"];
+  const patch = [...header, " ## Next", " ", "-Kept.", "+        Indented.", ""].join("\n");
+  const { root, dispose } = fixture({ "patches/demo.patch": patch });
+  t.after(dispose);
+  const env = { ...process.env, P3STACK_PACKAGE_DIR: root, GIT_CONFIG_COUNT: "4",
+    GIT_CONFIG_KEY_0: "core.whitespace", GIT_CONFIG_VALUE_0: "indent-with-non-tab",
+    GIT_CONFIG_KEY_1: "apply.whitespace", GIT_CONFIG_VALUE_1: "fix",
+    GIT_CONFIG_KEY_2: "apply.ignoreWhitespace", GIT_CONFIG_VALUE_2: "change",
+    GIT_CONFIG_KEY_3: "core.autocrlf", GIT_CONFIG_VALUE_3: "true" };
+  const run = () => spawnSync(process.execPath, [cli], { cwd: root, encoding: "utf8", env });
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(readFileSync(join(root, "skills/demo/SKILL.md"), "utf8"), /\n {8}Indented\.\n$/);
+  writeFileSync(join(root, "patches/demo.patch"), patch.replace(" ## Next", " ##    Next"));
+  const stale = run();
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /patch demo\.patch no longer applies/);
 });
 
 test("the coupling lint names every file, line and token a rule left behind", () => {
@@ -282,8 +392,55 @@ test("a replaced section that changes upstream fails with its new hash, so the o
   } finally { dispose(); }
 });
 
-test("authored files copy after extras without token rewrites and keep executable modes", () => {
+test("undeclared overwrites name the competing input producers and output", t => {
+  for (const [from, to] of [["cursor-plugins", "extra"], ["cursor-plugins", "authored"], ["extra", "authored"]]) {
+    const file = "skills/demo/note.md";
+    const { root, out, dispose } = fixture({ [`${from === "cursor-plugins" ? "vendor/up" : from}/${file}`]: "Old.", [`${to}/${file}`]: "New." });
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), error => {
+      for (const part of [from, to, file]) assert.ok(error.message.includes(part), error.message);
+      return true;
+    });
+    assert.equal(existsSync(out), false);
+  }
+});
+
+test("an uninstalled root fails generation even when introduced by a patch", t => {
+  const file = "prompts/new.md";
+  const patch = [`diff --git a/${file} b/${file}`, "new file mode 100644", "--- /dev/null", `+++ b/${file}`, "@@ -0,0 +1 @@", "+Hello", ""].join("\n");
+  for (const files of [{ [`authored/${file}`]: "Hello\n" }, { "patches/prompt.patch": patch }]) {
+    const { root, out, dispose } = fixture(files);
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /prompts\/new\.md:.*(?:move|declare)/i);
+  }
+});
+
+test("a noncanonical manifest path cannot masquerade as an installed root", t => {
+  const path = "skills\\not-installed.md";
+  const f = fixture({
+    "rules/manifest.json": manifest({ map: [{ from: "LICENSE", to: path }] }),
+    "rules/tokens.json": "[]", "rules/sections.json": "[]",
+  });
+  t.after(f.dispose);
+  assert.throws(() => generate({ packageDir: f.root, outDir: f.out }), error => error.message.includes(path));
+});
+
+test("drift and install recognize previously owned licenses without sweeping unrelated licenses", t => {
+  const { root, dispose } = fixture({ "LICENSE-superpowers": "stale pin\n", "LICENSE-local": "keep\n" });
+  t.after(dispose);
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, P3STACK_PACKAGE_DIR: root } });
+  assert.match(run("--check").stderr, /LICENSE-superpowers: not generated/);
+  const installed = run();
+  assert.equal(installed.status, 0, installed.stderr);
+  assert.equal(existsSync(join(root, "LICENSE-superpowers")), false);
+  assert.equal(readFileSync(join(root, "LICENSE-local"), "utf8"), "keep\n");
+});
+
+test("a declared authored replacement supplies both bytes and mode without token rewrites", () => {
   const { root, out, read, dispose } = fixture({
+    "rules/manifest.json": JSON.stringify({ ...JSON.parse(manifest()), overwrites: [
+      { file: "skills/demo/references/contract.md", from: "extra", by: "authored" },
+    ] }),
     "extra/skills/demo/references/contract.md": "Extra copy.\n",
     "authored/skills/demo/references/contract.md": "Authored copy.\n",
     "authored/skills/release/SKILL.md": "---\nname: release\ndescription: Prepare a release.\n---\n\n# Release\n",
@@ -293,9 +450,11 @@ test("authored files copy after extras without token rewrites and keep executabl
     "rules/lint.json": JSON.stringify({ deny: [] }),
   });
   try {
+    chmodSync(join(root, "extra/skills/demo/references/contract.md"), 0o755);
     chmodSync(join(root, "authored/skills/release/scripts/version.sh"), 0o755);
     generate({ packageDir: root, outDir: out });
     assert.equal(read("skills/demo/references/contract.md"), "Authored copy.\n");
+    assert.equal(statSync(join(out, "skills/demo/references/contract.md")).mode & 0o111, 0);
     assert.match(read("skills/release/SKILL.md"), /^name: release$/m);
     assert.equal(statSync(join(out, "skills/release/scripts/version.sh")).mode & 0o111, 0o111);
   } finally { dispose(); }
@@ -488,38 +647,65 @@ test("the maintenance skill and its references are emitted byte-for-byte from au
     }
     const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
     assert.ok(routes.some(row => row.target === "maintain-p3stack"));
-    assert.match(readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8"), /\.\.\/maintain-p3stack\/SKILL\.md/);
+    assert.match(readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8"), /`\.\.\/maintain-p3stack\/SKILL\.md`/);
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
 
-test("the router renders the registry tables with existing route targets and no template output", () => {
+test("only routes are tabulated; each playbook carries its own conditional reads", () => {
   const out = mkdtempSync(join(tmpdir(), "p3stack-router-"));
   try {
     generate({ packageDir, outDir: out });
     const router = readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8");
     assert.doesNotMatch(router, /\{\{(?:routes|chains)\}\}/);
-    assert.doesNotMatch(router, /\/home\/|\/tmp\//);
-    assert.ok(router.includes("<package>/skills/p3stack-mode/SKILL.md"));
-    assert.ok(router.includes("<package>/skills/poteto-mode/SKILL.md"));
+    assert.doesNotMatch(router, /\/home\/|\/tmp\/|<this file's directory>|^## Chains$/m);
+    assert.match(router, /relative to this file's directory/i);
     assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
-    const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
-    for (const { request, target } of routes) {
-      assert.ok(router.includes(request), request);
-      const path = target.startsWith("p3stack-mode/") ? target : target.startsWith("playbooks/") ? `poteto-mode/${target}` : `${target}/SKILL.md`;
-      assert.ok(existsSync(join(out, "skills", path)), target);
-      assert.ok(router.includes(`\`<this file's directory>/../${path}\``), target);
+    for (const name of ["routes", "chains"]) {
+      assert.equal(existsSync(join(out, `skills/p3stack-mode/references/${name}.md`)), false);
     }
-    for (const { anchor, skill } of JSON.parse(readFileSync(join(packageDir, "registry/chains.json"), "utf8"))) {
-      assert.ok(router.includes(anchor), anchor);
-      const read = skill.startsWith("p3stack-mode/") ? skill : skill.startsWith("playbooks/") ? `poteto-mode/${skill}` : `${skill}/SKILL.md`;
-      assert.ok(router.includes(`\`<this file's directory>/../${read}\``), skill);
+    const rows = name => JSON.parse(readFileSync(join(packageDir, `registry/${name}.json`), "utf8"));
+    for (const { request, target, action } of rows("routes")) {
+      const line = router.split("\n").find(line => line.startsWith(`| ${request} |`));
+      assert.ok(line, request);
+      if (action) { assert.ok(line.includes(action), request); continue; }
+      assert.ok(line.includes("`../poteto-mode/SKILL.md`, then "), request);
+      const path = line.match(/`\.\.\/([^`]+)` \|$/)?.[1];
+      assert.equal(path, target.startsWith("playbooks/") ? `poteto-mode/${target}` : target.includes("/") ? target : `${target}/SKILL.md`, request);
+      assert.ok(existsSync(join(out, "skills", path)), path);
     }
-    const paths = [...router.matchAll(/`<this file's directory>\/([^`]+)`/g)];
-    assert.ok(paths.length > routes.length);
-    for (const [, path] of paths) {
-      assert.ok(existsSync(join(out, "skills/p3stack-mode", path)), path);
+    const root = join(out, "skills/poteto-mode");
+    for (const { playbook, anchor, when, skill } of rows("chains")) {
+      assert.ok(!router.includes(anchor), anchor);
+      const text = readFileSync(join(root, playbook), "utf8");
+      const line = text.split("\n").find(line => line.includes(when) && /p3stack/i.test(line));
+      const link = line?.match(/\]\(([^)]+)\)/)?.[1];
+      const target = skill.includes("/") ? skill : `${skill}/SKILL.md`;
+      assert.ok(link && link.endsWith(target.replace(/^poteto-mode\//, "")), `${playbook}: ${target}`);
+      assert.ok(existsSync(join(root, link)), link);
     }
   } finally { rmSync(out, { recursive: true, force: true }); }
+});
+
+test("Feature and Bug fix scan the final diff before independent review", () => {
+  for (const name of ["feature", "bug-fix"]) {
+    const text = readFileSync(join(packageDir, `skills/poteto-mode/playbooks/${name}.md`), "utf8");
+    const links = [...text.matchAll(/\]\(([^)]+)\)/g)].map(match => match[1]);
+    const review = ["../no-comments/SKILL.md", "../p3stack-mode/references/floor.md", "../p3stack-mode/references/review-stance.md", "../code-review/SKILL.md"];
+    assert.deepEqual(links.filter(path => review.includes(path)), review, name);
+    assert.match(text, /rerun affected checks[^\n]*floor-check/i);
+    assert.match(text, /verdict[^\n]*base and head/i);
+  }
+  const pr = readFileSync(join(packageDir, "skills/poteto-mode/playbooks/opening-a-pr.md"), "utf8");
+  assert.match(pr, /slop-strip[^\n]*no-comments[^\n]*skip each pass[^\n]*this head/i);
+  assert.match(pr, /after any edit[^\n]*floor[^\n]*affected checks[^\n]*verdict/i);
+  assert.doesNotMatch(pr, /subagent that opens a PR runs a slop-strip/i);
+});
+
+test("host-specific chain triggers point at the operation, not poteto-mode again", () => {
+  for (const [name, section] of [["prototype", "Drive the app"], ["eval", "Run a workflow"], ["hillclimb", "Run a workflow"]]) {
+    const lines = readFileSync(join(packageDir, `skills/poteto-mode/playbooks/${name}.md`), "utf8").split("\n");
+    assert.ok(lines.some(line => /\]\((?:\.\.\/poteto-mode\/)?references\/host-capabilities\.md\)/.test(line) && line.includes(section)), name);
+  }
 });
 
 test("the router precedence overlay is locked to upstream Playbooks", () => {
@@ -529,7 +715,7 @@ test("the router precedence overlay is locked to upstream Playbooks", () => {
   const upstream = readFileSync(join(packageDir, "vendor/pstack/pstack/skills/poteto-mode/SKILL.md"), "utf8");
   assert.equal(rule.upstream, sectionHash(upstream, "## Playbooks"));
   const mode = readFileSync(join(packageDir, "skills/poteto-mode/SKILL.md"), "utf8");
-  assert.match(mode, /p3stack-mode.*route and chain tables/);
+  assert.match(mode, /p3stack-mode.*workflow selection/);
 });
 
 test("the package ships the Pocock license and initializes both source checkouts", () => {
@@ -544,7 +730,8 @@ test("the package ships the Pocock license and initializes both source checkouts
 
 test("the collection and global settings use only the unified skill source", () => {
   const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
-  assert.deepEqual(manifest.pi.skills, ["./skills", "./subagents/skills"]);
+  // The subagents skills describe terminal-only tools, so its extension contributes them outside T3 Code.
+  assert.deepEqual(manifest.pi.skills, ["./skills"]);
   for (const lock of ["package-lock.json", "pnpm-lock.yaml"]) assert.equal(readFileSync(join(packageDir, "../..", lock), "utf8").includes("pi-pocock-skills"), false, lock);
   const settings = JSON.parse(readFileSync(join(packageDir, "../../global/settings.json"), "utf8"));
   assert.equal(settings.packages.some(entry => JSON.stringify(entry).includes("pi-pocock-skills")), false);
@@ -619,13 +806,13 @@ pocockCase("3 duplicate names in two buckets fail", ({ run, input }) => {
 
 pocockCase("4 ordered rule minima detect upstream drift", ({ run, input, rewrite }) => {
   for (const path of readdirSync(input(""), { recursive: true }).filter(path => path.endsWith(".md"))) rewrite(path, "sub-agents", "child-workers");
-  assert.match(run().stderr, /subagent-plural: 0 matches/);
+  assert.match(run().stderr, /subagent-spawn-review: 0 matches/);
 });
 
 pocockCase("5 tracker prerequisites survive and review collection retains its drift guard", ({ run, read, rewrite }) => {
   const first = run();
   assert.equal(first.status, 0, first.stderr);
-  assert.match(read("code-review/SKILL.md"), /The issue tracker should have been provided/);
+  assert.match(read("code-review/SKILL.md"), /caller[^\n]*contract[^\n]*spec/i);
   assert.match(read("triage/SKILL.md"), /docs\/agents\/issue-tracker.md/);
   const setup = read("setup-matt-pocock-skills/SKILL.md");
   assert.match(setup, /Inspect any legacy domain glossary or map/);
@@ -647,14 +834,15 @@ pocockCase("6 unrecognized harness wording names the file", ({ run, input }) => 
   assert.match(result.stderr, /skills\/research\/SKILL\.md:\d+: Skill tool/);
 });
 
-pocockCase("7 invalid optional regexes are errors", ({ root, run }) => {
-  const file = join(root, "rules/tokens.json"), rules = JSON.parse(readFileSync(file, "utf8"));
-  const rule = rules.find(({ id, source }) => id === "clear-to-new" && source === "matt-pocock");
-  assert.ok(rule);
-  rule.find = "(";
-  writeFileSync(file, JSON.stringify(rules));
-  assert.match(run().stderr, /Invalid regular expression/);
-});
+for (const field of ["find", "files"]) {
+  test(`a malformed token ${field} regex names the rule, even without a minimum`, t => {
+    const { root, out, dispose } = fixture({
+      "rules/tokens.json": JSON.stringify([{ id: "bad-regex", find: "Task tool", replace: "child", [field]: "(" }]),
+    });
+    t.after(dispose);
+    assert.throws(() => generate({ packageDir: root, outDir: out }), /rules\/tokens\.json.*bad-regex.*Invalid regular expression/i);
+  });
+}
 
 pocockCase("8 resource collisions fail instead of overwriting", ({ root, run }) => {
   const file = join(root, "rules/manifest.json"), manifest = JSON.parse(readFileSync(file, "utf8"));
@@ -701,13 +889,11 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.equal(run("--check").status, 0, run("--check").stderr);
 });
 
-pocockCase("11 legacy slash invocations keep links and protect paths", ({ run, input, read }) => {
+pocockCase("11 slash commands use emitted names and protect paths", ({ run, input, read }) => {
   const file = input("engineering/implement/SKILL.md");
   writeFileSync(file, readFileSync(file, "utf8") + "\nUse /tdd and /code-review, /to-spec, /clear. Keep ../research/SKILL.md.\nargument-hint: ignored\n");
   assert.equal(run().status, 0);
-  assert.match(read("implement/SKILL.md"), /\[\/skill:tdd\]\(\.\.\/tdd\/SKILL.md\)/);
-  assert.match(read("implement/SKILL.md"), /\[\/skill:code-review\]\(\.\.\/code-review\/SKILL.md\)/);
-  assert.match(read("implement/SKILL.md"), /\/skill:to-spec, \/new. Keep ..\/research\/SKILL.md/);
+  assert.ok(read("implement/SKILL.md").includes("Use /skill:tdd and /skill:code-review, /skill:to-spec, /clear. Keep ../research/SKILL.md."));
   assert.doesNotMatch(read("implement/SKILL.md"), /argument-hint:/);
 });
 

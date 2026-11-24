@@ -1,9 +1,15 @@
 ### 5. Write the file
 
-Write `~/.pi/agent/p3stack.json`, or `.pi/p3stack.json` when the user wants a project-only choice. Record the budget label and its target thinking level, and one entry per role, using the same labels poteto-mode uses. Overwrite the whole file so re-runs stay idempotent. Models are exact identities per **Models and role defaults**: `provider/model:thinking` in a terminal, `<provider instance>/<model>:<thinking>` from the catalog under T3. Shape:
+Write `p3stack.json` in Pi's agent directory (step 2), or `.pi/p3stack.json` for a trusted project-only choice. Ask before replacing an existing file. Without confirmation, leave it unchanged. Set `host` to `terminal` or `t3` for the host writing the file. Record the budget and exact selections:
+
+- Terminal: `<provider>/<model id>:<thinking>`.
+- T3: `<provider instance>/<model id>:<thinking>`. Keep the whole model id, including any slashes. For instance `pi` offering model `xai/grok-4.7` at `xhigh`, write `pi/xai/grok-4.7:xhigh`.
+
+Example terminal file:
 
 ```json
 {
+  "host": "terminal",
   "budget": "large (xhigh)",
   "roles": {
     "feature, refactoring": "xai/grok-4.7:xhigh",
@@ -27,4 +33,4 @@ Write `~/.pi/agent/p3stack.json`, or `.pi/p3stack.json` when the user wants a pr
 }
 ```
 
-The provider names above are examples; write the ones step 1 detected. Delete a role to fall back to the skill default. `inherit-parent` or `auto` as a value runs the role on the parent chat's model. Alias entries in a panel list still count toward its fan-out.
+Report the destination, budget and role selections actually written, including any lower judgment level. Use the providers step 1 detected. Delete a role to fall back to the skill default. `inherit-parent` or `auto` as a value runs the role on the parent chat's model. Alias entries in a panel list still count toward its fan-out.

@@ -1,80 +1,19 @@
 # Configure T3 on each machine
 
-T3 starts Pi with `providerInstances.pi.config.launchArgs`. Existing settings explicitly load claude-subscription before T3 appends its bridge extension. The provider now leaves Pi's native system prompt unchanged, so that ordering is no longer required for prompt selection. The launch argument can be omitted when Pi discovers the installed package normally. If kept, its path must be the same file the package loads: a different copy registers duplicate tools and stops Pi from starting.
+T3 Code can discover claude-subscription through the installed root package. You do not need a provider launch argument to use Pi's native prompt. A standalone p3stack install needs no subscription provider.
 
-Each machine loads the root package from a different place, so each has its own value.
+If you keep an explicit provider in `providerInstances.pi.config.launchArgs`, it must name the **same file** the package loads. Loading a second copy registers duplicate tools and can stop Pi from starting. Back up your T3 settings before changing them.
 
-| Machine | Package source in `~/.pi/agent/settings.json` | `launchArgs` |
-| --- | --- | --- |
-| Omarchy | `../../Code/pi-packages`, through the linked `global/settings.json` | `--extension /home/danballance/Code/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts` |
-| Mac | `git:github.com/daniel-ballance/pi-packages` | `--extension /Users/danballance/.pi/agent/git/github.com/daniel-ballance/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts` |
-
-Print the value from the install that the machine loads, rather than typing it.
+Run this from the root of the copy Pi actually loads, not from a development worktree:
 
 ```sh
-node ~/Code/pi-packages/scripts/root-package.mjs --t3-launch-args
-node ~/.pi/agent/git/github.com/daniel-ballance/pi-packages/scripts/root-package.mjs --t3-launch-args
+node scripts/root-package.mjs --t3-launch-args
 ```
 
-Run the first command on Omarchy and the second on the Mac.
+Use the printed argument. For the Git install, the default clone is under `~/.pi/agent/git/github.com/daniel-ballance/pi-packages`. Run `pi update git:github.com/daniel-ballance/pi-packages` to update it in place. If you remove or move the clone, remove the argument or point it at the new install. See [the owner's machine setup](../../../../global/README.md) for checkout and Git installs.
 
-## Update Omarchy after landing
+## Verify host compatibility
 
-The settings file is `/home/danballance/.t3/userdata/settings.json`. The provider binary path does not change.
+Follow the [maintenance host check](../../authored/skills/maintain-p3stack/references/verify-host.md) on each machine. In the doctor dump, `claudeSubscriptionFiles` should contain one real path for the subscription or none without it. More than one distinct file is a problem. Doctor reports file identity, not load order. If the change prevents startup, restore the settings backup and check that any explicit provider path still exists.
 
-Before:
-
-```json
-"launchArgs": "--extension /home/danballance/Code/pi-packages/packages/p3stack/claude-subscription/extensions/claude-subscription/index.ts"
-```
-
-After:
-
-```json
-"launchArgs": "--extension /home/danballance/Code/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts"
-```
-
-1. Update the stable checkout at `~/Code/pi-packages` to the landed change. The old path no longer exists after this step, so finish the next steps before you open a T3 thread.
-2. Complete the frozen dependency install and the root check.
-3. Run `bash global/link.sh --check` from the stable checkout. Every line must begin with `ok`.
-4. Copy the T3 settings file to a dated backup beside it.
-5. Replace the `launchArgs` value with the output of `--t3-launch-args`.
-6. Verify the new thread, as described in [Verify each machine](#verify-each-machine).
-
-## Move the Mac to the GitHub install
-
-The settings file is `/Users/danballance/.t3/userdata/settings.json`. The provider binary stays `/opt/homebrew/bin/pi`.
-
-Before:
-
-```json
-"launchArgs": "--extension /Users/danballance/Code/pi-packages/packages/p3stack/claude-subscription/extensions/claude-subscription/index.ts"
-```
-
-After:
-
-```json
-"launchArgs": "--extension /Users/danballance/.pi/agent/git/github.com/daniel-ballance/pi-packages/packages/claude-subscription/extensions/claude-subscription/index.ts"
-```
-
-Change the package source and the launch argument together. Between the two changes, a new thread loads two copies of claude-subscription.
-
-1. Follow [Set up the Mac](../../../../global/README.md#set-up-the-mac). It installs the GitHub source and removes the local checkout entry from `~/.pi/agent/settings.json`.
-2. Copy the T3 settings file to a dated backup beside it.
-3. Replace the `launchArgs` value with the output of `--t3-launch-args`.
-4. Verify the new thread, as described in [Verify each machine](#verify-each-machine).
-
-`pi update` resets the clone in place, so the path stays valid. `pi remove` deletes the clone. After a removal, T3 cannot start Pi until you install the source again or change `launchArgs`.
-
-## Verify each machine
-
-T3 reads `launchArgs` when it starts a thread's Pi process. A running Pi process keeps its old arguments.
-
-1. Open a fresh T3 thread.
-2. Run `/p3stack doctor`. It writes `~/.pi/agent/p3stack/t3-contract.json`.
-3. Check that the report has one entry in `claudeSubscriptionFiles` and no `problems`. If an explicit launch argument is kept, the entry must equal its path. `claudeSubscriptionBeforeBridge` records the ordering only; either value is compatible with the native prompt.
-4. Run the operator's T3 smoke and record it as a new dated file in this directory. The [2026-10-20 record](2026-10-20-t3-smoke.md) shows the format.
-
-## Undo if the smoke fails
-
-Copy the dated backup over the T3 settings file. On the Mac, also restore the previous package entry in `~/.pi/agent/settings.json`. Check that the restored `launchArgs` path exists, then open a fresh thread.
+The [October 20](2026-10-20-t3-smoke.md) and [October 21](2026-10-21-t3-smoke.md) records show delegation on the installations tested then. Their paths, models, and T3 versions are not current setup instructions.

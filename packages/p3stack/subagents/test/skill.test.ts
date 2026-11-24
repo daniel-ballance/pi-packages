@@ -3,21 +3,32 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
+import { asHost } from "./host-env.js";
+import subagents from "../extensions/subagents/index.js";
+import { loadSkillsFromDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_POLICY, parsePolicy } from "../extensions/subagents/src/policy.js";
 import { parseWorkflow } from "../extensions/subagents/src/workflow-definition.js";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const skill = join(root, "skills/subagents");
 
-test("package explicitly discovers and ships the parent skill without validation warnings", () => {
+test("terminal-only skills come from resource discovery, never a static manifest", () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.ok(manifest.files.includes("skills"));
-  assert.deepEqual(manifest.pi.skills, ["./skills"]);
-  const loaded = loadSkillsFromDir({ dir: join(root, "skills"), source: "test" });
-  assert.deepEqual(loaded.diagnostics, []);
-  assert.deepEqual(loaded.skills.map(s => s.name).sort(), ["subagents", "workflows"]);
-  assert.equal(loaded.skills.find(s => s.name === "subagents")?.filePath, join(skill, "SKILL.md"));
+  for (const host of ["cli", "t3"] as const) asHost(host, () => {
+    const paths: string[] = [];
+    subagents({
+      registerFlag() {},
+      on(event: string, fn: Function) { if (event === "resources_discover") paths.push(...fn({}, {mode: "rpc"}).skillPaths); },
+    } as unknown as ExtensionAPI);
+    const skills = paths.flatMap(dir => {
+      const loaded = loadSkillsFromDir({ dir, source: "test" });
+      assert.deepEqual(loaded.diagnostics, []);
+      return loaded.skills.map(s => s.name);
+    });
+    assert.deepEqual(skills.sort(), host === "cli" ? ["subagents", "workflows"] : [], host);
+  });
+  assert.deepEqual(manifest.pi.skills ?? [], []);
 });
 
 test("documented execution fallback matches the complete shipped policy", () => {
@@ -48,7 +59,7 @@ test("shipped workflow examples are valid definitions, with explicit placeholder
 });
 
 test("skill and reference relative links resolve inside the shipped package", () => {
-  const docs = [join(root, "README.md"), join(root, "skills/workflows/SKILL.md"), join(root, "WORKFLOWS.md"), join(skill, "SKILL.md"), ...readdirSync(join(skill, "reference")).filter(n => n.endsWith(".md")).map(n => join(skill, "reference", n))];
+  const docs = [join(root, "README.md"), join(root, "skills/workflows/SKILL.md"), join(root, "WORKFLOWS.md"), join(root, "skills/workflows/reference/contract.md"), join(skill, "SKILL.md"), ...readdirSync(join(skill, "reference")).filter(n => n.endsWith(".md")).map(n => join(skill, "reference", n))];
   for (const doc of docs) {
     for (const match of readFileSync(doc, "utf8").matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
       if (/^https?:/.test(match[1])) continue;

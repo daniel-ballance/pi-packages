@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Fills a p3stack workflow template. Placeholders are {{name}} inside JSON
-// strings, and "{{name:number}}" for a whole numeric value. A placeholder left
+// strings, {{name:sh}} for a shell argument, and "{{name:number}}" for a number. A placeholder left
 // unfilled is an error. Starting the workflow validates the result in full.
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
-const NUMBER = /"\{\{([A-Za-z][\w-]*):number\}\}"/g, TEXT = /\{\{([A-Za-z][\w-]*)\}\}/g;
+const NUMBER = /"\{\{([A-Za-z][\w-]*):number\}\}"/g, TEXT = /\{\{([A-Za-z][\w-]*)(:sh)?\}\}/g;
 
 export function placeholders(template) {
   return [...new Set([...template.matchAll(NUMBER), ...template.matchAll(TEXT)].map(match => match[1]))].sort();
@@ -24,7 +24,11 @@ export function instantiate(template, values) {
       if (!Number.isFinite(value)) throw new Error(`${name} must be a number`);
       return String(value);
     })
-    .replace(TEXT, (_, name) => JSON.stringify(String(values[name])).slice(1, -1));
+    .replace(TEXT, (_, name, shell) => {
+      const raw = String(values[name]);
+      const value = shell ? "'" + raw.replaceAll("'", "'\\''") + "'" : raw;
+      return JSON.stringify(value).slice(1, -1);
+    });
   return JSON.parse(filled);
 }
 
@@ -40,7 +44,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       return [pair.slice(0, at), pair.slice(at + 1)];
     }));
     const text = JSON.stringify(instantiate(template, settings), null, 2) + "\n";
-    if (values.out) writeFileSync(values.out, text); else process.stdout.write(text);
+    if (values.out) {
+      mkdirSync(dirname(values.out), { recursive: true, mode: 0o700 });
+      writeFileSync(values.out, text, { mode: 0o600 });
+    } else process.stdout.write(text);
   } catch (error) {
     process.stderr.write(`workflow-template: ${error.message}\n`);
     process.exit(2);

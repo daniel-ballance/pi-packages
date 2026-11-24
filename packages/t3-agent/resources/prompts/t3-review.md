@@ -2,8 +2,12 @@
 description: Get an independent review of this branch from another model family
 argument-hint: "[focus]"
 ---
-Get an independent review of this branch's changes. Focus: ${@:-correctness, missed cases, tests, and the project's documented standards}.
+Return verified findings in separate Standards and Spec lists for this branch, ordered by severity within each; fix nothing unless asked.
+Focus: ${@:-correctness, missed cases, tests and project standards}.
 
-1. Call `orchestrator_capabilities` and choose a strong model from a model family other than yours. Name it in your reply.
-2. Call `delegate_task` with `role:"review"`, `mode:"async"` and a brief that stands alone: the repository path, the base to diff against (`git merge-base HEAD <default branch>`), the goal of the change, the focus above, "do not edit files", and a report of findings ordered by severity, each with path, line and evidence. The reviewer shares this checkout, so it also sees uncommitted changes.
-3. End the turn. When the review wakes you, check each finding against the code. Fix the real ones yourself and list the ones you rejected, with the reason. A second round is a new `delegate_task` carrying the brief and the previous findings.
+When p3stack's routing reminder is present in this request, follow the playbook it routes to for the procedure, within this stop line.
+Without that reminder:
+
+1. Resolve the repository's default branch and pin `git merge-base HEAD <default-branch>`. State whether uncommitted work is included; include in-scope staged, unstaged and untracked changes unless asked for a committed range.
+2. Choose another model family with `orchestrator_capabilities`, or report it unavailable. Pass its `target` to a read-only `delegate_task` with `role:"review"`, `mode:"async"`, the pinned scope, base, goal and focus. Ask for paths, lines and evidence.
+3. Follow `next`; on the completion wake read `task_status` and verify each finding against the code and tests. Report what holds up and why you rejected the rest.

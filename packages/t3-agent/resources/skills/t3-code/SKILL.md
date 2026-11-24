@@ -3,9 +3,9 @@ name: t3-code
 description: Map a job to the T3 Code tool that does it. Use under T3 when a task needs a child agent, another thread, a worktree, a pull request watch, a schedule, a secret, a browser or device preview, an inline chart, or a T3 project.
 ---
 
-T3 tools are named `mcp__t3-code__<name>`. The bridge declares `orchestrator_capabilities`, `delegate_task` and `task_status`; the `t3_agent` prompt section lists the others t3-agent declared. Load any other one with `tool_search`, querying its job ("schedule", "preview tab"). In a codemode script call it as `tools.mcp__t3_code__<name>(args)`, which batches independent T3 calls (reading several threads, closing several tabs) in one step. Each tool's own description holds its argument rules; read it before the first call.
+T3 tools are named `mcp__t3-code__<name>`. `/t3-agent status` lists the tools declared in Pi's active loadout. Load any other one with `tool_search`, querying its job ("schedule", "preview tab"). In a codemode script call it as `tools.mcp__t3_code__<name>(args)`, which batches independent T3 calls (reading several threads, closing several tabs) in one step. Each tool's own description holds its argument rules; read it before the first call.
 
-Every result is JSON text. Copy ids (`taskId`, `scheduledTaskId`, `tabId`) verbatim, and name a thread in your reply by its `link`, verbatim. To retry a lost create call, reuse its `clientRequestId`; new work gets a new one.
+Use the structured result in scripts when supplied. Copy ids (`taskId`, `scheduledTaskId`, `tabId`) verbatim, and name a thread in your reply by its `link`, verbatim. To retry a lost create call, reuse its `clientRequestId`; new work gets a new one.
 
 ## Jobs
 
@@ -17,7 +17,7 @@ Every result is JSON text. Copy ids (`taskId`, `scheduledTaskId`, `tabId`) verba
 | Read, message or wait on another thread | `t3_thread_read`, `t3_thread_send`, `t3_thread_wait`, `t3_thread_search`, `t3_thread_list` |
 | Manage a thread | `t3_thread_update` (rename), `t3_thread_configure` (model), `t3_thread_organize` (pin, snooze, settle, archive), `t3_thread_transfer` (fork, merge back), `t3_queue`, `t3_pending_request`, `t3_thread_interrupt` (top-level runs only) |
 | Move this thread to a new worktree | `t3_worktree_status` first, then `t3_worktree_handoff` as the turn's last call, with a `continuationPrompt` |
-| Track a pull request | `link_pull_request(s)` to show it; `watch_pull_request` to be woken on checks, reviews and conflicts; `unwatch_pull_request`; `write_pull_request_guides` and `read_pull_request_guide` for a reviewer's tour |
+| Track a pull request | `link_pull_request(s)` to show it; optional `watch_pull_request` and `unwatch_pull_request` for wakes on checks, reviews and conflicts; `write_pull_request_guides` and `read_pull_request_guide` for a reviewer's tour |
 | Act later or on a timer | `schedule_task` (`schedule` is an object: `{type:"interval",everyMs}`, `{type:"fixed_time",timeOfDay,weekdays}` or `{type:"webhook"}`), `list_scheduled_tasks`, `run_scheduled_task_now`, `delete_scheduled_task` |
 | Get a password, token or login from the user | `request_secret`; use its `secretRef` or the file it delivers, never the value in chat |
 | Show a chart, diagram or mockup | `html_preview` to check it, then `html_render`; a PNG file when the user will post it elsewhere |
@@ -32,5 +32,6 @@ Every result is JSON text. Copy ids (`taskId`, `scheduledTaskId`, `tabId`) verba
 
 - Pi has no native subagent tool here. `delegate_task` is the subagent tool for every child. A review round, a re-check or a fix after review is a new `delegate_task` carrying the brief and the findings.
 - The permission mode caps every thread or child you create: a target never runs with broader modes than yours.
-- After `watch_pull_request`, `delegate_task` with `mode:"async"`, or `schedule_task`, end the turn; T3 wakes this thread. The watch stays on across wakes, so a wake is not a cue to watch again.
+- After an async `delegate_task`, you may finish dispatching the wave before yielding. Keep each `taskId` and follow its `next`. On a completion wake, read `task_status`; never poll.
+- For a babysit, fix failing checks and answer unresolved comments first. If the PR still needs watching and either watch tool is unavailable, report the current forge status and what remains, then stop. End the turn after arming a watch or schedule; a watch stays armed across wakes.
 - t3-agent records the delegates, schedules, watched pull requests, preview tabs, devices and threads you create in the `t3_agent` section, so their ids survive compaction. `/t3-agent ledger` lists them; `/t3-agent forget <id>` drops a stale one without touching T3.

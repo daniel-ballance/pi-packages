@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import process from "node:process";
 
 const RULE =
@@ -17,7 +18,7 @@ const SUB_BLOCKS = [
 	"Merge.",
 ];
 const PROGRAM_H3 = ["Arm the program", "Spawn owners", "PR mechanics", "Verdict and merge", "Boot recipe"];
-const PROGRAM_MARKERS = ["git show origin/main:", "one-hour wake loop", "status message"];
+const PROGRAM_MARKERS = ["one-hour wake loop", "status message"];
 const HOW_TO_READ_MARKERS = [
 	"One box is one unit of work",
 	"names the evidence",
@@ -112,6 +113,25 @@ else {
 		const at = h3s.findIndex((t, i) => i >= cursor && t.startsWith(name));
 		if (at === -1) fail(program.n, `Program checklist lacks "### ${name}" in order`);
 		else cursor = at + 1;
+	}
+	const arm = program.body.findIndex(l => !l.code && l.text.trimEnd() === "### Arm the program");
+	const rest = arm < 0 ? [] : program.body.slice(arm + 1);
+	const end = rest.findIndex(l => !l.code && l.text.startsWith("### "));
+	const installed = boxes(end < 0 ? rest : rest.slice(0, end)).filter(b => b.text.startsWith("Installed file."));
+	const listed = new Set();
+	for (const box of installed) {
+		const path = /^Installed file\. `([^`]+)`$/.exec(box.text)?.[1];
+		if (!path || !isAbsolute(path) || !fs.statSync(path, { throwIfNoEntry: false })?.isFile()) {
+			fail(box.n, "Installed file must name an existing file by its absolute path");
+		} else listed.add(fs.realpathSync(path));
+	}
+	const modes = new Set(howToRead?.body.filter(l => !l.code).flatMap(l =>
+		[...l.text.matchAll(/\bplaybooks\/(autopilot-full|autopilot-stack|orchestrate)\.md\b/g)].map(m => m[0])));
+	if (modes.size !== 1) fail(howToRead?.n ?? 1, "How to read this must name one execution playbook");
+	const required = ["swarm/SKILL.md", "poteto-mode/playbooks/opening-a-pr.md", ...[...modes].map(p => "poteto-mode/" + p)];
+	for (const name of required) {
+		const path = resolve(import.meta.dirname, "../..", name);
+		if (!fs.existsSync(path) || !listed.has(fs.realpathSync(path))) fail(program.n, `Arm the program lacks installed file ${name}`);
 	}
 	for (const marker of PROGRAM_MARKERS) {
 		if (!bodyText(program).includes(marker)) fail(program.n, `Program checklist lacks "${marker}"`);

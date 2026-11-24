@@ -14,7 +14,7 @@ const state = {
   sessionId: "compact-spawn",
   model: { provider: spec.slice(0, slash), id: spec.slice(slash + 1) },
   thinkingLevel: modelId.slice(colon + 1),
-  isStreaming: false,
+  isStreaming: false, pendingMessageCount: 0,
 };
 
 function emit(packet) {
@@ -59,6 +59,14 @@ async function handle(cmd) {
       return respond(cmd, { disposition: "handled" });
     }
     if (cmd.type === "prompt") {
+      if (cmd.message === "/handled-work") {
+        emit({ type: "agent_start" });
+        emit({ type: "message_start", message: { role: "user", content: "extension task" } });
+        emit({ type: "message_end", message: { role: "assistant", content: [{type: "text", text: "done"}], stopReason: "stop" } });
+        emit({ type: "agent_settled" });
+        return respond(cmd, { disposition: "handled" });
+      }
+      if (cmd.message === "CONSUME") return respond(cmd, { disposition: "handled" });
       const allowed = JSON.parse(process.env.PI_SUBAGENT_ALLOWED_TOOLS ?? "[]");
       const prompted = process.env.SPAWN_ON;
       if (allowed.includes("subagent_spawn") && (prompted ? cmd.message === prompted : !!process.env.SPAWN_PROOF)) {

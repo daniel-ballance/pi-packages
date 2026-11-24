@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import cp from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { chmodSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -136,6 +140,25 @@ test("human approval is explicit, tied to input, and never supplied by resume", 
   } finally { await h.close(); }
 });
 
+test("resume at the attempt limit succeeds only for a fully passed DAG before its deadline", async t => {
+  for (const scenario of ["complete", "pending", "late", "rejected"]) {
+    const h = setup();
+    try {
+      const def = definition(h.root, [task("a"), { id: "approval", kind: "check", input: "a", validator: { kind: "human", instructions: "Accept?" } }]);
+      def.limits.maxAttempts = 2;
+      if (scenario === "pending") def.steps.push(task("next", ["approval"]));
+      const run = await settled(h.engine, idOf(h.engine.start(def)));
+      assert.equal(run.status, "blocked");
+      if (scenario === "late") t.mock.method(Date, "now", () => run.deadline);
+      h.engine.decide(run.id, "approval", scenario === "rejected" ? "fail" : "pass");
+      if (scenario === "rejected") await assert.rejects(h.engine.control(run.id, "resume"), /retry/);
+      await h.engine.control(run.id, "resume", scenario === "rejected" ? ["approval"] : []);
+      assert.equal(run.status, scenario === "complete" ? "succeeded" : "exhausted", scenario);
+      assert.equal(run.usedAttempts, 2);
+    } finally { t.mock.restoreAll(); await h.close(); }
+  }
+});
+
 test("existing workflow state permissions are repaired on reopen", { skip: process.platform === "win32" }, async () => {
   const h = setup();
   let restored: Workflows | undefined;
@@ -163,6 +186,29 @@ test("shutdown/reload does not replay; explicit retry preserves total allowance 
     await restored.control(id, "resume", ["a"]); const run = await settled(restored, id);
     assert.equal(run.status, "succeeded"); assert.equal(run.usedAttempts, 2); assert.equal(run.deadline, deadline);
   } finally { await restored?.shutdown(); await h.close(); }
+});
+
+test("command without a close event cannot block workflow shutdown", async t => {
+  const h = setup();
+  const child = Object.assign(new EventEmitter(), {stdout: new PassThrough(), stderr: new PassThrough(), unref() {},
+    kill: (signal: string) => { signals.push(signal); return true; }});
+  const signals: string[] = [];
+  let launched!: () => void;
+  const started = new Promise<void>(resolve => { launched = resolve; });
+  const spawn = t.mock.method(cp, "spawn", () => { launched(); return child; });
+  syncBuiltinESMExports();
+  try {
+    const id = idOf(h.engine.start(definition(h.root, [task("a"), {id: "check", kind: "check", input: "a", validator: {kind: "command", command: "unused"}}])));
+    await started;
+    const done = await Promise.race([h.engine.shutdown().then(() => true), sleep(5000).then(() => false)]);
+    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    assert.ok(done, "manager shutdown must be able to proceed");
+    const attempt = h.engine.get(id).steps.check.attempts.at(-1)!;
+    assert.equal(attempt.status, "unconfirmed");
+    assert.match(attempt.error!, /unconfirmed/i);
+  } finally {
+    child.emit("close", null); spawn.mock.restore(); syncBuiltinESMExports(); await h.close();
+  }
 });
 
 test("synchronous run hold prevents queued dispatch; release alone never schedules", async () => {
@@ -303,9 +349,9 @@ test("manager host records consumed submission and rejects the attempt before wa
   const fakeManager = {
     reserveSlots: () => ({ id: Symbol("reservation") }), releaseSlots() {},
     spawn: async () => ({ id: "consumed-child" }), get: () => ({ id: "consumed-child" }),
-    send: async () => ({ id: "consumed-child", disposition: "handled" }),
+    send: async () => ({ id: "consumed-child", disposition: "handled", workStarted: false }),
     wait: async () => assert.fail("Consumed input must not wait for a nonexistent run"),
-    close: async () => { closed = true; }, peers: {},
+    close: async () => { closed = true; return { outcome: "confirmed" }; }, peers: {},
   } as unknown as Parameters<typeof managerWorkflowHost>[0];
   const policy = (() => ({ compile: () => ({}) })) as unknown as Parameters<typeof managerWorkflowHost>[1];
   const job: AgentJob = { step: "a", workflow: "workflow-test", cwd: "/tmp", worker, instructions: "a",
@@ -313,6 +359,12 @@ test("manager host records consumed submission and rejects the attempt before wa
   await assert.rejects(managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), /input was handled/);
   assert.deepEqual(submitted, { id: "consumed-child", disposition: "handled" });
   assert.equal(closed, true);
+  Object.assign(fakeManager, {
+    send: async () => ({ id: "consumed-child", disposition: "handled" }),
+    wait: async () => ({wake: "settled"}), get: () => ({ id: "consumed-child", status: "idle" }),
+    finalAnswer: () => "handler's answer", read() {},
+  });
+  assert.deepEqual(await managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), ["handler's answer"]);
 });
 
 test("pause is a boundary, cancel and deadline abort execution, and only one run executes", async () => {

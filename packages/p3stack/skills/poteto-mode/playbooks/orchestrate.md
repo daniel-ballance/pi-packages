@@ -2,15 +2,20 @@
 
 **You run the program, never the code. Decide which agent does each piece of work, then check what each one produces.** For a standing project handed to one coordinator chat: multi-day, many stacked PRs, dozens to hundreds of subagents, few human turns. One task driven to a predicate is Autonomous run. One ambitious run that needs a bespoke workflow is figure-it-out. Work that one agent could finish inside the session's budget is not a program.
 
-Run it with your own tools. Spawn workers per **Delegate** in the [host capabilities](references/host-capabilities.md). Keep the program's state in `notes.md` under **Store** in the [host capabilities](references/host-capabilities.md). Watch each PR with PR and CI event subscriptions when your harness has them. Call no scripts, run no polling loops, and never relay messages or status between agents.
+> **p3stack only:** [execution-ledger](../p3stack-mode/references/execution-ledger.md) — Open the run ledger before dispatch. Keep notes.md beside it in the run directory.
+
+Run it with your own tools. Spawn workers per **Delegate** in the [host capabilities](references/host-capabilities.md). Keep `notes.md` in the run directory under **Store** in the [host capabilities](references/host-capabilities.md). Watch each PR with PR and CI event subscriptions when your harness has them. Call no scripts, run no polling loops, and never relay messages or status between agents.
 
 #### Topology
 
 - **One owner per PR.** The owner is the only writer of its branch and carries the PR from build to merge. Only the owner pushes, rebases, or retargets it. Closing or retargeting a base PR orphans every PR above it, so the owner does that only on your call. You never author or edit code. Conflicted merges, chain rebases, and fixes go to owners.
-- **A fresh worker for each independent task.** Its kickoff carries everything it needs, including each upstream report it depends on, pasted in full. Workers can't see their siblings. Give each writer an isolated checkout per **Isolation** in the host capabilities. For runtime checks, follow **Drive the app**; for local transcripts, follow **Session history**. Keep simulator and credential-dependent work on the machine that provides them. Pick each subagent's reasoning level for the job, per the Subagents section.
-- **A sub-coordinator only when one area has many parallel workers.** It owns that area's workers and kickoffs and sends you one rollup, never raw worker reports. Use sub-coordinators only when **Nesting** in the [host capabilities](references/host-capabilities.md) permits them; otherwise own the workers directly. Stay within the host's **Live-child limit**, with at most three levels and about ten workers per coordinator when those limits permit it. Start the next worker as one finishes instead of waiting on a whole batch.
+- **A fresh worker for each independent task.** Its kickoff carries everything it needs, including each upstream report it depends on, pasted in full. Workers can't see their siblings. Give each writer an isolated checkout per **Isolation** in the host capabilities. For runtime checks, follow **Drive the app**; for local transcripts, follow **Session history**. Keep simulator and credential-dependent work on the machine that provides them. Resolve each subagent's role per the Subagents section.
+- **A sub-coordinator only when one area has many parallel workers.** It owns that area's workers and kickoffs and sends you one rollup, never raw worker reports. Use sub-coordinators only when **Nesting** in the [host capabilities](references/host-capabilities.md) permits them; otherwise own the workers directly. Size the fan-out per **Delegate**, with at most three levels and about ten workers per coordinator when capacity permits. Start the next worker as one finishes instead of waiting on a whole batch.
 - **Fork when new work needs a worker's built state,** such as its checkout, uncommitted changes, or a running process. Message a worker only for a follow-up on the same work. Never message one to check on it, because a message restarts an idle agent.
 - **Each PR gets a verifier that isn't its author,** on a different model family. The owner merges only on that verifier's pass at the current head.
+
+> **p3stack only:** [floor](../p3stack-mode/references/floor.md) — Always. The verifier runs floor-check at the PR's head; a finding without a reason fails the verdict.
+
 - **Start with one unit.** Take it through kickoff, owner, verifier, and merge before you fan out, so a flaw in the kickoff costs one agent instead of fifty. On near-identical cheap units, the first unit is that test.
 
 #### Supervision
