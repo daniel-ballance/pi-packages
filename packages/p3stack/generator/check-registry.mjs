@@ -7,7 +7,31 @@ import { sourcesOf } from "./source-paths.mjs";
 
 const json = path => JSON.parse(readFileSync(path, "utf8"));
 const key = row => `${row.source}/${row.path}`;
-export const playbookPath = target => target.startsWith("p3stack-mode/") ? `skills/${target}` : `skills/poteto-mode/${target}`;
+// Registry targets resolve from skills/: a skill name, a poteto playbook shorthand, or a qualified file.
+export const targetPath = target => target.startsWith("playbooks/") ? `poteto-mode/${target}` : target.includes("/") ? target : `${target}/SKILL.md`;
+const { fromMarkdown } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("mdast-util-from-markdown");
+
+// Resolve every anchor against the same document. A prefix may omit the list marker,
+// but must start a top-level step, never a later sentence, nested item, or example.
+export function chainSlots(text, rows) {
+  const steps = fromMarkdown(text).children.flatMap(node => node.type === "list" ? node.children : node.type === "paragraph" ? [node] : []);
+  const slots = new Map();
+  for (const row of rows) {
+    const { id, anchor, position, playbook } = row;
+    const count = typeof anchor === "string" && anchor.length ? text.split(anchor).length - 1 : 0;
+    if (count !== 1) throw new Error(`Chain ${id} anchor occurs ${count} times in ${playbook}`);
+    const at = text.indexOf(anchor);
+    const step = steps.find(node => (at === node.position.start.offset ||
+      (node.type === "listItem" && node.children[0]?.type === "paragraph" && at === node.children[0].position.start.offset)) &&
+      at + anchor.length <= node.position.end.offset);
+    if (!step) throw new Error(`Chain ${id} anchor must start a top-level step in ${playbook}: ${anchor}`);
+    if (!["before", "after"].includes(position)) throw new Error(`Chain ${id} has invalid position ${position}`);
+    const line = position === "before" ? step.position.start.line - 1 : step.position.end.line;
+    if (!slots.has(line)) slots.set(line, []);
+    slots.get(line).push(row);
+  }
+  return slots;
+}
 
 // Use the same workspace YAML parser as lint-skill, including under isolated pnpm installs.
 const { isMap, parseDocument } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("yaml");
@@ -85,7 +109,7 @@ export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
   const { skills, routes, chains } = registry;
   const emitted = skills.filter(row => row.action === "emit");
   const names = new Set(emitted.map(row => row.name)), problems = [];
-  const targetExists = target => names.has(target) || (typeof target === "string" && /^(?:(?:p3stack-mode\/)?playbooks|p3stack-mode\/references)\/[a-z0-9-]+\.md$/.test(target) && existsSync(join(outDir, playbookPath(target))));
+  const targetExists = target => names.has(target) || (typeof target === "string" && /^(?:(?:p3stack-mode\/)?playbooks|(?:poteto|p3stack)-mode\/references)\/[a-z0-9-]+\.md$/.test(target) && existsSync(join(outDir, "skills", targetPath(target))));
   const expected = new Map(emitted.map(row => [`skills/${row.name}/SKILL.md`, row])), outputNames = new Set();
   for (const relative of skillPaths(join(outDir, "skills"))) {
     const path = `skills/${relative}`, row = expected.get(path);
@@ -105,18 +129,21 @@ export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
     const key = JSON.stringify([row.request, row.grant]);
     if (routeKeys.has(key)) problems.push(`Duplicate route ${row.request} (${row.grant})`);
     routeKeys.add(key);
-    if (!targetExists(row.target)) problems.push(`Route ${row.request} has missing target ${row.target}`);
+    if ("action" in row) {
+      if ("target" in row || typeof row.action !== "string" || !row.action.trim()) problems.push(`Route ${row.request} needs either a target or a nonempty inline action`);
+    } else if (!targetExists(row.target)) problems.push(`Route ${row.request} has missing target ${row.target}`);
   }
   for (const row of chains) {
     if (chainIds.has(row.id)) problems.push(`Duplicate chain id ${row.id}`);
     chainIds.add(row.id);
-    if (!/^playbooks\/[a-z0-9-]+\.md$/.test(row.playbook)) problems.push(`Chain ${row.id} has invalid playbook ${row.playbook}`);
     if (!targetExists(row.skill)) problems.push(`Chain ${row.id} has missing skill ${row.skill}`);
-    const path = playbookPath(row.playbook), absolute = join(outDir, path);
-    const text = existsSync(absolute) ? readFileSync(absolute, "utf8") : "";
-    const count = typeof row.anchor === "string" && row.anchor.length ? text.split(row.anchor).length - 1 : 0;
-    if (count !== 1) problems.push(`Chain ${row.id} anchor occurs ${count} times in ${path}`);
-    if (!["before", "after"].includes(row.position)) problems.push(`Chain ${row.id} has invalid position ${row.position}`);
+    if (typeof row.when !== "string" || !row.when.trim()) problems.push(`Chain ${row.id} needs a condition`);
+  }
+  for (const [playbook, rows] of Map.groupBy(chains, row => row.playbook)) {
+    if (!/^playbooks\/[a-z0-9-]+\.md$/.test(playbook)) { problems.push(`Chain ${rows[0].id} has invalid playbook ${playbook}`); continue; }
+    const path = join(outDir, "skills", targetPath(playbook));
+    try { chainSlots(existsSync(path) ? readFileSync(path, "utf8") : "", rows); }
+    catch (error) { problems.push(error.message); }
   }
   if (problems.length) throw new Error(problems.join("\n"));
   return `${emitted.length} emitted, ${skills.length - emitted.length} dropped, 0 unclassified`;

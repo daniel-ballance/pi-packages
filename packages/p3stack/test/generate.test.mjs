@@ -643,38 +643,60 @@ test("the maintenance skill and its references are emitted byte-for-byte from au
     }
     const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
     assert.ok(routes.some(row => row.target === "maintain-p3stack"));
-    assert.match(readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8"), /\.\.\/maintain-p3stack\/SKILL\.md/);
+    assert.match(readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8"), /`maintain-p3stack\/SKILL\.md`/);
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
 
-test("the router renders the registry tables with existing route targets and no template output", () => {
+test("only routes are tabulated; each playbook carries its own conditional reads", () => {
   const out = mkdtempSync(join(tmpdir(), "p3stack-router-"));
   try {
     generate({ packageDir, outDir: out });
     const router = readFileSync(join(out, "skills/p3stack-mode/SKILL.md"), "utf8");
     assert.doesNotMatch(router, /\{\{(?:routes|chains)\}\}/);
-    assert.doesNotMatch(router, /\/home\/|\/tmp\//);
+    assert.doesNotMatch(router, /\/home\/|\/tmp\/|<this file's directory>|^## Chains$/m);
     assert.ok(router.includes("<package>/skills/p3stack-mode/SKILL.md"));
     assert.ok(router.includes("<package>/skills/poteto-mode/SKILL.md"));
     assert.equal(existsSync(join(out, "skills/p3stack-mode/SKILL.md.tmpl")), false);
-    const routes = JSON.parse(readFileSync(join(packageDir, "registry/routes.json"), "utf8"));
-    for (const { request, target } of routes) {
-      assert.ok(router.includes(request), request);
-      const path = target.startsWith("p3stack-mode/") ? target : target.startsWith("playbooks/") ? `poteto-mode/${target}` : `${target}/SKILL.md`;
-      assert.ok(existsSync(join(out, "skills", path)), target);
-      assert.ok(router.includes(`\`<this file's directory>/../${path}\``), target);
+    for (const name of ["routes", "chains"]) {
+      assert.equal(existsSync(join(out, `skills/p3stack-mode/references/${name}.md`)), false);
     }
-    for (const { anchor, skill } of JSON.parse(readFileSync(join(packageDir, "registry/chains.json"), "utf8"))) {
-      assert.ok(router.includes(anchor), anchor);
-      const read = skill.startsWith("p3stack-mode/") ? skill : skill.startsWith("playbooks/") ? `poteto-mode/${skill}` : `${skill}/SKILL.md`;
-      assert.ok(router.includes(`\`<this file's directory>/../${read}\``), skill);
+    const rows = name => JSON.parse(readFileSync(join(packageDir, `registry/${name}.json`), "utf8"));
+    for (const { request, target, action } of rows("routes")) {
+      const line = router.split("\n").find(line => line.startsWith(`| ${request} |`));
+      assert.ok(line, request);
+      if (action) { assert.ok(line.includes(action), request); continue; }
+      const path = line.match(/`([^`]+)` \|$/)?.[1];
+      assert.equal(path, target.startsWith("playbooks/") ? `poteto-mode/${target}` : target.includes("/") ? target : `${target}/SKILL.md`, request);
+      assert.ok(existsSync(join(out, "skills", path)), path);
     }
-    const paths = [...router.matchAll(/`<this file's directory>\/([^`]+)`/g)];
-    assert.ok(paths.length > routes.length);
-    for (const [, path] of paths) {
-      assert.ok(existsSync(join(out, "skills/p3stack-mode", path)), path);
+    const root = join(out, "skills/poteto-mode");
+    for (const { playbook, anchor, when, skill } of rows("chains")) {
+      assert.ok(!router.includes(anchor), anchor);
+      const text = readFileSync(join(root, playbook), "utf8");
+      const line = text.split("\n").find(line => line.includes(when) && /p3stack/i.test(line));
+      const link = line?.match(/\]\(([^)]+)\)/)?.[1];
+      const target = skill.includes("/") ? skill : `${skill}/SKILL.md`;
+      assert.ok(link && link.endsWith(target.replace(/^poteto-mode\//, "")), `${playbook}: ${target}`);
+      assert.ok(existsSync(join(root, link)), link);
     }
   } finally { rmSync(out, { recursive: true, force: true }); }
+});
+
+test("Feature and Bug fix scan the final diff before independent review", () => {
+  for (const name of ["feature", "bug-fix"]) {
+    const text = readFileSync(join(packageDir, `skills/poteto-mode/playbooks/${name}.md`), "utf8");
+    const links = [...text.matchAll(/\]\(([^)]+)\)/g)].map(match => match[1]);
+    const review = ["../no-comments/SKILL.md", "../p3stack-mode/references/floor.md", "../p3stack-mode/references/review-stance.md", "../code-review/SKILL.md"];
+    assert.deepEqual(links.filter(path => review.includes(path)), review, name);
+    assert.doesNotMatch(text, /floor-check before no-comments/i);
+  }
+});
+
+test("host-specific chain triggers point at the operation, not poteto-mode again", () => {
+  for (const [name, section] of [["prototype", "Drive the app"], ["eval", "Run a workflow"], ["hillclimb", "Run a workflow"]]) {
+    const lines = readFileSync(join(packageDir, `skills/poteto-mode/playbooks/${name}.md`), "utf8").split("\n");
+    assert.ok(lines.some(line => /\]\((?:\.\.\/poteto-mode\/)?references\/host-capabilities\.md\)/.test(line) && line.includes(section)), name);
+  }
 });
 
 test("the router precedence overlay is locked to upstream Playbooks", () => {
@@ -684,7 +706,7 @@ test("the router precedence overlay is locked to upstream Playbooks", () => {
   const upstream = readFileSync(join(packageDir, "vendor/pstack/pstack/skills/poteto-mode/SKILL.md"), "utf8");
   assert.equal(rule.upstream, sectionHash(upstream, "## Playbooks"));
   const mode = readFileSync(join(packageDir, "skills/poteto-mode/SKILL.md"), "utf8");
-  assert.match(mode, /p3stack-mode.*route and chain tables/);
+  assert.match(mode, /p3stack-mode.*workflow selection/);
 });
 
 test("the package ships the Pocock license and initializes both source checkouts", () => {

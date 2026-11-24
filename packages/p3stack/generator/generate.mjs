@@ -4,10 +4,10 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
-import { checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter } from "./check-registry.mjs";
+import { chainSlots, checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter, targetPath } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
 import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
 
@@ -202,18 +202,27 @@ function addExtras(dir, put) {
 }
 
 function renderRegistry(files, { routes, chains }, put) {
-  const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
-  const path = target => target.startsWith("p3stack-mode/") ? `../${target}` : target.startsWith("playbooks/") ? `../poteto-mode/${target}` : `../${target}/SKILL.md`;
-  const link = target => `[${target}](${path(target)})`;
-  const table = (title, columns, rows) => `# ${title}\n\n| ${columns.join(" | ")} |\n| ${columns.map(() => "---").join(" | ")} |\n${rows.map(row => `| ${row.map(cell).join(" | ")} |`).join("\n")}\n`;
-  put("skills/p3stack-mode/references/routes.md", table("Routes", ["Request", "Grant", "Target"], routes.map(row => [row.request, row.grant, link(row.target)])));
-  put("skills/p3stack-mode/references/chains.md", table("Chains", ["Id", "Playbook", "Anchor", "Position", "Skill", "When"], chains.map(row => [row.id, link(row.playbook), row.anchor, row.position, link(row.skill), row.when])));
+  for (const [playbook, rows] of Map.groupBy(chains, row => row.playbook)) {
+    const path = `skills/poteto-mode/${playbook}`, text = files.get(path)?.toString() ?? "";
+    const slots = chainSlots(text, rows), newline = text.includes("\r\n") ? "\r\n" : "\n";
+    const lines = text.split(newline);
+    // Splice backwards so a new step never becomes an anchor or shifts a later slot.
+    for (const [line, steps] of [...slots].sort(([a], [b]) => b - a)) {
+      const notes = steps.map(({ skill, when }) => {
+        // A playbook can also be reached from a sibling skill. Keep the link valid from either skill root.
+        return `> **p3stack only:** [${posix.basename(skill, ".md")}](../${targetPath(skill)}) — ${when}`;
+      });
+      const before = lines[line - 1]?.trim() ? [""] : [], after = lines[line]?.trim() ? [""] : [];
+      lines.splice(line, 0, ...before, notes.join(newline + newline), ...after);
+    }
+    files.set(path, lines.join(newline));
+  }
   const template = "skills/p3stack-mode/SKILL.md.tmpl";
   if (!files.has(template)) return;
-  const readPath = target => `\`<this file's directory>/${path(target)}\``;
-  const routesTable = table("Routes", ["Request", "Grant", "Read"], routes.map(row => [row.request, row.grant, readPath(row.target)])).replace(/^# Routes\n\n/, "").trimEnd();
-  const chainsTable = table("Chains", ["Playbook", "Anchor", "Position", "Read", "When"], chains.map(row => [readPath(row.playbook), row.anchor, row.position, readPath(row.skill), row.when])).replace(/^# Chains\n\n/, "").trimEnd();
-  put("skills/p3stack-mode/SKILL.md", files.get(template).toString().replaceAll("{{routes}}", routesTable).replaceAll("{{chains}}", chainsTable));
+  const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
+  const table = ["| Request | Grant | Read or do |", "| --- | --- | --- |", ...routes.map(({ request, grant, target, action }) =>
+    `| ${cell(request)} | ${cell(grant)} | ${typeof target === "string" ? `\`${targetPath(target)}\`` : cell(action)} |`)];
+  put("skills/p3stack-mode/SKILL.md", files.get(template).toString().replace("{{routes}}", () => table.join("\n")));
   files.delete(template);
 }
 

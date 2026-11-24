@@ -1,0 +1,8 @@
+# Review my change
+
+Keep the checkout read-only, including in reviewer briefs. Change no file, stage nothing, create no commit, and post nothing. Return the review in your reply.
+
+1. **Pin the scope.** Record HEAD and the merge-base of HEAD and the user's ref (otherwise the repository's default branch). If no base resolves, ask for the ref. Record `git status --porcelain=v1 --untracked-files=all`. A clean tree means review base to HEAD; a dirty tree includes staged, unstaged and untracked changes. For the baseline, fingerprint the staged and unstaged binary patches separately and record each untracked path, mode and content hash (link target for a symlink). Status alone misses a second edit to a dirty file.
+2. **Scan the floor.** From the repository run `node <p3stack-mode directory>/scripts/floor-check.mjs --base <base> --json` per [the floor](references/floor.md), using the pinned SHA. Report its findings, including explained hits. Report a failed or incomplete scan as a gap; leave remediation to the author.
+3. **Review the diff against its contract.** Follow [code-review](../code-review/SKILL.md) on the same base and artifact. Give every reviewer the captured changes, the contract and the [review stance](references/review-stance.md), not the author's conclusion. Report Standards and Spec findings separately with `file:line` evidence or command output. Name anything you could not verify.
+4. **Confirm preservation.** Repeat the baseline checks, including HEAD and status. Report whether the index and working tree are unchanged from the start. If they differ, identify the drift; never restore over someone else's work.

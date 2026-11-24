@@ -119,7 +119,7 @@ Playbooks are procedures, not slash commands. With the router on, describe the t
 - "full autopilot on this queue" runs Autopilot-full. "autopilot, don't merge" runs Autopilot-stack.
 - "run the eval playbook" runs Eval.
 
-The [Pi router](../p3stack-mode/SKILL.md#routes) maps each routed request and grant to a first skill or playbook. Its generated route table is `../p3stack-mode/references/routes.md`. [Guide page 6](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
+The [Pi router](../p3stack-mode/SKILL.md#routes) maps each routed request and grant to a first skill or playbook. [Guide page 6](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
 
 With routing on, asking for a multi-PR plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/skill:architect` settles it in code first.
 

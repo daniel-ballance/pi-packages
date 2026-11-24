@@ -159,20 +159,44 @@ for (const invocation of ["model", "user"]) {
   });
 }
 
-test("generation renders routes and chains from their registry rows", t => {
-  const f = fixture(t);
-  f.write("vendor/demo/skills/poteto-mode/SKILL.md", f.skill("poteto-mode"));
-  f.write("vendor/demo/skills/poteto-mode/playbooks/feature.md", "Implement the sketch.\n");
-  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], path: "skills/poteto-mode/SKILL.md", name: "poteto-mode" }]);
-  const outDir = join(f.root, "out");
+const featurePath = "skills/poteto-mode/playbooks/feature.md";
+
+test("chains surround the whole step, in registry order, without renumbering its neighbors", t => {
+  const f = fixture(t), outDir = join(f.root, "out");
+  const step = "2. Implement the sketch. Keep this sentence.\n\n   - Keep the nested list.\n\n   Keep this paragraph too.";
+  f.write(`extra/${featurePath}`, `1. Design.\n${step}\n3. Ship.\n`);
+  const rows = ["before", "after", "before", "after"].map((position, i) => ({
+    id: `chain-${i}`, playbook: "playbooks/feature.md", anchor: "Implement the sketch.", position, skill: "first", when: `Condition ${i}.`,
+  }));
+  f.write("registry/chains.json", rows);
   generate({ packageDir: f.root, outDir });
-  const routes = readFileSync(join(outDir, "skills/p3stack-mode/references/routes.md"), "utf8");
-  const chains = readFileSync(join(outDir, "skills/p3stack-mode/references/chains.md"), "utf8");
-  assert.match(routes, /\[first\]\(\.\.\/first\/SKILL.md\)/);
-  assert.match(chains, /first-chain/);
-  assert.match(chains, /Implement the sketch\./);
-  assert.match(chains, /\[playbooks\/feature.md\]\(\.\.\/poteto-mode\/playbooks\/feature.md\)/);
+  const playbook = readFileSync(join(outDir, featurePath), "utf8");
+  const tokens = ["1. Design.", "Condition 0.", "Condition 2.", step, "Condition 1.", "Condition 3.", "3. Ship."];
+  let start = 0;
+  for (const token of tokens) {
+    const offset = playbook.indexOf(token, start);
+    assert.notEqual(offset, -1, token);
+    start = offset + token.length;
+  }
+  for (const { when } of rows) {
+    const lines = playbook.split("\n").filter(line => line.includes(when));
+    assert.equal(lines.length, 1, when);
+    assert.match(lines[0], /p3stack.*\]\(\.\.\/first\/SKILL\.md\)/i);
+  }
 });
+
+for (const [location, text] of [
+  ["another step's sentence", "1. Hold here: Implement the sketch.\n"],
+  ["a continuation paragraph", "1. Review first.\n\n   Implement the sketch.\n"],
+  ["a nested step", "1. Review first.\n   - Implement the sketch.\n"],
+  ["a fenced example", "```\nImplement the sketch.\n```\n"],
+]) {
+  test(`generation rejects a chain anchor inside ${location}`, t => {
+    const f = fixture(t);
+    f.write(`extra/${featurePath}`, text);
+    assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), /first-chain.*anchor.*step.*feature\.md/i);
+  });
+}
 
 test("routes may use the same request under distinct grants", t => {
   const f = fixture(t);
@@ -181,11 +205,13 @@ test("routes may use the same request under distinct grants", t => {
   assert.equal(result.status, 0, result.stderr);
 });
 
-test("an authored file cannot be silently overwritten by a registry table", t => {
-  const f = fixture(t), path = "skills/p3stack-mode/references/routes.md";
-  f.write(`authored/${path}`, "Hand-written route.\n");
+test("an authored file cannot be silently overwritten by the rendered router", t => {
+  const f = fixture(t), path = "skills/p3stack-mode/SKILL.md";
+  f.write(`authored/${path}`, f.skill("p3stack-mode"));
+  f.write(`authored/${path}.tmpl`, f.skill("p3stack-mode") + "{{routes}}\n");
+  f.write("registry/skills.json", [...f.skills, { ...f.skills[0], source: "p3stack", path, name: "p3stack-mode" }]);
   f.write("registry/chains.json", []);
-  assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), /routes\.md:.*authored.*registry/);
+  assert.throws(() => generate({ packageDir: f.root, outDir: join(f.root, "out") }), /SKILL\.md:.*authored.*registry/);
 });
 
 test("registry admits an explicit router playbook target and rejects a missing one", t => {
@@ -304,6 +330,8 @@ for (const [name, mutate, diagnostic] of [
     const chain = JSON.parse(readFileSync(join(f.root, "registry/chains.json"), "utf8"))[0];
     f.write("registry/chains.json", [chain, { ...chain, position: "after" }]);
   }, /duplicate chain.*first-chain/i],
+  ["route with both an action and a target", f => f.write("registry/routes.json", [{ request: "ambiguous", grant: "any", action: "Stay here.", target: "first" }]), /route.*ambiguous.*target.*action/i],
+  ["blank route action", f => f.write("registry/routes.json", [{ request: "blank", grant: "any", action: " " }]), /route.*blank.*action/i],
   ["missing route target", f => f.write("registry/routes.json", [{ request: "broken", grant: "any", target: "absent" }]), /route.*broken.*absent/i],
   ["doubled anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the sketch.\nImplement the sketch.\n"), /chain.*first-chain.*anchor.*2/i],
   ["missing anchor", f => f.write("skills/poteto-mode/playbooks/feature.md", "Implement the revised sketch.\n"), /chain.*first-chain.*anchor.*0/i],
