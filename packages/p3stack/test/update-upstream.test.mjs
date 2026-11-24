@@ -212,6 +212,8 @@ test("update moves the checkout to the upstream tip, lists its commits and regen
     const result = run(updateCli);
     assert.equal(result.status, 0, result.stderr);
     assert.equal(head(), tip);
+    assert.doesNotMatch(result.stdout, /\bnpm (?:run check|test)\b/, "the candidate root gate already runs the package checks");
+    assert.match(result.stdout, /maintain-p3stack/, "point to the candidate verification procedure");
     assert.match(result.stdout, /reword demo/);
     assert.doesNotMatch(result.stdout, /unrelated/, "only commits to the emitted subtree are listed");
     assert.equal(read("skills/demo/SKILL.md"), `# Demo\n\nUse a child twice. See [guide](https://example.test/${tip}/02.md).\n`);

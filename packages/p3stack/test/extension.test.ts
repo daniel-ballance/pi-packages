@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -645,16 +644,13 @@ test("doctor is neither advertised nor run in a terminal", async () => {
   } finally { h.dispose(); }
 });
 
-test("doctor records all T3 exposures and bridge provenance, not launch argument order", async () => {
+test("doctor records the T3 inventory without an installed bridge fingerprint", async () => {
   const h = hostHarness("t3", { extraTools: [
     { name: "mcp__t3-code__delegate_task", exposure: "direct" },
     { name: "mcp__t3-code__hidden", exposure: "hidden" },
     { name: "mcp__other__tool", exposure: "codemode" },
   ] });
-  const previous = process.env.T3_PI_MCP_EXTENSION_PATH;
-  const bridge = join(h.root, "bridge.ts"), file = join(h.agentDir, "p3stack", "t3-contract.json");
-  writeFileSync(bridge, "bridge content\n");
-  process.env.T3_PI_MCP_EXTENSION_PATH = bridge;
+  const file = join(h.agentDir, "p3stack", "t3-contract.json");
   try {
     assert.match(h.commands.get("p3stack").description, /doctor/);
     await h.command("p3stack", "doctor extra");
@@ -663,19 +659,9 @@ test("doctor records all T3 exposures and bridge provenance, not launch argument
     await h.command("p3stack", "doctor");
     const report = JSON.parse(readFileSync(file, "utf8"));
     assert.deepEqual(report.tools, [{ name: "mcp__t3-code__delegate_task", exposure: "direct" }, { name: "mcp__t3-code__hidden", exposure: "hidden" }]);
-    assert.deepEqual(report.extension, { path: bridge, sha256: createHash("sha256").update("bridge content\n").digest("hex") });
     assert.equal("claudeSubscriptionBeforeBridge" in report, false);
     assert.deepEqual(report.problems, [], "claude-subscription is optional");
-
-    delete process.env.T3_PI_MCP_EXTENSION_PATH;
-    await h.command("p3stack", "doctor");
-    const missing = JSON.parse(readFileSync(file, "utf8"));
-    assert.equal(missing.extension.sha256, null);
-    assert.match(missing.problems.join("\n"), /T3_PI_MCP_EXTENSION_PATH is not set/);
-  } finally {
-    if (previous === undefined) delete process.env.T3_PI_MCP_EXTENSION_PATH; else process.env.T3_PI_MCP_EXTENSION_PATH = previous;
-    h.dispose();
-  }
+  } finally { h.dispose(); }
 });
 
 

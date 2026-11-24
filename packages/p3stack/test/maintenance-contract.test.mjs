@@ -21,13 +21,13 @@ test("audit and host repair reach the installed live check; the landing guide li
   const ref = "references/verify-host.md";
   for (const caller of ["audit", "host-repair"]) assert.ok(read(`references/${caller}.md`).includes(`(${ref})`));
   const live = read(ref);
-  for (const gate of [/PI_CODING_AGENT_DIR.*(?:throwaway|disposable)/, /p3stack doctor/, /check-t3-pin\.mjs --doctor <dump>/, /--installed/, /behavior/]) assert.match(live, gate);
+  for (const gate of [/PI_CODING_AGENT_DIR.*(?:throwaway|disposable)/, /p3stack doctor/, /check-t3-contract\.mjs --doctor <dump>/, /--installed/, /behavior/]) assert.match(live, gate);
   const guide = read("../../docs/landing/t3-settings.md");
   assert.ok(guide.includes(`(../../authored/skills/maintain-p3stack/${ref})`));
   assert.doesNotMatch(guide, /--doctor <dump>/);
   const fixes = read("references/failure-classes.md");
   assert.match(fixes, /Host lint[^\n]*host-terminal\.md[^\n]*host-t3\.md/);
-  assert.match(fixes, /host map missing a required direct tool[^\n]*host-t3\.md/);
+  assert.match(fixes, /unclassified host map operation[^\n]*t3-contract\.json[^\n]*host-t3\.md/);
 });
 
 test("reference failures have repairs and all three classifications have examples", () => {
@@ -45,6 +45,16 @@ test("a shared checkout moves once, to the checked SHA even on a tip run", () =>
   assert.match(bump, /ls-remote[^\n]*full (?:commit )?SHA/i);
   assert.match(bump, /npm run bump -- <source> <checked-sha>` once per checkout/i);
   assert.doesNotMatch(bump, /bump for each source/);
+});
+
+test("audit and candidate consume the root check, not a second set of its component commands", () => {
+  for (const phase of ["audit", "bump", "verify-host"]) {
+    const guide = read(`references/${phase}.md`);
+    assert.doesNotMatch(guide, /`(?:npm (?:run check|test)|node generator\/(?:generate\.mjs --check|check-registry\.mjs|check-t3-[\w-]+\.mjs))`/, phase);
+  }
+  assert.match(read("references/bump.md"), /pre-push/);
+  const landing = read("references/land.md");
+  assert.match(landing, /merge commit[^\n]*\.\/scripts\/check\.sh/);
 });
 
 test("revert verifies repository, main, merge ancestry, changed paths and bump receipt first", () => {

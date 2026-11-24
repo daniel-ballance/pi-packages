@@ -7,40 +7,37 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-const cli = fileURLToPath(new URL("../generator/check-t3-pin.mjs", import.meta.url));
-const tools = ["orchestrator_capabilities", "delegate_task", "task_status"];
-const statePaths = [
-  { path: "runtime/service-state.json", versionField: "activeVersion" },
-  { path: "userdata/server-runtime.json", versionField: "serverVersion" },
-];
+const cli = fileURLToPath(new URL("../generator/check-t3-contract.mjs", import.meta.url));
+const directTools = ["orchestrator_capabilities", "delegate_task", "task_status"];
+const manifest = "rules/t3-contract.json";
+const map = "extra/skills/poteto-mode/references/host-t3.md";
 const hash = text => createHash("sha256").update(text).digest("hex");
 
 function fixture(t) {
-  const root = mkdtempSync(join(tmpdir(), "p3stack-t3-pin-"));
+  const root = mkdtempSync(join(tmpdir(), "p3stack-t3-contract-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const write = (path, value) => {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
   };
   const bridge = "export const fixtureBridge = true;\n";
-  const pin = { version: "fixture-version", bridgeSha256: hash(bridge), statePaths, directTools: tools, optionalTools: ["watch_pull_request"], beforeAgentStartReturn: { systemPrompt: "string" } };
-  const hostMap = [...tools, ...pin.optionalTools, "html_preview"].map(name => `\`mcp__t3-code__${name}\``).join("\n");
-  write("rules/t3-pin.json", pin);
+  const contract = { directTools, requiredTools: ["html_preview"], optionalTools: ["watch_pull_request"] };
+  const hostMap = [...directTools, "watch_pull_request", "html_preview"].map(name => `\`mcp__t3-code__${name}\``).join("\n");
+  write(manifest, contract);
   write("home/.t3/runtime/service-state.json", { activeVersion: "fixture-version" });
   write("home/.t3/caches/pi-t3-mcp-extension.ts", bridge);
   write("empty-home/.keep", "");
-  write("extra/skills/poteto-mode/references/host-t3.md", hostMap);
+  write(map, hostMap);
   const doctor = {
-    tools: [...tools.map(name => ({ name: `mcp__t3-code__${name}`, exposure: "direct" })), { name: "mcp__t3-code__html_preview", exposure: "deferred" }],
-    extension: { path: "/fixture/bridge.ts", sha256: hash(bridge) },
+    tools: [...directTools.map(name => ({ name: `mcp__t3-code__${name}`, exposure: "direct" })), { name: "mcp__t3-code__html_preview", exposure: "deferred" }],
     claudeSubscriptionFiles: [],
     problems: [],
   };
   write("doctor.json", doctor);
-  const run = (args = [], home = "home") => spawnSync(process.execPath, [cli, ...args], {
+  const run = (args = [], home = "home", checker = cli) => spawnSync(process.execPath, [checker, ...args], {
     encoding: "utf8", env: { ...process.env, HOME: join(root, home), P3STACK_PACKAGE_DIR: root },
   });
-  return { root, write, pin, doctor, run };
+  return { root, write, contract, hostMap, doctor, run };
 }
 
 for (const home of ["home", "empty-home"]) {
@@ -50,7 +47,7 @@ for (const home of ["home", "empty-home"]) {
     rmSync(join(f.root, "home/.t3/caches/pi-t3-mcp-extension.ts"));
     const result = f.run([], home);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout.trim(), "T3 static contract matches rules/t3-pin.json and the host map.");
+    assert.match(result.stdout, /static/i);
   });
 }
 
@@ -62,15 +59,15 @@ test("default is independent of installed release and bridge bytes", t => {
 });
 
 for (const [name, mutate, diagnostic] of [
-  ["missing direct tool in the map", f => f.write("extra/skills/poteto-mode/references/host-t3.md", ""), /host map.*required direct tool/],
-  ["malformed JSON", f => f.write("rules/t3-pin.json", "not json"), /t3-pin\.json could not be read/],
-  ["invalid provenance hash", f => f.write("rules/t3-pin.json", { ...f.pin, bridgeSha256: "invalid" }), /Invalid rules/],
-  ["empty direct tools", f => f.write("rules/t3-pin.json", { ...f.pin, directTools: [] }), /Invalid rules/],
-  ["duplicate direct tools", f => f.write("rules/t3-pin.json", { ...f.pin, directTools: ["task_status", "task_status"] }), /Invalid rules/],
-  ["required tool also marked optional", f => f.write("rules/t3-pin.json", { ...f.pin, optionalTools: ["task_status"] }), /Invalid rules/],
-  ["undocumented optional tool", f => f.write("rules/t3-pin.json", { ...f.pin, optionalTools: ["missing_tool"] }), /host map.*missing_tool/],
-  ["invalid state layout", f => f.write("rules/t3-pin.json", { ...f.pin, statePaths: [{}] }), /Invalid rules/],
-  ["incompatible prompt return", f => f.write("rules/t3-pin.json", { ...f.pin, beforeAgentStartReturn: { systemPrompt: "object" } }), /Unsupported beforeAgentStartReturn/],
+  ["missing direct tool in the map", f => f.write(map, ""), /host map.*missing.*delegate_task/],
+  ["unclassified operation in the map", f => f.write(map, f.hostMap + "\nTry \`mcp__t3-code__preview_open\`."), /unclassified.*preview_open/],
+  ["malformed JSON", f => f.write(manifest, "not json"), /t3-contract\.json could not be read/],
+  ["empty direct tools", f => f.write(manifest, { ...f.contract, directTools: [] }), /Invalid rules/],
+  ["missing required list", f => f.write(manifest, { ...f.contract, requiredTools: undefined }), /requiredTools/],
+  ["wildcard instead of an operation", f => f.write(manifest, { ...f.contract, requiredTools: ["preview_*"] }), /invalid.*preview_\*/],
+  ["duplicate direct tools", f => f.write(manifest, { ...f.contract, directTools: ["task_status", "task_status"] }), /duplicate.*task_status/],
+  ["required tool also marked optional", f => f.write(manifest, { ...f.contract, optionalTools: ["html_preview"] }), /duplicate.*html_preview/],
+  ["undocumented optional tool", f => f.write(manifest, { ...f.contract, optionalTools: ["missing_tool"] }), /host map.*missing_tool/],
 ]) {
   test(`static contract rejects ${name}`, t => {
     const f = fixture(t);
@@ -85,6 +82,7 @@ test("installed diagnostics report different release and bridge bytes without ac
   const f = fixture(t);
   f.write("home/.t3/runtime/service-state.json", { activeVersion: "other-version" });
   f.write("home/.t3/caches/pi-t3-mcp-extension.ts", "changed bridge");
+  rmSync(join(f.root, manifest)); // Fingerprints do not depend on the capability contract.
   const result = f.run(["--installed", "--state", join(f.root, "home/.t3/runtime/service-state.json"), "--bridge", join(f.root, "home/.t3/caches/pi-t3-mcp-extension.ts")], "empty-home");
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /diagnostics only; compatibility is not verified/);
@@ -134,34 +132,50 @@ test("installed diagnostics support legacy state and prefer runtime state when b
   assert.ok(legacy.stdout.includes(join(f.root, "home/.t3/userdata/server-runtime.json")));
 });
 
-test("doctor accepts a thread without the optional PR watch tool", t => {
+test("a required operation stays required when the host map removes its backticks", t => {
   const f = fixture(t);
+  f.write(map, f.hostMap.replaceAll("`", ""));
+  const check = f.run();
+  assert.equal(check.status, 0, check.stderr);
+  f.doctor.tools.pop();
+  f.write("doctor.json", f.doctor);
   const result = f.run(["--doctor", join(f.root, "doctor.json")]);
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 1, "doctor must report the missing required operation");
+  assert.match(result.stderr, /html_preview/);
+});
+
+test("required tools can have any non-hidden exposure; optional watches may be absent", t => {
+  const f = fixture(t);
+  for (const exposure of ["deferred", "model-only", "codemode", "direct"]) {
+    f.doctor.tools.find(tool => tool.name === "mcp__t3-code__html_preview").exposure = exposure;
+    f.write("doctor.json", f.doctor);
+    const result = f.run(["--doctor", join(f.root, "doctor.json")]);
+    assert.equal(result.status, 0, result.stderr);
+  }
 });
 
 test("doctor verifies required capabilities independently of release, hash, and additive tools", t => {
   const f = fixture(t);
-  f.doctor.extension.sha256 = "0".repeat(64);
+  f.doctor.extension = { path: "/old/bridge.ts", sha256: "0".repeat(64) }; // Older doctor dumps include a fingerprint.
+  rmSync(join(f.root, map)); // Inventory uses the contract, not the prose.
   f.doctor.tools.push({ name: "mcp__t3-code__new_direct_tool", exposure: "direct" });
   f.doctor.tools.push({ name: "mcp__t3-code__new_deferred_tool", exposure: "deferred" });
   f.write("doctor.json", f.doctor);
   const result = f.run(["--doctor", join(f.root, "doctor.json")], "empty-home");
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /doctor capabilities match.*host map; behavioral verification is still required/);
+  assert.match(result.stdout, /inventory/i);
+  assert.match(result.stdout, /behavior.*not tested/i);
 });
 
-test("doctor reads the producer's dump with every Pi exposure kind on extra tools", async t => {
+test("doctor reads the producer's inventory without a bridge fingerprint or optional provider", async t => {
   const f = fixture(t);
   const { doctor } = await import("../extensions/p3stack/src/doctor.ts");
   const env = process.env;
   t.after(() => { process.env = env; });
-  process.env = { ...env, PI_CODING_AGENT_DIR: f.root, T3_MCP_URL: "http://fixture.invalid",
-    T3_PI_MCP_EXTENSION_PATH: join(f.root, "home/.t3/caches/pi-t3-mcp-extension.ts") };
-  const provider = "claude-subscription/index.ts";
-  f.write(provider, "");
+  process.env = { ...env, PI_CODING_AGENT_DIR: f.root, T3_MCP_URL: "http://fixture.invalid" };
+  delete process.env.T3_PI_MCP_EXTENSION_PATH;
   const dump = doctor({
-    getCommands: () => [{ source: "extension", sourceInfo: { path: join(f.root, provider) } }],
+    getCommands: () => [],
     getAllTools: () => [...f.doctor.tools, ...["model-only", "codemode", "hidden"].map((exposure, i) => ({ name: `mcp__t3-code__extra_${i}`, exposure }))],
   });
   const result = f.run(["--doctor", dump]);
@@ -169,10 +183,10 @@ test("doctor reads the producer's dump with every Pi exposure kind on extra tool
 });
 
 for (const [name, mutate, diagnostic] of [
-  ["hidden documented tool", f => { f.doctor.tools.at(-1).exposure = "hidden"; }, /html_preview/],
+  ["hidden required tool", f => { f.doctor.tools.at(-1).exposure = "hidden"; }, /html_preview/],
   ["renamed direct tool", f => { f.doctor.tools[1].name = "mcp__t3-code__delegate_task_renamed"; }, /delegate_task/],
-  ["missing documented tool", f => { f.doctor.tools.pop(); }, /html_preview/],
-  ["changed required exposure", f => { f.doctor.tools[1].exposure = "deferred"; }, /directTools.*delegate_task/],
+  ["missing required tool", f => { f.doctor.tools.pop(); }, /html_preview/],
+  ["changed required exposure", f => { f.doctor.tools[1].exposure = "deferred"; }, /direct tool.*delegate_task/],
   ["invalid exposure", f => { f.doctor.tools[1].exposure = "unknown"; }, /Invalid doctor dump/],
   ["reported problems", f => { f.doctor.problems.push("fixture problem"); }, /fixture problem/],
 ]) {
@@ -186,14 +200,24 @@ for (const [name, mutate, diagnostic] of [
   });
 }
 
-test("doctor rejects a dump without the bridge and malformed input", t => {
+test("doctor rejects a missing or malformed inventory", t => {
   const f = fixture(t);
-  for (const dump of [{ tools: [], extension: { path: null, sha256: null }, claudeSubscriptionFiles: [], problems: ["T3_PI_MCP_EXTENSION_PATH is not set"] }, {}, { tools: [null], extension: null }, "not json"]) {
+  const absent = f.run(["--doctor", join(f.root, "absent.json")]);
+  assert.equal(absent.status, 1);
+  for (const dump of [{}, { tools: [null], problems: [] }, { tools: f.doctor.tools }, "not json"]) {
     f.write("doctor.json", dump);
     const result = f.run(["--doctor", join(f.root, "doctor.json")]);
     assert.equal(result.status, 1, result.stdout);
     assert.match(result.stderr, /doctor/);
   }
+});
+
+test("installed maintenance skills using the former checker still see inventory failures", t => {
+  const f = fixture(t);
+  f.write("doctor.json", { tools: [], problems: [] });
+  const run = f.run(["--doctor", join(f.root, "doctor.json")], "empty-home", join(dirname(cli), "check-t3-pin.mjs"));
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /delegate_task/);
 });
 
 test("CLI rejects unknown, missing, repeated, or mixed modes", t => {
@@ -205,9 +229,21 @@ test("CLI rejects unknown, missing, repeated, or mixed modes", t => {
   }
 });
 
-test("repository contract retains required direct tools and the prompt return shape", () => {
-  const pin = JSON.parse(readFileSync(new URL("../rules/t3-pin.json", import.meta.url), "utf8"));
-  assert.deepEqual(pin.statePaths, statePaths);
-  assert.deepEqual(pin.directTools, tools);
-  assert.deepEqual(pin.beforeAgentStartReturn, { systemPrompt: "string" });
+test("a compact inventory satisfies the repository contract without root-only PR watches", t => {
+  const f = fixture(t);
+  const contract = JSON.parse(readFileSync(new URL("../rules/t3-contract.json", import.meta.url), "utf8"));
+  f.write(manifest, contract);
+  const names = Object.values(contract).flat().filter(name => !["watch_pull_request", "unwatch_pull_request"].includes(name));
+  const tools = names.map(name => ({ name: `mcp__t3-code__${name}`, exposure: directTools.includes(name) ? "direct" : "deferred" }));
+  const inventory = () => {
+    f.write("doctor.json", { tools, problems: [] });
+    return f.run(["--doctor", join(f.root, "doctor.json")]);
+  };
+  const compact = inventory();
+  assert.equal(compact.status, 0, compact.stderr);
+  for (const name of directTools) tools.find(tool => tool.name === `mcp__t3-code__${name}`).exposure = "deferred";
+  tools.find(tool => tool.name === "mcp__t3-code__preview_act").exposure = "hidden";
+  const incompatible = inventory();
+  assert.equal(incompatible.status, 1);
+  for (const name of [...directTools, "preview_act"]) assert.ok(incompatible.stderr.includes(name), incompatible.stderr);
 });

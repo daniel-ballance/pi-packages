@@ -16,4 +16,4 @@ Use the printed argument. For the Git install, the default clone is under `~/.pi
 
 Follow the [maintenance host check](../../authored/skills/maintain-p3stack/references/verify-host.md) on each machine. In the doctor dump, `claudeSubscriptionFiles` should contain one real path for the subscription or none without it. More than one distinct file is a problem. Doctor reports file identity, not load order. If the change prevents startup, restore the settings backup and check that any explicit provider path still exists.
 
-The [October 20](2026-10-20-t3-smoke.md) and [October 21](2026-10-21-t3-smoke.md) records show delegation on the installations tested then. Their paths, models, and T3 versions are not current setup instructions.
+The [October 20](2026-10-20-t3-smoke.md) and [October 21](2026-10-21-t3-smoke.md) records show delegation on the installations tested then. Their paths, models, and T3 versions are not current setup instructions. The [historical version and bridge checksum](https://github.com/daniel-ballance/pi-packages/blob/b6abc7bf646ffc5a1abbcc896386779f2447dc37/packages/p3stack/rules/t3-pin.json) are support data, not a compatibility gate.

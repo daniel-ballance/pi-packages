@@ -28,7 +28,7 @@ Match each semantic skills or agents change to a decision above. Link the identi
 
 ## Verification
 
-Link receipts with commands and outcomes for the current-pins root gate, generation check, registry check, package check, tests, loader, static T3 contract check, live T3 capability and behavior verification when under T3, final root gate, and fresh-process smoke. Include the routing eval if routes or chains changed. Record skips and blockers.
+Cite the current-pins root receipt once for the checks it covers. Record the independent loader and fresh-process smoke, live inventory and behavior checks under T3, and routing eval for a route or chain change. Mark skips and blockers. Put results obtained after committing, including the candidate’s pre-push root receipt, in the PR body rather than amending the checked commit.
 
 ## Follow-up
 
