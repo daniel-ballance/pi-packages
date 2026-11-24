@@ -33,5 +33,5 @@ Use the structured result in scripts when supplied. Copy ids (`taskId`, `schedul
 - Pi has no native subagent tool here. `delegate_task` is the subagent tool for every child. A review round, a re-check or a fix after review is a new `delegate_task` carrying the brief and the findings.
 - The permission mode caps every thread or child you create: a target never runs with broader modes than yours.
 - After an async `delegate_task`, you may finish dispatching the wave before yielding. Keep each `taskId` and follow its `next`. On a completion wake, read `task_status`; never poll.
-- For a babysit, if either watch tool is unavailable, report the current forge status and stop. End the turn after arming a watch or schedule; a watch stays armed across wakes.
+- For a babysit, fix failing checks and answer unresolved comments first. If the PR still needs watching and either watch tool is unavailable, report the current forge status and what remains, then stop. End the turn after arming a watch or schedule; a watch stays armed across wakes.
 - t3-agent records the delegates, schedules, watched pull requests, preview tabs, devices and threads you create in the `t3_agent` section, so their ids survive compaction. `/t3-agent ledger` lists them; `/t3-agent forget <id>` drops a stale one without touching T3.
