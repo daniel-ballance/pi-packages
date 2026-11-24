@@ -287,8 +287,9 @@ test("the mode toggle persists, adds only the router section and reminds the mod
     const reminders = await h.reminders({ messageType: "user", systemPromptOptions: { sections: {} } });
     assert.equal(reminders.length, 1, "each user turn gets a reminder beside the request");
     assert.equal(reminders[0].display, false);
-    assert.match(reminders[0].content, /automated note from the p3stack extension, not the user/i);
-    assert.match(reminders[0].content, /this request only.*read .*p3stack-mode\/SKILL\.md/i);
+    assert.match(reminders[0].content, /automated note from the p3stack extension, not from the user/i);
+    assert.match(reminders[0].content, /route this request: read .*p3stack-mode\/SKILL\.md unless its text is already in your context/i);
+    assert.match(reminders[0].content, /continue that task instead/i);
     assert.match(reminders[0].content, /p3stack_roles/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
     await h.command("p3stack", "off");
