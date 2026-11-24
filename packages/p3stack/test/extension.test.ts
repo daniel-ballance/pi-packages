@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
-import { FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { ExtensionRunner, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import p3stack from "../extensions/p3stack/index.ts";
 import type { Context } from "../extensions/p3stack/src/mode.ts";
@@ -65,7 +65,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   const call = (name: string, args: unknown) => tools.get(name).execute("call", args, undefined, undefined, ctx);
   const command = (name: string, args = "") => commands.get(name).handler(args, ctx);
   const dispose = () => { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; rmSync(root, { recursive: true, force: true }); };
-  return { root, cwd, agentDir, ctx, tools, commands, emit, results, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
+  return { root, cwd, agentDir, ctx, tools, commands, handlers, emit, results, reminders, call, command, entries, notices, statuses, footers, asked, dispose };
 }
 function hostHarness(host: "terminal" | "t3", options?: Parameters<typeof harness>[0]) {
   const previous = process.env.T3_MCP_URL;
@@ -296,7 +296,7 @@ test("the mode toggle persists, adds only the router section and reminds the mod
     assert.equal(reminders[0].display, false);
     assert.match(reminders[0].content, /automated note from the p3stack extension, not from the user/i);
     assert.match(reminders[0].content, /route this request: read .*p3stack-mode\/SKILL\.md unless its text is already in your context/i);
-    assert.match(reminders[0].content, /continue that task instead/i);
+    assert.match(reminders[0].content, /If the user's message answers, approves or corrects the task already in progress, continue that task instead/);
     assert.match(reminders[0].content, /p3stack_roles/);
     assert.deepEqual(await h.reminders({ messageType: "custom", systemPromptOptions: { sections: {} } }), [], "not for runs a custom message started");
     await h.command("p3stack", "off");
@@ -311,6 +311,26 @@ test("the mode toggle persists, adds only the router section and reminds the mod
     const event = await resumed.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
     assert.ok(event.systemPromptOptions.sections["p3stack"], "rebuilt from the branch");
   } finally { resumed.dispose(); }
+});
+
+test("Pi keeps the router, grant and host after an earlier handler forces a user or custom request's prompt", async () => {
+  for (const host of ["terminal", "t3"] as const) {
+    const h = hostHarness(host);
+    try {
+      await h.command("p3stack", "on autonomous");
+      const earlier = new Map([["before_agent_start", [() => ({ systemPrompt: "Earlier forced prompt" })]]]);
+      const runner = { extensions: [{ path: "first", handlers: earlier }, { path: "p3stack", handlers: h.handlers }],
+        createContext: () => h.ctx, emitError: assert.fail };
+      for (const trigger of [
+        { messageType: "user", prompt: "Go ahead" },
+        { messageType: "custom", message: { role: "custom", customType: "completion", content: "Done", display: true, timestamp: 1 } },
+      ] as const) {
+        const { systemPromptOptions, messages } = await ExtensionRunner.prototype.emitBeforeAgentStart.call(runner as never, trigger, { cwd: h.cwd });
+        assert.match(systemPromptOptions.forceSystemPrompt!, new RegExp(`^Earlier forced prompt\\n\\nRead .*p3stack-mode/SKILL\\.md and follow it\\. Grant: full-autonomy\\. Host: ${host}\\.$`));
+        assert.equal(messages.length, trigger.messageType === "user" ? 1 : 0);
+      }
+    } finally { h.dispose(); }
+  }
 });
 
 test("grant while off cannot arm the next run", async () => {
@@ -395,6 +415,12 @@ for (const host of ["terminal", "t3"] as const) {
       event.input.task = "\n" + first;
       await h.emit("tool_call", event);
       assert.equal(event.input.task, first.replace("Grant: full-autonomy.", "Grant: default."));
+      for (const separator of ["\r\n\r\n", "\n", " ", ""]) {
+        event.input.task = first.slice(0, first.indexOf("</p3stack-brief>") + "</p3stack-brief>".length).replaceAll("\n", "\r\n") + separator + "Update it.";
+        await h.emit("tool_call", event);
+        assert.deepEqual(event.input.task.match(/Grant: [\w-]+\./g), ["Grant: default."]);
+        assert.ok(event.input.task.endsWith("Update it."));
+      }
       event.input.task = "Discuss this quoted brief:\n" + first;
       await h.emit("tool_call", event);
       assert.ok(event.input.task.endsWith("Discuss this quoted brief:\n" + first));
@@ -413,8 +439,12 @@ for (const host of ["terminal", "t3"] as const) {
       assert.equal(short.slice(0, -near.length), "<p3stack-brief>Grant: default.</p3stack-brief>\n\n");
       await h.command("p3stack", "grant autonomous");
       assert.ok((await decorate(short)) === short.replace("Grant: default.", "Grant: full-autonomy."));
-      const noRoom = "x".repeat(limit - 1);
-      assert.ok((await decorate(noRoom)) === noRoom);
+      const min = "<p3stack-brief>Grant: full-autonomy.</p3stack-brief>\n\n";
+      const noRoom = { toolName: delegation[host], input: { task: "x".repeat(limit) } };
+      const [blocked] = await h.results("tool_call", noRoom);
+      assert.equal(blocked?.block, true);
+      assert.match(blocked.reason, new RegExp(`shorten .* by ${min.length} characters`, "i"));
+      assert.equal(await decorate(noRoom.input.task.slice(min.length)), min + noRoom.input.task.slice(min.length));
     } finally { h.dispose(); }
   });
 
@@ -562,7 +592,7 @@ test("terminal briefs keep the local writer contract or report-only review stanc
         assert.match(task, /author's conclusions are not evidence/);
         assert.match(task, /measured, inferred, or guess/);
         assert.match(task, /review-stance\.md/);
-        assert.doesNotMatch(task, /poteto-agent\.md|read-only delegate/);
+        assert.doesNotMatch(task, /poteto-agent\.md|read-only delegate|input to your parent's decision/);
       } else {
         assert.match(task, /read .*agents\/poteto-agent\.md/);
         assert.match(task, /brief-contract\.md/);
@@ -587,8 +617,8 @@ test("T3 briefs are self-contained for every role", async () => {
         assert.match(task, /measured, inferred, or guess/);
         assert.match(task, /file:line/);
       } else {
-        assert.match(task, /only the assigned unit/i);
-        assert.match(task, /not start a playbook or a reviewer/i);
+        assert.match(task, /assigned unit and the procedures this brief assigns/i);
+        assert.match(task, /no other playbook and no reviewer of your own/i);
         assert.match(task, /assumptions.*brief is silent/i);
         assert.match(task, /evidence for each claim/i);
       }
