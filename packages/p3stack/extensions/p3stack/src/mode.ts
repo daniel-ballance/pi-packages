@@ -91,7 +91,7 @@ export function registerMode(pi: Pi, potetoSkill: string) {
       else delete sections[MODE];
     }
     if (!modeOn || event?.messageType !== "user") return;
-    return { message: { customType: "p3stack-turn", display: false, content: `Automated note from the p3stack extension, not the user. For this request only: read ${modeSkill}, then read and follow its matching target. Skip routing for mode questions. Use p3stack_roles before delegating.` } };
+    return { message: { customType: "p3stack-turn", display: false, content: `Automated note from the p3stack extension, not from the user. p3stack-mode is on. Before anything else, route this request: read ${modeSkill} unless its text is already in your context, select its matching route, then read that target and follow it. If this message answers, approves or corrects the task already in progress, continue that task instead. A question about the mode itself needs no route. Call p3stack_roles before delegating.` } };
   });
   pi.registerCommand("p3stack", {
     description: `Control p3stack-mode and its grant. ${usage}`,
