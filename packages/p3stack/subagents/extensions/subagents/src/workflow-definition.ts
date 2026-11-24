@@ -1,5 +1,6 @@
 import { Type, type Static } from "typebox";
 import { Check, Errors } from "typebox/value";
+import { isProxiedTool } from "./nesting.js";
 import { allows } from "./child-limit.js";
 import type { SubagentPolicy } from "./policy.js";
 
@@ -86,12 +87,17 @@ export function workUnits(def: WorkflowDefinition): string[][] {
 }
 export function authorizeWorkflow(def: WorkflowDefinition, policy: SubagentPolicy) {
   policy.directory(def.cwd);
+  const authorizeWorker = (worker: Worker) => {
+    const { tools } = policy.compile(def.cwd, worker);
+    const forbidden = tools?.find(tool => tool === "parent_send" || isProxiedTool(tool));
+    if (forbidden) throw new Error(`Workflow workers cannot select ${forbidden}`);
+  };
   const validate = (v: Validator) => {
-    if (v.kind === "agent") policy.compile(def.cwd, v.worker);
+    if (v.kind === "agent") authorizeWorker(v.worker);
     if (v.kind === "command") policy.commandDirectory(def.cwd);
   };
   for (const s of def.steps) {
-    if (s.kind !== "check") policy.compile(def.cwd, s.worker);
+    if (s.kind !== "check") authorizeWorker(s.worker);
     if (s.kind !== "task") validate(s.validator);
   }
   if (!allows(policy.childLimit, def.limits.concurrency)) throw new Error("Workflow concurrency exceeds policy maxChildren");
