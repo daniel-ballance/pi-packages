@@ -23,7 +23,7 @@ function harness(policy: typeof loops | null = loops, send?: (tick: LoopTick) =>
   const controller = new LoopController({
     policy: () => policy ?? undefined,
     idle: () => idle,
-    send: send ?? (tick => ticks.push(tick)),
+    send: send ?? (tick => { ticks.push(tick); controller.delivered(tick.id); }),
     ended: reason => ended.push(reason),
     clock: () => now,
     setTimer: (run, ms) => { timers.set(++nextTimer, { at: now + ms, run }); return nextTimer; },
@@ -122,6 +122,20 @@ test("failed tick delivery ends the loop with its reason and no retry", () => {
   assert.match(h.ended[0]!, /tick.*queue closed/i);
   h.advance(60_000);
   assert.equal(submissions, 1);
+});
+
+test("only the outstanding tick's message_start confirms it", () => {
+  const sent: LoopTick[] = [];
+  const h = harness(loops, tick => { sent.push(tick); });
+  h.controller.start({task: "x", intervalMs: 60000});
+  h.advance(60000);
+  h.controller.stop("stop");
+  h.controller.start({task: "x", intervalMs: 60000});
+  h.advance(60000);
+  h.controller.delivered(sent[0].id);
+  assert.equal(h.controller.status()?.iteration, 0);
+  h.controller.delivered(sent[1].id);
+  assert.equal(h.controller.status()?.iteration, 1);
 });
 
 test("the duration bound ends the loop at the deadline, not at the next tick after it", () => {

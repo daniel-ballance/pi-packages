@@ -45,7 +45,7 @@ Model IDs and paths in examples are placeholders. `worker` uses the same model/t
 
 - `limits.concurrency`: 1–64. It must fit a positive `maxChildren`. It is rejected when `maxChildren` is 0. It is not compared when `maxChildren` is -1. Counts running steps, including checks; a connected peer task group occupies one slot per worker.
 - `limits.maxAttempts`: 1–1000 across the whole run. **Every worker and every check** consumes one attempt, including baseline evaluation and human checkpoints. A repair iteration normally costs two attempts. New children, retries and resume do not reset the count. If all steps passed, resume before the deadline completes the run without another attempt.
-- `limits.timeoutSeconds`: 1–86400, a wall-clock deadline starting at creation. Pausing does not extend it. Cleanup escalates termination signals after a grace period; the final wait for exit is not time-bounded.
+- `limits.timeoutSeconds`: 1–86400, a wall-clock deadline starting at creation. Pausing does not extend it. Cleanup escalates SIGTERM to SIGKILL (after 1.5 seconds for commands or 2 seconds for RPC children) and waits at most 2 more seconds for exit. A command that still has not closed leaves an unconfirmed attempt; inspect the process before retrying.
 - `steps`: 1–64, unique alphanumeric/dash/underscore IDs starting with a letter.
 - `dependsOn`: optional list of steps whose outputs must be available. Dependencies form a DAG; `seed` and check `input` automatically add dependencies. Independent ready steps run concurrently, fan-in waits for all prerequisites.
 
@@ -53,7 +53,7 @@ Model IDs and paths in examples are placeholders. `worker` uses the same model/t
 
 `{id, kind:"task", worker, instructions, dependsOn?, seed?}`
 
-The runtime supplies input artifact paths and bounded summaries, a fresh candidate directory, and any connected peer IDs. Workers should write only candidate files there, not edit the source project or evaluator. A final reply is required and is saved as `response.md`; that filename is runtime-reserved. Text-only workers need no write tool.
+The runtime supplies every complete `response.md` path (`responseFile`) and splits a total of 12,000 inline response characters equally across inputs. It marks shortened summaries `truncated`. Workers also get a fresh candidate directory and any connected peer IDs. Workers should write only candidate files there, not edit the source project or evaluator. A final reply is required and is saved as `response.md`; that filename is runtime-reserved. Text-only workers need no write tool.
 
 `seed` names a predecessor whose artifact tree is copied into the candidate directory. Other dependency artifacts are provided as inputs, not implicitly merged. Workers must explicitly synthesize/merge multiple inputs when needed.
 
@@ -66,7 +66,7 @@ A completed task means **an artifact was submitted**, not that its content is co
 Checks evaluate the exact submitted artifact from `input`. Passing checks forward that artifact; failure blocks downstream work. Validators:
 
 - **Command:** `{"kind":"command","command":"…"}`. Runs through `bash -c` in the workflow cwd. Requires `bash` in the effective subagent tool policy and an allowed cwd. Environment includes `WORKFLOW_CANDIDATE` (artifact directory), `WORKFLOW_RUN` and `WORKFLOW_ATTEMPT`. Exit 0 means pass, exit 1 means validation failure, other exits mean evaluator execution error. Optionally return JSON on the last nonempty stdout line: `{"verdict":"pass|fail|blocked","findings":"…","score":12.3}`. Exit 1 cannot report pass. Full combined output is capped at 1 MiB in `command.log`; parsing uses the last 16000 stdout characters.
-- **Agent:** `{"kind":"agent","worker":{…},"instructions":"rubric…"}`. A separate child receives the candidate path/summary and must return the JSON verdict above. Its tool/resource permissions remain explicit. The verdict is model judgment, not proof.
+- **Agent:** `{"kind":"agent","worker":{…},"instructions":"rubric…"}`. A separate child receives the candidate path/summary and must return the JSON verdict above. If the summary is shortened, inspect the complete artifact before relying on it. A text-only validator that cannot receive the whole response inline is blocked, not passed on a prefix. Its tool/resource permissions remain explicit. The verdict is model judgment, not proof.
 - **Human:** `{"kind":"human","instructions":"question…"}`. Blocks until the human slash command records pass/fail. No child or scheduler grants human approval. The decision is bound to the submitted artifact digest.
 
 `score` must be a finite number when supplied. Invalid JSON and broken evaluators block execution rather than masquerading as a failed candidate. Multiple independent checks can be ordinary DAG steps, followed by an all-dependencies join. No validator plugin framework is needed.

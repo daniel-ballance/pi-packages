@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { FooterComponent, getAgentDir, truncateHead, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { SubagentManager, type InputDisposition } from "./src/manager.js";
+import { fitUpdateRead } from "./src/read-page.js";
+import { StopUnconfirmedError, SubagentManager, type InputDisposition } from "./src/manager.js";
 import { decorateFooter, formatSubagentSummary, installFooterDecoration } from "./src/footer.js";
 import { capacityReachedText } from "./src/child-limit.js";
 import { builtInPolicy, loadedExtensions, SubagentPolicy } from "./src/policy.js";
@@ -52,20 +53,20 @@ export const FOOTER_CHANNEL = "subagents:footer";
 export default function subagents(pi: ExtensionAPI) {
   // Explicitly loading this package in a child still does not enable recursion.
   if (process.env.PI_SUBAGENT === "1") return;
-  if (detectHost() !== "t3") pi.on("resources_discover", () => ({
-    skillPaths: [fileURLToPath(new URL("../../skills", import.meta.url))],
-  }));
   pi.registerFlag("disable-native-subagents", {
     description: "Disable native subagent tools, managers, workflows and notifications for this launch",
     type: "boolean", default: false,
   });
+  // T3 supplies its own delegation. Accept the CLI flag, but install no hooks.
+  if (detectHost() === "t3") return;
+  pi.on("resources_discover", (_event, ctx) => {
+    if (ctx.mode === "tui" || ctx.mode === "rpc") return { skillPaths: [fileURLToPath(new URL("../../skills", import.meta.url))] };
+  });
   // Pi applies parsed CLI flags after factories load. Register nothing else
   // until session_start, including on reload with the same launch flags.
-  // Inside T3 Code, T3's own delegated tasks are the subagent system. The whole
-  // manager duplicates it, so nothing registers, not even deferred tools.
   let initialized = false;
   pi.on("session_start", (_event, ctx) => {
-    if (initialized || pi.getFlag("disable-native-subagents") === true || detectHost() === "t3") return;
+    if (initialized || pi.getFlag("disable-native-subagents") === true) return;
     if (ctx.mode !== "tui" && ctx.mode !== "rpc") return;
     initialized = true;
     initializeSubagents(pi, ctx);
@@ -162,8 +163,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     },
     ended: (reason, state, requested) => {
       if (!requested) {
+        pi.appendEntry("subagent-loop-end", { task: state.task, reason });
         try { pi.sendMessage({ customType: "subagent-loop-end", content: `LOOP ENDED — ${JSON.stringify(state.task)} ${reason}.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" }); }
-        catch { pi.appendEntry("subagent-loop-end", { task: state.task, reason }); }
+        catch { /* The reason is already in session history. */ }
       }
       if (!requested && context?.hasUI) context.ui.notify(`Loop ended: ${reason}`, "info");
       showLoop();
@@ -292,6 +294,12 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     loops?.settled();
     if (ctx.isIdle()) herdr?.parent(false);
   });
+  pi.on("message_start", event => {
+    if ("customType" in event.message && event.message.customType === "subagent-loop-tick") {
+      loops?.delivered((event.message.details as { id?: string } | undefined)?.id);
+      showLoop();
+    }
+  });
   pi.on("message_end", event => {
     if ("customType" in event.message && event.message.customType === "subagent-report") {
       const keys = noticeKeys(event.message.details);
@@ -413,7 +421,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         const receipt: SpawnReceipt = {
           ...childNews(record),
           disposition: child.lastSubmission?.disposition,
-          ...(child.lastSubmission?.disposition === "handled" ? { workStarted: false } : {}),
+          ...(child.lastSubmission?.workStarted === false ? { workStarted: false } : {}),
           ...(record.model ? { model: record.model } : {}),
           ...(record.thinking ? { thinking: record.thinking } : {}),
           ...(worktree ? { worktree } : {}),
@@ -423,6 +431,9 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         };
         return result(receipt, ctx);
       } catch (error) {
+        if (worktree && error instanceof StopUnconfirmedError) {
+          throw new Error(`${error.message}. Kept locked checkout ${worktree.path} (branch ${worktree.branch}); confirm stop before manual cleanup.`, { cause: error });
+        }
         if (worktree && !accepted) removeWorktree(worktree, error, creationLock);
         throw error;
       }
@@ -498,26 +509,16 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     ...TOOL_SPECS.subagent_read,
     async execute(_call, args, _signal, _update, ctx) {
       const manager = get(ctx);
-      const page = args.since === undefined ? undefined : manager.readReportPage(args.id, args.since);
-      if (page) {
-        const output = result(page.data, ctx);
-        if (output.details === page.data) page.acknowledge();
-        return output;
+      const byRoot = !delegation.getStore();
+      if (args.page !== undefined && args.since !== undefined) throw new Error("Use page for report text or since for update replay, not both");
+      const page = args.page === undefined ? undefined : manager.readReportPage(args.id, args.page);
+      const data = page?.data ?? fitUpdateRead(manager.read(args.id, args.since, false, true), args.since ?? manager.get(args.id).readCursor);
+      if (page) page.acknowledge(byRoot);
+      else if ("updates" in data) {
+        manager.acknowledgeRead(data, args.since === undefined, byRoot);
+        data.resultReview = structuredClone(manager.get(args.id).resultReview);
       }
-      const data = manager.read(args.id, args.since, false);
-      // A large task, dialog or multibyte preview can overflow even a single
-      // read. Return a callable result handle, not a path requiring file tools.
-      if (truncateHead(JSON.stringify(data, null, 2), { maxBytes: 30000, maxLines: 1000 }).truncated) {
-        const update = data.updates.find(u => u.readFull);
-        if (update || data.readFull) return result({ id: data.id, truncated: true, resultReview: data.resultReview,
-          fullLength: update ? update.fullLength ?? update.text.length : data.fullLength, readFull: update?.readFull ?? data.readFull,
-          nextCursor: data.nextCursor, note: "Read the complete report with subagent_read(readFull). This preview acknowledges nothing." }, ctx);
-        if (delegation.getStore()) return result({ truncated: true, note: "Read page too large; replay from a later since cursor.", nextCursor: data.nextCursor }, ctx);
-      }
-      const output = result(data, ctx);
-      // If the formatter spills to disk, don't claim unseen updates were read.
-      if (output.details === data) manager.acknowledgeRead(data, args.since === undefined, !delegation.getStore());
-      return output;
+      return { content: [{ type: "text", text: JSON.stringify(data) }], details: data };
     },
   });
   const rootLatch = messageLatch(pi);
@@ -628,6 +629,14 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         ctx.ui.notify(`Policy: ${policy.source}\n${policy.diagnostics.join("\n") || "No policy diagnostics."}`, policy.diagnostics.length ? "warning" : "info");
         return;
       }
+      if (action === "confirm-stopped" && target) {
+        const child = manager.get(target);
+        if (await ctx.ui.confirm("Confirm detached process is gone?", `Have you independently checked that ${child.name} (${target}, recorded PID ${child.pid ?? "unknown"}) is no longer running? This releases its slot without signalling any process.`)) {
+          manager.confirmDetachedStop(target);
+          ctx.ui.notify(`Stop confirmed for ${target}; slot released. No work started.`, "info");
+        }
+        return;
+      }
       if ((action === "halt" || action === "kill") && target) {
         const child = manager.get(target);
         if (action === "kill" && !await ctx.ui.confirm("kill subagent process?", `Force-stop ${child.name} (${child.id})? Saved history remains, edits are not rolled back, and detached subprocesses may remain. The parent will be notified and work held.`)) return;
@@ -636,7 +645,7 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
         ctx.ui.notify(`${action} ${outcome.hold?.outcome ?? "unknown"} · ${child.name.toLowerCase()} (${child.id})\n${outcome.hold?.detail ?? "Inspect the worker state."}\nparent notified; work remains held.${!confirmed && action === "halt" ? `\nIf necessary, use /subagents kill ${child.id} for confirmed break-glass process termination.` : ""}`, confirmed ? "info" : "warning");
         return;
       }
-      else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | halt <id> | kill <id>]. Ask the parent to manage agents.");
+      else if (action && action !== "list") throw new Error("Usage: /subagents [list | diagnostics | halt <id> | kill <id> | confirm-stopped <id>]. Ask the parent to manage agents.");
       await manager.refreshUsageSnapshots();
       ctx.ui.notify(cardsFromDetails(manager.list(), "summary").map(card => listingLine(card).text).join("\n") || "No subagents tracked.", "info");
     },

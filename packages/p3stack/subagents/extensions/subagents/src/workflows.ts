@@ -3,12 +3,12 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync,
 import { join } from "node:path";
 import { candidateDirectory, snapshot, verifyArtifact, type Artifact } from "./workflow-artifacts.js";
 import { dependencies, parseWorkflow, workUnits, type WorkflowDefinition, type WorkflowStep, type Validator } from "./workflow-definition.js";
-import type { AgentJob, WorkflowHost } from "./workflow-host.js";
+import { CommandStopUnconfirmed, type AgentJob, type WorkflowHost } from "./workflow-host.js";
 import type { InputDisposition, Notice } from "./manager.js";
 
 export interface Verdict { verdict: "pass" | "fail" | "blocked"; findings?: string; score?: number }
 export interface Attempt {
-  number: number; kind: "task" | "check"; status: "running" | "completed" | "interrupted" | "error" | "waiting";
+  number: number; kind: "task" | "check"; status: "running" | "completed" | "interrupted" | "unconfirmed" | "error" | "waiting";
   directory: string; started: string; children: string[]; artifact?: Artifact; verdict?: Verdict; error?: string;
   decision?: "keep" | "discard" | "revise";
   submissions?: Record<string, InputDisposition>;
@@ -176,7 +176,7 @@ export class Workflows {
           for (const id of unit) {
             const state = run.steps[id];
             if (state.status === "running") state.status = interrupted ? "interrupted" : error instanceof Exhausted ? "exhausted" : "blocked";
-            for (const attempt of state.attempts) if (attempt.status === "running") { attempt.status = interrupted ? "interrupted" : "error"; attempt.error = String(error); }
+            for (const attempt of state.attempts) if (attempt.status === "running") { attempt.status = error instanceof CommandStopUnconfirmed ? "unconfirmed" : interrupted ? "interrupted" : "error"; attempt.error = String(error); }
           }
           if (!interrupted) { run.status = error instanceof Exhausted ? "exhausted" : "blocked"; run.reason = String(error); execution.controller.abort(); }
           this.save(run);
@@ -209,7 +209,7 @@ export class Workflows {
     }));
   }
   private job(run: WorkflowRun, step: string, worker: AgentJob["worker"], instructions: string, attempt: Attempt, candidate: string, inputs: Record<string, Artifact>, feedback?: string): AgentJob {
-    return { workflow: run.id, step, cwd: run.definition.cwd, worker, instructions, candidate, inputs, feedback,
+    return { workflow: run.id, step, evaluator: attempt.kind === "check", cwd: run.definition.cwd, worker, instructions, candidate, inputs, feedback,
       isHeld: () => this.interventionBarrier(run),
       onChild: id => { attempt.children.push(id); this.save(run); },
       onSubmission: (id, disposition) => { (attempt.submissions ??= {})[id] = disposition; this.save(run); },

@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import cp from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { chmodSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -184,6 +188,29 @@ test("shutdown/reload does not replay; explicit retry preserves total allowance 
   } finally { await restored?.shutdown(); await h.close(); }
 });
 
+test("command without a close event cannot block workflow shutdown", async t => {
+  const h = setup();
+  const child = Object.assign(new EventEmitter(), {stdout: new PassThrough(), stderr: new PassThrough(), unref() {},
+    kill: (signal: string) => { signals.push(signal); return true; }});
+  const signals: string[] = [];
+  let launched!: () => void;
+  const started = new Promise<void>(resolve => { launched = resolve; });
+  const spawn = t.mock.method(cp, "spawn", () => { launched(); return child; });
+  syncBuiltinESMExports();
+  try {
+    const id = idOf(h.engine.start(definition(h.root, [task("a"), {id: "check", kind: "check", input: "a", validator: {kind: "command", command: "unused"}}])));
+    await started;
+    const done = await Promise.race([h.engine.shutdown().then(() => true), sleep(5000).then(() => false)]);
+    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    assert.ok(done, "manager shutdown must be able to proceed");
+    const attempt = h.engine.get(id).steps.check.attempts.at(-1)!;
+    assert.equal(attempt.status, "unconfirmed");
+    assert.match(attempt.error!, /unconfirmed/i);
+  } finally {
+    child.emit("close", null); spawn.mock.restore(); syncBuiltinESMExports(); await h.close();
+  }
+});
+
 test("synchronous run hold prevents queued dispatch; release alone never schedules", async () => {
   const dispatched: string[] = [];
   const h = setup({ agents: async jobs => { dispatched.push(...jobs.map(j => j.step)); return jobs.map(() => "done"); } });
@@ -322,7 +349,7 @@ test("manager host records consumed submission and rejects the attempt before wa
   const fakeManager = {
     reserveSlots: () => ({ id: Symbol("reservation") }), releaseSlots() {},
     spawn: async () => ({ id: "consumed-child" }), get: () => ({ id: "consumed-child" }),
-    send: async () => ({ id: "consumed-child", disposition: "handled" }),
+    send: async () => ({ id: "consumed-child", disposition: "handled", workStarted: false }),
     wait: async () => assert.fail("Consumed input must not wait for a nonexistent run"),
     close: async () => { closed = true; return { outcome: "confirmed" }; }, peers: {},
   } as unknown as Parameters<typeof managerWorkflowHost>[0];
@@ -332,6 +359,12 @@ test("manager host records consumed submission and rejects the attempt before wa
   await assert.rejects(managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), /input was handled/);
   assert.deepEqual(submitted, { id: "consumed-child", disposition: "handled" });
   assert.equal(closed, true);
+  Object.assign(fakeManager, {
+    send: async () => ({ id: "consumed-child", disposition: "handled" }),
+    wait: async () => ({wake: "settled"}), get: () => ({ id: "consumed-child", status: "idle" }),
+    finalAnswer: () => "handler's answer", read() {},
+  });
+  assert.deepEqual(await managerWorkflowHost(fakeManager, policy).agents([job], [], new AbortController().signal), ["handler's answer"]);
 });
 
 test("pause is a boundary, cancel and deadline abort execution, and only one run executes", async () => {

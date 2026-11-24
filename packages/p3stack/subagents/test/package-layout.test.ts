@@ -59,7 +59,7 @@ async function load(packages: string[], base: string, options: { agentDir?: stri
     if (native) {
       assert.ok(!loader.getSkills().skills.some(s => ["subagents", "workflows"].includes(s.name)), "native skills are not static resources");
       for (const discover of native.handlers.get("resources_discover") ?? []) {
-        const result = await discover({ type: "resources_discover", cwd: temp, reason: "startup" }, {}) as ResourcesDiscoverResult;
+        const result = await discover({ type: "resources_discover", cwd: temp, reason: "startup" }, { mode: "rpc" }) as ResourcesDiscoverResult;
         loader.extendResources({ skillPaths: result.skillPaths?.map(path => ({ path, metadata: { source: native.path, scope: "temporary", origin: "top-level" } })) });
       }
     }

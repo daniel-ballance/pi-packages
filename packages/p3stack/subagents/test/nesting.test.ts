@@ -12,7 +12,7 @@ import { relayWait, type WaitArgs } from "../extensions/subagents/src/wait.js";
 import { fitDelegatedReply } from "../extensions/subagents/src/nesting.js";
 import { tempRoot } from "./support/temp-root.js";
 
-const base = { version: 1, models: [{ id: "p/m:off" }], tools: ["read", "subagent_spawn", "subagent_wait"] };
+const base = { version: 1, models: [{ id: "p/m:off" }], tools: ["read", "subagent_spawn", "subagent_wait", "subagent_read"] };
 
 function policy(config: Record<string, unknown>) {
   const root = tempRoot("nesting-policy-"), agentDir = join(root, "agent");
@@ -43,8 +43,13 @@ const dirname = (p: SubagentPolicy) => p.environment.cwd;
 test("maxDepth allows delegation tools only for Children above the deepest level", () => {
   const { policy: p, dispose } = policy({ ...base, maxDepth: 2 });
   try {
-    assert.deepEqual(p.catalog().tools, ["read", "subagent_spawn", "subagent_wait"]);
-    const coordinator = p.compile(dirname(p), { model: "p/m:off", tools: ["read", "subagent_spawn"] }, 1);
+    assert.deepEqual(p.catalog().tools, base.tools);
+    for (const [tools, missing] of [
+      [["subagent_spawn"], /subagent_wait.*subagent_read/],
+      [["subagent_spawn", "subagent_wait"], /subagent_read/],
+      [["subagent_spawn", "subagent_read"], /subagent_wait/],
+    ] as const) assert.throws(() => p.compile(dirname(p), { model: "p/m:off", tools: [...tools] }), missing);
+    const coordinator = p.compile(dirname(p), { model: "p/m:off", tools: base.tools }, 1);
     assert.equal(coordinator.childPolicy?.toolSources.subagent_spawn, "/internal/child-guard.ts", "proxies come from the guard");
     assert.throws(() => p.compile(dirname(p), { model: "p/m:off", tools: ["subagent_spawn"] }, 2), /depth 2 cannot delegate: maxDepth is 2/);
     assert.ok(p.compile(dirname(p), { model: "p/m:off", tools: ["read"] }, 2), "a leaf without delegation tools is fine");

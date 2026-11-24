@@ -140,7 +140,7 @@ export function cardsFromDetails(items: readonly unknown[], shape: "summary" | "
     const assignment = object(item.assignment), resultReview = object(item.resultReview);
     const parentId = inline(item.parentId) || undefined;
     const review: Review = shape === "read"
-      ? item.hasMore === true ? "unread" : resultReview ? "reviewed" : "none"
+      ? resultReview?.status === "unreviewed" ? "unread" : resultReview?.status === "reviewed" ? "reviewed" : "none"
       : count(item.unread) || resultReview?.status === "unreviewed" ? "unread" : resultReview?.status === "reviewed" ? "reviewed" : "none";
     return [agentCard({
       id: item.id, name: item.name, depth: count(item.depth), parentId, delegator: parentId && (names.get(parentId) ?? parentId),
@@ -164,7 +164,7 @@ export function runCard(run: WorkflowRun, workers: readonly AgentRecord[]): RunC
 }
 
 function reviewOf(record: AgentRecord): Review {
-  const pending = record.updates.filter(update => update.cursor > record.readCursor);
+  const pending = record.updates.filter(update => update.cursor > record.readCursor && !update.consumed);
   if (record.resultReview) return record.resultReview.status === "unreviewed" || pending.some(update => REOPENING_KINDS.has(update.kind)) ? "unread" : "reviewed";
   return pending.some(update => REPORT_KINDS.has(update.kind)) ? "unread" : "none";
 }
