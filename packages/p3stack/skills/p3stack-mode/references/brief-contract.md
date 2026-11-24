@@ -1,16 +1,14 @@
 # Brief contract
 
-Write this brief when you hand implementation to a child. Generate it at hand-off, from the spec, ticket, or plan, and keep it in the store or the delegation. Never write it into a tracker ticket: tickets hold durable decisions, and file paths and signatures go stale there.
+Each brief stands alone. Keep durable acceptance criteria in the tracker ticket. At dispatch, put the current signatures, checkout-relative paths and done command in the brief. Include the relevant contract, not the parent's conversation.
 
-A brief is ready when the child can write exactly one reasonable thing from each part:
+1. **Goal and scope:** the user's outcome, this unit's part, what it may change.
+2. **Interfaces:** exact names and signatures consumed and produced, with their locations at the assigned base.
+3. **Constraints:** quote the applicable version floors, naming rules and other global limits verbatim.
+4. **Review focus:** name the implied inputs and failure modes the planned tests miss.
+5. **Done:** give the command, expected result and surface to check.
+6. **Report:** specify the deliverable and return channel. Ask for status, base/head, test evidence, assumptions and unresolved concerns.
 
-1. **Goal.** The user's goal in their words, and where this task fits in it.
-2. **Interfaces.** What the task uses from earlier work, with exact names and signatures, and what it produces for later work. A child sees only its own brief, so this is how it learns its neighbours' names.
-3. **Global constraints.** Version floors, naming and copy rules, and limits copied word for word from the spec or `CONSTRAINTS.md`.
-4. **Review focus.** The inputs or failure modes the spec implies but no planned test covers, most likely first. The child adds a test for each one it owns.
-5. **Done predicate.** The command to run, the output that means it passed, and the surface to check it on.
-6. **Report.** The path to write the full report to, in the store. The child returns only its status, commits, a one-line test summary, and concerns.
+The mode header carries the session grant; a brief may narrow it, never extend it. In a terminal the writer's header points to the agent recipe and this contract. Give a report-only child the artifact and contract, not an implementation assignment. Under T3 Code name no file on the parent's machine: include the needed facts inline, identify shared source by commit and repo-relative path, and request the report in the reply.
 
-Pass file pointers, not pasted history. A brief that restates earlier tasks' summaries spends the child's context and yours.
-
-The child does not spawn its own reviewer. You review its diff against this brief, per the `review-stance.md` reference beside this file.
+A child handles only this unit. State assumptions where the brief is silent; stop if an assumption would expand authority. The parent reviews the result against the brief using the [review stance](../p3stack-mode/references/review-stance.md); the worker does not start a reviewer.
