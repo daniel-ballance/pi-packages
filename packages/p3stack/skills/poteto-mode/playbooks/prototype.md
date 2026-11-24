@@ -10,7 +10,7 @@ The one playbook where the Laziness Protocol's "smallest change" and the verific
 
 2. Gather references when the design space is open. Search for prior art, summarize a moodboard of themes, palettes, and layouts, and let the user pick under default or choose a direction under full autonomy. Skip when the direction is set.
 3. Build throwaway in an isolated scratch dir, separate from production source. For a visual decision, vanilla HTML/CSS/JS or the lightest stack that renders the idea, CDN deps, a dev server with hot reload. For a behavioral or timing decision, the smallest script that exercises the question. No production framework, no tests, no abstractions.
-4. When comparing alternatives, build them behind one switcher (buttons or a keypress), each variant labeled. This is the **exhaust-the-design-space** principle skill made cheap.
+4. When comparing alternatives, build them behind one switcher (buttons or a keypress), each variant labeled. This is the [exhaust-the-design-space](../poteto-mode/references/principle-exhaust-the-design-space.md) reference made cheap.
 
 > **p3stack only:** [host-capabilities](../poteto-mode/references/host-capabilities.md) — For a human judge, use **Drive the app** for step 5. Exercise the variants or walkthroughs and report any unverified controls.
 

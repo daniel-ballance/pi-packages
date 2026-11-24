@@ -56,8 +56,8 @@ function main(args) {
         const [status, path] = changes.slice(index, index + 2);
         if (!path.startsWith(prefix)) continue;
         const local = path.slice(prefix.length);
-        const { kind, output } = classify(local);
-        const scope = output === undefined ? ` (${kind}${["not emitted", "unclassified"].includes(kind) ? "; review scope" : ""})` : ` -> ${output}`;
+        const { kind, output, installed } = classify(local);
+        const scope = output === undefined ? ` (${kind}${["not emitted", "unclassified"].includes(kind) ? "; review scope" : ""})` : ` -> ${installed ?? output}`;
         console.log(`  ${status} ${path}${scope}${borrowedNote(borrowed, member.name, local)}`);
       }
     }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
@@ -9,30 +9,12 @@ import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
 import { chainSlots, checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter, targetPath } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
-import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
+import { byName, isLink, referenceMoves, referencePath, sourcePathClassifier, sourcesOf, walk } from "./source-paths.mjs";
 
 function readJson(path, fallback) {
   if (!existsSync(path)) return fallback;
   try { return JSON.parse(readFileSync(path, "utf8")); }
   catch (error) { throw new Error(`Cannot load ${path}: ${error.message}`, { cause: error }); }
-}
-
-const byName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-
-function walk(dir) {
-  if (!existsSync(dir) && !isLink(dir)) return [];
-  if (!lstatSync(dir).isDirectory()) return [""];
-  const files = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort(byName)) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...walk(path).map(file => join(entry.name, file)));
-    else if (entry.isFile() || entry.isSymbolicLink()) files.push(entry.name);
-  }
-  return files;
-}
-
-function isLink(path) {
-  try { return lstatSync(path).isSymbolicLink(); } catch { return false; }
 }
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -221,6 +203,8 @@ function addExtras(dir, put) {
   }
 }
 
+const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
+
 function renderRegistry(files, { routes, chains }, put) {
   for (const [playbook, rows] of Map.groupBy(chains, row => row.playbook)) {
     const path = `skills/poteto-mode/${playbook}`, text = files.get(path)?.toString() ?? "";
@@ -240,13 +224,54 @@ function renderRegistry(files, { routes, chains }, put) {
   }
   const template = "skills/p3stack-mode/SKILL.md.tmpl";
   if (!files.has(template)) return;
-  const cell = value => String(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
   // Each row names both reads. A live eval showed a model going straight from the table to
   // the target when the poteto-mode read was stated only above the table.
   const table = ["| Request | Grant | Read in this order, or do |", "| --- | --- | --- |", ...routes.map(({ request, grant, target, action }) =>
     `| ${cell(request)} | ${cell(grant)} | ${typeof target === "string" ? `\`../poteto-mode/SKILL.md\`, then \`../${targetPath(target)}\`` : cell(action)} |`)];
   put("skills/p3stack-mode/SKILL.md", files.get(template).toString().replace("{{routes}}", () => table.join("\n")));
   files.delete(template);
+}
+
+// Keep both user-facing indexes in step with the registry, not a second catalog.
+function renderCatalog(files, { skills, routes }, helpJobs) {
+  const help = "skills/poteto-help/SKILL.md", mode = "skills/poteto-mode/SKILL.md";
+  const grouped = Map.groupBy(skills.filter(row => row.action === "reference").sort(byName), row => row.owner);
+  const labels = (owner, link) => [...new Set((grouped.get(owner) ?? []).map(row => {
+    if (row.name.startsWith("principle-") && owner === "poteto-mode") return link ? "[principle-*](../poteto-mode/SKILL.md#principles)" : "principle-*";
+    return link ? `[${row.name}](../${referencePath(row)})` : row.name;
+  }))].join(", ");
+  const modeText = files.get(mode)?.toString();
+  if (modeText?.includes("{{reference-index}}")) {
+    const owners = [...grouped.keys()].sort().map(owner => `${owner} (${labels(owner, false)})`);
+    files.set(mode, modeText.replace("{{reference-index}}", () => owners.join("; ")));
+  }
+  const helpText = files.get(help)?.toString();
+  if (helpText?.includes("{{skill-catalog}}")) {
+    const command = name => `[\`${name === "p3stack-mode" ? "/p3stack on" : `/skill:${name}`}\`](../${name}/SKILL.md)`;
+    const table = ["| Request | What to type or ask for |", "| --- | --- |"];
+    for (const { request, grant, target } of routes) {
+      const setting = grant === "any" ? "" : ` (router: ${grant === "full-autonomy" ? "autonomous" : "default"})`;
+      let next = "Ask directly; no skill needed.";
+      if (target && !target.includes("/")) next = command(target);
+      else if (target) {
+        const label = posix.basename(target, ".md"), path = targetPath(target), link = `[${label}](../${path})`;
+        // The skill that holds a playbook loads it with routing off; a bare playbook name loads nothing.
+        // No link: the skill linter would read the playbook's own links as the help skill's.
+        next = target.includes("/references/") ? `${command(target.split("/")[0])} using ${link}` : `\`/skill:${path.split("/")[0]} use the ${label} playbook\``;
+      }
+      table.push(`| ${cell(request)} | ${next}${setting} |`);
+    }
+    table.push("", "### Other standalone jobs", "");
+    const routed = new Set(routes.map(row => row.target));
+    for (const { name } of skills.filter(row => row.action === "emit" && !routed.has(row.name)).sort(byName)) {
+      const path = `${name}/SKILL.md`, { description } = skillFrontmatter(files.get(`skills/${path}`).toString(), path);
+      const job = helpJobs[name] ?? description.split(/(?<=[.!?])\s+/)[0].replace(/\.$/, "");
+      table.push(`- ${job} — ${command(name)}`);
+    }
+    table.push("", "### References by owner", "", "Ask the owner for the named procedure. For a decision log, ask to read the reference itself.", "");
+    for (const owner of [...grouped.keys()].sort()) table.push(`- [${owner}](../${owner}/SKILL.md): ${labels(owner, true)}`);
+    files.set(help, helpText.replace("{{skill-catalog}}", () => table.join("\n")));
+  }
 }
 
 // Roots replaced wholesale by installGenerated, even if a source stops supplying one.
@@ -282,20 +307,189 @@ function applyPatches(patchesDir, outDir, problems) {
   }
 }
 
-function lint(outDir, deny, problems) {
+const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function referenceBody(text, path, name) {
+  const { description, name: declared } = skillFrontmatter(text, path);
+  if (declared !== name || typeof description !== "string" || !description.trim()) throw new Error(`${path}: reference needs its registered name and description`);
+  const body = text.slice(frontmatterBlock(text)[0].length).replace(/^(?:\r?\n)+/, "");
+  const newline = text.includes("\r\n") ? "\r\n" : "\n";
+  const heading = fromMarkdown(body).children.find(node => node.type === "heading" && node.depth === 1);
+  const title = heading ? body.slice(heading.position.start.offset, heading.position.end.offset) : `# ${name}`;
+  const rest = heading ? body.slice(0, heading.position.start.offset) + body.slice(heading.position.end.offset) : body;
+  const ownCommand = new RegExp(`(?<![\\w./-])/(?:skill:)?${escapeRegex(name)}(?![\\w/-])`);
+  const offersTrigger = sentence => ownCommand.test(sentence) || /^Use when the user (?:says|asks|wants)\b/i.test(sentence) ||
+    /^Use for\b/i.test(sentence) && (sentence.includes(name) || /["']|\bor\b/.test(sentence));
+  const summary = description.trim().split(/(?<=[.!?])\s+/).filter(sentence => !offersTrigger(sentence)).join(" ");
+  return [title, summary, rest.replace(/^(?:\r?\n)+/, "")].filter(Boolean).join(newline.repeat(2));
+}
+
+// Link whole names and command spans, not substrings of a shell command. Keep
+// existing labels, headings and code examples intact when linking prose names.
+function linkReferenceMentions(text, references, linkTo, output) {
+  const edits = [];
+  function visit(node, inLink = false, inHeading = false) {
+    inLink ||= node.type === "link" || node.type === "linkReference";
+    inHeading ||= node.type === "heading";
+    const code = node.type === "inlineCode", command = code && node.value.startsWith("/skill:");
+    const label = command ? node.value.slice(7) : code ? node.value : node.type === "strong" && node.children.length === 1 ? node.children[0].value : undefined;
+    const ref = references.get(label), { start, end } = node.position ?? {};
+    const suffix = ref && !command && /^(['’]s)? (?:principle )?skill(s?)\b/.exec(text.slice(end.offset));
+    // A one-word name in bold is also plain emphasis: "**implement** it" names no skill.
+    if (ref && (command ? ref.name === label : !inLink && !inHeading && (code || suffix || label.includes("-")))) {
+      const target = `skills/${referencePath(ref)}`;
+      const link = `[${label}](${linkTo(target)})`;
+      edits.push([start.offset, end.offset + (suffix ? suffix[0].length : 0),
+        command && (inLink || target === output) ? label : link + (suffix ? `${suffix[1] ?? ""} reference${suffix[2]}` : "")]);
+    } else {
+      // Inline HTML anchor tags are siblings of their label in mdast.
+      let anchor = false;
+      for (const child of node.children ?? []) {
+        if (child.type === "html" && /^<a(?:\s[^<>]*)?>$/i.test(child.value)) anchor = true;
+        if (child.type === "html" && /^<\/a\s*>$/i.test(child.value)) anchor = false;
+        visit(child, inLink || anchor, inHeading);
+      }
+    }
+  }
+  const header = frontmatterBlock(text)?.[0] ?? "";
+  text = text.slice(header.length);
+  visit(fromMarkdown(text));
+  for (const [start, end, replacement] of edits.reverse()) text = text.slice(0, start) + replacement + text.slice(end);
+  return header + text;
+}
+
+const linkBase = path => path.startsWith("skills/") ? path.split("/").slice(0, 2).join("/") : posix.dirname(path);
+
+// A link to the retired skill directory now opens the reference, even when
+// there are no companion files. Links to subdirectories keep browsing them.
+function resourceTargets(moves) {
+  const targets = new Map(moves);
+  for (const [old, dest] of moves) {
+    const root = linkBase(old);
+    if (old === `${root}/SKILL.md`) targets.set(root, dest);
+    for (let dir = posix.dirname(old), to = posix.dirname(dest); dir !== root; dir = posix.dirname(dir), to = posix.dirname(to)) {
+      targets.set(dir, to);
+    }
+  }
+  return targets;
+}
+
+function rebaseResources(text, path, output, moves, targets, linkTo) {
+  const before = linkBase(path), aliases = new Map(), own = [];
+  for (const [old, dest] of moves) {
+    const operand = posix.relative(before, old), replacement = linkTo(dest);
+    aliases.set(operand, replacement);
+    if (old.startsWith(before + "/")) {
+      const qualified = "../" + old.slice("skills/".length);
+      aliases.set("./" + operand, replacement);
+      aliases.set(qualified, replacement);
+      own.push("./" + operand, qualified, old);
+      if (operand !== "SKILL.md") own.push(operand); // the bare name also denotes Pi's convention
+    }
+  }
+  if (path !== output) {
+    for (const dir of targets.keys()) {
+      if (moves.has(dir) || linkBase(dir) !== before) continue;
+      own.push(`../${dir.slice("skills/".length)}/`, `${dir}/`);
+      if (dir !== before) own.push(posix.relative(before, dir) + "/", "./" + posix.relative(before, dir) + "/");
+    }
+  }
+  const alternatives = keys => [...keys].map(escapeRegex).join("|");
+  const operands = new RegExp("(?<![^\\s`(<'\"])" + `(${alternatives(aliases.keys())})(:\\d+)?` + "(?=$|[\\s`)>#?'\",;]|[.!](?!\\w))", "g");
+  const stale = own.length && new RegExp(`(?<![\\w./-])(?:${alternatives(own)})(?![\\w/-]|\\.\\w)`);
+  const edits = [];
+  function guard(span, start) {
+    const bad = stale && stale.exec(span);
+    if (bad) {
+      const line = text.slice(0, start).split("\n").length + span.slice(0, bad.index).split("\n").length - 1;
+      throw new Error(`${output}:${line}: unrebased resource path ${bad[0]}`);
+    }
+  }
+  function visit(node) {
+    const { start, end } = node.position, span = text.slice(start.offset, end.offset);
+    if (typeof node.url === "string") {
+      if (/^(?:[a-z][a-z\d+.-]*:\/\/|[/?#])/i.test(node.url)) return;
+      const [, operand, line, fragment = ""] = /^([^?#]+?)(?::(\d+))?([?#].*)?$/.exec(node.url) ?? [];
+      const target = operand && targets.get(posix.join(before, operand).replace(/\/$/, ""));
+      if (target) {
+        // Start after the label: it can contain the same filename as the URL.
+        const labelEnd = node.children?.at(-1)?.position.end.offset ?? start.offset;
+        const delimiter = /\](?:\(\s*|:\s*)<?/.exec(text.slice(labelEnd, end.offset));
+        const at = delimiter && labelEnd + delimiter.index + delimiter[0].length;
+        if (at && text.startsWith(node.url, at)) edits.push([at, at + node.url.length, linkTo(target) + (line ? `#L${line}` : fragment)]);
+        else guard(span, start.offset);
+      } else guard(node.url, start.offset);
+      return; // link labels and titles are not operands
+    }
+    if (node.type === "linkReference" || node.type === "imageReference") return;
+    if (node.children) return node.children.forEach(visit);
+    const rewritten = node.type === "inlineCode" || node.type === "text" ? span.replace(operands, (match, operand, line) =>
+      (line || operand !== "SKILL.md") ? aliases.get(operand) + (line ?? "") : match) : span;
+    guard(rewritten, start.offset); // includes fences, raw HTML and unhandled shell syntax
+    if (rewritten !== span) edits.push([start.offset, end.offset, rewritten]);
+  }
+  if (path.endsWith(".md")) visit(fromMarkdown(text));
+  else guard(text, 0);
+  for (const [start, end, replacement] of edits.reverse()) text = text.slice(0, start) + replacement + text.slice(end);
+  return text;
+}
+
+function relocateReferences(outDir, skills, owners) {
+  const paths = walk(outDir).map(path => path.split(sep).join("/")), moves = referenceMoves(paths, skills);
+  if (!moves.size) return;
+  const targets = resourceTargets(moves);
+  const references = new Map(skills.filter(row => row.action === "reference").flatMap(row =>
+    row.name.startsWith("principle-") ? [[row.name, row], [row.name.slice("principle-".length), row]] : [[row.name, row]]));
+  for (const path of paths) {
+    const output = moves.get(path) ?? path, oldFile = join(outDir, path), file = join(outDir, output);
+    const before = linkBase(path), after = linkBase(output);
+    // Playbooks and references can be read from a sibling skill. Qualify
+    // their links so they resolve from either that reader or the owner.
+    const shared = output.startsWith("skills/") && output !== `${after}/SKILL.md`;
+    const linkTo = dest => shared ? "../" + dest.slice("skills/".length) : posix.relative(after, dest);
+    const contents = decode(readFileSync(oldFile));
+    if (file !== oldFile) {
+      mkdirSync(dirname(file), { recursive: true });
+      renameSync(oldFile, file); // also preserves the mode and binary resources
+    }
+    if (contents === undefined) continue;
+    let text = contents;
+    if (path !== output && path.endsWith("/SKILL.md")) {
+      text = referenceBody(text, path, posix.basename(before));
+    }
+    text = rebaseResources(text, path, output, moves, targets, linkTo);
+    if (owners.has(path) && !["extra", "authored", "registry"].includes(owners.get(path)) && path.endsWith(".md")) {
+      text = linkReferenceMentions(text, references, linkTo, output);
+    }
+    if (text !== contents) writeFileSync(file, text);
+  }
+  for (const { name } of skills.filter(row => row.action === "reference")) rmSync(join(outDir, "skills", name), { recursive: true, force: true });
+}
+
+export function removedCommandPattern(skills) {
+  const emitted = new Set(skills.filter(row => row.action === "emit").map(row => row.name));
+  const names = skills.map(row => row.name ?? posix.basename(posix.dirname(row.path))).filter(name => !emitted.has(name));
+  if (!names.length) return undefined;
+  // A whole command token, not a segment of a URL, route or filename.
+  return new RegExp(`(?:/skill:|(?<![\\w./:-])(?<!\\][(:][ \\t]*<?)/)(?:${[...new Set(names)].map(escapeRegex).join("|")})(?![\\w/-]|[.?#][\\w/])`, "g");
+}
+
+function lint(outDir, deny, problems, removed) {
   for (const path of walk(outDir)) {
     const text = decode(readFileSync(join(outDir, path)));
     if (text === undefined) continue;
     text.split("\n").forEach((line, index) => {
+      for (const command of removed ? line.match(removed) ?? [] : []) problems.push(`${path}:${index + 1}: removed skill command ${command}`);
       for (const token of deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
     });
   }
 }
 
-function lintResources(packageDir, outDir, owners, sources) {
+function lintResources(packageDir, outDir, owners, sources, rows = []) {
   const skills = join(outDir, "skills");
+  const referenceOwners = new Set(rows.filter(row => row.action === "reference" && sources.includes(row.source)).map(row => row.owner));
   const directories = readdirSync(skills, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && sources.includes(owners.get(`skills/${entry.name}/SKILL.md`)))
+    .filter(entry => entry.isDirectory() && (referenceOwners.has(entry.name) || sources.includes(owners.get(`skills/${entry.name}/SKILL.md`))))
     .map(entry => join(skills, entry.name)).sort();
   if (!directories.length) throw new Error("No generated skills found; refusing an empty resource check.");
   try {
@@ -340,16 +534,18 @@ export function generate({ packageDir, outDir }) {
   for (const dir of ["extra", "authored"]) addExtras(join(packageDir, dir), put(dir));
   if (registry) renderRegistry(files, registry, put("registry"));
   if (problems.length) throw new Error(problems.join("\n"));
+  if (registry) renderCatalog(files, registry, readJson(join(rules, "help-jobs.json"), {}));
   writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));
+  if (registry) relocateReferences(outDir, registry.skills, owners);
   // Patches are rewritten under the caller's umask; keep only the executable bit.
   for (const path of walk(outDir)) {
     checkOutputPath(path.split(sep).join("/"));
     chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
   }
   const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
-  lint(outDir, checks.deny, lintProblems);
+  lint(outDir, checks.deny, lintProblems, registry && removedCommandPattern(registry.skills));
   for (const { file, contains } of checks.require ?? []) {
     const text = existsSync(join(outDir, file)) ? readFileSync(join(outDir, file), "utf8") : "";
     for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);
@@ -358,7 +554,7 @@ export function generate({ packageDir, outDir }) {
   const hostProblems = lintHosts(outDir);
   if (hostProblems.length) throw new Error(`Host lint failed. Keep tool names in the host map.\n${hostProblems.join("\n")}`);
   if (registry) checkRegistry({ packageDir, outDir, registry });
-  if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources);
+  if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources, registry?.skills);
   return infos;
 }
 

@@ -36,7 +36,7 @@
   ],
   "require": [
     {
-      "file": "skills/implement/SKILL.md",
+      "file": "skills/implement-spec/references/implement.md",
       "contains": ["(../tdd/SKILL.md)", "(../code-review/SKILL.md)"]
     }
   ],

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, posix } from "node:path";
 import test from "node:test";
+import { walk } from "../generator/source-paths.mjs";
 
 // Use the skill linter's Markdown parser under both npm and pnpm.
 const { fromMarkdown } = createRequire(new URL("../../../scripts/lint-skill/package.json", import.meta.url))("mdast-util-from-markdown");
@@ -17,7 +18,9 @@ function* destinations(node) {
 }
 
 function linkBases(file) {
-  // Markdown links start at the file. Pi also accepts paths from the skill root.
+  // Inside p3stack skills, Pi resolves both playbook and reference links from the skill root.
+  if (file.startsWith("skills/")) return [file.split("/").slice(0, 2).join("/")];
+  // Also check ordinary package docs and the nested packages.
   const base = posix.dirname(file);
   for (let dir = base; dir !== "."; dir = posix.dirname(dir)) {
     if (files.has(`${dir}/SKILL.md`)) return [base, dir];
@@ -44,6 +47,41 @@ test("relative Markdown links resolve inside the packed p3stack", () => {
     }
   }
   assert.deepEqual(missing, []);
+});
+
+const registry = JSON.parse(readFileSync(join(cwd, "registry/skills.json"), "utf8"));
+
+test("every reference is packed under its owner's skill, not discoverable as a command", () => {
+  const refs = registry.filter(row => row.action === "reference");
+  assert.equal(refs.length, 43);
+  for (const { name, owner } of refs) {
+    assert.ok(!files.has(`skills/${name}/SKILL.md`), name);
+    assert.ok(files.has(`skills/${owner}/references/${name}.md`), name);
+    const skill = readFileSync(join(cwd, `skills/${owner}/SKILL.md`), "utf8");
+    assert.ok(skill.includes(name.startsWith("principle-") ? "references/principle-<title>.md" : `references/${name}.md`), `${owner}: ${name}`);
+  }
+});
+
+test("no emitted file contains a removed command or a path to a retired skill directory", () => {
+  const names = [...registry.filter(row => row.action === "reference").map(row => row.name), "automate-me", "grill-with-docs", "ketchup-video"];
+  const oldPath = new RegExp(`(?:\\.\\./|\\bskills/)(?:${names.join("|")})/`);
+  const commands = new Set(registry.filter(row => row.action !== "emit").flatMap(row => {
+    const name = row.name ?? posix.basename(posix.dirname(row.path));
+    return [`/${name}`, `/skill:${name}`];
+  }));
+  const problems = [];
+  for (const root of ["skills", "agents"]) {
+    for (const path of walk(join(cwd, root))) {
+      const file = join(root, path), text = readFileSync(join(cwd, file), "utf8");
+      for (const [i, line] of text.split("\n").entries()) {
+        const words = line.split(/[\s`"'()[\],;!]+/).map(word => word.replace(/[.?:]$/, ""));
+        const hits = words.filter(word => commands.has(word)), pathHit = line.match(oldPath);
+        if (pathHit) hits.push(pathHit[0]);
+        for (const hit of hits) problems.push(`${file}:${i + 1}: ${hit}`);
+      }
+    }
+  }
+  assert.deepEqual(problems, []);
 });
 
 test("the runtime package leaves maintainer instructions and skill tests in the checkout", () => {

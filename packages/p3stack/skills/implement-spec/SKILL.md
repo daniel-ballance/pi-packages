@@ -4,6 +4,8 @@ description: "Implement the result of /skill:to-spec and /skill:to-tickets in co
 disable-model-invocation: true
 ---
 
+For one ticket rather than a spec's task graph, follow [implement](references/implement.md).
+
 You have been provided a spec. This spec should have tickets associated with it, describing how to implement the spec.
 
 The issue tracker should have been provided to you. If not, tell the user to run `/skill:setup-matt-pocock-skills`.

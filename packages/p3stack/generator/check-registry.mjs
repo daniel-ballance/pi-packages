@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sourcesOf } from "./source-paths.mjs";
+import { referenceMoves, referencePath, sourcePathClassifier, sourcesOf, walk } from "./source-paths.mjs";
 
 const json = path => JSON.parse(readFileSync(path, "utf8"));
 const key = row => `${row.source}/${row.path}`;
@@ -88,17 +88,22 @@ export function loadRegistry(packageDir, sources) {
     if (rows.has(id)) problems.push(`Duplicate registry row ${id}`);
     rows.add(id);
     if (!upstream.has(id)) problems.push(row.source === "p3stack" ? `Missing authored skill authored/${row.path}` : `Stale registry row ${id}`);
-    if (row.source === "p3stack" && row.action === "emit" && row.path !== `skills/${row.name}/SKILL.md`) {
+    if (row.source === "p3stack" && row.action !== "drop" && row.path !== `skills/${row.name}/SKILL.md`) {
       problems.push(`Authored skill ${id} must emit at ${row.path}`);
     }
     if (typeof row.reason !== "string" || !row.reason.trim()) problems.push(`${id} needs a reason`);
     if (row.action === "drop") continue;
-    if (row.action !== "emit") { problems.push(`${id} has invalid action ${row.action}`); continue; }
+    if (!["emit", "reference"].includes(row.action)) { problems.push(`${id} has invalid action ${row.action}`); continue; }
     if (typeof row.name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.name)) problems.push(`${id} has invalid emitted name ${row.name}`);
     if (names.has(row.name)) problems.push(`Duplicate emitted name ${row.name}`);
     names.add(row.name);
+    if (row.action === "reference") continue;
     if (!["model", "user"].includes(row.invocation)) problems.push(`${id} has invalid invocation ${row.invocation}`);
     if (!row.phases?.length || !row.roles?.length) problems.push(`${id} needs phases and roles`);
+  }
+  const emitted = new Set(skills.filter(row => row.action === "emit").map(row => row.name));
+  for (const row of skills.filter(row => row.action === "reference")) {
+    if (!emitted.has(row.owner)) problems.push(`Reference ${row.name}: owner ${row.owner} must be an emitted skill`);
   }
   for (const path of upstream) if (!rows.has(path)) problems.push(`Unclassified skill ${path}`);
   if (problems.length) throw new Error(problems.join("\n"));
@@ -106,11 +111,23 @@ export function loadRegistry(packageDir, sources) {
 }
 
 export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
-  registry ??= loadRegistry(packageDir, sourcesOf(json(join(packageDir, "rules/manifest.json"))));
+  if (!registry) {
+    const sources = sourcesOf(json(join(packageDir, "rules/manifest.json")));
+    registry = loadRegistry(packageDir, sources);
+    // Standalone check: the installed tree alone cannot reveal two producers of one reference.
+    const inputs = sources.flatMap(source => {
+      const classify = sourcePathClassifier(source, registry.skills);
+      return walk(join(packageDir, source.vendor)).map(file => classify(file.replaceAll("\\", "/")).output).filter(Boolean);
+    });
+    referenceMoves([...inputs, ...["authored", "extra"].flatMap(dir => walk(join(packageDir, dir)).map(path => path.replaceAll("\\", "/")))], registry.skills);
+  }
   const { skills, routes, chains } = registry;
   const emitted = skills.filter(row => row.action === "emit");
   const names = new Set(emitted.map(row => row.name)), problems = [];
-  const targetExists = target => names.has(target) || (typeof target === "string" && /^(?:(?:p3stack-mode\/)?playbooks|(?:poteto|p3stack)-mode\/references)\/[a-z0-9-]+\.md$/.test(target) && existsSync(join(outDir, "skills", targetPath(target))));
+  const refs = new Set(skills.filter(row => row.action === "reference").map(row => referencePath(row)));
+  const fileExists = path => existsSync(join(outDir, "skills", path));
+  for (const path of refs) if (!fileExists(path)) problems.push(`Missing reference ${path}`);
+  const targetExists = target => names.has(target) || (typeof target === "string" && (refs.has(target) || /^(?:(?:p3stack-mode\/)?playbooks|(?:poteto|p3stack)-mode\/references)\/[a-z0-9-]+\.md$/.test(target)) && fileExists(targetPath(target)));
   const expected = new Map(emitted.map(row => [`skills/${row.name}/SKILL.md`, row])), outputNames = new Set();
   for (const relative of skillPaths(join(outDir, "skills"))) {
     const path = `skills/${relative}`, row = expected.get(path);
@@ -147,7 +164,7 @@ export function checkRegistry({ packageDir, outDir = packageDir, registry }) {
     catch (error) { problems.push(error.message); }
   }
   if (problems.length) throw new Error(problems.join("\n"));
-  return `${emitted.length} emitted, ${skills.length - emitted.length} dropped, 0 unclassified`;
+  return `${emitted.length} emitted, ${refs.size} references, ${skills.length - emitted.length - refs.size} dropped, 0 unclassified`;
 }
 
 function main() {

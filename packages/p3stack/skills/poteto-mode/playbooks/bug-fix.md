@@ -11,10 +11,10 @@ Be scientific. Every shipped line traces to runtime evidence. Belt-and-suspender
 > **p3stack only:** [diagnosing-bugs](../diagnosing-bugs/SKILL.md) — After a diagnosis handoff, run its teardown: remove tagged debug logs and throwaway probes, keep the regression test, then rerun the original reproduction on the same surface.
 
 4. Verify on the same surface. The original repro now passes. "Inconclusive" or wrong-surface is not a pass. Flag it. Unit tests show branch behavior, not bug absence.
-5. Stage the commits so the failing repro lands before the fix in git history. See the **regression-test** skill for the failing-test-first cadence when the bug has a cheap local test path. Skip it when the test would be expensive, integration-heavy, or unclear.
-   This is the canonical **sequence-verifiable-units** principle skill, the failing test first and the fix on top.
+5. Stage the commits so the failing repro lands before the fix in git history. See the [regression-test](../tdd/references/regression-test.md) for the failing-test-first cadence when the bug has a cheap local test path. Skip it when the test would be expensive, integration-heavy, or unclear.
+   This is the canonical [sequence-verifiable-units](../poteto-mode/references/principle-sequence-verifiable-units.md) reference, the failing test first and the fix on top.
 
-> **p3stack only:** [no-comments](../no-comments/SKILL.md) — When the code is complete, clean up comments before the floor scan.
+> **p3stack only:** [no-comments](../code-review/references/no-comments.md) — When the code is complete, clean up comments before the floor scan.
 
 > **p3stack only:** [floor](../p3stack-mode/references/floor.md) — Commit any cleanup edits and rerun affected checks. Run floor-check on the final diff; explain or remove every finding.
 

@@ -14,7 +14,7 @@ Paths here are relative to this file's directory. If this file is `<package>/ski
 
 Use the session grant in the system prompt (`Grant: default` or `Grant: full-autonomy`); if absent, use `default`. An explicit request for full autonomy in the user's message raises it for this task only. The brief header shows the session grant. For a different grant, the parent writes `Task grant: <grant>` in each brief; that line sets the task grant, higher or lower. A child never raises its own grant. Operator gates hold under either grant; pause before irreversible actions.
 
-Match `any` or the effective grant. Under full autonomy, a design request starts at sharpen, which replaces the design interviews. Then give its rewritten brief to architect, stop at architect's design synthesis, and return the recommendation. Infer covered choices from repository evidence and report them. Under default, use the interview skills for product choices.
+Match `any` or the effective grant. For a full-autonomy design request, architect rewrites the brief without an interview; stop at the design synthesis and return its recommendation. Infer covered choices from repository evidence and report them. Under default, use [grilling](../grilling/SKILL.md) for product choices and record settled terms and decisions with [domain-modeling](../domain-modeling/SKILL.md).
 
 ## House policies
 
@@ -23,16 +23,16 @@ Match `any` or the effective grant. Under full autonomy, a design request starts
 3. **Questions.** Before asking the human, sort the question. A fact: look it up or delegate the lookup. Observable by running something: the Prototype playbook, judged by you. Easier to show than to describe: the Prototype playbook, with an interactive-prototype the human tries. A preference no experiment settles: ask. Grilling sorts every question the same way, opens with one open question about why the change is wanted, with no suggested answers, and stops when the frontier is empty or your written hypothesis reaches about 95% confidence.
 4. **Validation.** Validate at trust boundaries and before dangerous side effects. Inside them, trust the types.
 5. **Migration.** With external consumers, persisted data, or staged deploys, sequence expand–contract. When every caller is internal and in this repository, migrate and delete in one wave.
-6. **Testing.** Red before green at the seams architect agreed. regression-test covers cheap bug paths. When the only available test would couple to the implementation, write none and say so in the report. Prototypes and spikes take no tests.
+6. **Testing.** Red before green at the seams architect agreed. For a cheap bug path, read [regression-test](../tdd/references/regression-test.md). When the only available test would couple to the implementation, write none and say so in the report. Prototypes and spikes take no tests.
 7. **Review independence.** Give a reviewer or judge the artifact and its contract, never the author's conclusion. Every finding names its evidence. A spec's silence is not permission for ordinary inputs to break the program. Dispute a wrong finding with evidence and record the dispute, rather than churning code to satisfy it.
 8. **Context.** Give new work to a fresh child with the original goal, the brief, and the prior report. Resume a child only to reuse live state: uncommitted changes or a running process.
-9. **Style.** unslop governs replies and PR bodies. Where one of its punctuation rules makes a sentence worse, follow technical-writing and fix the sentence another way.
+9. **Style.** For replies and PR bodies, read [unslop](../technical-writing/references/unslop.md). Where one of its punctuation rules makes a sentence worse, follow technical-writing and fix the sentence another way.
 
 ## Routes
 
 Playbooks carry p3stack's added steps inline; read each marked link when its condition holds.
 
-On a bug-fix request without a failing reproduction, stop diagnosing-bugs at a reproduced failure and confirmed cause, before its fix. Hand the original reproduction, cause, debug tag and throwaway probe paths to `poteto-mode/playbooks/bug-fix.md` at step 3 for the only implementation. Continue through the end of Bug fix, including its Opening a PR delivery step.
+On a bug-fix request without a failing reproduction, stop diagnosing-bugs at a reproduced failure and confirmed cause, before its fix. Hand the original reproduction, cause, debug tag and throwaway probe paths to `../poteto-mode/playbooks/bug-fix.md` at step 3 for the only implementation. Continue through the end of Bug fix, including its Opening a PR delivery step.
 
 | Request | Grant | Read in this order, or do |
 | --- | --- | --- |
@@ -40,9 +40,8 @@ On a bug-fix request without a failing reproduction, stop diagnosing-bugs at a r
 | Understand one existing subsystem or code path | any | `../poteto-mode/SKILL.md`, then `../poteto-mode/playbooks/investigation.md` |
 | Onboard to a repository, or map it as a whole | any | `../poteto-mode/SKILL.md`, then `../p3stack-mode/playbooks/onboard-brownfield.md` |
 | Find a fact outside the repository | any | `../poteto-mode/SKILL.md`, then `../research/SKILL.md` |
-| Align on a design with the human present | default | `../poteto-mode/SKILL.md`, then `../grill-with-docs/SKILL.md` |
-| Align on a design without blocking | full-autonomy | `../poteto-mode/SKILL.md`, then `../sharpen/SKILL.md` |
-| Explore design alternatives | full-autonomy | `../poteto-mode/SKILL.md`, then `../architect/SKILL.md` |
+| Align on a design with the human present | default | `../poteto-mode/SKILL.md`, then `../grilling/SKILL.md` |
+| Design without an interview or explore design alternatives | full-autonomy | `../poteto-mode/SKILL.md`, then `../architect/SKILL.md` |
 | Map a large effort with unresolved decisions | default | `../poteto-mode/SKILL.md`, then `../wayfinder/SKILL.md` |
 | Publish a tracker spec | default | `../poteto-mode/SKILL.md`, then `../to-spec/SKILL.md` |
 | Split a spec into tracker tickets | default | `../poteto-mode/SKILL.md`, then `../to-tickets/SKILL.md` |
@@ -60,7 +59,7 @@ On a bug-fix request without a failing reproduction, stop diagnosing-bugs at a r
 | Improve one measured metric repeatedly | any | `../poteto-mode/SKILL.md`, then `../poteto-mode/playbooks/hillclimb.md` |
 | Restructure code without changing behavior | any | `../poteto-mode/SKILL.md`, then `../poteto-mode/playbooks/refactoring.md` |
 | Review my change | any | `../poteto-mode/SKILL.md`, then `../p3stack-mode/playbooks/review-local.md` |
-| Clean up comments in a change | any | `../poteto-mode/SKILL.md`, then `../no-comments/SKILL.md` |
+| Clean up comments in a change | any | `../poteto-mode/SKILL.md`, then `../code-review/references/no-comments.md` |
 | Review someone else's PR | any | `../poteto-mode/SKILL.md`, then `../dyl-review/SKILL.md` |
 | Triage incoming issues or external PRs | any | `../poteto-mode/SKILL.md`, then `../triage/SKILL.md` |
 | Open a PR | any | `../poteto-mode/SKILL.md`, then `../poteto-mode/playbooks/opening-a-pr.md` |
@@ -89,4 +88,4 @@ On a bug-fix request without a failing reproduction, stop diagnosing-bugs at a r
 
 A tdd test seam is not a module boundary. Architect owns module boundaries, and tdd confirms the test seam within them.
 
-Keep context focused on the selected route. Read its dependencies when their trigger applies, rather than loading every linked skill. Before handing work off or compacting, save decisions, evidence paths, and unresolved questions in durable notes. A run that delegates more than one unit keeps a [ledger](references/execution-ledger.md). Delegation briefs follow the [brief contract](references/brief-contract.md), and every reviewer gets the [review stance](references/review-stance.md).
+Keep context focused on the selected route. Read its dependencies when their trigger applies, rather than loading every linked skill. Before handing work off or compacting, save decisions, evidence paths, and unresolved questions in durable notes. A run that delegates more than one unit keeps a [ledger](references/execution-ledger.md). For unattended work or a decision trail the user wants to audit, read [show-me-your-work](references/show-me-your-work.md). Delegation briefs follow the [brief contract](references/brief-contract.md), and every reviewer gets the [review stance](references/review-stance.md).

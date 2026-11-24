@@ -10,7 +10,7 @@ Adversaries try to break a change or a design. A finding survives only when a ru
 
 ## Frame
 
-The scope is what the user names. Otherwise it is the branch diff from its merge base with the base branch, through the working tree. State the intent with the **in-your-own-words** skill, from the user's message, the commits, and the PR description. Ask the user when the intent is unclear.
+The scope is what the user names. Otherwise it is the branch diff from its merge base with the base branch, through the working tree. State the intent with the [in-your-own-words](../grilling/references/in-your-own-words.md) reference, from the user's message, the commits, and the PR description. Ask the user when the intent is unclear.
 
 ## Fan out
 

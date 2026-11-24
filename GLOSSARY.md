@@ -199,6 +199,9 @@ _Avoid_: profile, preset (see Composition)
 A row that matches the requested deliverable and Grant to a first read or an inline action.
 _Avoid_: mapping, dispatch
 
+**Skill reference**:
+A procedure read through its owning skill rather than invoked as a command. A Route or Chain can select the reference directly.
+
 **Chain**:
 A conditional read that the generator inserts before or after a named playbook step. The model follows the **p3stack only** instruction when its condition holds.
 _Avoid_: hook, step (the playbook's own numbered items are steps)

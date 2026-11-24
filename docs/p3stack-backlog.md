@@ -4,7 +4,6 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 
 ## Needs the owner's decision
 
-- Decide whether to reduce the 92 skills to about 46 entry points. A cheaper first step is to ship the 24 principle skills as poteto-mode references. Both changes affect public `/skill:` names and links. (catalog.md, Decision and §7)
 - Decide when a route actually needs poteto-mode. Only the small-task row skips its full read today; making the read conditional elsewhere would save context but change which rules an agent sees. (router.md §2)
 - Trial shorter descriptions for model-invoked skills, and decide which still need to be advertised. Check discovery with routing off before making a skill explicit-only. (catalog.md §8)
 - Decide whether nightly maintenance should land every changed tip or report unconsumed changes without a PR. A read-only candidate classifier would separate finding a new commit from adopting it. (generator.md §5)
@@ -13,8 +12,9 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 
 ## Decided
 
+- On 2026-11-24 the owner chose 46 invocable skills: move 43 procedures (including the 24 principles) under their owners as references and drop the three remaining entries.
+- With routing off, deep-module prompts no longer select a skill; `tdd`, `architect` and `improve-codebase-architecture` link the `codebase-design` reference.
 - Multi-PR plans keep their ten mandatory live verification lanes per PR. The owner chose to leave the template and `check-plan.mjs` as they are (2026-11-24).
-
 - The live evals ran on this branch on 2026-11-24 (results in [the eval decision log](evals/README.md#decision-log)). Still unmeasured: routing on the parent models the owner uses day to day, and anything under T3 Code. The runs used `gpt-6-luna` at low and medium thinking in a terminal.
 
 ## Larger changes worth doing
@@ -41,6 +41,9 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 
 ## Small follow-ups
 
+- Narrow the moved-reference path guard. In a moved file it stops generation on a bare directory name that matches one of the reference's own directories (`scripts/` in prose) and on a fenced example of a consumer's path with the same name. Both fail loudly and `maintain-p3stack`'s failure table has the row, so the cost is a scoped rule at the next bump that adds such text.
+- Give `tdd`'s `regression-test` reference an opening that says what the procedure is. It opens with when to use it; the upstream description has no other sentence.
+- Widen the leftover-command test's own cases to the forms the generator's check accepts, such as a removed name inside an HTML tag.
 - Pin deep external reviews to the forge's head commit rather than assuming `origin/<branch>` is the PR head. The two differ on forks. (catalog.md §1)
 - Test a design-only discussion, a task-only grant, and a correction after `/p3stack off` or compaction against the projected prompt. Old hidden messages persist; inspecting the latest section alone cannot show what the model sees. (extension.md §9; t3.md §10)
 - Check the six `/t3-*` shortcuts in the live composer as well as at runtime. A discovery process without `T3_MCP_URL` can see a different command list; this is not a confirmed UI bug. (t3.md §8)

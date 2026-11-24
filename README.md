@@ -46,7 +46,7 @@ The owner's nonsecret preferences live in [`global/`](global/README.md). Those f
 ## Included resources
 
 - [`extensions/p3stack`](packages/p3stack/extensions/p3stack/) owns the mode, `ask_user`, role resolution, and host diagnostics.
-- [`skills`](packages/p3stack/skills/) contains the generated router and workflows from Cursor, Matt Pocock, Addy Osmani, and p3stack's own authors.
+- [`skills`](packages/p3stack/skills/) contains the 46 skills, including the router, and their references. Use `/skill:poteto-help` to find which skill owns a procedure.
 - [`subagents`](packages/p3stack/subagents/README.md) owns persistent RPC children, peer messaging, bounded workflows, and recovery. T3 supplies its own delegation and loads neither the native Manager nor its skills.
 - [`todo`](packages/p3stack/todo/README.md) tracks steps per session branch.
 - [`web-search`](packages/web-search/README.md) searches DuckDuckGo without an API key.

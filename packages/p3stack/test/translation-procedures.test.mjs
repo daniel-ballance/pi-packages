@@ -172,7 +172,7 @@ test("the coordinator records installed paths; T3 briefs travel without that ins
   const plan = playbook("multi-phase-plan");
   assert.doesNotMatch(plan, /pstack\/skills\/|execution playbook from trunk/);
   assert.match(plan, /absolute installed path/i);
-  for (const doc of [plan, playbook("autopilot-full"), skill("thermos"), skill("dyl-review")]) {
+  for (const doc of [plan, playbook("autopilot-full"), read("skills/dyl-review/references/thermos.md"), skill("dyl-review")]) {
     assert.match(doc, /T3[^\n]*inline[^\n]*commit/i);
     assert.doesNotMatch(doc, /Give each worker (?:its paths|the relevant recorded paths)/);
   }
@@ -252,10 +252,10 @@ test("recall gives each child scoped history IDs, not a second discovery algorit
 const reviews = ["thermo-nuclear-review", "thermo-nuclear-code-quality-review"];
 for (const name of ["thermos", "dyl-review"]) {
   test(`${name} briefs both read-only thermo passes with the installed recipes and rubrics`, () => {
-    const text = skill(name);
+    const text = name === "dyl-review" ? skill(name) : read("skills/dyl-review/references/thermos.md");
     for (const review of reviews) {
       assert.ok(text.includes(`(../../agents/${review}-subagent.md)`), review + " recipe");
-      assert.ok(text.includes(`(../${review}/SKILL.md)`), review + " rubric");
+      assert.ok(text.includes(`(${name === "thermos" ? "../dyl-review/" : ""}references/${review}.md)`), review + " rubric");
     }
     assert.doesNotMatch(text, /Thermos plugin/);
   });
@@ -264,7 +264,7 @@ for (const name of ["thermos", "dyl-review"]) {
 for (const name of reviews) {
   test(`${name} recipe points to the rubric it uses without a plugin or child forge call`, () => {
     const text = read(`agents/${name}-subagent.md`);
-    assert.ok(text.includes(`(../skills/${name}/SKILL.md)`));
+    assert.ok(text.includes(`(../skills/dyl-review/references/${name}.md)`));
     assert.match(text, /child[^\n]*skip this section/i);
     assert.doesNotMatch(text, /Thermos plugin|Invoked delegated child|use `gh` or `glab`/);
   });
@@ -279,6 +279,24 @@ test("dyl-review keeps code-review coordination and Git/forge work in the parent
   assert.doesNotMatch(text, /child running \[code-review\]|code-review child|every worker the depth calls for in one message/);
 });
 
+test("domain setup pairs the interview with domain-modeling", () => {
+  assert.match(read("skills/setup-matt-pocock-skills/domain.md"), /(?:alongside|together with) `\/skill:grilling`/);
+});
+
+for (const kind of ["verification-skill", "formal-verification-skill"]) {
+  test(`audit an existing ${kind} before starting the create procedure`, () => {
+    const entry = skill(`create-${kind}`).split("\n## ")[0];
+    assert.match(entry, /audit or realign/i);
+    assert.ok(entry.includes(`(references/maintain-${kind}.md)`));
+  });
+}
+
+test("architect stops on a prompt-only request and compares viable designs on depth", () => {
+  const doc = skill("architect");
+  assert.match(doc, /only to sharpen[^\n]*return the rewritten prompt and stop/i);
+  assert.match(doc, /Compare viable candidates on interface depth\.[^\n]*references\/codebase-design\.md/);
+});
+
 test("Pi help starts at the persistent router and distinguishes an explicit standalone skill", () => {
   const help = skill("poteto-help");
   for (const command of ["/p3stack on`", "/p3stack on autonomous`", "/p3stack off`", "/skill:<name>"]) assert.ok(help.includes(command), command);
@@ -290,10 +308,45 @@ test("Pi help starts at the persistent router and distinguishes an explicit stan
   assert.doesNotMatch(help, /start(?:ing)? each (?:new )?task with|Only `[^\n]*setup-pstack` loads|lists every playbook|default answer is `\/skill:poteto-mode/i);
 });
 
+test("a reflection reviewer still recognizes reads of any skill in the transcript", () => {
+  for (const reviewer of ["divergent", "judgment", "tooling"]) {
+    assert.match(read(`skills/retro/references/reflect/references/${reviewer}-reviewer.md`), /a \`Read\` of its \`SKILL\.md\`/);
+  }
+});
+
+test("help leads with routed requests, then covers the other emitted skills and every reference owner", () => {
+  const help = skill("poteto-help"), routes = JSON.parse(read("registry/routes.json")), registry = JSON.parse(read("registry/skills.json"));
+  assert.equal(help.match(/^## .+$/m)[0], "## Find a job");
+  const [jobs, rest] = help.split("### Other standalone jobs"), [direct, owners] = rest.split("### References by owner");
+  for (const { request, grant, target } of routes) {
+    const row = jobs.split("\n").find(line => line.startsWith(`| ${request} |`));
+    assert.ok(row, request);
+    if (target?.includes("playbooks/")) {
+      // A playbook is no command: the row names the skill whose directory holds it, which loads it with routing off.
+      const label = target.split("/").pop().replace(/\.md$/, ""), holder = target.startsWith("playbooks/") ? "poteto-mode" : target.split("/")[0];
+      assert.ok(row.endsWith(`| \`/skill:${holder} use the ${label} playbook\` |`), row);
+      assert.ok(read(`skills/${holder}/playbooks/${label}.md`), row);
+    }
+    else if (target) assert.ok(row.includes(target.includes("/") ? target : `/skill:${target}`), row);
+    if (grant !== "any") assert.ok(row.includes(grant === "default" ? "default" : "autonomous"), row);
+  }
+  assert.ok(jobs.includes("| Review my change | `/skill:p3stack-mode use the review-local playbook` |"));
+  assert.ok(jobs.includes("| Open a PR | `/skill:poteto-mode use the opening-a-pr playbook` |"));
+  const targets = new Set(routes.map(row => row.target));
+  const names = [...direct.matchAll(/\]\(\.\.\/([\w-]+)\/SKILL\.md\)/g)].map(match => match[1]);
+  assert.deepEqual(names.sort(), registry.filter(row => row.action === "emit" && !targets.has(row.name)).map(row => row.name).sort());
+  assert.match(direct, /\[`\/p3stack on`\]\(\.\.\/p3stack-mode\/SKILL\.md\)/);
+  for (const { name, owner } of registry.filter(row => row.action === "reference")) {
+    const row = owners.split("\n").find(line => line.startsWith(`- [${owner}]`));
+    assert.ok(row?.includes(name.startsWith("principle-") ? "principle-*" : `../${owner}/references/${name}.md`), name);
+  }
+});
+
 test("copyable help recipes can be sent after enabling the Pi router", () => {
   const recipes = read("skills/poteto-help/references/recipes.md");
   assert.match(recipes, /\/p3stack on/);
-  assert.doesNotMatch(recipes, /`\/skill:poteto-mode /);
+  assert.doesNotMatch(recipes, /`\/skill:(?:poteto-mode|p3stack-mode) /);
+  assert.match(recipes, /p3stack-mode\/references\/show-me-your-work\.md[^\n]*decision log/);
 });
 
 test("tracker setup selects the first instruction file Pi loads", () => {

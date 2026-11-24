@@ -1,0 +1,22 @@
+{
+  "arena": "Try the same task several ways and combine the best parts",
+  "benchmark-checklist": "Check whether a measured speedup is real",
+  "code-review": "Check a diff against the spec and the repository's standards",
+  "create-formal-verification-skill": "Model-check a race or invariant, or audit the existing model",
+  "create-verification-skill": "Give agents a way to drive the app, or audit its existing verification skill",
+  "how": "Explain how a code path works or where new code belongs",
+  "interactive-prototype": "Build something I can click to compare designs",
+  "interrogate": "Have independent reviewers challenge a diff or design",
+  "ketchup": "Catch me up on this chat and list what needs my decision",
+  "p3stack-mode": "Turn on routing for this session",
+  "poteto-mode": "Use poteto's workflow and response style for one task",
+  "pr": "Write the PR description",
+  "recall": "Reconstruct where I left off across recent chats",
+  "source-grounding": "Check an implementation choice against the official docs",
+  "statechart": "Check a state model and draw the paths that break its rules",
+  "swarm": "Split checks across workers and give me one report",
+  "tdd": "Fix a bug test-first with a cheap local reproduction",
+  "technical-writing": "Write or revise a README, RFC or commit message",
+  "why": "Trace why a design or threshold was chosen",
+  "writing-for-agents": "Write or edit instructions an agent will follow"
+}

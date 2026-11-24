@@ -30,6 +30,16 @@ test("audit and host repair reach the installed live check; the landing guide li
   assert.match(fixes, /host map missing a required direct tool[^\n]*host-t3\.md/);
 });
 
+test("reference failures have repairs and all three classifications have examples", () => {
+  const guide = read("references/failure-classes.md");
+  for (const diagnostic of ["removed skill command", "must be an emitted skill", "both land at", "nested SKILL.md", "reference needs its registered name and description", "Missing reference", "unrebased resource path"]) {
+    assert.ok(guide.split("\n").some(line => line.startsWith("|") && line.includes(diagnostic)), diagnostic);
+  }
+  const examples = [...guide.matchAll(/```json\n([^`]+)\n```/g)].map(match => JSON.parse(match[1]));
+  assert.deepEqual(examples.map(row => row.action).sort(), ["drop", "emit", "reference"]);
+  assert.ok(examples.find(row => row.action === "reference").owner);
+});
+
 test("a shared checkout moves once, to the checked SHA even on a tip run", () => {
   const bump = read("references/bump.md");
   assert.match(bump, /ls-remote[^\n]*full (?:commit )?SHA/i);
