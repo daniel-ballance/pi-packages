@@ -20,7 +20,8 @@ ${rule}
 ### PR mechanics
 ### Verdict and merge
 ### Boot recipe
-\`git show origin/main:\` one-hour wake loop status message
+- [ ] Installed file. \`${join(import.meta.dirname, "../../swarm/SKILL.md")}\`
+one-hour wake loop status message
 
 ## PR 1
 **Depends on.** None.

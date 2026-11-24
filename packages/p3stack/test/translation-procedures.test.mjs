@@ -92,3 +92,36 @@ test("PR delivery has an explicit trigger and never resets a checkout between ch
   assert.match(text, /never after a read-only investigation, review, design or plan/i);
   assert.doesNotMatch(text, /end of every other playbook|reset --hard|reset from main/);
 });
+
+test("the plan records installed paths for briefs and reserves git show for project files", () => {
+  const plan = playbook("multi-phase-plan");
+  assert.doesNotMatch(plan, /pstack\/skills\/|execution playbook from trunk/);
+  assert.match(plan, /absolute installed path/i);
+  assert.match(plan, /brief[^\n]*recorded path|recorded path[^\n]*brief/i);
+  assert.match(plan, /project-owned[^\n]*git show <[^>]+>:<[^>]+>/i);
+});
+
+for (const mode of ["autopilot-full", "autopilot-stack"]) {
+  test(`${mode} reads the installed execution playbook on every tick`, () => {
+    assert.match(playbook(mode), /tick[^\n]*installed path[^\n]*plan/i);
+    assert.doesNotMatch(playbook(mode), /playbook from trunk/);
+  });
+}
+
+test("plan checker accepts installed files outside the consumer repo, not missing files or trunk markers", t => {
+  const cwd = scratch(t), file = join(cwd, "plan.md");
+  const skeleton = playbook("multi-phase-plan").split("````markdown\n")[1].split("\n````")[0]
+    .replace("<swarm workers model>", "test-model");
+  const check = pointer => {
+    const arm = `### Arm the program\n- [ ] Installed file. \`${pointer}\`\n`;
+    writeFileSync(file, skeleton.replace(/### Arm the program\n[\s\S]*?(?=- \[ \] On the operator's go)/, arm));
+    return spawnSync(process.execPath, [join(pkg, "skills/poteto-mode/scripts/check-plan.mjs"), file], { cwd, encoding: "utf8" });
+  };
+  const ok = check(join(pkg, "skills/swarm/SKILL.md"));
+  assert.equal(ok.status, 0, ok.stderr);
+  for (const pointer of ["git show origin/main:pstack/skills/swarm/SKILL.md", join(cwd, "absent.md")]) {
+    const bad = check(pointer);
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /installed file/i);
+  }
+});

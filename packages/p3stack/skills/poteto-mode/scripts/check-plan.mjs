@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import { isAbsolute } from "node:path";
 import process from "node:process";
 
 const RULE =
@@ -17,7 +18,7 @@ const SUB_BLOCKS = [
 	"Merge.",
 ];
 const PROGRAM_H3 = ["Arm the program", "Spawn owners", "PR mechanics", "Verdict and merge", "Boot recipe"];
-const PROGRAM_MARKERS = ["git show origin/main:", "one-hour wake loop", "status message"];
+const PROGRAM_MARKERS = ["one-hour wake loop", "status message"];
 const HOW_TO_READ_MARKERS = [
 	"One box is one unit of work",
 	"names the evidence",
@@ -112,6 +113,14 @@ else {
 		const at = h3s.findIndex((t, i) => i >= cursor && t.startsWith(name));
 		if (at === -1) fail(program.n, `Program checklist lacks "### ${name}" in order`);
 		else cursor = at + 1;
+	}
+	const installed = boxes(program.body).filter(b => b.text.startsWith("Installed file."));
+	if (!installed.length) fail(program.n, "Program checklist lacks installed file paths");
+	for (const box of installed) {
+		const path = /^Installed file\. `([^`]+)`$/.exec(box.text)?.[1];
+		if (!path || !isAbsolute(path) || !fs.statSync(path, { throwIfNoEntry: false })?.isFile()) {
+			fail(box.n, "Installed file must name an existing file by its absolute path");
+		}
 	}
 	for (const marker of PROGRAM_MARKERS) {
 		if (!bodyText(program).includes(marker)) fail(program.n, `Program checklist lacks "${marker}"`);
