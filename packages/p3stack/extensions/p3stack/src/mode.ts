@@ -5,8 +5,8 @@ import { modeFooter } from "./footer.ts";
 import { detectHost } from "./host.ts";
 
 interface Ui {
-  select(title: string, options: string[]): Promise<string | undefined>;
-  input(title: string, placeholder?: string): Promise<string | undefined>;
+  select: ExtensionUIContext["select"];
+  input: ExtensionUIContext["input"];
   confirm(title: string, message: string): Promise<boolean>;
   notify(message: string, type?: "info" | "warning" | "error"): void;
   setFooter: ExtensionUIContext["setFooter"];

@@ -663,6 +663,51 @@ test("ask_user asks through the UI, and without one says to apply the stated def
   } finally { headless.dispose(); }
 });
 
+test("ask_user distinguishes a literal Other option from a free-text invitation", async () => {
+  const label = "Other (type an answer)";
+  const h = harness({ answers: [label, label, "custom choice"] });
+  try {
+    assert.equal(text(await h.call("ask_user", { question: "Which?", options: [label] })), `The human chose: ${label}`);
+    assert.deepEqual(h.asked, [`Which? [${label}]`]);
+    assert.equal(text(await h.call("ask_user", { question: "Which?", options: [label], allowOther: true })), "The human answered: custom choice");
+    assert.deepEqual(h.asked.slice(1), [`Which? [${label}]`, "Which?"]);
+  } finally { h.dispose(); }
+});
+
+test("ask_user never treats an unanswered question without a default as approval", async () => {
+  for (const hasUI of [false, true]) {
+    const h = harness({ hasUI });
+    try {
+      const answer = text(await h.call("ask_user", { question: "Which?" }));
+      assert.match(answer, /do not treat silence as approval/i);
+      assert.match(answer, /take the option that changes least, or stop and say what is needed/i);
+    } finally { h.dispose(); }
+  }
+});
+
+test("ask_user sends the tool's abort signal to every dialog and propagates cancellation", async () => {
+  const h = harness();
+  try {
+    for (const kind of ["select", "input", "other"]) {
+      const controller = new AbortController(), seen: string[] = [];
+      const dialog = (method: string, opts?: { signal?: AbortSignal }) => {
+        assert.equal(opts?.signal, controller.signal);
+        seen.push(method);
+        if (method === "select" && kind === "other") return "Other (type an answer)";
+        controller.abort();
+        return undefined; // Pi resolves a cancelled dialog without an answer.
+      };
+      const ui = {
+        select: async (_title: string, _options: string[], opts?: { signal?: AbortSignal }) => dialog("select", opts),
+        input: async (_title: string, _placeholder?: string, opts?: { signal?: AbortSignal }) => dialog("input", opts),
+      };
+      const args = { question: "Which?", options: kind === "input" ? undefined : ["one"], allowOther: kind === "other", default: "one" };
+      await assert.rejects(h.tools.get("ask_user").execute("call", args, controller.signal, undefined, { ...h.ctx, ui }), { name: "AbortError" });
+      assert.deepEqual(seen, kind === "other" ? ["select", "input"] : [kind]);
+    }
+  } finally { h.dispose(); }
+});
+
 function asTerminal() {
   const previous = process.env.T3_MCP_URL;
   delete process.env.T3_MCP_URL;
