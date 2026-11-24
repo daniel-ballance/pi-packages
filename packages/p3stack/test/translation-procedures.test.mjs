@@ -171,3 +171,34 @@ test("dyl-review keeps code-review coordination and Git/forge work in the parent
   assert.match(worker, /title and body[^\n]*(?:parent|main thread)/i);
   assert.doesNotMatch(text, /child running \[code-review\]|code-review child|every worker the depth calls for in one message/);
 });
+
+test("Pi help starts at the persistent router and distinguishes an explicit standalone skill", () => {
+  const help = skill("poteto-help");
+  for (const command of ["/p3stack on`", "/p3stack on autonomous`", "/p3stack off`", "/skill:<name>"]) assert.ok(help.includes(command), command);
+  assert.match(help, /model-visible skills[^\n]*router (?:is )?off/i);
+  assert.match(help, /\.\.\/p3stack-mode\/references\/routes\.md/);
+  assert.doesNotMatch(help, /start(?:ing)? each (?:new )?task with|Only `[^\n]*setup-pstack` loads|lists every playbook|default answer is `\/skill:poteto-mode/i);
+});
+
+test("copyable help recipes can be sent after enabling the Pi router", () => {
+  const recipes = read("skills/poteto-help/references/recipes.md");
+  assert.match(recipes, /\/p3stack on/);
+  assert.doesNotMatch(recipes, /`\/skill:poteto-mode /);
+});
+
+test("tracker setup selects the first instruction file Pi loads", () => {
+  const write = skill("setup-matt-pocock-skills").split("**Pick the file to edit:**")[1].split("If an `## Agent skills`")[0];
+  const names = [...write.matchAll(/`((?:AGENTS|CLAUDE)(?:\.override)?\.(?:md|MD))`/g)].map(m => m[1]);
+  assert.deepEqual(names.slice(0, 5), ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]);
+});
+
+test("the migration step names both exact old-to-new moves; other steps depend only on the new names", () => {
+  const setup = skill("setup-matt-pocock-skills");
+  const migration = setup.split("\n").find(line => line.includes("legacy domain glossary"));
+  const operands = [...migration.matchAll(/`git mv -- (\{[A-Z]+,[A-Z]+\}[-A-Z.]*md)`/g)];
+  // Expand only literal brace pairs, never run commands from the document.
+  assert.deepEqual(operands.map(([, pair]) => execFileSync("bash", ["-c", 'printf "%s\\n" ' + pair], { encoding: "utf8" }).trim().split("\n")), [
+    ["CONTEXT.md", "GLOSSARY.md"], ["CONTEXT-MAP.md", "GLOSSARY-MAP.md"],
+  ]);
+  assert.doesNotMatch(setup.replace(migration, ""), /CONTEXT/);
+});

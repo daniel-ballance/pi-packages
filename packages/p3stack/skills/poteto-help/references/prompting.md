@@ -37,7 +37,7 @@ A prompt states the intent and the check for done. The playbook supplies the ste
 
 ## Before stepping away
 
-- Say "im going to bed" or "im stepping away" so the agent stops asking.
+- If you want the other grant before stepping away, use `/p3stack on autonomous`. Operator gates still pause.
 - Write done as checks every iteration can run, and give the wake loop that predicate.
 - Ask for a fresh worktree off a named base.
 - Pre-answer what the agent would stop for, such as "don't ask me before committing".
