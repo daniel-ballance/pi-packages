@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { RegistryStore } from "../extensions/subagents/src/registry.js";
 import { RpcChild, type Packet } from "../extensions/subagents/src/rpc.js";
 import { cliEnv } from "./host-env.js";
 import { tempRoot } from "./support/temp-root.js";
@@ -36,7 +37,7 @@ test("real parent launches autonomous workflow, gets one completion notice, and 
     const notices = events.filter(e => e.type === "message_end" && e.message?.customType === "subagent-report");
     assert.equal(notices.length, 1, "Only workflow completion, not every child result");
     assert.equal(events.some(e => e.type === "extension_error"), false, stderr);
-    const registry = JSON.parse(readFileSync(join(result.directory, "../../registry.json"), "utf8"));
+    const registry = new RegistryStore(join(result.directory, "../../registry.json")).load()!;
     assert.ok(registry.agents.every((a: Packet) => a.status === "stopped" && !a.pid));
   } finally { await parent.stop(); rmSync(root, { recursive: true, force: true }); }
 });

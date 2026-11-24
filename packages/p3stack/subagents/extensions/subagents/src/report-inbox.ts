@@ -23,7 +23,7 @@ export class ReportInbox {
     lookup: (id: string) => AgentRecord | undefined;
     attached: (id: string) => boolean;
     mayAnnounce: (id: string, kind: string) => boolean;
-    persist: () => void;
+    persist: (...changed: AgentRecord[]) => void;
     notify: (notice: Notice) => void;
   }) {}
   private get(id: string) {
@@ -52,7 +52,7 @@ export class ReportInbox {
   }
   dismissRoutine(record: AgentRecord) {
     this.observe(record, this.savedNotices().filter(n => n.id === record.id && n.kind !== "human_intervention").map(n => n.cursor));
-    this.options.persist();
+    this.options.persist(record);
   }
   private trimReports(record: AgentRecord) {
     const saved = record.savedReports;
@@ -87,7 +87,7 @@ export class ReportInbox {
       const request = record.uiRequests.find(r => r.id === requestId);
       if (request) request.readFull = reportPage(record.id, update.cursor);
     }
-    if (!this.announce(record, noticeKind, text, update.cursor, requestId)) this.options.persist();
+    if (!this.announce(record, noticeKind, text, update.cursor, requestId)) this.options.persist(record);
   }
   announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
     if (!this.options.mayAnnounce(record.id, kind) || (kind !== "human_intervention" && record.observedCursors?.includes(cursor))) return;
@@ -100,7 +100,7 @@ export class ReportInbox {
         assignmentId: saved?.assignmentId ?? record.assignment?.id, fullLength, readFull: reportPage(record.id, cursor),
       } : {}) };
     this.notices.set(key, notice);
-    this.options.persist();
+    this.options.persist(record);
     // Notification scheduling must not prevent a human cancellation; the queue is durable.
     if (kind === "human_intervention") { try { this.options.notify(notice); } catch { /* retry from persisted queue */ } }
     else if (!this.routedToParent(notice)) this.options.notify(notice); // Wake the delivery scheduler; don't inject into the parent here.
@@ -132,12 +132,17 @@ export class ReportInbox {
     }
   }
   markNoticesDelivered(keys: string[]) {
+    const changed = new Set<AgentRecord>();
     for (const key of keys) {
       const notice = this.notices.get(key);
       if (notice?.kind === "human_intervention") this.notices.delete(key);
-      else if (notice) this.observe(this.get(notice.id), [notice.cursor]);
+      else if (notice) {
+        const record = this.get(notice.id);
+        this.observe(record, [notice.cursor]);
+        changed.add(record);
+      }
     }
-    this.options.persist();
+    this.options.persist(...changed);
   }
   /** byRoot false: a coordinator Child read this through its proxied tools. */
   acknowledgeRead(receipt: ReadReceipt, advanceCursor: boolean, byRoot = true) {
@@ -150,7 +155,7 @@ export class ReportInbox {
     this.observe(record, cursors, !byRoot);
     if (receipt.updates.some(u => u.cursor === record.assignment?.resultCursor && !u.truncated)) this.review(record);
     if (advanceCursor) { record.readCursor = Math.max(record.readCursor, receipt.nextCursor); this.advanceConsumed(record); }
-    this.options.persist();
+    this.options.persist(record);
   }
   private review(record: AgentRecord) {
     if (record.resultReview?.status === "unreviewed" && record.resultReview.assignmentId === record.assignment?.id)
@@ -203,7 +208,7 @@ export class ReportInbox {
       if (record.assignment?.resultCursor === cursor) this.review(record);
       data.resultReview = record.resultReview && structuredClone(record.resultReview);
       this.advanceConsumed(record);
-      this.options.persist();
+      this.options.persist(record);
     } };
   }
   private advanceConsumed(record: AgentRecord) {

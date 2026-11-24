@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
@@ -12,6 +12,7 @@ import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
 import { BUSY, type WaitEnd } from "./wait.js";
 import { REPORT_KINDS } from "./read-page.js";
+import { enforcePrivatePath, enforcePrivatePathIfPresent, RegistryStore } from "./registry.js";
 import { ReportInbox, type Notice, type ReadReceipt, type SavedReport, type Update } from "./report-inbox.js";
 export type { Notice, ReadReceipt, Update } from "./report-inbox.js";
 export { reportPage, REPORT_KINDS } from "./read-page.js";
@@ -85,18 +86,6 @@ export interface SlotReservation { readonly id: symbol }
 const MAX_LOG = 20 * 1024 * 1024;
 const RESERVED = new Set(["--mode", "-p", "--print", "--session", "--session-dir", "--no-session", "--fork", "-c", "--continue", "-r", "--resume", "--export", "--"]);
 
-function enforcePrivatePath(path: string, mode: number, directory: boolean) {
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile())) throw new Error(`Unsafe subagent state path: ${path}`);
-  chmodSync(path, mode);
-}
-function enforcePrivatePathIfPresent(path: string, mode: number, directory: boolean) {
-  try { enforcePrivatePath(path, mode, directory); return true; }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
-}
 // Deliberately narrow: a generic failure mentioning cancellation is still a failure.
 export function isCancellationError(message: unknown): boolean {
   return typeof message === "string" && /^(?:AbortError:\s*)?(?:(?:(?:the|this) )?operation (?:was )?aborted|request (?:was )?aborted|aborted|cancelled|canceled)[.!]?$/i.test(message.trim());
@@ -111,7 +100,7 @@ function processGone(pid?: number) {
 
 export class SubagentManager {
   private static owners = new Map<string, SubagentManager>();
-  private get current() { return SubagentManager.owners.get(this.registry) === this; }
+  private get current() { return SubagentManager.owners.get(this.store.path) === this; }
   private records = new Map<string, AgentRecord>();
   private activityFeeds = new Map<string, ActivityFeed>();
   private children = new Map<string, RpcChild>();
@@ -129,7 +118,7 @@ export class SubagentManager {
   private reservations = new Map<SlotReservation, number>();
   private reservedSlots = 0;
   private usageRevision = new Map<string, number>();
-  private registry: string;
+  private readonly store: RegistryStore;
   private interventionHook?: (record: AgentRecord, kind: InterventionKind) => void;
   /** Install a synchronous parent hook to pause owned workflows before any cancellation awaits. */
   setInterventionHook(hook?: (record: AgentRecord, kind: InterventionKind) => void) { this.interventionHook = hook; }
@@ -160,20 +149,19 @@ export class SubagentManager {
   constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, private readonly limit: ChildLimit = OMITTED_CHILD_LIMIT, private authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], readonly peerMessageLimit = 0, readonly parentMessageLimit = 0) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     enforcePrivatePath(directory, 0o700, true);
-    this.registry = resolve(directory, "registry.json");
+    this.store = new RegistryStore(resolve(directory, "registry.json"));
     this.inbox = new ReportInbox({
       directory, lookup: id => this.records.get(id), attached: id => this.children.has(id),
       mayAnnounce: (id, kind) => this.current && (kind === "human_intervention" || (!this.shuttingDown && !this.workflowChildren.has(id))),
-      persist: () => this.persist(), notify: notice => this.notice(notice),
+      persist: (...changed) => this.persist(...changed), notify: notice => this.notice(notice),
     });
     let peerState: PeerState | undefined;
     const recoveredHolds: AgentRecord[] = [];
-    let recoveredChanges = false;
-    if (enforcePrivatePathIfPresent(this.registry, 0o600, false)) {
-      const stored = JSON.parse(readFileSync(this.registry, "utf8"));
-      if (stored.version !== 1 || !Array.isArray(stored.agents)) throw new Error("Unsupported subagent registry");
+    const recoveredChanges = new Set<AgentRecord>();
+    const stored = this.store.load();
+    if (stored) {
       peerState = stored.peers;
-      for (const record of stored.agents as AgentRecord[]) {
+      for (const record of stored.agents) {
         // Keep old cap-preflight artifacts inspectable, but don't count
         // them as agents by default. Never hide actual process launch failures.
         if (!record.sessionId && !record.startedAt && !existsSync(record.sessionFile) &&
@@ -195,7 +183,7 @@ export class SubagentManager {
         if (record.status === "stopping" || record.uncertainSubmission) record.unconfirmedStop ??= "Stop not confirmed before parent restart.";
         if (record.unconfirmedStop && processGone(record.pid)) {
           delete record.unconfirmedStop; delete record.uncertainSubmission;
-          record.status = "stopped"; recoveredChanges = true;
+          record.status = "stopped"; recoveredChanges.add(record);
         }
         record.status = record.status === "failed" ? "failed" : "stopped";
         if (record.status === "stopped" && record.error) {
@@ -203,18 +191,18 @@ export class SubagentManager {
         }
         if (record.unconfirmedStop) record.status = "stopping";
         else delete record.pid;
-        if (record.queuedAssignments?.length) recoveredChanges = true;
+        if (record.queuedAssignments?.length) recoveredChanges.add(record);
         record.queuedAssignments = []; // Interrupted follow-ups are never replayed on explicit resume.
         record.uiRequests = [];
         record.activity = record.unconfirmedStop ?? "No process attached. Resume explicitly to continue the saved conversation.";
         enforcePrivatePathIfPresent(record.logFile, 0o600, false);
         enforcePrivatePathIfPresent(record.stderrFile, 0o600, false);
-        if (this.inbox.restoreReports(record)) recoveredChanges = true;
+        if (this.inbox.restoreReports(record)) recoveredChanges.add(record);
         this.records.set(record.id, record);
       }
-      this.inbox.restoreNotices(stored.pendingNotices ?? []);
+      this.inbox.restoreNotices(stored.pendingNotices);
     }
-    SubagentManager.owners.set(this.registry, this);
+    SubagentManager.owners.set(this.store.path, this);
     this.peers = new PeerBroker({
       state: peerState, ceiling: peerMessageLimit, persist: () => this.persist(),
       participant: id => {
@@ -230,22 +218,18 @@ export class SubagentManager {
       const text = `Human ${record.hold!.kind} for ${record.name} (${record.id}): failed (confirmation interrupted by parent restart). ${record.hold!.detail}`;
       this.inbox.report(record, "human_intervention", text);
     }
-    if (recoveredChanges) this.persist();
+    if (recoveredChanges.size) this.persist(...recoveredChanges);
   }
-  private persist() {
+  private persist(...changed: AgentRecord[]) {
     if (!this.current) return;
-    const temp = this.registry + ".tmp";
-    enforcePrivatePathIfPresent(temp, 0o600, false);
-    writeFileSync(temp, JSON.stringify({ version: 1, agents: [...this.records.values()], pendingNotices: this.inbox.savedNotices(), peers: this.peers?.state }, null, 2), { mode: 0o600 });
-    enforcePrivatePath(temp, 0o600, false);
-    renameSync(temp, this.registry);
-    enforcePrivatePath(this.registry, 0o600, false);
+    this.store.save(this.records.values(), changed, r => !this.children.has(r.id) && !r.unconfirmedStop &&
+      (r.status === "stopped" || r.status === "failed"), this.inbox.savedNotices(), this.peers?.state);
     this.changed();
   }
 
   private update(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
     const update = this.inbox.appendUpdate(record, kind, text, finalAnswer);
-    this.persist();
+    this.persist(record);
     return update;
   }
   private log(path: string, text: string) {
@@ -359,7 +343,7 @@ export class SubagentManager {
   private beginAssignment(record: AgentRecord, task: string, id: string = randomUUID(), at = new Date().toISOString()) {
     record.assignment = { id, task, status: "running", at };
     record.resultReview = undefined;
-    this.persist();
+    this.persist(record);
   }
   async spawn(options: SpawnOptions, reservation?: SlotReservation) {
     const id = `subagent-${randomUUID().slice(0, 8)}`;
@@ -495,7 +479,7 @@ export class SubagentManager {
           record.resultReview = { assignmentId: record.assignment.id, status: "unreviewed" };
         }
         if (expected && record.error) { record.lastError = record.error; delete record.error; }
-        if (expected || !this.inbox.announce(record, "failure", record.error!, update.cursor)) this.persist();
+        if (expected || !this.inbox.announce(record, "failure", record.error!, update.cursor)) this.persist(record);
         // Its Children's unread reports were waiting for it; they now go to the root.
         this.inbox.parentStopped(record.id);
       },
@@ -503,7 +487,7 @@ export class SubagentManager {
     this.children.set(record.id, child);
     record.pid = child.child.pid;
     if (record.pid) record.startedAt ??= new Date().toISOString();
-    this.persist();
+    this.persist(record);
     const state = await child.request({ type: "get_state" });
     this.assertReleased(record);
     if (!state.sessionFile || resolve(state.sessionFile) !== resolve(record.sessionFile)) {
@@ -538,9 +522,11 @@ export class SubagentManager {
     try {
       const stats = await child.request({ type: "get_session_stats" }, timeout);
       // Ignore older responses and responses from a replaced/stopped process.
-      if (this.children.get(record.id) !== child || this.usageRevision.get(record.id) !== revision) return;
+      if (!this.current || this.children.get(record.id) !== child || this.usageRevision.get(record.id) !== revision) return;
       record.usage = retainFooterExtras(record.usage, stats);
-      this.persist(); // Also refreshes the parent's footer while the child is busy.
+      // The footer needs the latest sample now. The next durable transition (including close)
+      // checkpoints it; polling cost alone must not rewrite the registry.
+      this.changed();
     } catch { /* Keep the last known cumulative snapshot on failure. */ }
   }
   /** Refresh live snapshots before a user listing. Stopped children keep their last stats. */
@@ -562,7 +548,7 @@ export class SubagentManager {
     }
     // announce commits the result and its wake notice together, before calling
     // the scheduler. A suppressed notice still needs the settlement committed.
-    if ((humanCancellation && kind === "aborted") || !this.inbox.announce(record, kind, text, last.cursor)) this.persist();
+    if ((humanCancellation && kind === "aborted") || !this.inbox.announce(record, kind, text, last.cursor)) this.persist(record);
   }
   private deliveredInput(record: AgentRecord, delivery: InputDelivery, text: string) {
     const removed = delivery.removed, first = delivery.firstUser;
@@ -579,7 +565,7 @@ export class SubagentManager {
       if (delivery.batch && record.assignment?.status === "running") {
         // Pi's all-at-once mode delivers these together for one assistant answer.
         record.assignment.task += `\n\n${text}`;
-        this.persist();
+        this.persist(record);
       } else {
         if (record.assignment && !record.assignment.finishedAt) {
           record.error = delivery.error; record.aborted = !!delivery.cancelled;
@@ -594,7 +580,7 @@ export class SubagentManager {
       // The first prompt can be transformed as well, or an extension can
       // actually start a turn for a slash command.
       if (record.assignment?.status !== "running") this.beginAssignment(record, text);
-      else if (record.assignment.task !== text) { record.assignment.task = text; this.persist(); }
+      else if (record.assignment.task !== text) { record.assignment.task = text; this.persist(record); }
     }
   }
   private event(record: AgentRecord, packet: Packet, delivery: InputDelivery) {
@@ -630,13 +616,13 @@ export class SubagentManager {
         if (!delivery.lastResult) { record.aborted = false; record.error = undefined; }
         // A prompt accepted before its start event can be closed immediately.
         // Track cancellation identity without reviving the stopping lifecycle.
-        if (record.status === "stopping") { this.persist(); break; }
+        if (record.status === "stopping") { this.persist(record); break; }
         if (record.hold && !this.aborting.has(record.id) && record.hold.kind === "halt") {
           // A prompt accepted just before the hold may start after the first abort.
           queueMicrotask(() => { if (record.hold?.kind === "halt" && this.children.has(record.id) && !this.aborting.has(record.id)) void this.abort(record.id).catch(() => {}); });
         }
         record.status = "working"; record.activity = "Working";
-        this.persist(); break;
+        this.persist(record); break;
       case "tool_execution_start":
         record.activity = `Tool: ${packet.toolName}`; this.changed(); break;
       case "message_start": {
@@ -750,9 +736,11 @@ export class SubagentManager {
     const priorReview = record.resultReview;
     const queued = behavior === "followUp" && (previous === "working" || previous === "waiting_input")
       ? { id: randomUUID(), task: message, at: new Date().toISOString() } : undefined;
-    if (queued) (record.queuedAssignments ??= []).push(queued);
-    else if (!message.startsWith("/") && (!record.assignment || record.assignment.status !== "running")) this.beginAssignment(record, message);
-    this.persist();
+    if (!queued && !message.startsWith("/") && record.assignment?.status !== "running") this.beginAssignment(record, message);
+    else {
+      if (queued) (record.queuedAssignments ??= []).push(queued);
+      this.persist(record);
+    }
     this.submitting.set(id, (this.submitting.get(id) ?? 0) + 1);
     let disposition: InputDisposition = "unknown";
     let noWork = false;
@@ -803,7 +791,7 @@ export class SubagentManager {
           if (String(error).includes("timed out")) record.activity = "Prompt acceptance unknown after timeout; inspect before retrying.";
           else record.status = previous;
         }
-        this.persist();
+        this.persist(record);
         throw error;
       }
       if (record.hold) throw new Error(`${id} was held while prompt acceptance was pending`);
@@ -879,7 +867,7 @@ export class SubagentManager {
     if (this.aborting.has(id)) throw new Error("Abort is already in progress");
     this.aborting.add(id);
     record.queuedAssignments = [];
-    this.persist(); // Durable before clear_queue can discard a queued follow-up.
+    this.persist(record); // Durable before clear_queue can discard a queued follow-up.
     this.markAbortIntent(record); // Before awaiting anything: adapters may emit cancellation immediately.
     try {
       await child.request({ type: "clear_queue" });
@@ -992,14 +980,14 @@ export class SubagentManager {
       if (record.error) { record.lastError = record.error; delete record.error; }
       record.status = "stopped";
       record.activity = "Stopped; retained history available";
-      this.persist();
+      this.persist(record);
       return this.summary(id);
     }
     this.markAbortIntent(record);
     record.status = "stopping";
     record.unconfirmedStop = "Awaiting process close confirmation";
     this.peers.interrupt(id);
-    this.persist();
+    this.persist(record);
     // Cancel active tools before terminating the process. Cleanup still happens
     // if a wedged child cannot acknowledge cancellation.
     await child.request({ type: "clear_queue" }, 1000).catch(() => {});
@@ -1010,7 +998,7 @@ export class SubagentManager {
     try { await child.stop(); }
     catch (error) {
       record.activity = record.unconfirmedStop = `Process close unconfirmed: ${String(error)}`;
-      this.persist();
+      this.persist(record);
       throw error;
     }
     return this.summary(id);
@@ -1051,7 +1039,7 @@ export class SubagentManager {
         record.status = "working";
         record.activity = "UI response queued; awaiting child continuation";
       }
-      this.persist();
+      this.persist(record);
       return { ...this.summary(id), responseDelivery: { transport: "queued" as const, receipt: "unconfirmed" as const } };
     } finally {
       this.responding.delete(key);
@@ -1095,7 +1083,7 @@ export class SubagentManager {
     const failures: string[] = [];
     await Promise.all([...this.children.keys()].map(id => this.closeOne(this.get(id), true)
       .catch(error => { failures.push(`${id}: ${String(error)}`); })));
-    if (this.current) SubagentManager.owners.delete(this.registry);
+    if (this.current) SubagentManager.owners.delete(this.store.path);
     if (failures.length) throw new Error(`Shutdown unconfirmed: ${failures.join("; ")}`);
   }
 }
