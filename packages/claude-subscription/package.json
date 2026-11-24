@@ -11,23 +11,11 @@
   ],
   "files": [
     "extensions",
-    "skills",
-    "prompts",
-    "themes",
     "README.md"
   ],
   "pi": {
     "extensions": [
       "./extensions/claude-subscription/index.ts"
-    ],
-    "skills": [
-      "./skills"
-    ],
-    "prompts": [
-      "./prompts/**/*.md"
-    ],
-    "themes": [
-      "./themes/**/*.json"
     ]
   },
   "engines": {
@@ -39,8 +27,8 @@
     "test:live": "tsx --test test/live/*.live.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.323",
-    "@anthropic-ai/sdk": "^1.8.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.331",
+    "@anthropic-ai/sdk": "^1.14.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "zod": "^4.6.7"
   },
@@ -50,9 +38,9 @@
     "typebox": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^1.5.2",
-    "@earendil-works/pi-coding-agent": "^1.5.2",
-    "@types/node": "^26.6.6",
+    "@earendil-works/pi-ai": "^1.6.0",
+    "@earendil-works/pi-coding-agent": "^1.6.0",
+    "@types/node": "^26.6.7",
     "tsx": "^4.23.15",
     "typebox": "^1.4.7",
     "typescript": "^7.0.2"

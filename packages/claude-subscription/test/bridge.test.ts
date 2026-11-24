@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import {
+  isContextOverflow,
   normalizeContext,
   type AssistantMessage, type AssistantMessageEvent, type Message, type SimpleStreamOptions, type Tool,
 } from "@earendil-works/pi-ai";
@@ -269,6 +270,20 @@ test("tool calls Pi never answered are closed out when the conversation moves on
   assert.equal((await h.ask()).text, "moving on");
   assert.deepEqual(unanswered, { content: [{ type: "text", text: "No result provided" }], isError: true });
   assert.equal(h.spawned.length, 1);
+});
+
+test("a prompt past the context window fails the way Pi recognises as overflow", async t => {
+  // What Claude Code 2.1.323 reported for an oversized prompt, recorded 2026-11-24.
+  const h = harness(t, async claude => {
+    const user = await claude.user();
+    claude.emit({ type: "assistant", error: "invalid_request", parent_tool_use_id: null, message: { id: "synthetic", role: "assistant", content: [{ type: "text", text: "Prompt is too long" }] } });
+    claude.result([user.uuid], { is_error: true, result: "Prompt is too long", terminal_reason: "blocking_limit" });
+  });
+  h.user("far too much");
+  const { message } = await h.ask();
+  assert.equal(message.stopReason, "error");
+  assert.equal(message.errorMessage, "Prompt is too long");
+  assert.ok(isContextOverflow(message), "Pi compacts and retries on this message");
 });
 
 test("aborting interrupts the turn and leaves the session usable", async t => {

@@ -1,6 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import type {
   EffortLevel,
   Options,
@@ -25,23 +23,28 @@ export interface AgentQuery extends AsyncIterable<SDKMessage> {
 /** The Agent SDK's `query()`, narrowed to streaming input. Tests substitute a scripted one. */
 export type QueryFunction = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => AgentQuery;
 
-/**
- * The installed Agent SDK's version, read from its manifest without loading the SDK. Pi's
- * extension loader resolves neither `require` nor `import.meta.resolve`, so the manifest is
- * found the way Node finds a package: in `node_modules`, from this file's directory upward.
- */
-export function installedSdkVersion(from: string = fileURLToPath(import.meta.url)): string {
-  for (let dir = dirname(from); ; dir = dirname(dir)) {
-    const path = join(dir, "node_modules", "@anthropic-ai", "claude-agent-sdk", "package.json");
-    if (existsSync(path)) {
-      const manifest: unknown = JSON.parse(readFileSync(path, "utf8"));
-      if (typeof manifest !== "object" || manifest === null || !("version" in manifest) || typeof manifest.version !== "string") {
-        throw new Error(`No version in ${path}`);
-      }
-      return manifest.version;
-    }
-    if (dirname(dir) === dir) throw new Error(`The Agent SDK is not installed above ${from}`);
+function manifestVersion(url: URL): string {
+  const manifest: unknown = JSON.parse(readFileSync(url, "utf8"));
+  if (typeof manifest !== "object" || manifest === null || !("version" in manifest) || typeof manifest.version !== "string") {
+    throw new Error(`No version in ${url.pathname}`);
   }
+  return manifest.version;
+}
+
+let version: string | undefined;
+
+/** This package's version, reported to Anthropic as the calling app. */
+export function packageVersion(): string {
+  version ??= manifestVersion(new URL("../../../package.json", import.meta.url));
+  return version;
+}
+
+/**
+ * The installed Agent SDK's version, read from its manifest without loading the SDK. The SDK
+ * does not export `./package.json`, so the manifest is the one beside its entry point.
+ */
+export function installedSdkVersion(): string {
+  return manifestVersion(new URL("package.json", import.meta.resolve("@anthropic-ai/claude-agent-sdk")));
 }
 
 let loaded: Promise<QueryFunction> | undefined;
@@ -135,5 +138,51 @@ export class Inbox implements AsyncIterable<SDKUserMessage> {
         await this.wake.promise;
       }
     }
+  }
+}
+
+export interface ProbeOptions {
+  cwd: string;
+  env: Record<string, string | undefined>;
+  signal?: AbortSignal;
+  /** The error a cancelled probe rejects with. */
+  aborted?(): Error;
+}
+
+/**
+ * Start Claude Code with no tools and none of its configuration, ask it questions over the
+ * control channel without sending a prompt, and close it.
+ */
+export async function probe<T>(start: QueryFunction, options: ProbeOptions, use: (query: AgentQuery) => Promise<T>): Promise<T> {
+  const { signal, aborted = () => new Error("Request was aborted") } = options;
+  if (signal?.aborted) throw aborted();
+  const inbox = new Inbox();
+  const query = start({
+    prompt: inbox,
+    options: {
+      cwd: options.cwd,
+      env: options.env,
+      tools: [],
+      settingSources: [],
+      strictMcpConfig: true,
+      persistSession: false,
+      stderr: () => {},
+    },
+  });
+  let stop!: () => void;
+  const stopped = new Promise<never>((_, reject) => {
+    stop = () => {
+      query.close();
+      reject(aborted());
+    };
+  });
+  stopped.catch(() => {});
+  signal?.addEventListener("abort", stop, { once: true });
+  try {
+    return await Promise.race([stopped, use(query)]);
+  } finally {
+    signal?.removeEventListener("abort", stop);
+    inbox.end();
+    query.close();
   }
 }

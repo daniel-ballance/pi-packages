@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { AuthContext, Model, ModelsPublication, ModelsStoreEntry, RefreshModelsContext } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
@@ -110,6 +108,28 @@ test("a refresh asks Claude Code which models the account offers and persists th
   assert.equal(spawned[0].closed, true);
 });
 
+test("one Claude Code process names the account and the plan, and a missing plan is not a failure", async () => {
+  const plan = { rate_limits: { limits: [] } };
+  const { query, spawned } = fakeQuery(async claude => { claude.planUsage = plan; }, async () => {});
+  const subscription = new ClaudeSubscription({ version: "0.0.0-test", query, env: {} });
+
+  const status = await subscription.status();
+  assert.equal(status.account.subscriptionType, "Claude Max");
+  assert.equal(status.plan, plan);
+  assert.equal(spawned.length, 1);
+  assert.deepEqual(spawned[0].received, [], "no prompt is sent");
+  assert.deepEqual([spawned[0].options.tools, spawned[0].options.settingSources], [[], []]);
+  assert.equal(spawned[0].closed, true);
+
+  assert.deepEqual(await subscription.status(), { account: status.account, plan: undefined }, "an older Claude Code cannot report the plan");
+  assert.equal(spawned[1].closed, true);
+
+  const stop = new AbortController();
+  stop.abort();
+  await assert.rejects(subscription.status(stop.signal), /Request was aborted/);
+  assert.equal(spawned.length, 2, "a cancelled request starts no process");
+});
+
 test("a stored catalog is restored offline and trusted for a day", async () => {
   const { query, spawned } = fakeQuery(reported, reported);
   const subscription = new ClaudeSubscription({ version: "0.0.0-test", query, env: {} });
@@ -155,26 +175,6 @@ test("a catalog another Agent SDK reported is fetched again, however recent", as
 test("the installed Agent SDK version is the one the lockfile installed", () => {
   const lock = JSON.parse(readFileSync(new URL("../../../package-lock.json", import.meta.url), "utf8")) as { packages: Record<string, { version: string }> };
   assert.equal(installedSdkVersion(), lock.packages["node_modules/@anthropic-ai/claude-agent-sdk"].version);
-});
-
-test("the SDK manifest is the nearest one above the source, and a missing or versionless one is an error", () => {
-  const root = mkdtempSync(join(tmpdir(), "sdk-version-"));
-  try {
-    const manifest = (dir: string, value: unknown): void => {
-      const at = join(dir, "node_modules", "@anthropic-ai", "claude-agent-sdk");
-      mkdirSync(at, { recursive: true });
-      writeFileSync(join(at, "package.json"), JSON.stringify(value));
-    };
-    const source = join(root, "pkg", "src", "sdk.ts");
-    assert.throws(() => installedSdkVersion(source), /not installed above/);
-    manifest(root, { version: "1.0.0" });
-    manifest(join(root, "pkg"), { version: "2.0.0" });
-    assert.equal(installedSdkVersion(source), "2.0.0");
-    manifest(join(root, "pkg", "src"), { name: "broken" });
-    assert.throws(() => installedSdkVersion(source), /No version in/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 test("the provider is configured exactly when Claude Code has a login to use, and never invents a key", async () => {

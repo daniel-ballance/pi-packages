@@ -14,7 +14,7 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { API_ID, PROVIDER_ID, PROVIDER_NAME, baselineModels, discoveredModels, rehome, thinkingFor, type SubscriptionModel, type Thinking } from "./models.js";
-import { Inbox, loadQuery, subscriptionEnv, type AgentQuery, type QueryFunction } from "./sdk.js";
+import { loadQuery, probe, subscriptionEnv, type AgentQuery, type QueryFunction } from "./sdk.js";
 import { claudeCodeLogin } from "./login.js";
 import { lookupResume, type SessionReader, type SessionStore } from "./resume.js";
 import { AgentSession, type SessionHost } from "./session.js";
@@ -298,55 +298,24 @@ export class ClaudeSubscription {
 
   /** Start Claude Code without sending a prompt; its handshake names the account and models. */
   private async handshake<T>(signal: AbortSignal | undefined, use: (query: AgentQuery) => Promise<T>): Promise<T> {
-    const start = await this.query;
-    if (signal?.aborted) throw new Error("Request was aborted");
-    const inbox = new Inbox();
-    const query = start({
-      prompt: inbox,
-      options: {
-        cwd: this.options.cwd?.() ?? process.cwd(),
-        env: this.env(),
-        tools: [],
-        settingSources: [],
-        strictMcpConfig: true,
-        persistSession: false,
-      },
-    });
-    let stop: (() => void) | undefined;
-    const stopped = new Promise<never>((_, reject) => {
-      stop = () => {
-        query.close();
-        reject(new Error("Request was aborted"));
-      };
-    });
-    stopped.catch(() => {});
-    signal?.addEventListener("abort", stop!, { once: true });
-    try {
-      return await Promise.race([stopped, use(query)]);
-    } finally {
-      signal?.removeEventListener("abort", stop!);
-      inbox.end();
-      query.close();
-    }
-  }
-
-  /** The signed-in account, asking Claude Code when no session has reported it yet. */
-  async identify(signal?: AbortSignal): Promise<AccountInfo> {
-    this.account ??= await this.handshake(signal, async query => (await query.initializationResult()).account);
-    return this.account;
+    return probe(await this.query, { cwd: this.options.cwd?.() ?? process.cwd(), env: this.env(), signal }, use);
   }
 
   /**
-   * The data behind Claude Code's `/usage`: plan windows, extra usage, per-model limits.
-   * Undefined when Claude Code cannot say; the call is unstable upstream and never fails a caller.
+   * The signed-in account and the data behind Claude Code's `/usage` (plan windows, extra usage,
+   * per-model limits), both from one process. The plan is undefined when Claude Code cannot say:
+   * that call is unstable upstream and never fails a caller.
    */
-  async planUsage(signal?: AbortSignal): Promise<unknown> {
-    try {
-      return await this.handshake(signal, async query =>
-        await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?.({ skipBehaviors: true }));
-    } catch {
-      return undefined;
-    }
+  async status(signal?: AbortSignal): Promise<{ account: AccountInfo; plan: unknown }> {
+    return this.handshake(signal, async query => {
+      const { account } = await query.initializationResult();
+      this.account = account;
+      try {
+        return { account, plan: await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?.({ skipBehaviors: true }) };
+      } catch {
+        return { account, plan: undefined };
+      }
+    });
   }
 
   private async refreshModels(context: RefreshModelsContext): Promise<void> {

@@ -619,7 +619,7 @@ type Color = Parameters<Theme["fg"]>[0];
 
 // Pi's own Text wrapping, reached through its public export so the card needs no package of its own.
 function wrap(text: string, width: number, lines = Infinity): string[] {
-  return truncateToVisualLines(text, lines, width, 0, "start").visualLines;
+  return [...truncateToVisualLines(text, lines, width, 0, "start").visualLines];
 }
 
 /** Stateless layout: theme and width are read again on every render. */

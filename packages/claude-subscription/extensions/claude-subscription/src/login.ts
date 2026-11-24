@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -11,7 +11,7 @@ import type {
   AuthContext,
   ProviderAuthInteraction,
 } from "@earendil-works/pi-ai";
-import { Inbox, loadQuery, subscriptionEnv } from "./sdk.js";
+import { loadQuery, packageVersion, probe, subscriptionEnv } from "./sdk.js";
 
 const SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
 
@@ -339,19 +339,6 @@ function childEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return env;
 }
 
-let version: string | undefined;
-
-function packageVersion(): string {
-  version ??= readPackageVersion();
-  return version;
-}
-
-function readPackageVersion(): string {
-  const manifest: unknown = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
-  return typeof manifest === "object" && manifest !== null && "version" in manifest && typeof manifest.version === "string"
-    ? manifest.version : "0.0.0";
-}
-
 /**
  * The binary the Agent SDK actually spawns: its optional platform package, resolved
  * from the SDK itself, not `claude` on `PATH`.
@@ -509,36 +496,9 @@ function expandHome(path: string): string {
 /** The SDK's handshake names the account and does not send a prompt. */
 async function queryAccount(signal: AbortSignal, env: NodeJS.ProcessEnv): Promise<AccountInfo> {
   throwIfCancelled(signal);
-  const start = await loadQuery();
-  throwIfCancelled(signal);
-  const inbox = new Inbox();
-  const query = start({
-    prompt: inbox,
-    options: {
-      cwd: process.cwd(),
-      env: subscriptionEnv(env, packageVersion()),
-      tools: [],
-      settingSources: [],
-      strictMcpConfig: true,
-      persistSession: false,
-      stderr: () => {},
-    },
-  });
-  let stop: (() => void) | undefined;
-  const stopped = new Promise<never>((_, reject) => {
-    stop = () => {
-      query.close();
-      reject(abortError(signal));
-    };
-  });
-  stopped.catch(() => {});
-  if (signal.aborted) stop!();
-  else signal.addEventListener("abort", stop!, { once: true });
-  try {
-    return (await Promise.race([stopped, query.initializationResult()])).account;
-  } finally {
-    signal.removeEventListener("abort", stop!);
-    inbox.end();
-    query.close();
-  }
+  return probe(
+    await loadQuery(),
+    { cwd: process.cwd(), env: subscriptionEnv(env, packageVersion()), signal, aborted: () => abortError(signal) },
+    async query => (await query.initializationResult()).account,
+  );
 }

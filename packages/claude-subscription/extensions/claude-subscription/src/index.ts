@@ -1,21 +1,14 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config.js";
 import { registerClaudeCode } from "./delegate.js";
 import { SessionStore } from "./resume.js";
 import { ClaudeSubscription } from "./provider.js";
-import { installedSdkVersion, loadQuery, subscriptionEnv } from "./sdk.js";
+import { installedSdkVersion, loadQuery, packageVersion, subscriptionEnv } from "./sdk.js";
 import { readUsage, renderReport } from "./usage.js";
 import { registerWebTools } from "./webtools.js";
 
 const COMMAND = "claude-subscription";
-
-function packageVersion(): string {
-  const manifest: unknown = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
-  return typeof manifest === "object" && manifest !== null && "version" in manifest && typeof manifest.version === "string"
-    ? manifest.version : "0.0.0";
-}
 
 export default function claudeSubscription(pi: ExtensionAPI) {
   const version = packageVersion();
@@ -61,10 +54,11 @@ export default function claudeSubscription(pi: ExtensionAPI) {
       // Print and JSON modes have nowhere to show it, and it would start a process for nothing.
       if (!ctx.hasUI) return;
       settings = loadConfig(getAgentDir());
-      const [account, report] = await Promise.allSettled([subscription.identify(ctx.signal), subscription.planUsage(ctx.signal)]);
-      ctx.ui.notify(renderReport(readUsage(report.status === "fulfilled" ? report.value : undefined, subscription.rateLimit), {
-        account: account.status === "fulfilled" ? account.value : subscription.account,
-        accountProblem: account.status === "rejected" ? String(account.reason instanceof Error ? account.reason.message : account.reason) : undefined,
+      const status = await subscription.status(ctx.signal).catch((error: unknown) => ({ problem: error instanceof Error ? error.message : String(error) }));
+      const failed = "problem" in status;
+      ctx.ui.notify(renderReport(readUsage(failed ? undefined : status.plan, subscription.rateLimit), {
+        account: failed ? subscription.account : status.account,
+        accountProblem: failed ? status.problem : undefined,
         fastMode: subscription.fastMode, spend: subscription.spend, openSessions: subscription.openSessions,
         configProblems: settings.problems, configPath: settings.path,
       }), "info");
