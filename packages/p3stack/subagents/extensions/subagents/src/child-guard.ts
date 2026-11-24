@@ -95,7 +95,7 @@ export default function childGuard(pi: ExtensionAPI) {
       },
     });
   }
-  const childLatch = messageLatch();
+  const childLatch = messageLatch(pi);
   for (const name of proxied) {
     const spec = TOOL_SPECS[name];
     pi.registerTool({

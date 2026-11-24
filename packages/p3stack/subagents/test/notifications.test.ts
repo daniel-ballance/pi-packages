@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -132,6 +134,38 @@ async function managerFixture() {
   const spawn = (task: string) => manager.spawn({ name: "worker", task, cwd: directory, executable: process.execPath, executableArgs: [fixture] });
   return { directory, manager, spawn, async close() { await manager.shutdown(); await rm(directory, { recursive: true, force: true }); } };
 }
+
+test("the first durable completed-assignment snapshot already contains its wake notice", async () => {
+  const directory = tempRoot("subagent-atomic-notice-");
+  const snapshots: boolean[] = [];
+  const manager = new SubagentManager(directory, undefined, () => {
+    const { agents: [record], pendingNotices } = JSON.parse(readFileSync(join(directory, "registry.json"), "utf8"));
+    if (record?.assignment?.status === "completed") {
+      snapshots.push(pendingNotices.some((n: Notice) => n.id === record.id && n.cursor === record.assignment.resultCursor));
+    }
+  });
+  try {
+    const { id } = await manager.spawn({ name: "worker", task: "report", cwd: directory, executable: process.execPath, executableArgs: [fixture] });
+    await manager.wait([id], "all", 2000);
+    assert.ok(snapshots.length);
+    assert.equal(snapshots.includes(false), false, "a restart from any completed snapshot must deliver the notice");
+  } finally { await manager.shutdown(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("a durable parent message or intervention never precedes its wake notice", async () => {
+  const directory = tempRoot("subagent-report-commit-"), missing: string[] = [];
+  const manager = new SubagentManager(directory, undefined, () => {
+    const { agents: [record], pendingNotices } = JSON.parse(readFileSync(join(directory, "registry.json"), "utf8"));
+    for (const u of record.updates) if (["message", "human_intervention"].includes(u.kind) &&
+      !pendingNotices.some((n: Notice) => n.id === record.id && n.cursor === u.cursor)) missing.push(u.kind);
+  }, undefined, undefined, 0, 1);
+  try {
+    const { id } = await manager.spawn({ name: "worker", task: "until-abort", cwd: directory, executable: process.execPath, executableArgs: [fixture] });
+    (manager as any).messageParent(manager.get(id), "news");
+    await manager.intervene(id, "halt");
+    assert.deepEqual(missing, []);
+  } finally { await manager.shutdown(); await rm(directory, { recursive: true, force: true }); }
+});
 
 test("list/wait do not acknowledge; reading cancels only that run, replay also acknowledges", async () => {
   const s = await managerFixture();

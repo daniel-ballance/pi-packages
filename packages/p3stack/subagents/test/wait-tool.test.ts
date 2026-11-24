@@ -20,10 +20,13 @@ async function withWaitTool(run: (tools: {
   wait: Tool;
   read: Tool;
   worker: string;
-  spawn: (task: string) => Promise<string>;
+  spawn: (task: string, parentId?: string) => Promise<string>;
   delegated: (op: ManagementRequest["op"], args: Record<string, unknown>) => Promise<unknown>;
+  delegatedRead: (args: Record<string, unknown>) => Promise<unknown>;
+  send: (id: string, task: string) => Promise<unknown>;
   delegatedWait: (args: Record<string, unknown>) => Promise<unknown>;
   queue: (pending: boolean) => void;
+  delivered: () => void;
 }) => Promise<void>, extraRecords: Record<string, unknown>[] = []) {
   const root = tempRoot("wait-tool-"), agentDir = join(root, "agent");
   mkdirSync(join(agentDir, "subagents", "s"), { recursive: true });
@@ -37,7 +40,7 @@ async function withWaitTool(run: (tools: {
     updates: [], cursor: 0, readCursor: 0, uiRequests: [], hadEnvOverrides: false, ...extra,
   });
   writeFileSync(join(agentDir, "subagents", "s", "registry.json"), JSON.stringify({ version: 1, agents: [
-    record("coordinator", { config: { cwd: root, selection: { model: "test/fake:medium", tools: ["subagent_wait", "subagent_catalog"] } } }),
+    record("coordinator", { config: { cwd: root, selection: { model: "test/fake:medium", tools: ["subagent_wait", "subagent_read", "subagent_catalog"] } } }),
     ...extraRecords.map(extra => record(extra.id as string, extra)),
   ] }));
   const previous = { agentDir: process.env.PI_CODING_AGENT_DIR, path: process.env.PATH };
@@ -72,10 +75,13 @@ async function withWaitTool(run: (tools: {
       wait: args => tools.get("subagent_wait").execute("c", args, undefined, undefined, ctx),
       read: args => tools.get("subagent_read").execute("c", args, undefined, undefined, ctx),
       worker: worker.id,
-      spawn: async task => (await manager!.spawn({ name: task, task, cwd: root, selection: { model: "test/fake:medium", tools: [] } })).id,
+      spawn: async (task, parentId) => (await manager!.spawn({ name: task.slice(0, 100), task, cwd: root, parentId, selection: { model: "test/fake:medium", tools: [] } })).id,
       delegated: (op, args) => manage!("coordinator", { op, args }, new AbortController().signal),
+      delegatedRead: args => manage!("coordinator", { op: "read", args }, new AbortController().signal),
+      send: (id, task) => manager!.send(id, task),
       delegatedWait: args => manage!("coordinator", { op: "wait", args }, new AbortController().signal),
       queue: value => { pending = value; },
+      delivered: () => { pending = false; for (const handler of handlers.get("message_start") ?? []) handler({ message: { role: "user" } }, ctx); },
     });
   } finally {
     SubagentManager.prototype.setManagementHandler = install;
@@ -107,6 +113,18 @@ test("a queued message ends the root's wait once per batch, and never a coordina
     assert.equal(wake((await wait({ ids: [worker], timeoutSeconds: 0 })).details), "timeout");
     queue(true);
     assert.equal(wake((await wait({ ids: [worker] })).details), "message", "a new batch after the queue drained");
+  });
+});
+
+test("delivery between root waits re-arms the message latch without an empty poll", async () => {
+  await withWaitTool(async ({ wait, queue, delivered, worker }) => {
+    const check = async () => wake((await wait({ ids: [worker], timeoutSeconds: 0 })).details);
+    queue(true);
+    assert.equal(await check(), "message");
+    delivered();
+    queue(true);
+    assert.equal(await check(), "message");
+    assert.equal(await check(), "timeout");
   });
 });
 
@@ -150,6 +168,34 @@ test("a queued message ends a wait while every selected child is still working",
     const waiting = wait({ ids: [worker, other], timeoutSeconds: 1 });
     queue(true);
     assert.equal(wake((await waiting).details), "message");
+  });
+});
+
+test("a preview is not a review; delegation-only reads can replay each complete assignment", async () => {
+  await withWaitTool(async ({ wait, read, spawn, send, delegatedRead }) => {
+    const task = "a".repeat(3997) + "🚲" + "é".repeat(10000) + " END-VERDICT";
+    const id = await spawn(task, "coordinator");
+    const report = (await wait({ ids: [id], final: true })).details as any;
+    const preview = report.agents[0].reports[0];
+    assert.equal(preview.text.length, 12000);
+    assert.equal(preview.truncated, true);
+    assert.equal(preview.fullLength, task.length + 2);
+    assert.equal(report.agents[0].resultReview.status, "unreviewed");
+    const readPage = (await read({ id, since: 0 })).details as any;
+    assert.ok(readPage.truncated || readPage.updates.some((u: any) => u.truncated));
+    assert.equal(((await read({ id })).details as any).resultReview.status, "unreviewed");
+    await send(id, "next");
+    await wait({ ids: [id], collect: false });
+    let full = "", args = preview.readFull;
+    assert.equal(args.id, id);
+    do {
+      const page = await delegatedRead(args) as any;
+      assert.ok(Buffer.byteLength(JSON.stringify(page)) < 30_000);
+      assert.equal(page.fullLength, preview.fullLength);
+      full += page.text; args = page.nextRead;
+    } while (args);
+    assert.equal(full, "1:" + task);
+    assert.equal(((await read({ id, since: 9999 })).details as any).resultReview.status, "unreviewed", "cannot review a later assignment with an old receipt");
   });
 });
 

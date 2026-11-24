@@ -185,6 +185,14 @@ test("worker summary bounds long purpose/result, holds first, and stops elapsed 
   assert.match(p.press("\r"), /halt failed/); // The hold remains visible even in the short viewport.
 });
 
+test("the inspector shows every unconfirmed descendant in the target's hold outcome", () => {
+  const source = demoSource(), target = source.agents()[0];
+  const detail = "Target confirmed. Unconfirmed descendants: " + "worker-A: ".repeat(40) + "worker-Z: no exit";
+  target.hold = { kind: "kill", at: target.updatedAt, outcome: "failed", detail };
+  const row = inspectorPage(source, { kind: "agent", id: target.id }).rows.find(r => r.id === "hold");
+  assert.ok(row?.text.includes(detail));
+});
+
 test("held workflows stay in attention, including pausing and terminal runs with a held worker", () => {
   const source = demoSource(), run = source.workflows()[0];
   run.status = "succeeded"; run.unread = false;

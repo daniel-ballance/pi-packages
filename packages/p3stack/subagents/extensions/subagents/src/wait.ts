@@ -1,3 +1,4 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Static } from "typebox";
 import { BUSY, REPORT_KINDS, type AgentRecord, type HumanHold, type ReadReceipt, type ResultReview, type Status, type SubagentManager, type Update } from "./manager.js";
 import type { TOOL_SPECS } from "./tool-schemas.js";
@@ -14,8 +15,11 @@ export const isWakeReason = (value: unknown): value is WakeReason =>
 export interface WaitEnd { readonly wake: WakeReason; readonly ids: readonly string[] }
 
 /** Pi drains a steer after the tool batch and leaves a follow-up queued until the turn ends. */
-export function messageLatch(): (pending: boolean) => boolean {
+export function messageLatch(pi?: Pick<ExtensionAPI, "on">): (pending: boolean) => boolean {
   let reported = false;
+  // Pi removes delivered steers/follow-ups before message_start. There need
+  // not be another wait between that delivery and the next queued message.
+  pi?.on("message_start", event => { if (event.message.role === "user") reported = false; });
   return pending => {
     if (!pending) return reported = false;
     if (reported) return false;
@@ -63,10 +67,10 @@ export async function relayWait(manage: (args: WaitArgs, signal?: AbortSignal) =
   signal?.throwIfAborted();
   const final = await manage({ ...args, timeoutSeconds: 0 }, signal);
   const relayed = parseRelayed(final);
-  return queued && relayed.kind === "report" && relayed.wake === "timeout" ? { ...final as object, wake: "message" } : final;
+  return relayed.kind === "report" && relayed.wake === "timeout" && (queued || messageQueued()) ? { ...final as object, wake: "message" } : final;
 }
 
-export interface Report { readonly kind: string; readonly text: string }
+export type Report = Readonly<Pick<Update, "kind" | "text" | "truncated" | "fullLength" | "readFull">>;
 
 export interface ChildNews {
   readonly id: string;
@@ -91,9 +95,11 @@ const printed = (value: unknown) => {
   return { bytes: Buffer.byteLength(text), lines: text.split("\n").length };
 };
 const REPORTS_KEY_COST = { bytes: 32, lines: 2 };
-const REPORT_LINES = 4, REPORT_INDENT_BYTES = 8, REPORT_SEPARATOR_BYTES = 2;
-const reportCost = (report: Report) => ({
-  bytes: printed(report).bytes + REPORT_LINES * REPORT_INDENT_BYTES + REPORT_SEPARATOR_BYTES, lines: REPORT_LINES });
+const REPORT_INDENT_BYTES = 8, REPORT_SEPARATOR_BYTES = 2;
+const reportCost = (report: Report) => {
+  const { bytes, lines } = printed(report);
+  return { bytes: bytes + lines * REPORT_INDENT_BYTES + REPORT_SEPARATOR_BYTES, lines };
+};
 
 const reviewOf = (record: AgentRecord) => record.resultReview && { status: record.resultReview.status };
 
@@ -124,12 +130,17 @@ function reportPlan(updates: readonly Update[], final: boolean, status: Status):
   return { mode: "one", cursor: last?.cursor };
 }
 
+const displayReport = (update: Update): Report => ({
+  kind: update.kind, text: update.text,
+  ...(update.truncated ? { truncated: true, fullLength: update.fullLength, readFull: update.readFull } : {}),
+});
+
 function takePage(updates: readonly Update[], plan: Exclude<ReportPlan, { mode: "skip" }>, budget: { bytes: number; lines: number }) {
   const prefix: Update[] = [], reports: Report[] = [];
   if (plan.mode === "prefix") {
     for (const update of updates) {
       if (REPORT_KINDS.has(update.kind)) {
-        const report = { kind: update.kind, text: update.text };
+        const report = displayReport(update);
         const cost = reportCost(report), key = reports.length ? { bytes: 0, lines: 0 } : REPORTS_KEY_COST;
         if (cost.bytes + key.bytes > budget.bytes || cost.lines + key.lines > budget.lines) break;
         budget.bytes -= cost.bytes + key.bytes; budget.lines -= cost.lines + key.lines;
@@ -142,7 +153,7 @@ function takePage(updates: readonly Update[], plan: Exclude<ReportPlan, { mode: 
   for (let index = 0; index < updates.length; index++) {
     const update = updates[index];
     if (plan.cursor !== undefined && update.cursor === plan.cursor) {
-      const report = { kind: update.kind, text: update.text };
+      const report = displayReport(update);
       const cost = reportCost(report);
       if (cost.bytes + REPORTS_KEY_COST.bytes > budget.bytes || cost.lines + REPORTS_KEY_COST.lines > budget.lines) break;
       budget.bytes -= cost.bytes + REPORTS_KEY_COST.bytes; budget.lines -= cost.lines + REPORTS_KEY_COST.lines;

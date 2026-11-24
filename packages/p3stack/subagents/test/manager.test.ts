@@ -9,6 +9,7 @@ import { SubagentManager, type Notice } from "../extensions/subagents/src/manage
 import { cardsFromDetails, listingLine } from "../extensions/subagents/src/card.js";
 import { JsonlDecoder, RpcChild } from "../extensions/subagents/src/rpc.js";
 import { managerWorkflowHost, type AgentJob } from "../extensions/subagents/src/workflow-host.js";
+import { candidateDirectory, snapshot } from "../extensions/subagents/src/workflow-artifacts.js";
 import type { SubagentPolicy } from "../extensions/subagents/src/policy.js";
 import { tempRoot } from "./support/temp-root.js";
 const fixture = fileURLToPath(new URL("./fixtures/fake-pi.mjs", import.meta.url));
@@ -73,6 +74,36 @@ test("human SIGKILL rejects signal failure and unconfirmed close, then permits r
     target.signal = originalSignal;
     await rpc.stop();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("close bounds the wait after SIGKILL without freeing an unconfirmed slot, even on reopen", async () => {
+  const s = await setup(parseChildLimit(1));
+  const { id } = await s.spawn("until-abort");
+  const child = (s.manager as any).children.get(id) as RpcChild;
+  const signals: string[] = [];
+  const intercept = child as any, signal = intercept.signal.bind(child);
+  intercept.signal = (sig: string) => { signals.push(sig); };
+  let watchdog: NodeJS.Timeout | undefined;
+  try {
+    const result = await Promise.race([
+      s.manager.close(id),
+      new Promise<never>((_, reject) => { watchdog = setTimeout(() => reject(new Error("unbounded close")), 6500); }),
+    ]);
+    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    assert.equal(result.outcome, "unconfirmed");
+    assert.equal(s.manager.capacity().available, 0);
+    const recovered = new SubagentManager(s.dir, undefined, undefined, parseChildLimit(1));
+    assert.equal(recovered.capacity().available, 0);
+    assert.equal((await recovered.close(id)).outcome, "unconfirmed");
+    await assert.rejects(recovered.resume(id), /unconfirmed/);
+    await assert.rejects(recovered.spawn({ name: "another", task: "no", cwd: s.dir }), /limit/);
+  } finally {
+    clearTimeout(watchdog);
+    intercept.signal = signal;
+    await child.kill();
+    assert.equal(s.manager.capacity().available, 1);
+    await s.cleanup();
   }
 });
 
@@ -392,6 +423,34 @@ test("read detaches UI packets and hold details without changing acknowledgement
   } finally { await s.cleanup(); }
 });
 
+for (const tasks of [["B original"], ["B original", "C original"]]) {
+  test("Pi-delivered follow-ups without a new agent_start: " + tasks.join(", "), async () => {
+    const s = await setup();
+    try {
+      const a = await s.spawn("queue-fixture-A");
+      const original = s.manager.get(a.id).assignment!.id;
+      for (const task of tasks) {
+        assert.equal((await s.manager.send(a.id, task, "followUp")).disposition, "queued");
+        assert.equal(s.manager.get(a.id).assignment!.id, original);
+      }
+      // The steer has the same text as a queued follow-up, but is not a new assignment.
+      await s.manager.send(a.id, "B delivered", "steer");
+      await s.manager.wait([a.id], "all", 2000);
+      const record = s.manager.get(a.id), next = record.assignment!;
+      assert.notEqual(next.id, original);
+      assert.equal(next.task, tasks.map(t => t.replace("original", "delivered")).join("\n\n"));
+      assert.deepEqual(record.queuedAssignments, []);
+      assert.equal(next.status, "completed");
+      assert.deepEqual(record.updates.filter(u => u.kind === "assistant").map(u => u.assignmentId), [original, next.id]);
+      assert.deepEqual(s.manager.pendingNotices().map(n => n.text), ["answer A", "answer " + tasks.map(t => t.replace("original", "delivered")).join(" and ")]);
+      await s.manager.send(a.id, "fresh");
+      await s.manager.wait([a.id], "all", 2000);
+      assert.equal(record.assignment!.task, "fresh");
+      assert.notEqual(record.assignment!.id, next.id);
+    } finally { await s.cleanup(); }
+  });
+}
+
 test("follow-up assignments remain queued until a new run and are not replayed after abort", async () => {
   const s = await setup();
   try {
@@ -549,7 +608,7 @@ test("held prompt acceptance cannot revive state or create a post-halt assignmen
   } finally { await s.cleanup(); }
 });
 
-test("timed-out prompt cannot make a halt safely releasable; late timeout downgrades confirmation", async () => {
+test("a pending or timed-out submission cannot confirm a halt or make it releasable", async () => {
   const s = await setup();
   try {
     const a = await s.spawn("initial");
@@ -565,7 +624,7 @@ test("timed-out prompt cannot make a halt safely releasable; late timeout downgr
     };
     const sending = s.manager.send(a.id, "maybe accepted");
     const halted = await s.manager.intervene(a.id, "halt");
-    assert.equal(halted.hold?.outcome, "confirmed", "abort acknowledgement is idle, but a prompt request is still pending");
+    assert.equal(halted.hold?.outcome, "failed", "an idle acknowledgement cannot fence a prompt whose acceptance is still pending");
     assert.throws(() => s.manager.releaseHold(a.id), /in flight/);
     timeOut();
     await assert.rejects(sending, /RPC prompt timed out/);
@@ -618,7 +677,8 @@ test("uncertain acceptance survives crash-style reload and cannot be dismissed b
     restored = new SubagentManager(s.dir);
     assert.equal(restored.get(a.id).hold?.outcome, "failed");
     assert.ok(restored.get(a.id).uncertainSubmission);
-    await restored.close(a.id);
+    assert.equal((await restored.close(a.id)).outcome, "unconfirmed");
+    assert.equal(restored.capacity().live, 1, "a detached unconfirmed process still occupies a slot");
     assert.throws(() => restored!.releaseHold(a.id), /uncertain prompt acceptance/);
     await assert.rejects(restored.resume(a.id), /human halt hold/);
   } finally { await restored?.shutdown(); await s.cleanup(); }
@@ -817,6 +877,48 @@ function workflowJobs(directory: string): AgentJob[] {
 function workflowPolicy(): SubagentPolicy {
   return { compile: (cwd: string) => ({ cwd, executable: process.execPath, executableArgs: [fixture] }) } as unknown as SubagentPolicy;
 }
+
+test("workflow results use the terminal response independently of retained progress", async () => {
+  const s = await setup();
+  try {
+    const host = managerWorkflowHost(s.manager, workflowPolicy), [job] = workflowJobs(s.dir);
+    job.instructions = "evicted-final";
+    assert.deepEqual(await host.agents([job], [], new AbortController().signal), ["actual final answer"]);
+    job.instructions = "empty-final";
+    await assert.rejects(host.agents([job], [], new AbortController().signal), /no final text/);
+  } finally { await s.cleanup(); }
+});
+
+test("workflow response.md and validator inputs include the end of a long final answer", async () => {
+  const s = await setup();
+  try {
+    const host = managerWorkflowHost(s.manager, workflowPolicy);
+    const [writer, validator] = workflowJobs(s.dir);
+    writer.instructions = "文".repeat(14000) + "END-VERDICT";
+    const signal = new AbortController().signal;
+    const [reply] = await host.agents([writer], [], signal);
+    candidateDirectory(writer.candidate);
+    const artifact = snapshot(writer.candidate, join(s.dir, "artifact"), reply);
+    assert.ok((await readFile(join(artifact.path, "response.md"), "utf8")).includes("END-VERDICT"));
+    validator.inputs = { candidate: artifact };
+    const [echo] = await host.agents([validator], [], signal);
+    assert.ok(echo.includes("END-VERDICT"), "the validator's actual prompt includes the tail");
+  } finally { await s.cleanup(); }
+});
+
+test("a workflow job reports an unconfirmed worker close instead of claiming cleanup", async () => {
+  const s = await setup();
+  try {
+    const [job] = workflowJobs(s.dir);
+    job.onChild = id => {
+      const child = (s.manager as any).children.get(id) as RpcChild;
+      child.stop = async () => { delete (child as any).stop; throw new Error("exit not observed"); };
+    };
+    const host = managerWorkflowHost(s.manager, workflowPolicy);
+    await assert.rejects(host.agents([job], [], new AbortController().signal), /exit not observed/);
+    assert.equal(s.manager.capacity().live, 1);
+  } finally { await s.cleanup(); }
+});
 
 test("workflow group reservation blocks a manual spawn between sequential members", async () => {
   const s = await setup(parseChildLimit(2));

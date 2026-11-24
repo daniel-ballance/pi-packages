@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
@@ -28,7 +28,13 @@ export interface SpawnOptions {
   parentId?: string;
   coordination?: { owns?: string[]; outputs?: string[] };
 }
-export interface Update { cursor: number; kind: string; text: string; time: string }
+type ReadArgs = { id: string; since: number };
+export interface Update { cursor: number; kind: string; text: string; time: string; truncated?: true; fullLength?: number; readFull?: ReadArgs; assignmentId?: string }
+/** Page cursors occupy the otherwise unused interval [firstPage, updateCursor). */
+interface SavedReport { assignmentId?: string; firstPage: number; updateCursor: number; fullLength: number; readThrough?: number; file: string }
+const DISPLAY_CHARS = 12_000;
+// Even worst-case JSON escaping fits a page inside both tool and private-pipe limits.
+const PAGE_CHARS = 4_000;
 export type InterventionKind = "halt" | "kill";
 export interface HumanHold { kind: InterventionKind; at: string; outcome: "pending" | "confirmed" | "failed"; detail?: string }
 export interface Assignment { id: string; task: string; status: "running" | "completed" | "failed" | "cancelled"; at: string; finishedAt?: string; resultCursor?: number }
@@ -46,15 +52,26 @@ export interface AgentRecord {
   usage?: unknown; updates: Update[]; cursor: number; readCursor: number;
   lastSubmission?: { disposition: InputDisposition; at: string };
   uiRequests: Packet[]; hadEnvOverrides: boolean;
+  savedReports?: SavedReport[];
   runStartCursor?: number; aborted?: boolean; runRevision?: number;
   observedCursors?: number[];
   hold?: HumanHold; assignment?: Assignment; resultReview?: ResultReview;
   /** Prompt RPC timed out: acceptance might be delayed. Only observed process exit fences it. */
   uncertainSubmission?: { at: string; reason: string };
-  /** Accepted follow-ups start a new assignment only when their own run begins. */
-  queuedAssignments?: { id: string; task: string; at: string; startAt: number }[];
+  /** A signalled process whose close was never observed still occupies a slot. */
+  unconfirmedStop?: string;
+  /** Submitted follow-ups are not assignments until a user message is delivered. */
+  queuedAssignments?: { id: string; task: string; at: string }[];
   /** parent_send messages used during the assignment they were sent in. */
   parentMessages?: { assignmentId: string; used: number };
+}
+interface InputDelivery {
+  followUp?: string[];
+  steering?: string[];
+  removed?: { queue: "followUp" | "steering"; text: string };
+  firstUser?: boolean;
+  batch?: boolean;
+  lastResult?: Update;
 }
 export interface Notice { id: string; name: string; kind: string; text: string; cursor: number; key: string; requestId?: string }
 export interface ReadReceipt { id: string; updates: Update[]; nextCursor: number; uiRequests: Packet[] }
@@ -159,11 +176,13 @@ export class SubagentManager {
         if (record.status === "stopped" && record.error) {
           record.lastError = record.error; delete record.error;
         }
-        delete record.pid;
+        if (record.uncertainSubmission) record.unconfirmedStop ??= "Unconfirmed stop after uncertain prompt acceptance. Inspect for orphaned work.";
+        if (record.unconfirmedStop) record.status = "stopping";
+        else delete record.pid;
         if (record.queuedAssignments?.length) discardedQueuedAssignments = true;
         record.queuedAssignments = []; // Interrupted follow-ups are never replayed on explicit resume.
         record.uiRequests = [];
-        record.activity = "No process attached. Resume explicitly to continue the saved conversation.";
+        record.activity = record.unconfirmedStop ?? "No process attached. Resume explicitly to continue the saved conversation.";
         enforcePrivatePathIfPresent(record.logFile, 0o600, false);
         enforcePrivatePathIfPresent(record.stderrFile, 0o600, false);
         this.records.set(record.id, record);
@@ -187,8 +206,7 @@ export class SubagentManager {
     });
     for (const record of recoveredHolds) {
       const text = `Human ${record.hold!.kind} for ${record.name} (${record.id}): failed (confirmation interrupted by parent restart). ${record.hold!.detail}`;
-      this.update(record, "human_intervention", text);
-      this.announce(record, "human_intervention", text);
+      this.report(record, "human_intervention", text);
     }
     if (discardedQueuedAssignments) this.persist();
   }
@@ -201,11 +219,28 @@ export class SubagentManager {
     enforcePrivatePath(this.registry, 0o600, false);
     this.changed();
   }
-  private update(record: AgentRecord, kind: string, text: string) {
+  private appendUpdate(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
     record.updatedAt = new Date().toISOString();
-    record.updates.push({ cursor: ++record.cursor, kind, text: text.slice(0, 12000), time: record.updatedAt });
+    const truncated = text.length > DISPLAY_CHARS, assignmentId = record.assignment?.id;
+    let readFull: ReadArgs | undefined;
+    if (finalAnswer || (truncated && REPORT_KINDS.has(kind))) {
+      const firstPage = record.cursor + 1, pages = Math.max(1, Math.ceil(text.length / PAGE_CHARS));
+      const file = join(this.directory, `${randomUUID()}.report`);
+      writeFileSync(file, text, { encoding: "utf16le", mode: 0o600, flag: "wx" });
+      record.cursor += pages;
+      (record.savedReports ??= []).push({ file, assignmentId, firstPage, updateCursor: record.cursor + 1, fullLength: text.length });
+      readFull = { id: record.id, since: firstPage };
+    }
+    const update: Update = { cursor: ++record.cursor, kind, text: text.slice(0, DISPLAY_CHARS), time: record.updatedAt,
+      ...(truncated ? { truncated: true, fullLength: text.length } : {}), ...(readFull ? { assignmentId, readFull } : {}) };
+    record.updates.push(update);
     record.updates = record.updates.slice(-100);
+    return update;
+  }
+  private update(record: AgentRecord, kind: string, text: string, finalAnswer = false) {
+    const update = this.appendUpdate(record, kind, text, finalAnswer);
     this.persist();
+    return update;
   }
   private log(path: string, text: string) {
     const size = this.logSizes.get(path) ?? (existsSync(path) ? statSync(path).size : 0);
@@ -213,6 +248,10 @@ export class SubagentManager {
     const bytes = Buffer.from(text);
     appendFileSync(path, bytes.subarray(0, MAX_LOG - size), { mode: 0o600 });
     this.logSizes.set(path, size + Math.min(bytes.length, MAX_LOG - size));
+  }
+  private report(record: AgentRecord, kind: string, text: string, noticeKind = kind, requestId?: string) {
+    const update = this.appendUpdate(record, kind, text);
+    if (!this.announce(record, noticeKind, text, update.cursor, requestId)) this.persist();
   }
   private announce(record: AgentRecord, kind: string, text: string, cursor = record.cursor, requestId?: string) {
     if (kind !== "human_intervention" && (this.shuttingDown || this.workflowChildren.has(record.id) || record.observedCursors?.includes(cursor))) return;
@@ -224,6 +263,7 @@ export class SubagentManager {
     // Notification scheduling must not prevent a human cancellation; the queue is durable.
     if (kind === "human_intervention") { try { this.notice(notice); } catch { /* retry from persisted queue */ } }
     else if (!this.routedToParent(notice)) this.notice(notice); // Wake the delivery scheduler; don't inject into the parent here.
+    return notice;
   }
   /**
    * A nested Child's routine report waits for its own parent, which drains it with its
@@ -267,11 +307,13 @@ export class SubagentManager {
       if (notice.id === record.id && notice.requestId && requests.has(notice.requestId)) cursors.push(notice.cursor);
     }
     this.observe(record, cursors, !byRoot);
-    if (record.assignment?.resultCursor && cursors.includes(record.assignment.resultCursor) && record.resultReview?.assignmentId === record.assignment.id && record.resultReview.status === "unreviewed") {
-      record.resultReview = { assignmentId: record.assignment.id, status: "reviewed", at: new Date().toISOString() };
-    }
+    if (receipt.updates.some(u => u.cursor === record.assignment?.resultCursor && !u.truncated)) this.review(record);
     if (advanceCursor) record.readCursor = Math.max(record.readCursor, receipt.nextCursor);
     this.persist();
+  }
+  private review(record: AgentRecord) {
+    if (record.resultReview?.status === "unreviewed" && record.resultReview.assignmentId === record.assignment?.id)
+      record.resultReview = { ...record.resultReview, status: "reviewed", at: new Date().toISOString() };
   }
   private expireInputNotices(record: AgentRecord) {
     const live = new Set(record.uiRequests.map(request => request.id));
@@ -297,7 +339,7 @@ export class SubagentManager {
     return child;
   }
   list(includeRejected = false) {
-    return [...this.records.values()].filter(record => includeRejected || !record.rejected).map(({ updates, config, runStartCursor, runRevision, observedCursors, ...record }) => {
+    return [...this.records.values()].filter(record => includeRejected || !record.rejected).map(({ updates, config, runStartCursor, runRevision, observedCursors, savedReports, ...record }) => {
       const unreadUpdates = updates.filter(u => u.cursor > record.readCursor);
       // Tool-facing snapshots must not retain nested references to live records.
       return structuredClone({
@@ -312,16 +354,19 @@ export class SubagentManager {
   overview(includeRejected = false) {
     return { totals: summarizeAgents(this.list()), agents: this.list(includeRejected) };
   }
+  private occupiedSlots() {
+    return this.children.size + [...this.records.values()].filter(r => r.unconfirmedStop && !this.children.has(r.id)).length;
+  }
   /** Available live-process slots, including in-flight workflow reservations. */
   capacity() {
-    return capacityOf(this.limit, this.children.size, this.reservedSlots);
+    return capacityOf(this.limit, this.occupiedSlots(), this.reservedSlots);
   }
   reserveSlots(count: number): SlotReservation | undefined {
     if (!Number.isInteger(count) || count < 1) throw new Error("Slot reservation count must be a positive integer");
     if (this.shuttingDown) throw new Error("Manager is shutting down");
     const blocked = permanentRefusal(this.limit, count);
     if (blocked) throw new Error(blocked);
-    if (!allows(this.limit, this.children.size + this.reservedSlots + count)) return undefined;
+    if (!allows(this.limit, this.occupiedSlots() + this.reservedSlots + count)) return undefined;
     const reservation = { id: Symbol("subagent-slot-reservation") };
     this.reservations.set(reservation, count);
     this.reservedSlots += count;
@@ -347,13 +392,49 @@ export class SubagentManager {
     if (!capacityReserved) {
       if (reservation) {
         if (!this.reservations.get(reservation)) throw new Error("Invalid or exhausted live-child slot reservation");
-      } else if (!allows(this.limit, this.children.size + this.reservedSlots + 1)) {
+      } else if (!allows(this.limit, this.occupiedSlots() + this.reservedSlots + 1)) {
         throw new Error(permanentRefusal(this.limit, 1) ?? capacityReachedText(this.capacity(), "manager"));
       }
     }
     if (!isAbsolute(checked.cwd) || !statSync(checked.cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");
     if ((checked.cliArgs ?? []).some(arg => RESERVED.has(arg.split("=")[0]))) throw new Error("cliArgs cannot override manager-owned RPC mode/session flags, print/export modes, or contain --");
     return checked;
+  }
+  private savedFinal(record: AgentRecord) {
+    return record.savedReports?.findLast(r => r.updateCursor === record.assignment?.resultCursor && r.assignmentId === record.assignment?.id);
+  }
+  finalAnswer(id: string) {
+    const saved = this.savedFinal(this.get(id));
+    return saved && readFileSync(saved.file, "utf16le");
+  }
+  /** Explicit subagent_read replay. Page handles remain valid across assignments, retention and reload. */
+  readReportPage(id: string, since: number) {
+    const record = this.get(id);
+    const saved = record.savedReports?.find(r => r.firstPage <= since && since < r.updateCursor);
+    if (!saved) return;
+    const offset = (since - saved.firstPage) * PAGE_CHARS;
+    // Fixed-width storage lets a page seek straight to its text. Include the
+    // adjacent code units so neither end of a page splits a surrogate pair.
+    const from = Math.max(0, offset - 1), to = Math.min(saved.fullLength, offset + PAGE_CHARS + 1);
+    const bytes = Buffer.alloc((to - from) * 2);
+    const fd = openSync(saved.file, "r");
+    try {
+      if (readSync(fd, bytes, 0, bytes.length, from * 2) !== bytes.length) throw new Error("Incomplete saved report");
+    } finally { closeSync(fd); }
+    const window = bytes.toString("utf16le");
+    const boundary = (n: number) => /[\uD800-\uDBFF]/.test(window.charAt(n - 1)) && /[\uDC00-\uDFFF]/.test(window.charAt(n)) ? n + 1 : n;
+    const start = boundary(offset - from), text = window.slice(start, boundary(offset - from + PAGE_CHARS));
+    const data = { id, assignmentId: saved.assignmentId, text, offset: from + start, fullLength: saved.fullLength, truncated: text.length < saved.fullLength,
+      nextRead: since + 1 < saved.updateCursor ? { id, since: since + 1 } : undefined };
+    return { data, acknowledge: () => {
+      if ((saved.readThrough ?? saved.firstPage - 1) !== since - 1) return;
+      saved.readThrough = since;
+      if (since + 1 === saved.updateCursor) {
+        this.observe(record, [saved.updateCursor]);
+        if (record.assignment?.resultCursor === saved.updateCursor) this.review(record);
+      }
+      this.persist();
+    } };
   }
   read(id: string, since?: number, acknowledge = true) {
     const record = this.get(id);
@@ -365,10 +446,12 @@ export class SubagentManager {
       updates.push(update); size += update.text.length;
     }
     const nextCursor = updates.at(-1)?.cursor ?? cursor;
+    const saved = this.savedFinal(record);
     const result = {
       id, name: record.name, status: record.status, activity: record.activity,
       model: record.model, thinking: record.thinking,
       updates, nextCursor, hasMore: record.cursor > nextCursor,
+      ...(saved ? { readFull: { id, since: saved.firstPage }, fullLength: saved.fullLength } : {}),
       gap: record.updates.length > 0 && cursor < record.updates[0].cursor - 1,
       uiRequests: record.uiRequests, sessionFile: record.sessionFile,
       logFile: record.logFile, stderrFile: record.stderrFile, error: record.error,
@@ -468,6 +551,7 @@ export class SubagentManager {
     record.status = "starting";
     record.error = undefined;
     record.uiRequests = [];
+    const delivery: InputDelivery = {};
     const child = new RpcChild({
       executable: config.executable || "pi", args, cwd: resolve(config.cwd), env,
       peerRequest: config.selection?.tools.includes("peer_send") && this.peerMessageLimit > 0 ? async packet => {
@@ -492,7 +576,7 @@ export class SubagentManager {
         if (this.children.get(record.id) !== child) throw new Error("Stale child process");
         return this.messageParent(record, message);
       } : undefined,
-      event: packet => this.event(record, packet),
+      event: packet => this.event(record, packet, delivery),
       stderr: text => this.log(record.stderrFile, text),
       exit: error => {
         this.peers.interrupt(record.id);
@@ -502,6 +586,7 @@ export class SubagentManager {
         this.activeRuns.delete(record.id);
         this.abortIntents.delete(record.id);
         record.queuedAssignments = [];
+        delete record.unconfirmedStop;
         delete record.uncertainSubmission; // An observed close fences late RPC acceptance.
         delete record.pid;
         const expected = record.status === "stopping" || this.shuttingDown || !!record.hold;
@@ -513,13 +598,13 @@ export class SubagentManager {
         if (record.assignment?.status === "running") {
           record.assignment.status = record.hold || expected ? "cancelled" : "failed";
           record.assignment.finishedAt = new Date().toISOString();
-          this.update(record, "lifecycle", `Assignment ${record.assignment.status} when process exited.`);
+          this.appendUpdate(record, "lifecycle", `Assignment ${record.assignment.status} when process exited.`);
           record.assignment.resultCursor = record.cursor;
           record.resultReview = { assignmentId: record.assignment.id, status: "unreviewed" };
         }
         if (expected && record.error) { record.lastError = record.error; delete record.error; }
-        this.update(record, expected ? "lifecycle" : "error", expected ? "Child stopped; conversation saved." : record.error!);
-        if (!expected) this.announce(record, "failure", record.error!);
+        if (expected) this.update(record, "lifecycle", "Child stopped; conversation saved.");
+        else this.report(record, "error", record.error!, "failure");
         // Its Children's unread reports were waiting for it; they now go to the root.
         const released = [...this.notices.values()].find(notice => this.records.get(notice.id)?.parentId === record.id);
         if (released) this.notice(released);
@@ -575,24 +660,78 @@ export class SubagentManager {
       return record ? this.refreshUsage(record) : undefined;
     }));
   }
-  private event(record: AgentRecord, packet: Packet) {
+  private finishAssignment(record: AgentRecord, last: Update | undefined, humanCancellation = false) {
+    const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
+    if (record.assignment?.status === "running") record.assignment.status = record.error ? "failed" : record.aborted ? "cancelled" : "completed";
+    const text = record.error || last?.text || "Run settled without a text response.";
+    if (!last) this.appendUpdate(record, kind, text);
+    if (record.assignment && !record.assignment.finishedAt) {
+      record.assignment.finishedAt = new Date().toISOString();
+      record.assignment.resultCursor = last?.cursor ?? record.cursor;
+      record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) && (!last?.truncated || this.savedFinal(record)?.readThrough === last.cursor - 1) ? "reviewed" : "unreviewed" };
+    }
+    // announce commits the result and its wake notice together, before calling
+    // the scheduler. A suppressed notice still needs the settlement committed.
+    if ((humanCancellation && kind === "aborted") || !this.announce(record, kind, text, last?.cursor ?? record.cursor)) this.persist();
+  }
+  private deliveredInput(record: AgentRecord, delivery: InputDelivery, text: string) {
+    const removed = delivery.removed, first = delivery.firstUser;
+    delivery.removed = undefined;
+    delivery.firstUser = false;
+    if (record.hold || record.status === "stopping") return;
+    const queued = record.queuedAssignments ?? [];
+    // The queue snapshots contain the text *after* Pi's input hooks. A steer
+    // may even be identical to a follow-up; only the depleted queue identifies it.
+    const match = queued.findIndex(q => q.task === text);
+    const followUp = removed?.text === text ? removed.queue === "followUp" :
+      (delivery.followUp === undefined || (first && !delivery.followUp.includes(text))) && match >= 0;
+    if (followUp) {
+      const next = queued.splice(match < 0 ? 0 : match, 1)[0];
+      if (delivery.batch && record.assignment?.status === "running") {
+        // Pi's all-at-once mode delivers these together for one assistant answer.
+        record.assignment.task += `\n\n${text}`;
+        this.persist();
+      } else {
+        if (record.assignment && !record.assignment.finishedAt) this.finishAssignment(record, delivery.lastResult);
+        delivery.lastResult = undefined;
+        this.beginAssignment(record, text, next?.id, next?.at);
+        delivery.batch = true;
+      }
+    } else if (first && !removed) {
+      // The first prompt can be transformed as well, or an extension can
+      // actually start a turn for a slash command.
+      if (record.assignment?.status !== "running") this.beginAssignment(record, text);
+      else if (record.assignment.task !== text) { record.assignment.task = text; this.persist(); }
+    }
+  }
+  private event(record: AgentRecord, packet: Packet, delivery: InputDelivery) {
     this.log(record.logFile, JSON.stringify(packet) + "\n");
     let activity = this.activityFeeds.get(record.id);
     if (!activity) this.activityFeeds.set(record.id, activity = new ActivityFeed());
     try { activity.accept(packet); }
     catch { this.activityFeeds.delete(record.id); } // Cosmetic data must never break execution.
     switch (packet.type) {
-      case "agent_start":
-        if (record.queuedAssignments?.length && !record.hold && record.queuedAssignments[0].startAt <= (record.runRevision ?? 0) + 1) {
-          const next = record.queuedAssignments.shift()!;
-          this.beginAssignment(record, next.task, next.id, next.at);
+      case "queue_update":
+        // AgentSession removes a delivered user message before message_start.
+        for (const queue of ["steering", "followUp"] as const) {
+          const before = delivery[queue], after: string[] = packet[queue] ?? [];
+          if (before?.length === after.length + 1) {
+            const index = before.findIndex((text, i) => text !== after[i]);
+            delivery.removed = { queue, text: before[index] };
+          }
+          delivery[queue] = after;
         }
+        break;
+      case "turn_start":
+        delivery.batch = false; break;
+      case "agent_start":
+        delivery.firstUser = true;
         record.runRevision = (record.runRevision ?? 0) + 1;
         this.activeRuns.add(record.id);
         const intent = this.abortIntents.get(record.id);
         if (intent?.awaitingStart) { intent.revision = record.runRevision; intent.awaitingStart = false; }
         else this.abortIntents.delete(record.id);
-        record.runStartCursor = record.cursor;
+        delivery.lastResult = undefined;
         record.aborted = false;
         // A prompt accepted before its start event can be closed immediately.
         // Track cancellation identity without reviving the stopping lifecycle.
@@ -609,13 +748,17 @@ export class SubagentManager {
         const message = packet.message;
         if (message?.role === "user") {
           const text = typeof message.content === "string" ? message.content : (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
+          this.deliveredInput(record, delivery, text);
           this.peers.received(record.id, text);
         }
         if (message?.role === "assistant") record.usage = noteAssistantCacheHit(record.usage, message);
         if (message?.role === "assistant" || message?.role === "toolResult") void this.refreshUsage(record);
         if (message?.role !== "assistant") break;
+        delivery.firstUser = false; delivery.batch = false;
         const text = (message.content ?? []).filter((c: Packet) => c.type === "text").map((c: Packet) => c.text).join("\n");
-        if (text) this.update(record, "assistant", text);
+        const terminal = !["toolUse", "error", "aborted"].includes(message.stopReason) && !message.content?.some((c: Packet) => c.type === "toolCall");
+        const update = text ? this.update(record, "assistant", text, terminal) : undefined;
+        delivery.lastResult = terminal ? update : undefined;
         const intent = this.abortIntents.get(record.id);
         const requestedAbort = intent && !intent.awaitingStart && intent.revision === (record.runRevision ?? 0);
         const cancelled = message.stopReason === "aborted" ||
@@ -624,12 +767,12 @@ export class SubagentManager {
           if (record.assignment?.status === "running") record.assignment.status = "cancelled";
           if (!record.aborted) {
             record.aborted = true;
-            this.update(record, "aborted", "Work cancelled; child remains available for instructions.");
+            delivery.lastResult = this.update(record, "aborted", "Work cancelled; child remains available for instructions.");
           }
         } else if (message.stopReason === "error") {
           if (record.assignment?.status === "running") record.assignment.status = "failed";
           record.error = message.errorMessage || "Assistant request failed";
-          this.update(record, "error", record.error!);
+          delivery.lastResult = this.update(record, "error", record.error!);
         }
         break;
       }
@@ -656,20 +799,7 @@ export class SubagentManager {
         record.activity = record.error ? "Run failed; process remains available" : record.aborted ? "Work aborted; waiting for instructions" : "Waiting for instructions";
         record.uiRequests = [];
         this.expireInputNotices(record);
-        const kind = record.error ? "failure" : record.aborted ? "aborted" : "completed";
-        if (record.assignment?.status === "running") record.assignment.status = record.error ? "failed" : record.aborted ? "cancelled" : "completed";
-        const last = record.updates.findLast(u => u.kind === (record.error ? "error" : record.aborted ? "aborted" : "assistant") && u.cursor > (record.runStartCursor ?? 0));
-        const text = record.error || last?.text || "Run settled without a text response.";
-        if (!last) this.update(record, kind, text);
-        if (record.assignment && !record.assignment.finishedAt) {
-          record.assignment.finishedAt = new Date().toISOString();
-          record.assignment.resultCursor = last?.cursor ?? record.cursor;
-          record.resultReview = { assignmentId: record.assignment.id, status: record.observedCursors?.includes(record.assignment.resultCursor) ? "reviewed" : "unreviewed" };
-        }
-        this.persist();
-        // The human hold has its own durable requested/outcome notices. Do not
-        // also report its routine cancellation; a genuine failure still reports.
-        if (!(humanCancellation && kind === "aborted")) this.announce(record, kind, text, last?.cursor ?? record.cursor);
+        this.finishAssignment(record, delivery.lastResult, humanCancellation);
         void this.refreshUsage(record);
         break;
       }
@@ -680,8 +810,7 @@ export class SubagentManager {
         if (["confirm", "select", "input", "editor"].includes(packet.method)) {
           record.uiRequests.push(packet);
           record.status = "waiting_input";
-          this.update(record, "input_requested", JSON.stringify(packet));
-          this.announce(record, "input_requested", JSON.stringify(packet), record.cursor, packet.id);
+          this.report(record, "input_requested", JSON.stringify(packet), "input_requested", packet.id);
         }
         break;
     }
@@ -700,8 +829,7 @@ export class SubagentManager {
     const limit = this.parentMessageLimit;
     if (record.parentMessages.used >= limit) throw new Error(`Message limit reached for this assignment (${limit}). Put anything else in your final reply; do not retry.`);
     record.parentMessages.used++;
-    this.update(record, "message", message);
-    this.announce(record, "message", message);
+    this.report(record, "message", message);
     return { delivery: "queued", to: record.parentId ?? "parent", remaining: limit - record.parentMessages.used };
   }
   summary(id: string) { return this.list(true).find(record => record.id === id)!; }
@@ -709,7 +837,8 @@ export class SubagentManager {
     if (!message.trim()) throw new Error("message must not be empty");
     if (this.aborting.has(id)) throw new Error("Abort is still in progress; wait for its acknowledgement before sending another task.");
     const record = this.get(id);
-    this.assertReleased(record);
+    this.assertDelegationOpen(record);
+    if (this.shuttingDown || record.unconfirmedStop) throw new Error("Child is shutting down or stop is unconfirmed");
     if (record.uncertainSubmission) throw new Error(`${id} has uncertain prompt acceptance; close or kill its process before sending more work.`);
     const child = this.child(id);
     // Acceptance can precede agent_start on a later stdout chunk. Reserve the
@@ -722,8 +851,8 @@ export class SubagentManager {
     }
     const priorAssignment = record.assignment;
     const priorReview = record.resultReview;
-    const queued = !message.startsWith("/") && behavior === "followUp" && previous === "working"
-      ? { id: randomUUID(), task: message, at: new Date().toISOString(), startAt: (record.runRevision ?? 0) + (this.activeRuns.has(id) ? 1 : 2) } : undefined;
+    const queued = behavior === "followUp" && (previous === "working" || previous === "waiting_input")
+      ? { id: randomUUID(), task: message, at: new Date().toISOString() } : undefined;
     if (queued) (record.queuedAssignments ??= []).push(queued);
     else if (!message.startsWith("/") && (!record.assignment || record.assignment.status !== "running")) this.beginAssignment(record, message);
     this.persist();
@@ -737,7 +866,10 @@ export class SubagentManager {
         // A human hold installed while prompt acceptance was pending owns all later state.
         if (record.hold) {
           // Acceptance after the first clear_queue/abort can enqueue a fresh run.
-          if (record.hold.kind === "halt" && this.children.get(id) === child && !this.aborting.has(id)) await this.abort(id).catch(() => {});
+          if (record.hold.kind === "halt" && this.children.get(id) === child) {
+            await this.abortRuns.get(id)?.catch(() => {});
+            await this.abort(id).catch(() => {});
+          }
           throw new Error(`${id} was held while prompt acceptance was pending`);
         }
         // An input hook can consume ordinary text too: acceptance need not schedule work.
@@ -762,8 +894,7 @@ export class SubagentManager {
             record.hold.outcome = "failed";
             record.hold.detail = "Prompt acceptance timed out after halt confirmation; a late run may still start. Kill or close the process before release.";
             const text = `Human halt for ${record.name} (${id}): failed. ${record.hold.detail}`;
-            this.update(record, "human_intervention", text);
-            this.announce(record, "human_intervention", text);
+            this.report(record, "human_intervention", text);
           }
         }
         if (error instanceof RpcRejectedError && !record.hold) {
@@ -791,21 +922,32 @@ export class SubagentManager {
       this.abortIntents.set(record.id, { revision: record.runRevision ?? 0, awaitingStart: !this.activeRuns.has(record.id) });
     }
   }
-  async abort(id: string) {
-    const record = this.get(id);
-    // Cancelling a coordinator cancels the work it delegated: fenced first, so it
-    // cannot delegate more meanwhile, then every live descendant, deepest first.
+  /** Keep the fence and collect *all* outcomes, even when the target also fails. */
+  private async stopSubtree(id: string, stop: (record: AgentRecord) => Promise<unknown>) {
+    const target = this.get(id);
     this.fence(id);
     try {
-      const failures: string[] = [];
-      for (const descendant of this.subtree(id)) {
-        // One already being aborted is awaited, so its outcome is reported too.
-        const run = this.abortRuns.get(descendant.id) ?? (this.children.has(descendant.id) ? this.abortOne(descendant) : undefined);
-        await run?.catch(error => { failures.push(`${descendant.id}: ${String(error)}`); });
+      const subtreeFailures: string[] = [];
+      for (const child of this.subtree(id)) {
+        try { await stop(child); }
+        catch (error) { subtreeFailures.push(`${child.id}: ${String(error)}`); }
       }
-      const summary = await this.abortOne(record);
-      return failures.length ? { ...summary, subtreeFailures: failures } : summary;
+      let targetDetail: string | undefined;
+      try { await stop(target); }
+      catch (error) { targetDetail = String(error); }
+      return { ...this.summary(id), targetOutcome: targetDetail ? "unconfirmed" : "confirmed", targetDetail,
+        outcome: targetDetail || subtreeFailures.length ? "unconfirmed" : "confirmed", subtreeFailures };
     } finally { this.unfence(id); }
+  }
+  async abort(id: string) {
+    if (this.aborting.has(id)) throw new Error("Abort is already in progress");
+    return this.stopSubtree(id, async record => {
+      if (this.children.has(record.id)) await (this.abortRuns.get(record.id) ?? this.abortOne(record));
+      else this.checkDetached(record);
+    });
+  }
+  private checkDetached(record: AgentRecord) {
+    if (record.unconfirmedStop || record.uncertainSubmission) throw new Error("Process stop unconfirmed; inspect for orphaned work.");
   }
   /** In-flight single-process aborts, so that a subtree abort can await one it did not start. */
   private abortRuns = new Map<string, Promise<ReturnType<SubagentManager["summary"]>>>();
@@ -827,6 +969,10 @@ export class SubagentManager {
       await child.request({ type: "clear_queue" });
       this.markAbortIntent(record); // A queued run may have started while clearing.
       await child.request({ type: "abort" });
+      const state = await child.request({ type: "get_state" });
+      if (state.isStreaming !== false) throw new Error("Abort acknowledged but child still reports streaming or unknown state; cancellation unconfirmed");
+      if (this.submitting.has(id)) throw new Error("Prompt submission is still in flight; a late run may still start. Cancellation unconfirmed.");
+      if (record.uncertainSubmission) throw new Error("Prompt acceptance remains unknown; cancellation unconfirmed. Kill or close the process before release.");
       return this.summary(id);
     } finally {
       this.peers.interrupt(id);
@@ -847,64 +993,63 @@ export class SubagentManager {
     const hold: HumanHold = { kind, at: new Date().toISOString(), outcome: "pending" };
     record.hold = hold;
     record.queuedAssignments = [];
-    this.update(record, "human_intervention", `Human ${kind} requested for ${record.name} (${id}); cancellation pending.`);
-    const cursor = record.cursor;
+    this.report(record, "human_intervention", `Human ${kind} requested for ${record.name} (${id}); cancellation pending.`);
     let hookError: unknown;
     try { this.interventionHook?.(record, kind); beforeCancel?.(record, kind); }
     catch (error) { hookError = error; }
-    this.announce(record, "human_intervention", `Human ${kind} requested for ${record.name} (${id}); cancellation pending.`, cursor);
+    let targetDetail: string, targetOutcome: "confirmed" | "unconfirmed";
     try {
       const child = this.children.get(id);
       if (kind === "kill") {
         this.peers.interrupt(id);
         if (!child) throw new Error("No managed process attached; force termination cannot be confirmed. Inspect for orphaned work.");
-        await child.kill();
-      } else if (child) {
-        await this.abortOne(record); // Pi acknowledges abort only after its session becomes idle. Descendants are held below.
-        if (this.children.get(id) !== child) throw new Error("Process exited before halt confirmation");
-        const state = await child.request({ type: "get_state" });
-        if (state.isStreaming) throw new Error("Abort acknowledged but child still reports streaming; cancellation unconfirmed");
-      }
+        try { await child.kill(); }
+        catch (error) { if (this.children.get(id) === child) record.unconfirmedStop = String(error); throw error; }
+      } else if (child) await this.abortOne(record);
+      else this.checkDetached(record);
       if (hookError) throw new Error(`Workflow pause hook failed: ${String(hookError)}`);
-      if (kind === "halt" && record.uncertainSubmission) throw new Error("Prompt acceptance remains unknown; halt cannot be confirmed. Kill or close the process before release.");
-      hold.outcome = "confirmed";
-      hold.detail = kind === "kill" ? "Process force-killed (SIGKILL); conversation retained." : child
+      targetOutcome = "confirmed";
+      targetDetail = kind === "kill" ? "Process force-killed (SIGKILL); conversation retained." : child
         ? "Queues cleared and active work cancelled; process/conversation retained."
         : "No managed process attached; hold applied to saved conversation.";
     } catch (error) {
-      hold.outcome = "failed";
-      hold.detail = String(error);
+      targetOutcome = "unconfirmed";
+      targetDetail = String(error);
     }
-    if (record.hold !== hold) {
-      hold.outcome = "failed";
-      hold.detail = `Superseded by human ${record.hold?.kind ?? "intervention"}; prior ${kind} result cannot confirm current state.`;
-    }
-    if (record.hold === hold && record.assignment?.status === "running" && (hold.outcome === "confirmed" || !this.children.has(id))) {
+    if (record.hold === hold && record.assignment?.status === "running" && targetOutcome === "confirmed") {
       record.assignment.status = "cancelled";
       record.assignment.finishedAt = new Date().toISOString();
       record.assignment.resultCursor = record.cursor;
       record.resultReview = { assignmentId: record.assignment.id, status: "unreviewed" };
     }
-    const text = `Human ${kind} for ${record.name} (${id}): ${hold.outcome}. ${hold.detail}`;
-    this.update(record, "human_intervention", text);
-    // Separate final notice: the requested notice may already be in flight with
-    // its original text. Delivery of that receipt must never erase confirmation.
-    this.announce(record, "human_intervention", text);
-    // The hold already blocks this Child's delegation and its descendants' (assertReleased
-    // checks ancestors). Hold every descendant too, saved ones included, so that none
-    // resumes when this hold is released first. A saved descendant has no process to kill.
+    // Keep the target pending (and unreleasable) until every descendant has an outcome.
+    const subtreeFailures: string[] = [];
     if (!nested) for (const descendant of this.subtree(id).reverse()) {
       const descendantKind = kind === "kill" && this.children.has(descendant.id) ? "kill" : "halt";
-      if (!this.supersedes(descendant, descendantKind)) continue;
-      await this.intervene(descendant.id, descendantKind, beforeCancel, true).catch(() => {});
+      try {
+        if (this.supersedes(descendant, descendantKind)) await this.intervene(descendant.id, descendantKind, beforeCancel, true);
+        if (descendant.hold?.outcome !== "confirmed") subtreeFailures.push(`${descendant.id}: ${descendant.hold?.detail ?? "intervention not confirmed"}`);
+      } catch (error) { subtreeFailures.push(`${descendant.id}: ${String(error)}`); }
     }
-    return this.summary(id);
+    if (record.hold !== hold) {
+      targetOutcome = "unconfirmed";
+      targetDetail = `Superseded by human ${record.hold?.kind ?? "intervention"}; prior ${kind} result cannot confirm current state.`;
+    }
+    const confirmed = targetOutcome === "confirmed" && !subtreeFailures.length;
+    hold.outcome = confirmed ? "confirmed" : "failed";
+    hold.detail = subtreeFailures.length
+      ? `Target ${id}: ${targetOutcome}. ${targetDetail} Unconfirmed descendants: ${subtreeFailures.join("; ")}` : targetDetail;
+    const text = `Human ${kind} for ${record.name} (${id}): ${hold.outcome}. ${hold.detail}`;
+    this.report(record, "human_intervention", text);
+    return { ...this.summary(id), hold: structuredClone(hold), targetOutcome, targetDetail, outcome: confirmed ? "confirmed" : "unconfirmed", subtreeFailures };
   }
   /** Parent-only release: clearing a hold never resumes, prompts, or restarts work. */
   releaseHold(id: string) {
     const record = this.get(id);
     if (!record.hold) throw new Error(`${id} has no human hold`);
-    if (record.uncertainSubmission) throw new Error(`${id} has uncertain prompt acceptance; kill or close its process before releasing the hold (inspect for orphans after a crash).`);
+    if (record.uncertainSubmission) throw new Error(this.children.has(id)
+      ? `${id} has uncertain prompt acceptance; kill or close its process before releasing the hold.`
+      : `${id} has uncertain prompt acceptance and no attached process. The manager cannot confirm its exit. Inspect for orphaned work before manual recovery.`);
     if (this.aborting.has(id) || this.submitting.has(id) || [...this.responding].some(key => key.startsWith(`${id}:`)) || record.hold.outcome === "pending") {
       throw new Error(`${id} intervention/submission is still in flight; wait before releasing the hold`);
     }
@@ -913,16 +1058,7 @@ export class SubagentManager {
     return this.summary(id);
   }
   async close(id: string, preserveNotices = false) {
-    const record = this.get(id);
-    // Closing a coordinator closes everything it delegated, deepest first, fenced
-    // so that it cannot delegate more while its subtree closes.
-    this.fence(id);
-    try {
-      const failures: string[] = [];
-      for (const descendant of this.subtree(id)) await this.closeOne(descendant, preserveNotices).catch(error => { failures.push(`${descendant.id}: ${String(error)}`); });
-      const summary = await this.closeOne(record, preserveNotices);
-      return failures.length ? { ...summary, subtreeFailures: failures } : summary;
-    } finally { this.unfence(id); }
+    return this.stopSubtree(id, record => this.closeOne(record, preserveNotices));
   }
   private async closeOne(record: AgentRecord, preserveNotices: boolean) {
     const id = record.id;
@@ -936,6 +1072,7 @@ export class SubagentManager {
     }
     const child = this.children.get(id);
     if (!child) {
+      this.checkDetached(record);
       if (record.error) { record.lastError = record.error; delete record.error; }
       record.status = "stopped";
       record.activity = "Stopped; retained history available";
@@ -953,13 +1090,18 @@ export class SubagentManager {
     // Capture the final cumulative cost even when closing interrupts a run.
     // On failure retain the last known snapshot rather than resetting to zero.
     await this.refreshUsage(record);
-    await child.stop();
+    try { await child.stop(); }
+    catch (error) {
+      record.activity = record.unconfirmedStop = `Process close unconfirmed: ${String(error)}`;
+      this.persist();
+      throw error;
+    }
     return this.summary(id);
   }
   async resume(id: string, message?: string, env?: Record<string, string>) {
     const record = this.get(id);
-    this.assertReleased(record);
-    if (record.uncertainSubmission) throw new Error(`${id} has uncertain prompt acceptance; inspect for orphaned work before resuming.`);
+    this.assertDelegationOpen(record);
+    this.checkDetached(record);
     if (this.children.has(id)) throw new Error(`${id} already has a process`);
     if (!existsSync(record.sessionFile)) throw new Error("No saved child session exists");
     if (!this.authorize && record.hadEnvOverrides && !env) throw new Error("This child used environment overrides. Supply them again; they are not stored.");
@@ -1002,7 +1144,9 @@ export class SubagentManager {
   }
   /** callerId: the coordinator Child waiting, or undefined for the root Parent. */
   async wait(ids: readonly string[], mode: "any" | "all", timeoutMs?: number, signal?: AbortSignal, messageQueued?: () => boolean, callerId?: string): Promise<WaitEnd> {
-    const selected = ids.length ? [...ids] : this.list().map(record => record.id);
+    const selected = ids.length ? [...ids] : [...this.records.values()]
+      .filter(record => !record.rejected && !record.workflow && this.reportsDrainedBy(record.id) === callerId)
+      .map(record => record.id);
     for (const id of selected) this.get(id);
     const watched = new Set(selected);
     // Only messages this caller will collect: a grandchild's message is its coordinator's.
@@ -1013,8 +1157,15 @@ export class SubagentManager {
     while (true) {
       signal?.throwIfAborted();
       const records = selected.map(id => this.get(id));
-      if (records.some(record => record.hold)) return end("hold");
-      if (records.some(record => record.status === "waiting_input")) return end("input");
+      // Descendant results belong to their coordinator; a descendant's dialog or
+      // hold belongs to the root. Include blockers in the report, not in readiness.
+      const blockers = callerId ? [] : [...this.records.values()].filter(record =>
+        !watched.has(record.id) && (record.hold || record.status === "waiting_input")
+        && (!ids.length || this.ancestorsOf(record.id).some(id => watched.has(id))));
+      if (blockers.length || records.some(record => record.hold || record.status === "waiting_input")) {
+        return { wake: [...records, ...blockers].some(record => record.hold) ? "hold" : "input",
+          ids: [...selected, ...blockers.map(record => record.id)] };
+      }
       const ready = records.filter(record => !BUSY.has(record.status)).length;
       if (!selected.length || (mode === "any" ? ready > 0 : ready === selected.length)) return end("settled");
       if (childMessage()) return end("child_message");
@@ -1027,6 +1178,9 @@ export class SubagentManager {
     this.shuttingDown = true;
     this.reservations.clear();
     this.reservedSlots = 0;
-    await Promise.all([...this.children.keys()].map(id => this.closeOne(this.get(id), true)));
+    const failures: string[] = [];
+    await Promise.all([...this.children.keys()].map(id => this.closeOne(this.get(id), true)
+      .catch(error => { failures.push(`${id}: ${String(error)}`); })));
+    if (failures.length) throw new Error(`Shutdown unconfirmed: ${failures.join("; ")}`);
   }
 }

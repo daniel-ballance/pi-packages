@@ -324,7 +324,7 @@ test("manager host records consumed submission and rejects the attempt before wa
     spawn: async () => ({ id: "consumed-child" }), get: () => ({ id: "consumed-child" }),
     send: async () => ({ id: "consumed-child", disposition: "handled" }),
     wait: async () => assert.fail("Consumed input must not wait for a nonexistent run"),
-    close: async () => { closed = true; }, peers: {},
+    close: async () => { closed = true; return { outcome: "confirmed" }; }, peers: {},
   } as unknown as Parameters<typeof managerWorkflowHost>[0];
   const policy = (() => ({ compile: () => ({}) })) as unknown as Parameters<typeof managerWorkflowHost>[1];
   const job: AgentJob = { step: "a", workflow: "workflow-test", cwd: "/tmp", worker, instructions: "a",
