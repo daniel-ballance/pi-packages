@@ -29,7 +29,7 @@ Read these. Do not copy their contents into this file.
 |-------|-------|
 | Shared mode (Principles index, non-negotiable triggers, Writing the reply, Autonomy, Subagents, playbook catalog) | pstack `poteto-mode` skill |
 | Shared playbooks | pstack `poteto-mode/playbooks/<name>.md` |
-| Principle leaves | pstack `principle-*` skills |
+| Principle leaves | the [poteto-mode Principles index](../poteto-mode/SKILL.md#principles) |
 | Slop stripping and app driving | A diff cleanup pass and **Drive the app** in the host capabilities |
 | Repo coding standards | The repo's `AGENTS.md`, `.pi/skills/`, and any repo-local best-practices skill for the surface you touch |
 

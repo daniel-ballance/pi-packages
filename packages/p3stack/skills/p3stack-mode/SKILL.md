@@ -14,7 +14,7 @@ Paths here are relative to this file's directory. If this file is `<package>/ski
 
 Use the session grant in the system prompt (`Grant: default` or `Grant: full-autonomy`); if absent, use `default`. An explicit request for full autonomy in the user's message raises it for this task only. The brief header shows the session grant. For a different grant, the parent writes `Task grant: <grant>` in each brief; that line sets the task grant, higher or lower. A child never raises its own grant. Operator gates hold under either grant; pause before irreversible actions.
 
-Match `any` or the effective grant. Under full autonomy, a design request starts at sharpen, which replaces the design interviews. Then give its rewritten brief to architect, stop at architect's design synthesis, and return the recommendation. Infer covered choices from repository evidence and report them. Under default, use the interview skills for product choices.
+Match `any` or the effective grant. Under full autonomy, a design request starts at sharpen, which replaces the design interviews. Then give its rewritten brief to architect, stop at architect's design synthesis, and return the recommendation. Infer covered choices from repository evidence and report them. Under default, use [grilling](../grilling/SKILL.md) for product choices and record settled terms and decisions with [domain-modeling](../domain-modeling/SKILL.md).
 
 ## House policies
 
@@ -40,7 +40,7 @@ On a bug-fix request without a failing reproduction, stop diagnosing-bugs at a r
 | Understand one existing subsystem or code path | any | `../poteto-mode/SKILL.md`, then `../poteto-mode/playbooks/investigation.md` |
 | Onboard to a repository, or map it as a whole | any | `../poteto-mode/SKILL.md`, then `../p3stack-mode/playbooks/onboard-brownfield.md` |
 | Find a fact outside the repository | any | `../poteto-mode/SKILL.md`, then `../research/SKILL.md` |
-| Align on a design with the human present | default | `../poteto-mode/SKILL.md`, then `../grill-with-docs/SKILL.md` |
+| Align on a design with the human present | default | `../poteto-mode/SKILL.md`, then `../grilling/SKILL.md` |
 | Align on a design without blocking | full-autonomy | `../poteto-mode/SKILL.md`, then `../sharpen/SKILL.md` |
 | Explore design alternatives | full-autonomy | `../poteto-mode/SKILL.md`, then `../architect/SKILL.md` |
 | Map a large effort with unresolved decisions | default | `../poteto-mode/SKILL.md`, then `../wayfinder/SKILL.md` |

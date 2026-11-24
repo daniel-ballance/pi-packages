@@ -13,7 +13,7 @@
     { "id": "maintain-revert", "prompt": "Revert p3stack maintenance PR 96, it broke main.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "maintain-p3stack/SKILL.md"] },
     { "id": "onboard", "prompt": "Onboard me to this repo.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "p3stack-mode/playbooks/onboard-brownfield.md"] },
     { "id": "bug", "prompt": "The export is corrupt sometimes.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "diagnosing-bugs/SKILL.md"] },
-    { "id": "design", "prompt": "Let's design the sync module.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "grill-with-docs/SKILL.md"] },
+    { "id": "design", "prompt": "Let's design the sync module.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "grilling/SKILL.md"] },
     { "id": "design-autonomous", "prompt": "Let's design the sync module. Be fully autonomous.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "sharpen/SKILL.md"] },
     { "id": "design-grant", "prompt": "Let's design the sync module.", "grant": "autonomous", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "sharpen/SKILL.md"] },
     { "id": "prototype-logic-human", "prompt": "Make something the PM can click through to try the refund states before we build them.", "expected": ["p3stack-mode/SKILL.md", "poteto-mode/SKILL.md", "poteto-mode/playbooks/prototype.md", "interactive-prototype/SKILL.md"] },

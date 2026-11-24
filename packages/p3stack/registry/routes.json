@@ -3,7 +3,7 @@
   { "request": "Understand one existing subsystem or code path", "grant": "any", "target": "playbooks/investigation.md" },
   { "request": "Onboard to a repository, or map it as a whole", "grant": "any", "target": "p3stack-mode/playbooks/onboard-brownfield.md" },
   { "request": "Find a fact outside the repository", "grant": "any", "target": "research" },
-  { "request": "Align on a design with the human present", "grant": "default", "target": "grill-with-docs" },
+  { "request": "Align on a design with the human present", "grant": "default", "target": "grilling" },
   { "request": "Align on a design without blocking", "grant": "full-autonomy", "target": "sharpen" },
   { "request": "Explore design alternatives", "grant": "full-autonomy", "target": "architect" },
   { "request": "Map a large effort with unresolved decisions", "grant": "default", "target": "wayfinder" },

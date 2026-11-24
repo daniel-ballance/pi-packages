@@ -65,7 +65,6 @@ For a routed task, recommend `/p3stack on`. The table below suggests standalone 
 | Understand a change or subsystem, explained plainly | [`/skill:teach`](../teach/SKILL.md) |
 | Catch up on their own recent work on a topic | [`/skill:recall`](../recall/SKILL.md) |
 | Catch up on what changed in this chat since their last message, in plain words and small visuals, with every item waiting on them listed and decidable from the reply alone | [`/skill:ketchup`](../ketchup/SKILL.md) |
-| Catch up like `/skill:ketchup`, in a short subtitled video of slides, with the waiting calls as text under it | [`/skill:ketchup-video`](../ketchup-video/SKILL.md) |
 | Know what a small diff could break outside itself | [`/skill:blast-radius`](../blast-radius/SKILL.md) |
 | Settle types and module shape before code that crosses a function boundary | [`/skill:architect`](../architect/SKILL.md) |
 | Get several attempts at one brief, merged into the best one | [`/skill:arena`](../arena/SKILL.md) |
@@ -86,12 +85,11 @@ For a routed task, recommend `/p3stack on`. The table below suggests standalone 
 | Run a large or cross-cutting change, or one to review after stepping away | [`/skill:figure-it-out`](../figure-it-out/SKILL.md) |
 | Keep a decision log during a run, and review it afterward | [`/skill:show-me-your-work`](../show-me-your-work/SKILL.md) |
 | Pick a model for each role and a reasoning budget | [`/skill:setup-pstack`](../setup-pstack/SKILL.md) |
-| Turn their own working habits into a personal mode skill | [`/skill:automate-me`](../automate-me/SKILL.md) |
 | Turn what a finished task taught into skill edits | [`/skill:reflect`](../reflect/SKILL.md) |
 | Stop agents from repeating the same mistakes in this repo | [`/skill:correct`](../correct/SKILL.md) |
 | Find their way around pstack | `/skill:poteto-help` |
 
-Consult the [router](../p3stack-mode/SKILL.md#routes) for other requests, including reviewing someone else's PR. For a standalone skill, check its description. The `principle-*` directories are covered under principles below.
+Consult the [router](../p3stack-mode/SKILL.md#routes) for other requests, including reviewing someone else's PR. For a standalone skill, check its description. For principles, see the [poteto-mode index](../poteto-mode/SKILL.md#principles).
 
 Close calls:
 
@@ -123,7 +121,7 @@ The [Pi router](../p3stack-mode/SKILL.md#routes) maps each routed request and gr
 
 With routing on, asking for a multi-PR plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/skill:architect` settles it in code first.
 
-Principles are one-rule skills that `/skill:poteto-mode` reads and cites in its replies. The user rarely invokes one. They steer with the names instead, as in "apply prove it works. show me the real output." Typing `/skill:principle-<name>` still loads one on demand. [Guide page 8](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/08-principles.md) lists them.
+Principles are references that `/skill:poteto-mode` reads before citing them. Ask for one by title, as in "apply prove it works. show me the real output." [Guide page 8](https://github.com/cursor/plugins/blob/3dbd22ff12742fb28c9700b9760baa29ed41dc13/pstack/docs/guide/08-principles.md) lists them.
 
 ## Fix a run that went wrong
 
@@ -142,7 +140,6 @@ For a run that drifts, [`references/prompting.md`](references/prompting.md) has 
 
 ## Make pstack my own
 
-- [`/skill:automate-me`](../automate-me/SKILL.md) drafts a personal mode skill from the user's own history, to use alongside `/skill:poteto-mode`.
 - [`/skill:reflect`](../reflect/SKILL.md) after a session turns its lessons into skill edits the user approves.
 - `/skill:poteto-mode write a skill for <workflow>` runs the authoring playbook. The eval playbook tests a skill change blind.
 - Fix a misbehaving skill in its own PR, not inside the feature work where it went wrong.

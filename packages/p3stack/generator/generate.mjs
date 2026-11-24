@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
@@ -9,30 +9,12 @@ import { fileURLToPath } from "node:url";
 import { gitAt, gitEnv, requireCleanCheckout } from "./git-env.mjs";
 import { chainSlots, checkRegistry, frontmatterBlock, loadRegistry, skillFrontmatter, targetPath } from "./check-registry.mjs";
 import { lintHosts } from "./lint-hosts.mjs";
-import { sourcePathClassifier, sourcesOf } from "./source-paths.mjs";
+import { isLink, referenceMoves, sourcePathClassifier, sourcesOf, walk } from "./source-paths.mjs";
 
 function readJson(path, fallback) {
   if (!existsSync(path)) return fallback;
   try { return JSON.parse(readFileSync(path, "utf8")); }
   catch (error) { throw new Error(`Cannot load ${path}: ${error.message}`, { cause: error }); }
-}
-
-const byName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-
-function walk(dir) {
-  if (!existsSync(dir) && !isLink(dir)) return [];
-  if (!lstatSync(dir).isDirectory()) return [""];
-  const files = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort(byName)) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...walk(path).map(file => join(entry.name, file)));
-    else if (entry.isFile() || entry.isSymbolicLink()) files.push(entry.name);
-  }
-  return files;
-}
-
-function isLink(path) {
-  try { return lstatSync(path).isSymbolicLink(); } catch { return false; }
 }
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -282,11 +264,86 @@ function applyPatches(patchesDir, outDir, problems) {
   }
 }
 
-function lint(outDir, deny, problems) {
+const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function referenceBody(text, path, name) {
+  const { description, name: declared } = skillFrontmatter(text, path);
+  if (declared !== name || typeof description !== "string" || !description.trim()) throw new Error(`${path}: reference needs its registered name and description`);
+  const body = text.slice(frontmatterBlock(text)[0].length).replace(/^(?:\r?\n)+/, "");
+  const newline = text.includes("\r\n") ? "\r\n" : "\n";
+  const heading = fromMarkdown(body).children.find(node => node.type === "heading" && node.depth === 1);
+  const title = heading ? body.slice(heading.position.start.offset, heading.position.end.offset) : `# ${name}`;
+  const rest = heading ? body.slice(0, heading.position.start.offset) + body.slice(heading.position.end.offset) : body;
+  return title + newline.repeat(2) + description.trim() + newline.repeat(2) + rest.replace(/^(?:\r?\n)+/, "");
+}
+
+// Translate command spans the upstream slash rule recognized, not command examples in
+// fences or longer shell snippets. A rule must settle those in context or lint fails.
+function linkReferenceCommands(text, moves, base) {
+  if (!text.includes("/skill:")) return text;
+  const edits = [];
+  function visit(node, parent) {
+    if (node.type === "inlineCode" && node.value.startsWith("/skill:")) {
+      const name = node.value.slice(7), target = moves.get(`skills/${name}/SKILL.md`);
+      if (target) edits.push([node.position, parent.type === "link" ? name : `[${name}](${posix.relative(base, target)})`]);
+    } else node.children?.forEach(child => visit(child, node));
+  }
+  visit(fromMarkdown(text));
+  for (const [{ start, end }, replacement] of edits.reverse()) text = text.slice(0, start.offset) + replacement + text.slice(end.offset);
+  return text;
+}
+
+function relocateReferences(outDir, skills, owners) {
+  const paths = walk(outDir).map(path => path.split(sep).join("/")), moves = referenceMoves(paths, skills);
+  if (!moves.size) return;
+  for (const path of paths) {
+    const output = moves.get(path) ?? path, oldFile = join(outDir, path), file = join(outDir, output);
+    const baseOf = path => path.startsWith("skills/") ? path.split("/").slice(0, 2).join("/") : posix.dirname(path);
+    const before = baseOf(path), after = baseOf(output);
+    const contents = decode(readFileSync(oldFile));
+    if (file !== oldFile) {
+      mkdirSync(dirname(file), { recursive: true });
+      renameSync(oldFile, file); // also preserves the mode and binary resources
+    }
+    if (contents === undefined) continue;
+    let text = contents;
+    if (path !== output && path.endsWith("/SKILL.md")) {
+      const name = posix.basename(before);
+      text = referenceBody(text, path, name).replaceAll(new RegExp(`/skill:${escapeRegex(name)}(?![\\w-])`, "g"), name);
+    }
+    // Match only staged resources. A similarly named example, URL or consumer-repo
+    // path isn't part of this move. Both link destinations and code spans (including
+    // commands with arguments) use the enclosing skill root as their working directory.
+    const aliases = new Map();
+    for (const [old, dest] of moves) {
+      const operand = posix.relative(before, old), replacement = posix.relative(after, dest);
+      aliases.set(operand, replacement);
+      if (!operand.startsWith("../")) aliases.set("./" + operand, replacement);
+    }
+    const pathsInSpan = new RegExp("(?<![^\\s`(<'\"])" + `(?:${[...aliases.keys()].map(escapeRegex).join("|")})` + "(?=$|[\\s`)>#?'\"])", "g");
+    text = text.replace(/`[^`\n]+`|\]\([^\n)]*\)|^\s*\[[^\]\n]+\]:\s*.*$/gm, span => span.replace(pathsInSpan, operand => aliases.get(operand)));
+    if (owners.has(path) && !["extra", "authored", "registry"].includes(owners.get(path)) && path.endsWith(".md")) {
+      text = linkReferenceCommands(text, moves, after);
+    }
+    if (text !== contents) writeFileSync(file, text);
+  }
+  for (const { name } of skills.filter(row => row.action === "reference")) rmSync(join(outDir, "skills", name), { recursive: true, force: true });
+}
+
+export function removedCommandPattern(skills) {
+  const emitted = new Set(skills.filter(row => row.action === "emit").map(row => row.name));
+  const names = skills.map(row => row.name ?? posix.basename(posix.dirname(row.path))).filter(name => !emitted.has(name));
+  if (!names.length) return undefined;
+  // A whole command token, not a segment of a URL, route or filename.
+  return new RegExp(`(?<![\\w./:-])/(?:skill:)?(?:${[...new Set(names)].map(escapeRegex).join("|")})(?![\\w/#?-]|\\.[\\w/])`, "g");
+}
+
+function lint(outDir, deny, problems, removed) {
   for (const path of walk(outDir)) {
     const text = decode(readFileSync(join(outDir, path)));
     if (text === undefined) continue;
     text.split("\n").forEach((line, index) => {
+      for (const command of removed ? line.match(removed) ?? [] : []) problems.push(`${path}:${index + 1}: removed skill command ${command}`);
       for (const token of deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
     });
   }
@@ -343,13 +400,14 @@ export function generate({ packageDir, outDir }) {
   writeFiles(files, executables, outDir);
   applyPatches(join(packageDir, "patches"), outDir, problems);
   if (problems.length) throw new Error(problems.join("\n"));
+  if (registry) relocateReferences(outDir, registry.skills, owners);
   // Patches are rewritten under the caller's umask; keep only the executable bit.
   for (const path of walk(outDir)) {
     checkOutputPath(path.split(sep).join("/"));
     chmodSync(join(outDir, path), isExecutable(join(outDir, path)) ? 0o755 : 0o644);
   }
   const lintProblems = [], checks = readJson(join(rules, "lint.json"), { deny: [] });
-  lint(outDir, checks.deny, lintProblems);
+  lint(outDir, checks.deny, lintProblems, registry && removedCommandPattern(registry.skills));
   for (const { file, contains } of checks.require ?? []) {
     const text = existsSync(join(outDir, file)) ? readFileSync(join(outDir, file), "utf8") : "";
     for (const dependency of contains) if (!text.includes(dependency)) lintProblems.push(`${file}: lost ${dependency} dependency link`);

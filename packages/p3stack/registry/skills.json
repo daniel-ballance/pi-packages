@@ -50,17 +50,8 @@
   {
     "source": "cursor-plugins",
     "path": "skills/automate-me/SKILL.md",
-    "action": "emit",
-    "name": "automate-me",
-    "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "action": "drop",
+    "reason": "Personal mode generation is outside the coding workflow."
   },
   {
     "source": "cursor-plugins",
@@ -230,17 +221,8 @@
   {
     "source": "cursor-plugins",
     "path": "skills/ketchup-video/SKILL.md",
-    "action": "emit",
-    "name": "ketchup-video",
-    "invocation": "user",
-    "phases": [
-      "meta-and-style"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Offer a user-invoked silent-video recap using available rendering tools, with a text fallback when rendering fails."
+    "action": "drop",
+    "reason": "Keep one recap entry point, ketchup, without a video-rendering workflow."
   },
   {
     "source": "cursor-plugins",
@@ -326,9 +308,8 @@
   {
     "source": "cursor-plugins",
     "path": "skills/principle-attack-the-premise/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-attack-the-premise",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -336,14 +317,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-boundary-discipline/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-boundary-discipline",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -351,14 +332,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-build-the-lever/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-build-the-lever",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -366,14 +347,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-encode-lessons-in-structure/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-encode-lessons-in-structure",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -381,14 +362,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-exhaust-the-design-space/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-exhaust-the-design-space",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -396,14 +377,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-experience-first/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-experience-first",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -411,14 +392,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-explain-the-number/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-explain-the-number",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -426,14 +407,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-fix-root-causes/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-fix-root-causes",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -441,14 +422,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-foundational-thinking/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-foundational-thinking",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -456,14 +437,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-guard-the-context-window/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-guard-the-context-window",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -471,14 +452,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-laziness-protocol/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-laziness-protocol",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -486,14 +467,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-make-operations-idempotent/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-make-operations-idempotent",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -501,14 +482,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-migrate-callers-then-delete-legacy-apis",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -516,14 +497,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-minimize-reader-load/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-minimize-reader-load",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -531,14 +512,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-model-the-domain/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-model-the-domain",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -546,14 +527,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-never-block-on-the-human/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-never-block-on-the-human",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -561,14 +542,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-outcome-oriented-execution/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-outcome-oriented-execution",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -576,14 +557,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-prove-it-works/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-prove-it-works",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -591,14 +572,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-redesign-from-first-principles/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-redesign-from-first-principles",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -606,14 +587,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-separate-before-serializing-shared-state/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-separate-before-serializing-shared-state",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -621,14 +602,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-sequence-verifiable-units/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-sequence-verifiable-units",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -636,14 +617,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-subtract-before-you-add/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-subtract-before-you-add",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -651,14 +632,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-test-behavior-not-implementation/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-test-behavior-not-implementation",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -666,14 +647,14 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
     "path": "skills/principle-type-system-discipline/SKILL.md",
-    "action": "emit",
+    "action": "reference",
     "name": "principle-type-system-discipline",
-    "invocation": "user",
     "phases": [
       "meta-and-style"
     ],
@@ -681,7 +662,8 @@
       "contributor",
       "owner"
     ],
-    "reason": "Keep the existing pstack procedure or principle."
+    "reason": "Read from poteto-mode's Principles index.",
+    "owner": "poteto-mode"
   },
   {
     "source": "cursor-plugins",
@@ -947,17 +929,8 @@
   {
     "source": "matt-pocock",
     "path": "skills/engineering/grill-with-docs/SKILL.md",
-    "action": "emit",
-    "name": "grill-with-docs",
-    "invocation": "user",
-    "phases": [
-      "align-and-design"
-    ],
-    "roles": [
-      "contributor",
-      "owner"
-    ],
-    "reason": "Keep the documented interview entry point."
+    "action": "drop",
+    "reason": "Use grilling for the interview and domain-modeling to record its decisions."
   },
   {
     "source": "matt-pocock",

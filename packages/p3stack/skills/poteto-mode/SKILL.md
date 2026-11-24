@@ -10,7 +10,7 @@ Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's a
 
 ## Non-negotiables
 
-The Principles section below grounds every trigger. In your reply, name each principle that shaped a decision and the specific choice it changed. Cite only principles whose leaf SKILL.md you read this session.
+The Principles section below grounds every trigger. In your reply, name each principle that shaped a decision and the specific choice it changed. Cite only principles whose reference you read this session.
 
 Remaining triggers:
 
@@ -36,7 +36,7 @@ Remaining triggers:
 
 ## Principles
 
-Read the leaf skill in full for any principle you apply. Each entry names when it applies. Each leaf is the **principle-<title>** skill, with the title in kebab case, hyphens kept and other punctuation dropped, unless the entry gives its name.
+Before applying a principle, read `references/principle-<title>.md` in full: use the title in kebab case, keep hyphens and drop other punctuation, or use the explicit name in the entry.
 
 **Core**
 

@@ -746,7 +746,7 @@ test("the root gate uses the registry instead of the retired skill-report and de
   assert.equal(existsSync(join(root, ".pi/skills/p3stack-pocock-unification")), false);
 });
 
-const pocockNames = ["grilling", "grill-with-docs", "domain-modeling", "codebase-design", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "tdd", "implement", "triage", "setup-matt-pocock-skills", "to-spec", "to-tickets", "wayfinder", "implement-spec", "improve-codebase-architecture", "pr", "retro", "handoff", "wizard"];
+const pocockNames = ["grilling", "domain-modeling", "codebase-design", "code-review", "writing-for-agents", "diagnosing-bugs", "research", "tdd", "implement", "triage", "setup-matt-pocock-skills", "to-spec", "to-tickets", "wayfinder", "implement-spec", "improve-codebase-architecture", "pr", "retro", "handoff", "wizard"];
 
 function pocockFixture() {
   const temp = mkdtempSync(join(process.env.P3STACK_FIXTURE_ROOT ?? tmpdir(), "p3stack-pocock-"));
@@ -866,7 +866,7 @@ pocockCase("10 translation preserves semantics and is deterministic", ({ root, r
   assert.equal(first.status, 0, first.stderr);
   for (const name of pocockNames) assert.ok(existsSync(join(root, "skills", name, "SKILL.md")), name);
   assert.match(read("diagnosing-bugs/SKILL.md"), /\[HITL loop template\]\(scripts\/hitl-loop.template.sh\)/);
-  assert.match(read("grill-with-docs/SKILL.md"), /\[grilling\]\(\.\.\/grilling\/SKILL.md\)/);
+  assert.match(read("p3stack-mode/SKILL.md"), /human present \| default \| `\.\.\/poteto-mode\/SKILL\.md`, then `\.\.\/grilling\/SKILL\.md`/);
   assert.match(read("research/SKILL.md"), /\[child delegation guidance\]\(\.\.\/poteto-mode\/references\/host-capabilities.md\)/);
   assert.match(read("implement/SKILL.md"), /\[tdd\]\(\.\.\/tdd\/SKILL.md\)/);
   assert.match(read("implement/SKILL.md"), /\[code-review\]\(\.\.\/code-review\/SKILL.md\)/);
