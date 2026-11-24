@@ -26,11 +26,11 @@
 
 > **p3stack only:** [no-comments](../no-comments/SKILL.md) — When the code is complete, clean up comments before the floor scan.
 
-> **p3stack only:** [floor](../p3stack-mode/references/floor.md) — After comment cleanup, run floor-check on the final diff; explain or remove every finding.
+> **p3stack only:** [floor](../p3stack-mode/references/floor.md) — Commit any cleanup edits and rerun affected checks. Run floor-check on the final diff; explain or remove every finding.
 
 > **p3stack only:** [review-stance](../p3stack-mode/references/review-stance.md) — Give it to every reviewer, judge, or adversary, with the artifact and its contract.
 
-> **p3stack only:** [code-review](../code-review/SKILL.md) — After the floor scan, review the final diff. Keep standards and spec findings separate.
+> **p3stack only:** [code-review](../code-review/SKILL.md) — Review the floor-checked diff against the request and brief. Record the separate Standards and Spec verdicts at that base and head.
 
 7. If the design is contested, `interrogate` before shipping.
 8. Run **Opening a PR**.

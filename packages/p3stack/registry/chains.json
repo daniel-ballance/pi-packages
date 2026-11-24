@@ -53,7 +53,7 @@
     "anchor": "7. If the design is contested, `interrogate` before shipping.",
     "position": "before",
     "skill": "p3stack-mode/references/floor.md",
-    "when": "After comment cleanup, run floor-check on the final diff; explain or remove every finding."
+    "when": "Commit any cleanup edits and rerun affected checks. Run floor-check on the final diff; explain or remove every finding."
   },
   {
     "id": "feature-review-stance",
@@ -69,7 +69,7 @@
     "anchor": "7. If the design is contested, `interrogate` before shipping.",
     "position": "before",
     "skill": "code-review",
-    "when": "After the floor scan, review the final diff. Keep standards and spec findings separate."
+    "when": "Review the floor-checked diff against the request and brief. Record the separate Standards and Spec verdicts at that base and head."
   },
   {
     "id": "bug-comment-review",
@@ -85,7 +85,7 @@
     "anchor": "6. Run **Opening a PR**.",
     "position": "before",
     "skill": "p3stack-mode/references/floor.md",
-    "when": "After comment cleanup, run floor-check on the final diff; explain or remove every finding."
+    "when": "Commit any cleanup edits and rerun affected checks. Run floor-check on the final diff; explain or remove every finding."
   },
   {
     "id": "bug-review-stance",
@@ -101,7 +101,7 @@
     "anchor": "6. Run **Opening a PR**.",
     "position": "before",
     "skill": "code-review",
-    "when": "After the floor scan, review the final diff. Keep standards and spec findings separate."
+    "when": "Review the floor-checked diff against the request and brief. Record the separate Standards and Spec verdicts at that base and head."
   },
   {
     "id": "skill-authoring-style",
