@@ -1,19 +1,39 @@
-import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { registerHooks } from "node:module";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
+import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { onGraderCopy } from "./copy.mjs";
 
-// This fixture doesn't install Vitest. Its defineConfig helper is an identity;
-// load the actual edited module, including expressions and test-mode callbacks.
-registerHooks({ resolve(specifier, context, next) {
-  if (specifier === "vitest/config") return { url: "data:text/javascript,export const defineConfig = config => config", shortCircuit: true };
-  return next(specifier, context);
-} });
-const { scripts } = JSON.parse(readFileSync("package.json", "utf8"));
-assert.match(scripts?.test, /^\s*vitest\s+run\s+--coverage(?:=true)?\s*$/, "fixture test command must run Vitest with coverage");
-process.env.NODE_ENV = "test";
-process.env.VITEST = "true";
-const { default: exported } = await import(pathToFileURL(resolve("vitest.config.ts")));
-const config = await (typeof exported === "function" ? exported({ mode: "test", command: "serve" }) : exported);
-assert.equal(config?.test?.coverage?.thresholds?.lines, 80);
+// The grader supplies the fixture's versions, never ones selected or installed by the agent.
+const { devDependencies } = JSON.parse(readFileSync(new URL("../fixtures/source-grounding/base/package.json", import.meta.url)));
+export function coverageModules(dir = process.env.P3STACK_EVAL_VITEST_DIR) {
+  if (!dir) throw new Error("Set P3STACK_EVAL_VITEST_DIR to the provisioned source-grounding runtime (see docs/evals)");
+  const modules = resolve(dir, "node_modules");
+  for (const [name, version] of Object.entries(devDependencies)) {
+    const path = join(modules, name, "package.json");
+    if (JSON.parse(readFileSync(path)).version !== version) throw new Error(`Coverage grader requires ${name}@${version}`);
+  }
+  return modules;
+}
+
+function enforcesThreshold(project, modules) {
+  return onGraderCopy(project, copy => {
+    symlinkSync(modules, join(copy, "node_modules"), "dir");
+    // Same config, npm script and source/test paths in both runs. Only the number of exercised lines changes.
+    const branches = Array.from({ length: 100 }, (_, i) => `case ${i}: return ${i};`);
+    writeFileSync(join(copy, "src/mean.ts"), `export function mean(n: number) {\n switch (n) {\n${branches.join("\n")}\n }\n}\n`);
+    const sample = count => {
+      writeFileSync(join(copy, "test/mean.test.ts"), `import { test, expect } from 'vitest';\nimport { mean } from '../src/mean';\ntest('coverage sample', () => { for (let i = 0; i < ${count}; i++) expect(mean(i)).toBe(i); });\n`);
+      const result = spawnSync("npm", ["test"], { cwd: copy, env: { ...process.env, CI: "1", NO_COLOR: "1", npm_config_offline: "true" }, encoding: "utf8", timeout: 45000 });
+      if (result.error) throw result.error;
+      return result;
+    };
+    if (sample(81).status !== 0) return false;
+    const low = sample(79);
+    return low.status === 1 && /Coverage for lines \(([\d.]+)%\) does not meet (?:global )?threshold \(80%\)/.test(low.stdout + low.stderr);
+  });
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = enforcesThreshold(process.cwd(), coverageModules()) ? 0 : 1;
+}

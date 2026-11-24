@@ -1,0 +1,19 @@
+[
+  { "skill": "code-review", "prompt": "Could you look over the patch for mistakes before I send it to my teammate?" },
+  { "skill": "diagnosing-bugs", "prompt": "Twice today our importer silently dropped the last invoice. What makes that happen?" },
+  { "skill": "domain-modeling", "prompt": "Sales and Engineering both say 'customer' and mean different people. Can we agree what to call each?" },
+  { "skill": "grilling", "prompt": "Act as a skeptical interviewer and poke holes in my rollout proposal, one question at a time." },
+  { "skill": "pr", "prompt": "I need a couple of paragraphs for the pull request explaining this change to reviewers." },
+  { "skill": "research", "prompt": "Compare the published limits of three hosted runners, with links and a short memo I can keep." },
+  { "skill": "tdd", "prompt": "Start with a test that fails, then make it pass with the smallest change." },
+  { "skill": "wizard", "prompt": "Only I can click the admin console. Write a script that pauses after each step for me to confirm." },
+  { "skill": "writing-for-agents", "prompt": "Fix the repo instructions that Pi reads: it keeps running the wrong test suite." },
+  { "skill": "setup-pstack", "prompt": "Switch our review role to a cheaper model; keep the architect on the expensive one." },
+  { "skill": "release", "prompt": "Get 1.4 ready: update the changelog and the package version." },
+  { "skill": "onboard-brownfield", "prompt": "First day here. Give me a tour of where a request enters and where the data lives. No edits." },
+  { "skill": "maintain-p3stack", "prompt": "Bring the vendored pstack copy forward and reconcile our translations." },
+  { "skill": "interactive-prototype", "prompt": "Let the PM play with the refund flow in her browser before we commit to building it." },
+  { "skill": "source-grounding", "prompt": "Confirm that my installed version of the SDK supports this option in the official docs before coding." },
+  { "skill": "subagents", "prompt": "I want my helper to inspect the repository but not edit it. Where do I set that up?" },
+  { "skill": "workflows", "prompt": "Give two workers the same brief, check both proposals, and repeat with the better candidate." }
+]

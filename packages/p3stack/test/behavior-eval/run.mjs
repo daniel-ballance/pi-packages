@@ -3,12 +3,14 @@
 // p3stack-mode on and off, and grades what the agent did (tool calls, files,
 // commands, final reply) rather than what it says it did. Spends tokens.
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { agentSource, defaultOutput, evalEnv, parseEvent, positiveInteger, receipts, runPi } from "../routing-eval/harness.mjs";
+import { onGraderCopy } from "./oracles/copy.mjs";
+import { recordAttempt, revision } from "../routing-eval/receipt.mjs";
+import { coverageModules } from "./oracles/coverage.mjs";
+import { agentSource, defaultOutput, evalEnv, parseEvent, positiveInteger, receipts } from "../routing-eval/harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SUBSTITUTIONS = { "{{SKIP}}": "skip" };
@@ -20,6 +22,20 @@ function walk(dir, base = dir) {
     if (name === ".git" || name === "node_modules") return [];
     return lstatSync(path).isDirectory() ? walk(path, base) : [relative(base, path)];
   });
+}
+
+// Snapshot the small fixture as delivered, including untracked work. Never follow an artifact link.
+function snapshot(root) {
+  return new Map(walk(root).map(path => {
+    const file = join(root, path), stat = lstatSync(file);
+    if (stat.isSymbolicLink()) return [path, { link: readlinkSync(file) }];
+    if (!stat.isFile()) return [path, { omitted: "not a regular file" }];
+    return [path, readFileSync(file, "utf8")];
+  }));
+}
+function changedFiles(before, after) {
+  return [...new Set([...before.keys(), ...after.keys()])].sort().filter(path => before.get(path) !== after.get(path))
+    .map(path => ({ path, before: before.get(path) ?? null, after: after.get(path) ?? null }));
 }
 
 function copyTree(from, to) {
@@ -55,9 +71,7 @@ function runCheck(command, args, cwd) {
 }
 
 function regressionFailsOnOriginal(project) {
-  const copy = mkdtempSync(join(tmpdir(), "p3stack-red-"));
-  try {
-    cpSync(project, copy, { recursive: true, filter: path => ![".git", "node_modules"].includes(path.split("/").at(-1)) });
+  return onGraderCopy(project, copy => {
     // Use the grader's base, not a commit or test selected by the agent.
     if (!lstatSync(join(copy, "src"), { throwIfNoEntry: false })?.isDirectory()) return false;
     const split = "src/split.js";
@@ -65,7 +79,21 @@ function regressionFailsOnOriginal(project) {
     cpSync(join(here, "fixtures/bug-red-first/base", split), join(copy, split));
     const result = runCheck(process.execPath, ["--test", "--test-reporter=tap"], copy);
     return result.status === 1 && /ERR_ASSERTION/.test(result.stdout);
-  } finally { rmSync(copy, { recursive: true, force: true }); }
+  });
+}
+
+function emptyListFails(project) {
+  return onGraderCopy(project, copy => {
+    const file = join(copy, "test/sum.test.js");
+    if (!existsSync(file)) return false;
+    const suite = readFileSync(file, "utf8");
+    const skipped = 'test.skip("sumAll of an empty list is zero"';
+    if (!suite.includes(skipped)) return false;
+    writeFileSync(file, suite.replace(skipped, skipped.replace(".skip", "")));
+    const result = runCheck(process.execPath, ["--test", "--test-reporter=tap", "--test-name-pattern=^sumAll of an empty list is zero$", file], copy);
+    return result.status === 1 && /not ok \d+ - sumAll of an empty list is zero\b/.test(result.stdout)
+      && /Reduce of empty array with no initial value|ERR_ASSERTION/.test(result.stdout);
+  });
 }
 
 /** Parses Pi JSON-mode events into the trace the grader reads. */
@@ -143,11 +171,12 @@ export function grade(check, { calls, final }, project, beforeRun) {
     case "file": {
       const files = walk(project).filter(path => new RegExp(check.pattern).test(path));
       if (check.count !== undefined && files.length !== check.count) return false;
-      if (check.verifyPrototype) {
+      if (check.verifyPrototype || check.verifyArithmetic) {
         if (files.length !== 1 || !lstatSync(join(project, files[0])).isFile()) return false;
         // Drive the page in a browser when one is installed; exit 3 means none could be driven.
-        const driven = runCheck(process.execPath, [join(here, "oracles/prototype-browser.mjs"), files[0]], project).status;
+        const driven = runCheck(process.execPath, [join(here, "oracles/prototype-browser.mjs"), files[0], ...(check.verifyArithmetic ? ["--arithmetic"] : [])], project).status;
         if (driven === 0 || driven === 1) return driven === 0;
+        if (check.verifyArithmetic) throw new Error("No browser could be driven to verify refund arithmetic");
         console.warn("prototype check: no browser could be driven; fell back to the structural check");
         return runCheck("python3", [join(here, "oracles/prototype.py"), files[0]], project).status === 0;
       }
@@ -160,7 +189,7 @@ export function grade(check, { calls, final }, project, beforeRun) {
     case "skipped-test": return final.split(/(?<=[.!?])\s+/).some(sentence =>
       /\b(?:skips?|skipped|disabled)\b/i.test(sentence) && /sumAll|sum\.test\.js/i.test(sentence) &&
       /empty[- ](?:list|array|input)|\[\s*\]|sum\.test\.js:13\b/i.test(sentence) &&
-      !deniesSkip(sentence));
+      !deniesSkip(sentence)) && emptyListFails(project);
     case "unchanged": return beforeRun !== undefined && treeState(project) === beforeRun;
     case "regression": return regressionFailsOnOriginal(project);
     case "oracle": return runCheck(process.execPath, [join(here, "oracles", check.script)], project).status === 0;
@@ -196,23 +225,29 @@ async function main() {
   const rows = suite.cases.filter(row => !ids || ids.includes(row.id));
   if (!rows.length) throw new Error("No behavior cases to run");
   const source = agentSource(values["agent-dir"], { settingsRequired: true, mcp: rows.some(row => row.mcp) });
+  if (rows.some(row => row.fixture === "source-grounding")) coverageModules();
   const output = receipts(values.output, "behavior", source);
-  const results = [];
+  const results = [], checkout = revision();
   for (const row of rows) for (const arm of arms) for (let run = 1; run <= runs; run++) {
     const project = mkdtempSync(join(source.scratch, `p3stack-behavior-${row.id}-`));
     try {
-      const before = materialize(row.fixture, project);
+      const before = materialize(row.fixture, project), initial = snapshot(project);
       const started = Date.now();
       const mode = arm === "on" ? `/p3stack on ${row.grant ?? "default"}` : "/p3stack off";
       const args = ["--mode", "json", "--no-session", "--model", model, "--tools", row.tools, "--no-context-files", "--approve", ...(row.mcp ? [] : ["--no-mcp", "--offline"]), mode, row.prompt];
-      const outcome = await runPi({ source, cwd: project, args, timeoutSeconds, mcp: row.mcp, log: join(output, `${row.id}.${arm}.${run}`) });
-      const seen = trace(outcome.stdout);
-      const scores = assess(row, seen, project, before);
-      const result = { id: row.id, arm, run, seconds: Math.round((Date.now() - started) / 1000), project: values.keep ? project : undefined, exit: outcome.code, toolCalls: seen.calls.length, ...scores };
+      const result = await recordAttempt({ checkout, tier: "behavior", row, arm, run,
+        pi: { source, cwd: project, args, timeoutSeconds, mcp: row.mcp, log: join(output, `${row.id}.${arm}.${run}`) },
+        grade(outcome) {
+          const seen = trace(outcome.stdout);
+          return { id: row.id, arm, run, seconds: Math.round((Date.now() - started) / 1000), exit: outcome.code, toolCalls: seen.calls.length, ...assess(row, seen, project, before) };
+        },
+        artifact: final => ({ final, changes: changedFiles(initial, snapshot(project)) }),
+      });
       results.push(result);
-      for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${(scores[name].score * 100).toFixed(0)}%: ${scores[name].checks.map(c => `${c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
+      for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${(result[name].score * 100).toFixed(0)}%: ${result[name].checks.map(c => `${c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
     } finally {
-      if (!values.keep) rmSync(project, { recursive: true, force: true });
+      if (values.keep) console.log(`Kept project: ${project}`);
+      else rmSync(project, { recursive: true, force: true });
     }
   }
   if (!results.length) throw new Error("No completed behavior runs");

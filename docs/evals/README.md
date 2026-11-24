@@ -2,9 +2,13 @@
 
 | Tier | What a result tells you | What it does not tell you |
 |---|---|---|
-| [A: description lint](../../packages/p3stack/test/static-routing/) | Ranks example prompts against the names and descriptions of model-invoked skills in the registry. Checks vocabulary, competing descriptions, and which skill outranks another on a negative example. Runs offline in `npm run check`. | The score covers the examples scored, not skipped cases or all installed skills. Pi does not use this ranker. No model selects a route or does any work. |
+| [A: description lint](../../packages/p3stack/test/static-routing/) | Ranks example prompts against the names and descriptions of model-invoked skills in the registry. Checks vocabulary, competing descriptions, and whether a different skill strictly outscores this one on each owned negative. Runs offline in `npm run check`. | The score covers the examples scored, not skipped cases or all installed skills. Pi does not use this ranker. No model selects a route or does any work. |
 | [B: first reads](../../packages/p3stack/test/routing-eval/) | A real terminal Pi model with the read tool opens files for a fixture prompt. The default is three attempts per prompt. At least two must read the expected sequence of skills and playbooks. | A successful read does not prove that the model read the whole file, followed the procedure, or delivered the change. This is not a T3 run. A row's reads issued as one batch count in start order. A prompt can also list reads that must not happen, which is how the small-task prompts check that poteto-mode is skipped. |
-| [C: behavior](../../packages/p3stack/test/behavior-eval/) | Compares a task in fresh fixture repositories with routing on and off. Checks draw on tool calls, file contents, commands, and the final reply. | Off still has p3stack installed. An on/off score is not an old/new comparison. A matching reply or tool call does not prove the artifact works. Inspect the independent checks. The refund prototype is opened in headless Chromium and clicked through when a Chromium is on `PATH` (or named by `P3STACK_EVAL_CHROMIUM`); without one the check falls back to reading the script and says so. The browser walk shows that controls change the page and that each state appears; it does not check refund arithmetic. |
+| [C: behavior](../../packages/p3stack/test/behavior-eval/) | Compares a task in fresh fixture repositories with routing on and off. Checks draw on tool calls, file contents, commands, and the final reply. | Off still has p3stack installed. An on/off score is not an old/new comparison. A matching reply or tool call does not prove the artifact works. Inspect the independent checks. The refund case grades interaction and arithmetic separately. The first check clicks through the states; the second approves installments, checks the displayed balance after each debit, exhausts it and tries once more. State-only sketches do not demonstrate arithmetic. The driver looks for labelled balances and approval controls; inspect a failed page for an unfamiliar UI. Supply Chromium on `PATH` or via `P3STACK_EVAL_CHROMIUM`. The structural fallback cannot verify arithmetic. |
+
+C re-enables the skipped empty-list test on a grader copy. For source-grounding it runs the submitted `npm test` on copies with above- and below-threshold samples. Before selecting that case, copy `test/behavior-eval/fixtures/source-grounding/base/package.json` to a disposable directory, install its pinned dev dependencies there, and export its absolute path as `P3STACK_EVAL_VITEST_DIR`. The agent and grader do not install Vitest. Set the same variable for `npm test` to exercise the real coverage controls offline.
+
+A reports held-out paraphrases separately from the examples used to tune descriptions. Keep their labels fixed when comparing revisions; their scores do not gate CI. The denominators include zero-score ties (no vocabulary evidence), never credited as hits. Each advertised skill needs a positive, an owned negative and a held-out paraphrase. To defer missing coverage or a future skill, add `{"skill":"name","expires":"YYYY-MM-DD"}` to `pending` in the static cases. The exemption ends at the start of that UTC date.
 
 Tier B uses a run-wide `--max-reads`, raised to at least the expected sequence length for each prompt. Other reads also count toward a safety cap. Use B for changes to route selection. For what happens *after* selection, use C or test the deliverable directly.
 
@@ -13,23 +17,27 @@ Tier B uses a run-wide `--max-reads`, raised to at least the expected sequence l
 B and C spend tokens. Agree on the model, cases, repetitions, and spend limit first. Start with the affected case. For a change to a playbook, compare the base and candidate with the same model, tools, prompt, and grant.
 
 1. Use a disposable account or container with its own home, a trusted test checkout, and Pi on `PATH`. Do not mount your real home, writable work, or SSH agent. Start with a clean environment, including no repository-local Git variables such as `GIT_DIR`, `GIT_WORK_TREE`, or `GIT_INDEX_FILE`. A temporary project is not a sandbox. Tier C runs agent and grader commands there.
-2. From `packages/p3stack`, prepare fresh private directories **outside the checkout**:
+2. From `packages/p3stack`, prepare a private **credential/config source** outside the checkout:
 
    ```sh
    umask 077
    run=$(mktemp -d)
-   mkdir "$run/routing-agent" "$run/behavior-agent"
+   mkdir "$run/source"
    ```
 
-3. Put test-only `auth.json` and `models.json` in each agent directory. Never pass a live agent directory, a symlink to one, or a directory of settings you want to keep. Tier B writes its own `settings.json`. Use a model that works with that setup. For C, supply `settings.json` with the package paths for the p3stack checkout and any tools the case needs. For source-grounding, configure web-search and the test MCP service in `mcp.json`. File presence does not verify credentials, packages, or tools.
+3. Put disposable `auth.json` and `models.json` in `$run/source`. Supply provider packages and extensions via `settings.json` (required for C, optional for B). For source-grounding, also supply the test service's `mcp.json`. `--agent-dir` names this read-only source, **not** the directory Pi runs in. Each attempt imports the required files into a fresh private Pi agent directory, writes settings there with the test checkout enabled, and removes that directory afterwards. File presence does not verify credentials or tool availability.
 4. Set `model` to the funded test model and thinking level. Run only the tier you need:
 
    ```sh
-   npm run eval:routing -- --agent-dir "$run/routing-agent" --output "$run/routing" --model "$model" --only design --runs 3
-   npm run eval:behavior -- --agent-dir "$run/behavior-agent" --output "$run/behavior" --model "$model" --only bug-red-first --arms on,off --runs 1
+   npm run eval:routing -- --agent-dir "$run/source" --output "$run/routing" --model "$model" --only design --runs 3
+   npm run eval:behavior -- --agent-dir "$run/source" --output "$run/behavior" --model "$model" --only bug-red-first --arms on,off --runs 1
    ```
 
-5. Check the attempt count, exit or timeout, and individual checks in `results.json`. An unavailable tool or an incomplete run is not evidence against a change. Inspect the produced work before drawing a conclusion. Keep raw JSONL and stderr private. Publish only scrubbed evidence and remove the disposable credentials after the run.
+5. Use the exit status and the printed `Receipts:` directory:
+   - **0 or 1:** inspect `results.json` for completed attempts. Exit 1 is a graded failure. Compare the per-attempt `*.receipt.json` files: match the prompt hash, mode/grant and observed model/effort before comparing revisions. Usage sums completed assistant messages only; missing metadata is unknown, not the requested value. Check the linked artifact against its digest: B records the read sequence and ranges; C records the final reply and before/after file text, including new files.
+   - **2:** invalid, not a score. Read the runner's error first. If a process started, inspect its private `<attempt>.stderr` and `<attempt>.jsonl` at the printed log prefix. Raw logs may be all that survived; preflight can fail before even those exist.
+
+   Share the scrubbed receipt. Artifacts contain untrusted work product: review and redact them separately before sharing. Keep raw logs private and remove the disposable credentials when finished.
 
 ## Decision log
 

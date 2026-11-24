@@ -34,7 +34,7 @@ test("each capability links to the same heading on each host", () => {
 test("host selection exposes only the selected host's operations", () => {
   const entry = map("capabilities");
   for (const marker of ["Host: terminal", "Host: t3"]) assert.ok(entry.includes(marker), marker);
-  const check = entry.match(/`(test -n "[^"]*T3_MCP_URL[^"]*")`/)?.[1];
+  const check = entry.match(/`([^`\n]*\bT3_MCP_URL\b[^`\n]*)`/)?.[1];
   assert.ok(check, "missing shell fallback");
   for (const [env, exit] of [[{}, 1], [{ T3_MCP_URL: "" }, 1], [{ T3_MCP_URL: "http://t3.invalid/mcp" }, 0]]) {
     const run = spawnSync("sh", ["-c", check], { env, encoding: "utf8" });

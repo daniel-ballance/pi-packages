@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DefaultPackageManager, loadSkills, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createRequire } from "node:module";
 import { dirname, join, posix } from "node:path";
 import test, { after } from "node:test";
@@ -135,14 +136,48 @@ test("the installed reference index expands to the registered owner paths", () =
   assert.deepEqual(targets.sort(), refs.map(({ owner, name }) => `skills/${owner}/references/${name}.md`).sort());
 });
 
-test("every reference is packed under its owner's skill, not discoverable as a command", () => {
-  const refs = registry.filter(row => row.action === "reference");
-  assert.equal(refs.length, 43);
-  for (const { name, owner } of refs) {
-    assert.ok(!files.has(`skills/${name}/SKILL.md`), name);
-    assert.ok(files.has(`skills/${owner}/references/${name}.md`), name);
-    const skill = readInstalled(`skills/${owner}/SKILL.md`);
-    assert.ok(skill.includes(name.startsWith("principle-") ? "references/principle-<title>.md" : `references/${name}.md`), `${owner}: ${name}`);
+async function checkCatalog(root) {
+  const options = { cwd: root, agentDir: dirname(root) };
+  const pm = new DefaultPackageManager({ ...options, settingsManager: SettingsManager.inMemory() });
+  const resources = await pm.resolveExtensionSources([root]);
+  const { skills, diagnostics } = loadSkills({ ...options, includeDefaults: false, skillPaths: resources.skills.filter(r => r.enabled).map(r => r.path) });
+  assert.deepEqual(diagnostics, []);
+  const byName = new Map(skills.map(skill => [skill.name, skill]));
+  assert.deepEqual(new Set(byName.keys()), new Set(registry.filter(r => r.action === "emit").map(r => r.name)));
+  for (const { name, owner } of registry.filter(row => row.action === "reference")) {
+    const skill = byName.get(owner), path = `references/${name}.md`;
+    assert.ok(skill && existsSync(join(skill.baseDir, path)), `${owner}/${path}`);
+    assert.ok(readFileSync(skill.filePath, "utf8").includes(name.startsWith("principle-") ? "references/principle-<title>.md" : path), `${owner}: ${name}`);
+  }
+}
+
+test("Pi discovers the registry's commands and their references in the packed package", async t => {
+  const temp = mkdtempSync(join(tmpdir(), "packed-catalog-")), root = join(temp, "package");
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  for (const path of files) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    copyFileSync(join(cwd, path), join(root, path));
+  }
+  await checkCatalog(root);
+  // An equivalent resource root is fine; a missing reference or leaking terminal-only skills is not.
+  renameSync(join(root, "skills"), join(root, "handbook"));
+  const path = join(root, "package.json"), manifest = JSON.parse(readFileSync(path));
+  manifest.pi.skills = ["handbook/"];
+  writeFileSync(path, JSON.stringify(manifest));
+  await checkCatalog(root);
+  manifest.pi.skills.push("subagents/skills");
+  writeFileSync(path, JSON.stringify(manifest));
+  await assert.rejects(checkCatalog(root), /subagents/);
+  manifest.pi.skills.pop();
+  writeFileSync(path, JSON.stringify(manifest));
+  rmSync(join(root, "handbook/tdd/references/regression-test.md"));
+  await assert.rejects(checkCatalog(root), /tdd\/references\/regression-test\.md/);
+});
+
+test("the packlist includes every mapped upstream license", () => {
+  const { sources } = JSON.parse(readFileSync(join(cwd, "rules/manifest.json")));
+  for (const { map } of sources) for (const { from, to } of map) {
+    if (from === "LICENSE") assert.ok(files.has(to), to);
   }
 });
 
@@ -168,7 +203,8 @@ test("the independent leftover scan recognizes wrapped commands but not path seg
 });
 
 test("no emitted file contains a removed command or a path to a retired skill directory", () => {
-  const names = [...registry.filter(row => row.action === "reference").map(row => row.name), "automate-me", "grill-with-docs", "ketchup-video"];
+  const emitted = new Set(registry.filter(row => row.action === "emit").map(row => row.name));
+  const names = registry.filter(row => row.action !== "emit").map(row => row.name ?? posix.basename(posix.dirname(row.path))).filter(name => !emitted.has(name));
   const oldPath = new RegExp(`(?:\\.\\./|\\bskills/)(?:${names.join("|")})/`);
   const problems = [];
   for (const root of ["skills", "agents"]) {
