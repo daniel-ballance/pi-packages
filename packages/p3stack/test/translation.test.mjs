@@ -39,3 +39,18 @@ for (const name of ["AskQuestion", "create-skill"]) {
       error => error.message.includes(`${path}:1: ${name}`));
   });
 }
+
+const requirements = "skills/dyl-mode/references/requirements.md";
+for (const [path, input, sibling] of [
+  [requirements, "dyl-stack/" + requirements, "# New requirements"],
+  ...["thermo-nuclear-review-subagent", "thermo-nuclear-code-quality-review-subagent"]
+    .map(name => [`agents/${name}.md`, `thermos/agents/${name}.md`, "## New procedure"]),
+]) {
+  test(`the owner replacement in ${path} preserves new siblings and refuses a changed body`, t => {
+    const upstream = read("vendor/pstack/" + input);
+    const withSibling = translate(t, "owner-plugins", { [path]: upstream + `\n${sibling}\n\nKeep this evidence.\n` });
+    assert.ok(withSibling(path).includes(`${sibling}\n\nKeep this evidence.`));
+    assert.throws(() => translate(t, "owner-plugins", { [path]: upstream + "\nAlso gather this evidence.\n" }),
+      /changed upstream/);
+  });
+}

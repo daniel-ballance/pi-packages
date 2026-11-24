@@ -47,5 +47,23 @@
     "heading": "## Playbooks",
     "overlay": "poteto-mode/playbooks.md",
     "upstream": "0c117292cd90"
+  },
+  {
+    "file": "skills/dyl-mode/references/requirements.md",
+    "heading": "# Requirements",
+    "overlay": "dyl-mode/requirements.md",
+    "upstream": "447b540e6d0e"
+  },
+  {
+    "file": "agents/thermo-nuclear-review-subagent.md",
+    "heading": "## Parent orchestration",
+    "overlay": "thermos/parent-orchestration.md",
+    "upstream": "d660c9c3835b"
+  },
+  {
+    "file": "agents/thermo-nuclear-code-quality-review-subagent.md",
+    "heading": "## Parent orchestration",
+    "overlay": "thermos/parent-orchestration.md",
+    "upstream": "267818c1c466"
   }
 ]
