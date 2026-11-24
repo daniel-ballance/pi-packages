@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { BoundaryResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import todo from "../extensions/todo/index.js";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 type Tool = { name: string; exposure?: string; execute: (...args: unknown[]) => Promise<any>; renderResult?: (...args: unknown[]) => unknown };
 
-function harness({ hasUI = true, branch = [] as unknown[] } = {}) {
+function harness({ hasUI = true, branch = [] as unknown[], extensions = [todo] } = {}) {
   const tools: Tool[] = [], entries: { customType: string; data: unknown }[] = [], renderers: string[] = [];
   const handlers = new Map<string, Handler[]>();
   const ui = { widgets: [] as unknown[], notices: [] as unknown[] };
@@ -23,10 +24,23 @@ function harness({ hasUI = true, branch = [] as unknown[] } = {}) {
     get ui() { if (!hasUI) throw new Error("touched ui without UI"); return uiApi; },
     sessionManager: { getBranch: () => branch },
   };
-  todo(pi as never);
+  for (const extension of extensions) extension(pi as never);
   const tool = () => tools.at(-1)!;
   const call = (params: unknown) => tool().execute("call-1", params, undefined, undefined, ctx);
-  const emit = async (name: string, event: unknown = {}) => { const out: any[] = []; for (const handler of handlers.get(name) ?? []) out.push(await handler(event, ctx)); return out.filter(Boolean); };
+  const emit = async (name: string, event = {}) => {
+    const out: any[] = [];
+    let proposal: BoundaryResult = { entries: [], continue: false };
+    for (const handler of handlers.get(name) ?? []) {
+      const boundary = name === "turn_end" || name === "agent_before_settle";
+      const result = await handler(boundary ? { ...event, ...proposal } : event, ctx);
+      if (result) {
+        // Pi replaces each returned field and gives the next handler the resulting proposal.
+        proposal = { ...proposal, ...result };
+        out.push(proposal);
+      }
+    }
+    return out;
+  };
   return { tools, tool, call, emit, entries, renderers, ui, setAllTools: (names: string[]) => { allTools = names.map(name => ({ name })); } };
 }
 
@@ -149,6 +163,37 @@ test("in a terminal, a tool that merely looks like T3's changes nothing", async 
   } finally {
     if (previous !== undefined) process.env.T3_MCP_URL = previous;
   }
+});
+
+for (const peerFirst of [true, false]) {
+  test(`both boundaries preserve entries from a handler registered ${peerFirst ? "before" : "after"} todo`, async () => {
+    const entry = { type: "custom" as const, customType: "peer-report", data: { id: 7 } };
+    const peer = (pi: ExtensionAPI) => {
+      pi.on("turn_end", event => ({ entries: [...event.entries, entry], continue: true }));
+      pi.on("agent_before_settle", event => ({ entries: [...event.entries, entry] }));
+    };
+    const h = harness({ extensions: peerFirst ? [peer, todo] : [todo, peer] });
+    await h.call({ op: "set", items: ["Review"] });
+    const work = { toolResults: [{ toolName: "read" }] };
+    for (let i = 0; i < 3; i++) await h.emit("turn_end", work);
+    const turn = (await h.emit("turn_end", work)).at(-1);
+    const settle = (await h.emit("agent_before_settle", { outcome: "completed" })).at(-1);
+    for (const [proposal, type] of [[turn, "todo-reminder"], [settle, "todo-settle"]]) {
+      assert.deepEqual(proposal.entries.map((e: { customType: string }) => e.customType), peerFirst ? ["peer-report", type] : [type, "peer-report"]);
+      assert.deepEqual(proposal.entries[peerFirst ? 0 : 1], entry);
+      assert.equal(proposal.continue, true);
+    }
+  });
+}
+
+test("a continuation already requested by another extension is not a todo check", async () => {
+  const entry = { type: "custom_message" as const, customType: "peer-report", content: "Inspect the report", display: false };
+  const peer = (pi: ExtensionAPI) => { pi.on("agent_before_settle", () => ({ entries: [entry], continue: true })); };
+  const h = harness({ extensions: [peer, todo] });
+  await h.call({ op: "set", items: ["Review"] });
+  await h.emit("turn_end", { toolResults: [{ toolName: "read" }] });
+  assert.deepEqual((await h.emit("agent_before_settle", { outcome: "completed" })).at(-1), { entries: [entry], continue: true });
+  assert.doesNotMatch(text(await h.call({ op: "get" })), /end your turn/i);
 });
 
 test("after a few turns without a todo call, open items get one hidden reminder", async () => {

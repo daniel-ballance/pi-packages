@@ -155,7 +155,7 @@ export default function todo(pi: ExtensionAPI) {
     // A turn without tool calls ends the run; the end-of-run check covers that.
     if (!names.length || reminded || turnsSinceTodo < REMIND_AFTER_TURNS || !list.items.some(isOpen)) return;
     reminded = true;
-    return { entries: [note("todo-reminder", `${openSummary().line}. Mark items done or skipped as you finish them (ids for several at once), and carry on with the task.`)] };
+    return { entries: [...event.entries, note("todo-reminder", `${openSummary().line}. Mark items done or skipped as you finish them (ids for several at once), and carry on with the task.`)] };
   });
 
   // Once per run, for a list this run used and then worked past: open items get one more
@@ -163,11 +163,11 @@ export default function todo(pi: ExtensionAPI) {
   // at a normal end). Each one costs a visible reply, so a run whose last tool call was
   // todo itself, with the list as the model left it, is not checked.
   pi.on("agent_before_settle", event => {
-    if (settleNudged || !usedThisRun || !workSinceTodo || event.outcome !== "completed") return;
+    if (event.continue || settleNudged || !usedThisRun || !workSinceTodo || event.outcome !== "completed") return;
     const { open, line } = openSummary();
     if (open.length === 0) return;
     settleNudged = true;
     const names = open.map(item => `${item.id}. ${item.text.slice(0, 80)}`).join("; ");
-    return { continue: true, entries: [note("todo-settle", `${line}. The run is ending with ${open.length} open item${open.length === 1 ? "" : "s"}: ${names}. Mark any that are finished done, or skipped with the reason in note; leave any that stay open on purpose, for example waiting on delegated work or the user. Then end your turn without writing anything: your last reply to the user stands.`)] };
+    return { continue: true, entries: [...event.entries, note("todo-settle", `${line}. The run is ending with ${open.length} open item${open.length === 1 ? "" : "s"}: ${names}. Mark any that are finished done, or skipped with the reason in note; leave any that stay open on purpose, for example waiting on delegated work or the user. Then end your turn without writing anything: your last reply to the user stands.`)] };
   });
 }
