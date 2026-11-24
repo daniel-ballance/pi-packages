@@ -234,12 +234,17 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
     },
   });
 
-  const statusReport = () => [
-    `t3-agent is active: T3 Code launched this Pi (T3_MCP_URL is set).`,
-    `Permission mode: ${modeLabel(mode)}.`,
-    `Loadout: ${loadout()}${sessionLoadout ? " (set for this session)" : ""}. ${declarationReport()}`,
-    workspace ? `Workspace: ${workspace.root}${workspace.branch ? ` on ${workspace.branch}` : ""}${workspace.t3Managed ? " (linked worktree under T3's worktree directory)" : workspace.linked ? " (linked worktree)" : ""}.` : "Workspace: not a git checkout.",
-    `Open handles:\n${ledger.render() ?? "none"}`,
-    ...(problems.length > 0 ? [`Configuration problems:\n${problems.join("\n")}`] : []),
-  ].join("\n");
+  const statusReport = () => {
+    const catalog = new Set(pi.getAllTools().filter(tool => tool.exposure !== "hidden").map(tool => tool.name));
+    const missing = config.tools.filter(name => !catalog.has(T3_PREFIX + name));
+    return [
+      `t3-agent is active: T3 Code launched this Pi (T3_MCP_URL is set).`,
+      `Permission mode: ${modeLabel(mode)}.`,
+      `Loadout: ${loadout()}${sessionLoadout ? " (set for this session)" : ""}. ${declarationReport()}`,
+      workspace ? `Workspace: ${workspace.root}${workspace.branch ? ` on ${workspace.branch}` : ""}${workspace.t3Managed ? " (linked worktree under T3's worktree directory)" : workspace.linked ? " (linked worktree)" : ""}.` : "Workspace: not a git checkout.",
+      `Open handles:\n${ledger.render() ?? "none"}`,
+      ...(problems.length > 0 ? [`Configuration problems:\n${problems.join("\n")}`] : []),
+      ...(missing.length ? [`Configured tools not in the current catalog: ${missing.join(", ")}.`] : []),
+    ].join("\n");
+  };
 }

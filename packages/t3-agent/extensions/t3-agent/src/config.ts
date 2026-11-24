@@ -26,7 +26,11 @@ export function mergeConfig(base: Config, value: unknown, source: string, proble
   const next = { ...base, tools: [...base.tools] };
   for (const [key, field] of Object.entries(value)) {
     if (key === "loadout" && LOADOUTS.includes(field as Loadout)) next.loadout = field as Loadout;
-    else if (key === "tools" && Array.isArray(field) && field.every(name => typeof name === "string" && /^[a-z][a-z0-9_]*$/.test(name))) next.tools = [...new Set([...next.tools, ...field as string[]])];
+    else if (key === "tools" && Array.isArray(field)) {
+      const names = field.filter((name): name is string => typeof name === "string" && /^[a-z][a-z0-9_]*$/.test(name));
+      if (names.length !== field.length) problems.push(`${source}: ignored invalid tool name(s); use bare T3 tool names`);
+      next.tools = [...new Set([...next.tools, ...names])];
+    }
     else problems.push(`${source}: ignored ${JSON.stringify(key)}; see the t3-agent README for valid values`);
   }
   return next;

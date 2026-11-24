@@ -166,6 +166,27 @@ test("headless T3 sessions never call ctx.ui, including for command feedback or 
   assert.equal(f.notices.length, 1, "an unsent config warning was not marked delivered");
 });
 
+test("/t3-agent status separates unavailable tool names from invalid config and checks the live catalog", async t => {
+  const t3Tools = [...T3_TOOLS];
+  const f = fixture(T3, { t3Tools });
+  f.ctx.cwd = mkdtempSync(join(tmpdir(), "t3-agent-catalog-"));
+  t.after(() => rmSync(f.ctx.cwd, { recursive: true, force: true }));
+  f.ctx.isProjectTrusted = () => true;
+  mkdirSync(join(f.ctx.cwd, ".pi"));
+  writeFileSync(join(f.ctx.cwd, ".pi", "t3-agent.json"), JSON.stringify({ tools: ["preview_open", "missing_tool", "Bad Name"] }));
+  await f.emit("session_start");
+  const status = async () => {
+    await f.commands.get("t3-agent").handler("status", f.ctx);
+    return String(f.notices.at(-1)![0]);
+  };
+  const report = await status();
+  assert.match(report, /^Configured tools not in the current catalog: missing_tool\.$/m);
+  assert.match(report, /Configuration problems:\n.*invalid tool name/i);
+  assert.ok(f.active().includes("mcp__t3-code__preview_open"));
+  t3Tools.push("missing_tool");
+  assert.doesNotMatch(await status(), /not in the current catalog/);
+});
+
 test("composer status updates only when its displayed text changes", async () => {
   const f = fixture(T3);
   await f.emit("session_start");

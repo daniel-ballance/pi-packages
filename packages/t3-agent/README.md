@@ -81,7 +81,7 @@ Optional. `~/.pi/agent/t3-agent.json` (or under `PI_CODING_AGENT_DIR`) applies f
 }
 ```
 
-`loadout` is `lean`, `standard` or `full`. `tools` lists bare T3 tool names to declare beside the loadout. Bad values are ignored and reported once in the thread.
+`loadout` is `lean`, `standard` or `full`. `tools` lists bare T3 tool names to declare beside the loadout. Bad values are ignored and reported once in the thread. `/t3-agent status` separately lists valid tool names not in the current catalog; it checks again each time, since T3 tools can load late.
 
 ## Install
 
