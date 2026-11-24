@@ -300,6 +300,13 @@ test("deep review fetches the PR head even when the base repository has a branch
   assert.match(parent, /git diff <base-oid>\.\.\.<head-oid>/);
 });
 
+test("dyl-review selects its reviewers through the shared review stance", () => {
+  const parent = skill("dyl-review").split("## Main-thread rules")[1].split("## Dylan-lens worker")[0];
+  assert.doesNotMatch(parent, /inherit(?:ance)?\b|\*\*Parent model\*\*/i);
+  assert.match(parent, /\]\(\.\.\/p3stack-mode\/references\/review-stance\.md\)/);
+  assert.match(parent, /\]\(\.\.\/poteto-mode\/references\/host-capabilities\.md#models-and-role-defaults\)/);
+});
+
 test("dyl-review keeps code-review coordination and Git/forge work in the parent", () => {
   const text = skill("dyl-review");
   assert.match(text, /parent[^\n]*Standards[^\n]*Spec/i);
