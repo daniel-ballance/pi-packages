@@ -8,7 +8,7 @@ description: Establishes a project's quality bar as a written contract and stops
 
 ## Overview
 
-Other skills in this pack describe what good looks like. `code-review` gives you five axes. `tdd` gives you a cycle. `security-hardening` gives you a threat list. All of that lives in prose the agent reads and may or may not follow, and none of it survives the end of the session.
+Other skills in this pack describe what good looks like. [code-review](../code-review/SKILL.md) checks two axes: repository standards and the spec. `tdd` gives you a cycle. `security-hardening` gives you a threat list. All of that lives in prose the agent reads and may or may not follow, and none of it survives the end of the session.
 
 This skill produces something different: a written record of **this project's** bar, with numbers, that outlives the conversation and can be checked mechanically.
 
@@ -36,7 +36,7 @@ Apply this skill when:
 
 ## Loading Constraints
 
-In p3stack the Floor is checked by a script, not by reading: run `p3stack-mode/scripts/floor-check.mjs` as `p3stack-mode/references/floor.md` describes.
+From the repository under review, run `node "<constraints-dir>/../p3stack-mode/scripts/floor-check.mjs"`. Replace `<constraints-dir>` with the absolute directory containing this skill's SKILL.md. See [Quality floor](../p3stack-mode/references/floor.md) for options and exit codes.
 
 The interview needs a live user. **Don't run it in non-interactive contexts** (CI, scheduled loops, autonomous runs, or under the full-autonomy grant). If constraints are missing and you're in one of those, apply the Floor below, note that you did, and flag the rest for a human.
 
@@ -59,7 +59,7 @@ Report what you found in two lines, then ask only what's left.
 
 ### Step 2: Four questions, each with a default
 
-Follow the one-question-at-a-time discipline from `grilling`, with one change: every question here has a default, so "I don't know" is a complete answer that still produces a working config.
+Ask independent questions together in rounds, as in [grilling](../grilling/SKILL.md). Give each question a default, so "I don't know" is a complete answer that still produces a working config.
 
 ```
 Q1: Beyond the floor, which of these do you want enforced?
@@ -314,7 +314,7 @@ The skill was applied correctly when:
 
 ## See Also
 
-- `grilling` — the one-question-at-a-time discipline this skill's intake borrows
+- [grilling](../grilling/SKILL.md) — how to group independent intake questions into rounds
 - `code-review` — how to review; this skill decides what the review enforces
 - the repository's CI workflow — building the pipeline these constraints run in
 - `tdd` — the suite that coverage and mutation constraints measure

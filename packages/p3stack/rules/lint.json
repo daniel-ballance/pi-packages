@@ -6,6 +6,7 @@
     "environment: \"cloud\"",
     "cloud_base_branch",
     "AskQuestion",
+    "AskUserQuestion",
     ".cursor",
     ".mdc",
     "generalPurpose",

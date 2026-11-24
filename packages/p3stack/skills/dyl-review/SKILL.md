@@ -112,7 +112,7 @@ In bullets, you may tag a line `(nit)` or `(blocker)` when the severity is easy 
 
 **Standalone**, the block is the entire reply: first character `#`, no emoji before the `##` title (a mode-indicator emoji from user rules goes on its own line after the block, never on the header line), and nothing after it unless a blocker needs a human decision (security/privacy/auth ambiguity).
 
-**Invoked by another skill** (for example `/dyl-ready-pr`), hand the block back to that skill; its reply rules apply.
+**Invoked by another skill**, hand the block back to that skill; its reply rules apply.
 
 ## Hard rules
 
