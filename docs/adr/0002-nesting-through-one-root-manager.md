@@ -1,6 +1,8 @@
 # Nested Children go through one root Manager
 
-pistack's orchestrate playbook needs coordinator Children that delegate to Children of their own, which the `subagents` package forbade outright. We allowed it as **bounded nesting through the one root Manager**: a Child above the policy's `maxDepth` (default 1, so nothing changes unless a policy opts in) can be given proxied delegation tools whose calls travel over its private, manager-bound pipe to the root Manager. That Manager composes every grandchild from the same Allowlist, records `parentId` and `depth`, and scopes each call to the caller's subtree.
+p3stack's orchestrate playbook needs coordinator Children that can delegate. A Child below the depth limit can receive delegation tools that forward calls to the root Manager. That Manager uses the same Allowlist for every Child and limits calls to the caller's subtree.
+
+With no policy file, the built-in limit is depth 2. In a user policy, an omitted `maxDepth` means depth 1. Adding nesting did not broaden existing user policies.
 
 ## Considered options
 

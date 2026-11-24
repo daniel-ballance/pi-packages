@@ -1,6 +1,6 @@
 # Wake loops are bounded policy, not behaviour configuration
 
-pistack's autonomous playbooks need a Parent that wakes itself until a predicate holds, which Pi has no built-in for (Cursor has `/loop`). We added `subagent_loop` to the `subagents` package and made it an **opt-in policy ceiling**: the optional `loops` field in `subagents.json` must enable loops and state every bound (minimum interval, maximum ticks, maximum duration), and omitting it disables them. A loop request can only stay within those bounds. This keeps the package's principle that a policy file is an allowlist and ceiling, and that no new autonomous behaviour broadens an existing configuration.
+p3stack's autonomous playbooks need a Parent that can wake itself to check a condition. A loop needs an explicit request within policy limits: minimum interval, maximum ticks, and maximum duration. With no policy file, the built-in policy enables bounded loops. In a user policy, omitting `loops` disables them so existing configurations do not gain billable turns.
 
 ## Considered options
 
