@@ -17,6 +17,26 @@ test("a ref selects an audit; bump, landing and revert steps are disclosed separ
   assert.match(read("references/audit.md"), /ls-remote|rev-parse/);
 });
 
+test("audit and host repair reach the installed live check; the landing guide links to its source", () => {
+  const ref = "references/verify-host.md";
+  for (const caller of ["audit", "host-repair"]) assert.ok(read(`references/${caller}.md`).includes(`(${ref})`));
+  const live = read(ref);
+  for (const gate of [/PI_CODING_AGENT_DIR.*(?:throwaway|disposable)/, /p3stack doctor/, /check-t3-pin\.mjs --doctor <dump>/, /--installed/, /behavior/]) assert.match(live, gate);
+  const guide = read("../../docs/landing/t3-settings.md");
+  assert.ok(guide.includes(`(../../authored/skills/maintain-p3stack/${ref})`));
+  assert.doesNotMatch(guide, /--doctor <dump>/);
+  const fixes = read("references/failure-classes.md");
+  assert.match(fixes, /Host lint[^\n]*host-terminal\.md[^\n]*host-t3\.md/);
+  assert.match(fixes, /host map missing a required direct tool[^\n]*host-t3\.md/);
+});
+
+test("a shared checkout moves once, to the checked SHA even on a tip run", () => {
+  const bump = read("references/bump.md");
+  assert.match(bump, /ls-remote[^\n]*full (?:commit )?SHA/i);
+  assert.match(bump, /npm run bump -- <source> <checked-sha>` once per checkout/i);
+  assert.doesNotMatch(bump, /bump for each source/);
+});
+
 test("revert verifies repository, main, merge ancestry, changed paths and bump receipt first", () => {
   const doc = read("references/revert.md"), revert = doc.indexOf("git revert --no-edit");
   assert.ok(revert > 0);
