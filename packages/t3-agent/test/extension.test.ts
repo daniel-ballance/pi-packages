@@ -62,6 +62,54 @@ const startTurn = async (f: ReturnType<typeof fixture>) => {
   return sections;
 };
 
+const toolResult = (f: ReturnType<typeof fixture>, name: string, input: Record<string, unknown>, result: Record<string, unknown>) =>
+  f.emit("tool_result", { toolName: `mcp__t3-code__${name}`, input, isError: false, content: [], structuredContent: { content: [], structuredContent: result } });
+
+test("the ledger persists only bounded handle data, never URL credentials, prompts or arbitrary links", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  const webhook = "https://example.invalid/hooks/PRIVATE";
+  await toolResult(f, "schedule_task", { prompt: "PRIVATE instructions" }, { scheduledTaskId: "s", webhookUrl: webhook });
+  await toolResult(f, "preview_open", { url: webhook }, { tabId: "p", url: "https://user:PRIVATE@host/path?PRIVATE#PRIVATE" });
+  await toolResult(f, "delegate_task", { title: `Deployment ${webhook}`, task: "PRIVATE instructions" }, { taskId: "d", model: "PRIVATE model", status: webhook, link: webhook });
+  await toolResult(f, "t3_thread_send", { message: "PRIVATE child brief" }, { taskId: "d2" });
+  await toolResult(f, "watch_pull_request", {}, { url: "https://user:PRIVATE@github.com/o/r/pull/7?PRIVATE#PRIVATE" });
+  await toolResult(f, "watch_pull_request", {}, { url: webhook });
+  await toolResult(f, "t3_thread_launch", { title: "Build `nightly`\nPRIVATE" }, { threadId: "t", link: "[PRIVATE](t3-thread://v2/e/t?PRIVATE#PRIVATE)" });
+  await toolResult(f, "t3_thread_launch", { title: "a".repeat(1000) }, { threadId: "t2" });
+  await toolResult(f, "t3_thread_launch", {}, { threadId: "x".repeat(1000) });
+  const { entries } = await f.emit("turn_end", { entries: [] });
+  const data = entries.map((e: any) => e.data);
+  const prompt = (await startTurn(f)).t3_agent!;
+  for (const receipt of [JSON.stringify(data), prompt]) {
+    assert.doesNotMatch(receipt, /PRIVATE|hooks\/|user:|detail|`nightly`|[ax]{256}/);
+    assert.match(receipt, /https:\/\/github\.com\/o\/r\/pull\/7/);
+    assert.match(receipt, /<t3-thread:\/\/v2\/e\/t>/);
+  }
+});
+
+test("old branch entries pass the same privacy and type checks when replayed", async () => {
+  const data = [
+    { kind: "schedule", id: "s", open: true, detail: "webhook https://example.invalid/PRIVATE" },
+    { kind: "preview", id: "p", open: true, detail: "https://u:PRIVATE@example.invalid/#PRIVATE" },
+    { kind: "delegate", id: "d", open: true, status: "PRIVATE detail", link: "https://example.invalid/PRIVATE", title: "Go to https://example.invalid/PRIVATE" },
+    { kind: "pr", id: "https://u:PRIVATE@github.com/o/r/pull/7?PRIVATE#PRIVATE", open: true },
+    { kind: "thread", id: "t", link: "<t3-thread://v2/e/t?PRIVATE#PRIVATE>", open: true },
+    { kind: "thread", id: "https://example.invalid/PRIVATE", open: true },
+    { kind: "thread", id: "t-bad", open: "PRIVATE" },
+    { kind: "PRIVATETYPE", id: "t", open: true },
+  ];
+  const f = fixture(T3, { branch: data.map(data => ({ type: "custom", customType: ENTRY_TYPE, data })) });
+  await f.emit("session_start");
+  await f.commands.get("t3-agent").handler("ledger", f.ctx);
+  for (const receipt of [String(f.notices.at(-1)![0]), (await startTurn(f)).t3_agent!]) {
+    assert.doesNotMatch(receipt, /PRIVATE|t-bad/);
+    assert.match(receipt, /scheduledTaskId=s/);
+    assert.match(receipt, /https:\/\/github\.com\/o\/r\/pull\/7/);
+    assert.match(receipt, /<t3-thread:\/\/v2\/e\/t>/);
+  }
+});
+
 test("outside T3 the package registers nothing", () => {
   const f = fixture({});
   assert.deepEqual(f.calls, []);
@@ -106,13 +154,13 @@ test("T3 results feed the ledger, persist at the turn boundary and reach the pro
   await f.emit("session_start", { reason: "startup" });
   await startTurn(f);
   await f.emit("tool_result", {
-    toolName: "mcp__t3-code__delegate_task", toolCallId: "c1", isError: false, input: { task: "Review the branch" },
+    toolName: "mcp__t3-code__delegate_task", toolCallId: "c1", isError: false, input: { title: "Review the branch", task: "Check the patch" },
     content: [{ type: "text", text: JSON.stringify({ taskId: "node:task-1", status: "running", workState: "working", link: "<t3-thread://v2/e/t1>" }) }],
   });
   await f.emit("tool_result", { toolName: "mcp__t3-code__html_render", toolCallId: "c2", isError: true, input: {}, content: [{ type: "text", text: "{\"taskId\":\"x\"}" }] });
   assert.deepEqual(f.statuses.at(-1), [STATUS_KEY, "t3-agent: full access · standard loadout · 1 delegate"]);
   const boundary = await f.emit("turn_end", { entries: [], continue: false });
-  assert.deepEqual(boundary.entries, [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "delegate", id: "node:task-1", open: true, title: "Review the branch", link: "<t3-thread://v2/e/t1>", status: "working", detail: undefined } }]);
+  assert.deepEqual(boundary.entries, [{ type: "custom", customType: ENTRY_TYPE, data: { kind: "delegate", id: "node:task-1", open: true, title: "Review the branch", link: "<t3-thread://v2/e/t1>", status: "working" } }]);
   assert.equal(await f.emit("turn_end", { entries: [], continue: false }), undefined);
   assert.match((await startTurn(f)).t3_agent!, /### Open T3 handles[\s\S]*delegate "Review the branch" taskId=node:task-1, status working/);
 });

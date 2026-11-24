@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext, SessionBoundaryDraft } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_CONFIG, LOADOUTS, readConfig, type Config, type Loadout } from "./config.ts";
 import { detectHost } from "./host.ts";
-import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, type HandleUpdate } from "./ledger.ts";
+import { ENTRY_TYPE, Ledger, observe, rebuild, resultPayload, type Handle } from "./ledger.ts";
 import { desiredTools, nextActive } from "./loadout.ts";
 import { buildSection, SECTION } from "./prompt.ts";
 import { modeLabel, runtimeMode, t3ToolName, T3_PREFIX, type Environment } from "./runtime.ts";
@@ -34,7 +34,7 @@ export default function t3Agent(pi: ExtensionAPI, env: Environment = process.env
   let managed = new Set<string>();
   let declared: string[] = [];
   let workspace: Workspace | undefined;
-  let pending: HandleUpdate[] = [];
+  let pending: Handle[] = [];
   let openedThisRun = new Set<string>();
   let reminded = false;
 

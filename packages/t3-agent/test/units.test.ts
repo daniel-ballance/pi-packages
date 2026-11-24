@@ -56,7 +56,7 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
   const apply = (tool: string, input: Record<string, unknown>, content: { type: string; text?: string }[]) =>
     observe(tool, input, resultPayload(content)).forEach(update => ledger.apply(update));
 
-  apply("delegate_task", { task: "Review the diff\nin detail", title: undefined }, delegateResult);
+  apply("delegate_task", { task: "Review the diff\nin detail", title: "Review the diff" }, delegateResult);
   apply("schedule_task", { title: "nightly", schedule: { type: "interval", everyMs: 1 } }, [{ type: "text", text: JSON.stringify({ scheduledTaskId: "scheduled-task:1", title: "nightly", nextRunAt: "2026-11-24T08:00:00.000Z" }) }]);
   apply("watch_pull_request", { url: "https://github.com/o/r/pull/7" }, [{ type: "text", text: "{}" }]);
   apply("preview_open", { url: "http://localhost:3000" }, [{ type: "text", text: JSON.stringify({ tabId: "tab-1" }) }]);
@@ -64,8 +64,8 @@ test("the ledger records T3 handles from JSON text and closes them", () => {
   apply("html_render", { path: "/x.html" }, [{ type: "text", text: "{}" }]);
 
   const text = ledger.render()!;
-  assert.match(text, /delegate "Review the diff" taskId=node:delegated-task:abc, status working, model openai-codex\/gpt-6\.1-sol link <t3-thread:/);
-  assert.match(text, /schedule "nightly" scheduledTaskId=scheduled-task:1, next 2026-11-24/);
+  assert.match(text, /delegate "Review the diff" taskId=node:delegated-task:abc, status working link <t3-thread:/);
+  assert.match(text, /schedule "nightly" scheduledTaskId=scheduled-task:1, status enabled/);
   assert.match(text, /watching PR https:\/\/github\.com\/o\/r\/pull\/7/);
   assert.match(text, /preview tab tabId=tab-1/);
   assert.match(text, /thread "Nightly" <t3-thread:\/\/v2\/e\/t-1>/);
@@ -90,7 +90,7 @@ test("a running delegate stays open until its result is read or it is cancelled"
   // A send to a finished child thread starts a new task; a send to a live thread does not.
   assert.deepEqual(observe("t3_thread_send", { message: "Fix the review findings" }, { threadId: "t", link: "<l>", status: "starting" }), []);
   observe("t3_thread_send", { message: "Fix the review findings" }, { taskId: "node:task-2", link: "<l>", status: "running" }).forEach(update => ledger.apply(update));
-  assert.deepEqual(ledger.open("delegate").map(handle => [handle.id, handle.title]), [["node:task-2", "Fix the review findings"]]);
+  assert.deepEqual(ledger.open("delegate").map(handle => [handle.id, handle.title]), [["node:task-2", undefined]]);
 });
 
 test("structured content wins over text when a bridge supplies it", () => {
