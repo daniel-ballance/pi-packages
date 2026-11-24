@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { onGraderCopy } from "./oracles/copy.mjs";
 import { recordAttempt, revision } from "../routing-eval/receipt.mjs";
+import { findBrowser } from "./oracles/find-browser.mjs";
 import { coverageModules } from "./oracles/coverage.mjs";
 import { agentSource, defaultOutput, evalEnv, parseEvent, positiveInteger, receipts } from "../routing-eval/harness.mjs";
 
@@ -176,6 +177,7 @@ export function grade(check, { calls, final }, project, beforeRun) {
         // Drive the page in a browser when one is installed; exit 3 means none could be driven.
         const driven = runCheck(process.execPath, [join(here, "oracles/prototype-browser.mjs"), files[0], ...(check.verifyArithmetic ? ["--arithmetic"] : [])], project).status;
         if (driven === 0 || driven === 1) return driven === 0;
+        if (driven !== 3) throw new Error(`Prototype browser grader exited ${driven}`);
         if (check.verifyArithmetic) throw new Error("No browser could be driven to verify refund arithmetic");
         console.warn("prototype check: no browser could be driven; fell back to the structural check");
         return runCheck("python3", [join(here, "oracles/prototype.py"), files[0]], project).status === 0;
@@ -226,6 +228,9 @@ async function main() {
   if (!rows.length) throw new Error("No behavior cases to run");
   const source = agentSource(values["agent-dir"], { settingsRequired: true, mcp: rows.some(row => row.mcp) });
   if (rows.some(row => row.fixture === "source-grounding")) coverageModules();
+  if (rows.some(row => row.outcome.some(check => check.verifyArithmetic)) && !findBrowser()) {
+    throw new Error("Refund arithmetic requires Chromium on PATH or P3STACK_EVAL_CHROMIUM");
+  }
   const output = receipts(values.output, "behavior", source);
   const results = [], checkout = revision();
   for (const row of rows) for (const arm of arms) for (let run = 1; run <= runs; run++) {
@@ -244,6 +249,7 @@ async function main() {
         artifact: final => ({ final, changes: changedFiles(initial, snapshot(project)) }),
       });
       results.push(result);
+      writeFileSync(join(output, "results.json"), JSON.stringify({ model, results }, null, 2) + "\n");
       for (const name of ["outcome", "process"]) console.log(`${row.id} [${arm}] run ${run} ${name} ${(result[name].score * 100).toFixed(0)}%: ${result[name].checks.map(c => `${c.passed ? "+" : "-"}${c.id}`).join(" ")}`);
     } finally {
       if (values.keep) console.log(`Kept project: ${project}`);
@@ -251,7 +257,6 @@ async function main() {
     }
   }
   if (!results.length) throw new Error("No completed behavior runs");
-  writeFileSync(join(output, "results.json"), JSON.stringify({ model, results }, null, 2) + "\n");
   for (const row of rows) for (const arm of arms) {
     const own = results.filter(r => r.id === row.id && r.arm === arm);
     const mean = name => (100 * own.reduce((sum, r) => sum + r[name].score, 0) / own.length).toFixed(0);

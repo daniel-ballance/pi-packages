@@ -224,6 +224,14 @@ test("in a browser, the prototype check follows what clicks render, not how the 
   }
 });
 
+for (const name of ["form", "loop"]) {
+  test(`refund arithmetic grades the ${name} page as broken, not a missing browser`, { skip: !chromium && "no Chromium on PATH" }, t => {
+    const { check, put } = fixture(t, "prototype-logic");
+    put("a.html", readFileSync(new URL(`./fixtures/refund/${name}.html`, import.meta.url)));
+    assert.equal(check("successive-refund-balance"), false);
+  });
+}
+
 test("a click-through that miscounts successive partial refunds does not solve the task", { skip: !chromium && "no Chromium on PATH" }, t => {
   const { check, put } = fixture(t, "prototype-logic");
   const passes = () => check("successive-refund-balance");

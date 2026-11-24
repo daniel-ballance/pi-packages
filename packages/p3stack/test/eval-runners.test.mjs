@@ -22,6 +22,7 @@ const stub = `#!${process.execPath}
 const fs = require('node:fs'), path = require('node:path');
 if (process.argv.includes('--version')) { console.log('1.5.2'); process.exit(0); }
 if (process.env.WRITE_NOTE) fs.writeFileSync('notes.txt', 'proposed patch');
+if (process.env.BREAK_SECOND_TREE && fs.existsSync(process.env.LOG)) fs.rmSync('.git', { recursive: true });
 const dir = process.env.PI_CODING_AGENT_DIR;
 fs.appendFileSync(process.env.LOG, JSON.stringify({dir, mode:fs.statSync(dir).mode & 511, files:fs.readdirSync(dir), settings:JSON.parse(fs.readFileSync(path.join(dir,'settings.json'))), gitVars:Object.keys(process.env).filter(k=>k.startsWith("GIT_"))})+'\\n');
 if (process.env.TRAP_TERM) process.on('SIGTERM', () => process.exit(143)); // Pi print-mode disposal
@@ -224,6 +225,20 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
     }
   });
 }
+
+test("behavior: require Chromium before the first attempt when a later case needs arithmetic", t => {
+  const f = setup(t, "behavior");
+  invalid(f.run(["--only", "floor-review,prototype-logic"]), /Chromium/);
+  assert.equal(existsSync(f.log), false);
+});
+
+test("behavior: a grading error leaves completed attempts in results.json", t => {
+  const f = setup(t, "behavior");
+  invalid(f.run(["--runs", "2"], { BREAK_SECOND_TREE: "1" }), /not a git repository/);
+  const dir = join(f.output, readdirSync(f.output)[0]);
+  const { results } = JSON.parse(readFileSync(join(dir, "results.json")));
+  assert.deepEqual(results.map(r => [r.id, r.run, r.passed]), [["floor-review", 1, true]]);
+});
 
 test("behavior: copy mcp.json only for the selected MCP case; fail without it", t => {
   const f = setup(t, "behavior");
