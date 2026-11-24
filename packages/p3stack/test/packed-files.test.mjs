@@ -152,7 +152,11 @@ const removedCommands = new Set(registry.filter(row => row.action !== "emit").fl
 }));
 
 function leftoverCommands(line) {
-  const words = line.split(/[\s`"'()[\],;!*<>]+/).map(word => word.replace(/[.?:]$/, ""));
+  // Remove literal path operands before splitting Markdown wrappers. Keep this
+  // scanner independent of the generator so a shared matcher can't hide a miss.
+  const prose = line.replace(/(?:\b(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE|cd|pushd|ls|cat|mkdir|curl|route|path|directory|endpoint)(?: (?:at|under|to|is|-[\w-]*))*\s+|\]\(\s*<?|(?:href|src)=)[`"']*\/[\w-]+(?![:\w-])/g, " ")
+    .replace(/\/[\w-]+[`"']*\s+(?:endpoint|directory|route)\b/g, " ");
+  const words = prose.split(/[\s`"'()[\],;!*<>]+/).map(word => word.replace(/[.?:]$/, ""));
   return words.filter(word => removedCommands.has(word));
 }
 
@@ -160,7 +164,7 @@ test("the independent leftover scan recognizes wrapped commands but not path seg
   for (const [literal, expected] of [["Run `(/skill:unslop)`.", "/skill:unslop"], ["<instruction></teach>", "/teach"], ["Use **/sharpen**!", "/sharpen"]]) {
     assert.deepEqual(leftoverCommands(literal), [expected], literal);
   }
-  assert.deepEqual(leftoverCommands("docs/teach /teach.md /sharpen/file https://example.test/teach"), []);
+  assert.deepEqual(leftoverCommands("GET /teach HTTP/1.1; cd /sharpen. [path](/teach) docs/teach /teach.md /sharpen/file https://example.test/teach"), []);
 });
 
 test("no emitted file contains a removed command or a path to a retired skill directory", () => {

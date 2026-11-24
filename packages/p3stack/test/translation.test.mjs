@@ -90,6 +90,8 @@ test("host lint catches terminal and T3 calls in agents and skill resources, inc
 test("slash translation recognizes commands, not URL segments, file paths, or unshipped names", t => {
   const commands = "Run /research. Try [`/research`](../research/SKILL.md), not /wait-what or /research-more.";
   const examples = [
+    "GET /research HTTP/1.1 and POST `/research`; cd /research, then ls -l /research.",
+    "Mount the route at /research. The /research endpoint accepts GET.",
     "Mount the route at `/prototype/<name>` or /research/<name>.",
     "Open https://example.test/research or /research?variant=1#data. See [route](/research).",
     "Read /research.md, /research/output.json, ../research/SKILL.md and docs/research.",

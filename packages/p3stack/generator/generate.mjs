@@ -61,12 +61,22 @@ function expander(commit, problems) {
 
 // Rewrite only visible Markdown text and inline command spans. Source offsets
 // preserve fence contents, raw HTML, link destinations and all original bytes around them.
-function mapProse(text, rewrite) {
+function mapProse(text, pattern, rewrite) {
   let result = "", offset = 0;
   function visit(node) {
     if (node.type === "text" || node.type === "inlineCode") {
       const { start, end } = node.position;
-      result += text.slice(offset, start.offset) + rewrite(text.slice(start.offset, end.offset));
+      result += text.slice(offset, start.offset);
+      offset = start.offset;
+      // The Markdown node may contain only `/name`; its HTTP method or shell
+      // command can be in the preceding node. Consult the document at the match.
+      for (const hit of text.slice(start.offset, end.offset).matchAll(pattern)) {
+        const at = start.offset + hit.index, next = at + hit[0].length;
+        if (!pathOperand(text.slice(0, at), text.slice(next))) continue;
+        result += rewrite(text.slice(offset, at)) + hit[0];
+        offset = next;
+      }
+      result += rewrite(text.slice(offset, end.offset));
       offset = end.offset;
     } else node.children?.forEach(visit);
   }
@@ -105,7 +115,7 @@ function applyTokens(files, owners, rules, expanders, problems, sectionRewrites)
           const header = frontmatterBlock(input)?.[0];
           return header ? replace(header) + input.slice(header.length) : input;
         }
-        return rule.markdownProse ? mapProse(input, replace) : replace(input);
+        return rule.markdownProse ? mapProse(input, pattern, replace) : replace(input);
       };
       files.set(path, rewrite(text, true));
       sectionRewrites.get(path)?.push(rewrite);
@@ -489,7 +499,12 @@ export function removedCommandPattern(skills) {
 
 // Bare /name is also a valid HTTP or filesystem operand, even inside an example.
 function pathOperand(before, after) {
-  return /(?:\b(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE|cd|pushd|ls|cat|mkdir)\s+|\]\(\s*<?|\b(?:href|src)\s*=\s*)[`*"']*$/i.test(before) || /^\s+HTTP\/\d/i.test(after);
+  const prefix = before.replace(/[`*"']+$/, ""), suffix = after.replace(/^[`*"']+/, "");
+  return /\b(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE)[ \t]+$/.test(prefix) ||
+    /\b(?:cd|pushd|ls|cat|mkdir|curl)(?:[ \t]+-[\w-]*)*[ \t]+$/.test(prefix) ||
+    /\b(?:route|endpoint|path|directory|mount(?:ed)?)(?: (?:at|under|to|is))?[ \t]+$/i.test(prefix) ||
+    /^(?:[ \t]+HTTP\/\d|[ \t]+(?:endpoint|directory|route)\b)/i.test(suffix) ||
+    /(?:\]\(\s*<?|\b(?:href|src)\s*=\s*)$/i.test(prefix);
 }
 
 function lintFencedCommands(text, path, names, problems) {
@@ -516,7 +531,11 @@ function lint(outDir, deny, problems, skills) {
     if (text === undefined) continue;
     if (upstream.size && path.endsWith(".md")) lintFencedCommands(text, path, upstream, problems);
     text.split("\n").forEach((line, index) => {
-      for (const command of removed ? line.match(removed) ?? [] : []) problems.push(`${path}:${index + 1}: removed skill command ${command}`);
+      for (const hit of removed ? line.matchAll(removed) : []) {
+        if (hit[0].startsWith("/skill:") || !pathOperand(line.slice(0, hit.index), line.slice(hit.index + hit[0].length))) {
+          problems.push(`${path}:${index + 1}: removed skill command ${hit[0]}`);
+        }
+      }
       for (const token of deny) if (line.includes(token)) problems.push(`${path}:${index + 1}: ${token}`);
     });
   }

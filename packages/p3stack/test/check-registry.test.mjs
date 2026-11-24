@@ -196,7 +196,7 @@ test("the command lint distinguishes dropped commands from resource paths and UR
   const f = referenceFixture(t), path = "skills/retired/SKILL.md";
   f.write("vendor/demo/" + path, f.skill("retired"));
   f.write("registry/skills.json", [...f.skills, f.ref, { source: "demo", path, action: "drop", reason: "Retired." }]);
-  f.write("extra/agents/read.md", "See https://example.test/retired and [app route](/leaf).\n");
+  f.write("extra/agents/read.md", "See https://example.test/retired and [app route](/leaf). GET /leaf HTTP/1.1; cd /retired.\n");
   f.build();
   rmSync(f.outDir, { recursive: true }); // Each generation starts in fresh staging.
   f.write("extra/agents/read.md", "Run /retired.\n");
