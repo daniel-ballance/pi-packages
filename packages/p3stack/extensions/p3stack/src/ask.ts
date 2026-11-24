@@ -1,10 +1,10 @@
 import { Type } from "typebox";
-import type { Context, Pi } from "./mode.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const OTHER = "Other (type an answer)";
-const text = (body: string) => ({ content: [{ type: "text", text: body }], details: {} });
+const text = (body: string) => ({ content: [{ type: "text" as const, text: body }], details: {} });
 
-export function registerAsk(pi: Pi) {
+export function registerAsk(pi: ExtensionAPI) {
   pi.registerTool({
     name: "ask_user", label: "Ask the human",
     description: "Ask the human a product or preference question that no experiment can settle, with choices or free text. Without an interactive UI, apply the default you state and say so.",
@@ -16,7 +16,7 @@ export function registerAsk(pi: Pi) {
       allowOther: Type.Optional(Type.Boolean({ description: "Also offer a free-text answer beside the options." })),
       default: Type.Optional(Type.String({ maxLength: 500, description: "What you will do if nobody answers." })),
     }, { additionalProperties: false }),
-    async execute(_call: string, args: { question: string; options?: string[]; allowOther?: boolean; default?: string }, signal: AbortSignal | undefined, _update: unknown, ctx: Context) {
+    async execute(_call, args, signal, _update, ctx) {
       signal?.throwIfAborted();
       const fallback = args.default?.trim()
         ? `Apply your default (${args.default}) and say so in your reply.`

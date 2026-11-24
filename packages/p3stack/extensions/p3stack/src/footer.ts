@@ -1,7 +1,7 @@
-import { SettingsManager, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import { SettingsManager, type ExtensionAPI, type ExtensionContext, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { Context, Grant, Pi } from "./mode.ts";
+import type { Grant } from "./mode.ts";
 import { agentDir } from "./roles.ts";
 
 const formatTokens = (count: number) => {
@@ -14,7 +14,7 @@ const formatTokens = (count: number) => {
 
 type FooterFactory = NonNullable<Parameters<ExtensionUIContext["setFooter"]>[0]>;
 
-function sessionStats(ctx: Context) {
+function sessionStats(ctx: ExtensionContext) {
   const model = ctx.model;
   const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
   let latestCacheHitRate: number | undefined;
@@ -52,7 +52,7 @@ function sessionStats(ctx: Context) {
   return { totals, latestCacheHitRate, model, right, pwd, subscription, usage: ctx.getContextUsage(), name: ctx.sessionManager.getSessionName() };
 }
 
-export function modeFooter(ctx: Context, events: Pi["events"], grant: () => Grant, disposed: () => void) {
+export function modeFooter(ctx: ExtensionContext, events: ExtensionAPI["events"], grant: () => Grant, disposed: () => void) {
   const compactionIndicator = () => SettingsManager.create(ctx.cwd, agentDir(), { projectTrusted: ctx.isProjectTrusted() }).getCompactionEnabled() ? " (auto)" : "";
   let auto = compactionIndicator(), stats = sessionStats(ctx);
   let redraw: (() => void) | undefined;

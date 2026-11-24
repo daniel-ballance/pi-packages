@@ -1,6 +1,7 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { detectHost, type Host } from "./host.ts";
-import { grantToken, type Grant, type Pi } from "./mode.ts";
+import { grantToken, type Grant } from "./mode.ts";
 
 const OPEN = "<p3stack-brief>", CLOSE = "</p3stack-brief>";
 // subagent_spawn's task schema and T3's OrchestratorMcpPrompt, respectively.
@@ -33,12 +34,12 @@ function withBriefHeader(input: { task: string; tools?: unknown; role?: unknown 
   return header + body;
 }
 
-export function registerBrief(pi: Pi, isOn: (() => boolean) & { grant(): Grant }, modeSkill: string, agentRecipe: string) {
+export function registerBrief(pi: ExtensionAPI, isOn: (() => boolean) & { grant(): Grant }, modeSkill: string, agentRecipe: string) {
   const host = detectHost();
   const tool = host === "cli" ? "subagent_spawn" : "mcp__t3-code__delegate_task";
   pi.on("tool_call", event => {
     if (!isOn() || event?.toolName !== tool || typeof event.input?.task !== "string") return;
-    const brief = withBriefHeader(event.input, host, isOn.grant(), modeSkill, agentRecipe);
+    const brief = withBriefHeader({ ...event.input, task: event.input.task }, host, isOn.grant(), modeSkill, agentRecipe);
     if (typeof brief !== "string") return brief;
     event.input.task = brief;
   });

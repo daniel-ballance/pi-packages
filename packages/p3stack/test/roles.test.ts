@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test, type TestContext } from "node:test";
+import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { agentDir, DEFAULT_ROLES, family, liveRoles, registerRoles, resolveRoles, type RoleValue } from "../extensions/p3stack/src/roles.ts";
 import { registerSetup } from "../extensions/p3stack/src/setup.ts";
 
@@ -36,7 +37,7 @@ function lookup(t: TestContext, host: "cli" | "t3", { fileHost = undefined as "t
   };
   const ctx = {
     cwd, model: parent, isProjectTrusted: () => false, modelRegistry: { getAvailable: () => [] },
-    executeTool: async (name: string, args: Record<string, unknown>) => {
+    executeTool: async (name: string, args: Awaited<ReturnType<ExtensionToolContext["executeTool"]>>["toolCall"]["arguments"]) => {
       calls.push(name);
       const data = typeof t3 === "function" ? t3(args) : t3;
       return { toolCall: { type: "toolCall" as const, id: "1", name, arguments: args }, result: { content: [], structuredContent: data, details: {} }, isError: !data };

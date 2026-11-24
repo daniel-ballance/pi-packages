@@ -1,57 +1,21 @@
-import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { dirname, resolve } from "node:path";
 import { doctor } from "./doctor.ts";
 import { modeFooter } from "./footer.ts";
 import { detectHost } from "./host.ts";
-
-interface Ui {
-  select: ExtensionUIContext["select"];
-  input: ExtensionUIContext["input"];
-  confirm(title: string, message: string): Promise<boolean>;
-  notify(message: string, type?: "info" | "warning" | "error"): void;
-  setFooter: ExtensionUIContext["setFooter"];
-  setStatus: ExtensionUIContext["setStatus"];
-}
-export interface Context {
-  cwd: string;
-  hasUI: boolean;
-  mode?: string;
-  ui: Ui;
-  isProjectTrusted(): boolean;
-  model?: ExtensionContext["model"];
-  thinkingLevel?: ExtensionContext["thinkingLevel"];
-  getContextUsage: ExtensionContext["getContextUsage"];
-  executeTool(name: string, args: unknown): Promise<{
-    toolCall: { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> };
-    result: { content: unknown; details: unknown; structuredContent?: unknown; isError?: boolean };
-    isError: boolean;
-  }>;
-  modelRegistry: Pick<ExtensionContext["modelRegistry"], "getAvailable" | "isUsingOAuth" | "getProvider" | "find">;
-  sessionManager: Pick<ExtensionContext["sessionManager"], "getBranch" | "getEntries" | "getSessionName">;
-}
-export interface Pi {
-  getThinkingLevel(): string;
-  registerTool(tool: object): void;
-  registerCommand(name: string, command: { description: string; handler: (args: string, ctx: Context) => Promise<void> }): void;
-  on(event: string, handler: (event: any, ctx: Context) => unknown): void;
-  appendEntry(customType: string, data: unknown): void;
-  getAllTools(): { name: string; exposure?: string }[];
-  getCommands(): { source: string; sourceInfo: { path: string } }[];
-  events: { emit(channel: string, data: unknown): void };
-}
 
 const MODE = "p3stack";
 export type Grant = "default" | "autonomous";
 const GRANTS: readonly Grant[] = ["default", "autonomous"];
 /** The router's grant column names full autonomy `full-autonomy`. */
 export const grantToken = (grant: Grant) => grant === "autonomous" ? "full-autonomy" : "default";
-export function registerMode(pi: Pi, potetoSkill: string) {
+export function registerMode(pi: ExtensionAPI, potetoSkill: string) {
   const host = detectHost();
   const usage = `/p3stack on [default|autonomous] | grant <default|autonomous> | off | status${host === "t3" ? " | doctor" : ""}`;
   const modeSkill = resolve(dirname(potetoSkill), "../p3stack-mode/SKILL.md");
   let modeOn = false, grant: Grant = "default";
   let footer: ReturnType<typeof modeFooter> | undefined;
-  const showMode = (ctx: Context) => {
+  const showMode = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
     if (ctx.mode !== "tui" || host !== "cli") {
       ctx.ui.setStatus(MODE, modeOn ? `p3stack · ${grantToken(grant)}` : undefined);
@@ -64,7 +28,7 @@ export function registerMode(pi: Pi, potetoSkill: string) {
       footer = undefined;
     }
   };
-  const rebuild = (_event: unknown, ctx: Context) => {
+  const rebuild = (_event: unknown, ctx: ExtensionContext) => {
     modeOn = false;
     grant = "default";
     for (const entry of ctx.sessionManager.getBranch()) {
@@ -79,9 +43,12 @@ export function registerMode(pi: Pi, potetoSkill: string) {
   pi.on("session_start", rebuild);
   pi.on("session_tree", rebuild);
   if (host === "cli") {
-    for (const event of ["turn_end", "session_compact", "session_info_changed", "model_select", "thinking_level_select"]) {
-      pi.on(event, () => footer?.refresh());
-    }
+    const refresh = () => footer?.refresh();
+    pi.on("turn_end", refresh);
+    pi.on("session_compact", refresh);
+    pi.on("session_info_changed", refresh);
+    pi.on("model_select", refresh);
+    pi.on("thinking_level_select", refresh);
   }
   pi.on("before_agent_start", event => {
     footer?.refresh(true); // No settings-change event: refresh compaction settings at the next request.

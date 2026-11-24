@@ -4,10 +4,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mock, test } from "node:test";
-import { ExtensionRunner, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { ExtensionRunner, FooterComponent, initTheme, SessionManager, SettingsManager, type ExtensionContext, type ExtensionToolContext, type ExtensionUIContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { ProcessTerminal, stripTerminalSequences, truncateToWidth, TuiMainScreen, visibleWidth } from "@earendil-works/pi-tui";
 import p3stack from "../extensions/p3stack/index.ts";
-import type { Context } from "../extensions/p3stack/src/mode.ts";
 import { candidates, DEFAULT_ROLES, family, thinkingFor } from "../extensions/p3stack/src/roles.ts";
 
 const model = (provider: string, id: string, levels: Record<string, string | null> | undefined, reasoning = true) =>
@@ -17,7 +16,7 @@ const grok = model("xai", "grok-4.7", { off: null, minimal: null, low: "low", me
 
 type Subagents = undefined | "old" | { spawnEnabled: boolean; models: string[] };
 type LoadedCommand = { name: string; source: string; sourceInfo: { path: string } };
-function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as unknown, parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[], commands: loadedCommands = [] as LoadedCommand[], factory = p3stack } = {}) {
+function harness({ mode = undefined as string | undefined, hasUI = true, answers = [] as (string | undefined)[], files = {} as Record<string, unknown>, trusted = false, branch = [] as unknown[], subagents = undefined as Subagents, t3 = undefined as Awaited<ReturnType<ExtensionToolContext["executeTool"]>>["result"]["structuredContent"], parent = undefined as { provider: string; id: string } | undefined, extraTools = [] as { name: string; exposure?: string }[], commands: loadedCommands = [] as LoadedCommand[], factory = p3stack } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "p3stack-ext-"))), cwd = join(root, "project"), agentDir = join(root, "agent");
   mkdirSync(join(cwd, ".pi"), { recursive: true }); mkdirSync(agentDir);
   for (const [path, data] of Object.entries(files)) writeFileSync(join(root, path), JSON.stringify(data));
@@ -35,7 +34,7 @@ function harness({ mode = undefined as string | undefined, hasUI = true, answers
   };
   const ctx = {
     cwd, hasUI, mode, model: parent, isProjectTrusted: () => trusted,
-    executeTool: async (name: string, args: unknown): ReturnType<Context["executeTool"]> => {
+    executeTool: async (name: string, args: unknown): ReturnType<ExtensionToolContext["executeTool"]> => {
       assert.equal(name, "mcp__t3-code__orchestrator_capabilities");
       assert.deepEqual(args, {});
       return {
