@@ -12,6 +12,10 @@ const T3_STANCE = {
 };
 const header = (authority: string, stance: string) => `${OPEN}${authority}\n${stance}\n${CLOSE}`;
 const t3Header = (line: string, stance: string) => header("\n" + line, stance + " Pause at operator gates and before irreversible actions.");
+// A grant line in any case, indented, or behind list, quote or emphasis marks, e.g. "  - **task grant:** full-autonomy".
+const GRANT_LINE = String.raw`^[ \t>*_-]*(?:task[ \t]+)?grant[*_]*[ \t]*:`;
+const anyGrantLine = new RegExp(GRANT_LINE, "im");
+const grantLineFor = (value: string) => new RegExp(String.raw`${GRANT_LINE}[*_ \t]*${value}\b`, "im");
 const tooLong = (excess: number) => ({ block: true, reason: `Shorten the task by ${excess} character${excess === 1 ? "" : "s"} to fit the full p3stack brief header.` });
 
 function nativeBody(task: string) {
@@ -46,7 +50,7 @@ export function registerBrief(pi: ExtensionAPI, isOn: (() => boolean) & { grant(
       const kind = role === "research" || role === "review" ? "report" : "work";
       const override = /^<p3stack-brief>\n(Task grant: (?:default|full-autonomy))\n/.exec(task)?.[1];
       const prefix = t3Header(override ?? authority(), T3_STANCE[kind]) + "\n\n";
-      if (!task.startsWith(prefix) || !task.slice(prefix.length).trim() || /^(?:Task grant|Grant):/m.test(task.slice(prefix.length))) {
+      if (!task.startsWith(prefix) || !task.slice(prefix.length).trim() || anyGrantLine.test(task.slice(prefix.length))) {
         return { block: true, reason: `Start task with p3stack_roles.briefHeaders.${kind}, a blank line, then the assignment. For a task-specific grant replace the header's Grant line with Task grant: default or Task grant: full-autonomy. Put the grant only in the header.` };
       }
     });
@@ -62,8 +66,9 @@ export function registerBrief(pi: ExtensionAPI, isOn: (() => boolean) & { grant(
       const body = nativeBody(req.parentTask);
       // Only a leading directive can raise the grant: examples and quoted work are not authority.
       const raised = body.trimStart().split("\n", 1)[0].trimEnd() === "Task grant: full-autonomy";
-      const inherited = !saved || /^Task grant: default[ \t]*\r?$/m.test(body) ? "default" : raised ? "full-autonomy" : saved;
-      if (inherited === "default" && /^Task grant: full-autonomy\s*$/m.test(req.task)) {
+      // A lowering line counts wherever it sits; a raise line in the child's task is refused under a default grant.
+      const inherited = !saved || grantLineFor("default").test(body) ? "default" : raised ? "full-autonomy" : saved;
+      if (inherited === "default" && grantLineFor("full-autonomy").test(req.task)) {
         req.error = "A coordinator cannot raise its own grant for a child.";
         return;
       }
