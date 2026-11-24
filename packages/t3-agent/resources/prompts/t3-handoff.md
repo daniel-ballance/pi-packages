@@ -2,8 +2,8 @@
 description: Move this thread into its own new git worktree and continue there
 argument-hint: "[branch name]"
 ---
-Move this thread into its own git worktree and continue the current work there.
+Move this thread into its own worktree; stop this session at the handoff.
 
-1. Call `t3_worktree_status`. If this thread already has a worktree, say so and stop.
-2. The new worktree starts from a ref, so uncommitted changes stay in this checkout. Commit the ones the work needs on a branch first, or tell the user which changes stay behind.
-3. Call `t3_worktree_handoff` as the last call of this turn, with branch `${1:-a short name for the current work}` and a `continuationPrompt` that states the task, what is done, and the next step. The move ends this session; the thread resumes in the worktree with that prompt.
+1. Call `t3_worktree_status`. If already attached, report the worktree and stop.
+2. Commit needed local changes or say what stays behind. If unpublished commits are needed, use their local `baseRef` and `startFromOrigin:false`.
+3. Call `t3_worktree_handoff` last, with branch `${1:-a short name for the current work}` and a `continuationPrompt` stating the task, progress and next step.
