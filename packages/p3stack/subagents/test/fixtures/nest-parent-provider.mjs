@@ -22,6 +22,7 @@ export default function (pi) {
         ["subagent_spawn", { name: "nest-coordinator", task: "COORDINATE", cwd: process.cwd(), model: "nest-test/stub:off", tools: delegation, extensions: [childFixture] }],
         ["subagent_wait", { ids: [coordinator], timeoutSeconds: 40 }],
         ["subagent_read", { id: coordinator }],
+        ["subagent_catalog", { activate: ["subagent_list"] }],
         ["subagent_list", {}],
         ["subagent_close", { id: coordinator }],
         ["subagent_list", {}],
@@ -33,8 +34,8 @@ export default function (pi) {
       } else {
         const proof = results.some(r => r.isError) ? { error: text(results.find(r => r.isError)) } : {
           coordinator, report: (data(1).agents ?? []).find(agent => agent.id === coordinator)?.reports?.findLast(report => report.kind === "assistant")?.text,
-          before: data(3).agents.map(({ id, name, parentId, depth, status }) => ({ id, name, parentId, depth, status })),
-          after: data(5).agents.map(({ id, name, status }) => ({ id, name, status })),
+          before: data(4).agents.map(({ id, name, parentId, depth, status }) => ({ id, name, parentId, depth, status })),
+          after: data(6).agents.map(({ id, name, status }) => ({ id, name, status })),
         };
         if (process.env.NEST_SMOKE_OUTPUT) writeFileSync(process.env.NEST_SMOKE_OUTPUT, JSON.stringify(proof, null, 2));
         content = [{ type: "text", text: "NEST SMOKE DONE" }];

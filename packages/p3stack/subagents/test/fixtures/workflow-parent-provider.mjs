@@ -16,7 +16,10 @@ export default function (pi) {
       const reported = messages.some(m => m.role === "user" && text(m).includes("SUBAGENT REPORTS"));
       let content = [{ type: "text", text: "Ready. Send WORKFLOW SMOKE." }], stopReason = "stop";
       const call = (name, args) => { content = [{ type: "toolCall", id: `parent-${Date.now()}-${Math.random()}`, name, arguments: args }]; stopReason = "toolUse"; };
-      if (start >= 0 && !started) call("subagent_workflow_start", { path: process.env.WORKFLOW_SMOKE_DEFINITION });
+      if (start >= 0 && !messages.some(m => m.role === "toolResult")) {
+        if (pi.getActiveTools().includes("tool_search")) call("tool_search", { query: "subagent_workflow_start subagent_workflow_inspect", limit: 2 });
+        else call("subagent_catalog", { activate: ["subagent_workflow_start", "subagent_workflow_inspect"] });
+      } else if (start >= 0 && !started) call("subagent_workflow_start", { path: process.env.WORKFLOW_SMOKE_DEFINITION });
       else if (started?.isError || inspected?.isError) content = [{ type: "text", text: `WORKFLOW SMOKE FAILED: ${text(inspected ?? started)}` }];
       else if (inspected) {
         const proof = JSON.parse(text(inspected));

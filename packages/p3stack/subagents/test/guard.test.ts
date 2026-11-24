@@ -88,6 +88,15 @@ test("management extension registers nothing inside a marked child", () => {
   finally { if (old === undefined) delete process.env.PI_SUBAGENT; else process.env.PI_SUBAGENT = old; }
 });
 
+test("ordinary delegation is direct; history, recovery, loops, workflows and peers are searchable", async () => {
+  const tools = await nativeTools();
+  assert.deepEqual(tools.filter(t => (t.exposure ?? "direct") === "direct").map(t => t.name).sort(),
+    ["subagent_catalog", "subagent_close", "subagent_read", "subagent_send", "subagent_spawn", "subagent_wait"]);
+  for (const op of ["list", "abort", "resume", "respond", "release_hold", "loop", "workflow_start", "workflow_inspect", "workflow_control", "connect", "disconnect", "renew", "peers"]) {
+    assert.equal(tools.find(t => t.name === `subagent_${op}`)?.exposure, "deferred", op);
+  }
+});
+
 test("agent-facing spawn schema has no raw argument, executable or environment escape hatch", async () => {
   const tools: any[] = await nativeTools();
   const schema = tools.find(t => t.name === "subagent_spawn").parameters;

@@ -76,9 +76,12 @@ export default function subagents(pi: ExtensionAPI) {
 function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext) {
   // The root's own tools also serve proxied calls from Children (nesting.ts).
   const proxiable = new Map<string, ToolDefinition<any, any>>();
+  const direct = new Set(["subagent_catalog", "subagent_spawn", "subagent_wait", "subagent_read", "subagent_send", "subagent_close"]);
+  const management = new Set<string>();
   function registerTool<P extends TSchema, D>(tool: ToolDefinition<P, D>) {
     if (isProxiedTool(tool.name)) proxiable.set(tool.name, tool);
-    pi.registerTool(tool);
+    if (!direct.has(tool.name)) management.add(tool.name);
+    pi.registerTool(management.has(tool.name) ? { ...tool, exposure: "deferred" } : tool);
   }
   /** Set while a Child's proxied call runs: who is asking. */
   const delegation = new AsyncLocalStorage<{ callerId: string }>();
@@ -350,17 +353,29 @@ function initializeSubagents(pi: ExtensionAPI, initialContext: ExtensionContext)
     }
   };
   const render = (action: Parameters<typeof subagentRenderers>[0]) => subagentRenderers(action, displayName);
-  registerWorkflowUI(pi, getWorkflows, result, displayName);
+  registerWorkflowUI({ registerTool, registerCommand: pi.registerCommand }, getWorkflows, result, displayName);
 
   registerTool({
     name: "subagent_catalog", label: "Subagent Catalog",
     ...render("catalog"),
-    ...TOOL_SPECS.subagent_catalog,
-    async execute(_call, _args, _signal, _update, ctx) {
+    description: TOOL_SPECS.subagent_catalog.description,
+    parameters: Type.Object({
+      activate: Type.Optional(Type.Array(Type.String(), { description: "Without tool search, declare these names from managementTools for the next call." })),
+    }, { additionalProperties: false }),
+    async execute(_call, { activate }, _signal, _update, ctx) {
       const callerId = delegation.getStore()?.callerId;
       const childDepth = callerId ? (get(ctx).get(callerId).depth ?? 1) + 1 : 1;
       const catalog = getPolicy(ctx).catalog(childDepth);
-      return result(callerId ? { ...catalog, delegation: { childDepth, maxDepth: catalog.maxDepth, childrenMayDelegate: childDepth < catalog.maxDepth } } : catalog, ctx);
+      if (callerId) {
+        if (activate?.length) throw new Error("Only the root parent can activate management tools.");
+        return result({ ...catalog, delegation: { childDepth, maxDepth: catalog.maxDepth, childrenMayDelegate: childDepth < catalog.maxDepth } }, ctx);
+      }
+      const managementTools = pi.getAllTools().filter(t => management.has(t.name) && t.exposure === "deferred").map(t => t.name);
+      if (activate?.length) {
+        for (const name of activate) if (!managementTools.includes(name)) throw new Error(`Not an available management tool: ${name}`);
+        pi.setActiveTools([...new Set([...pi.getActiveTools(), ...activate])]);
+      }
+      return result({ ...catalog, managementTools }, ctx);
     },
   });
   registerTool({
