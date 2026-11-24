@@ -270,27 +270,28 @@ test("the prompt section states mode, workspace, loadout and open handles", () =
   const supervised = buildSection({
     mode: "approval-required",
     workspace: { root: "/home/u/.t3/worktrees/p/t3-1", branch: "feat/x", linked: true, mainCheckout: "/home/u/Code/p", t3Managed: true, defaultBranch: "origin/main" },
-    declared: 1,
+    active: 1,
     ledger: "- watching PR o/r#1",
   });
   assert.match(supervised, /Permission mode: supervised.*bridge asks for approval before bash/i);
   assert.match(supervised, /Workspace: `\/home\/u\/\.t3\/worktrees\/p\/t3-1`, branch `feat\/x` \(no upstream configured\)/);
-  assert.match(supervised, /linked Git worktree under T3's worktree directory/);
-  assert.match(supervised, /treat it as this thread's isolated worktree unless the user says otherwise/i);
+  assert.match(supervised, /Git reports a linked worktree under T3's worktree directory/);
+  assert.match(supervised, /already off the main checkout.*other threads or delegates may be using it/i);
+  assert.doesNotMatch(supervised, /this thread's isolated worktree/i);
   assert.match(supervised, /origin\/HEAD.*`origin\/main`/);
   assert.doesNotMatch(supervised, /created for this thread|satisfies any instruction|not pushed/);
-  assert.match(supervised, /Declared T3 tools: 1\b/);
+  assert.match(supervised, /Active T3 tools: 1\b/);
   assert.match(supervised, /use `delegate_task`: it is your subagent tool/);
   assert.match(supervised, /### Open T3 handles[\s\S]*watching PR o\/r#1/);
 
-  const full = buildSection({ mode: "full-access", declared: 31 });
+  const full = buildSection({ mode: "full-access", active: 31 });
   assert.match(full, /batch tool calls with `Promise\.allSettled`, not `Promise\.all`/, "a failed batch has ended the Pi process");
   assert.match(full, /Permission mode: full access\. The bridge asks for no approval in this mode\./);
   assert.doesNotMatch(full, /no tool call asks the user|leave no background process/i);
-  assert.match(full, /Declared T3 tools: 31\b/);
+  assert.match(full, /Active T3 tools: 31\b/);
   assert.doesNotMatch(full, /Workspace:|Open T3 handles/);
-  assert.match(buildSection({ mode: "auto-accept-edits", declared: 0 }), /auto-accept edits\. The bridge accepts edit and write without approval/);
-  assert.match(buildSection({ mode: "full-access", declared: 0, workspace: { root: "/r", branch: "main", upstream: "origin/main", linked: false, t3Managed: false } }),
+  assert.match(buildSection({ mode: "auto-accept-edits", active: 0 }), /auto-accept edits\. The bridge accepts edit and write without approval/);
+  assert.match(buildSection({ mode: "full-access", active: 0, workspace: { root: "/r", branch: "main", upstream: "origin/main", linked: false, t3Managed: false } }),
     /the repository's main checkout\. Other T3 threads may share it/);
 });
 

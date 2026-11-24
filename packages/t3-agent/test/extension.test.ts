@@ -143,7 +143,7 @@ test("under T3 it contributes its skill and prompts and declares the standard lo
   assert.deepEqual(f.statuses.at(-1), [STATUS_KEY, "t3-agent: full access · standard loadout"]);
   const sections = await startTurn(f);
   assert.match(sections.t3_agent!, /Permission mode: full access/);
-  assert.match(sections.t3_agent!, /Declared T3 tools: 10\b/);
+  assert.match(sections.t3_agent!, /Active T3 tools: 10\b/);
 });
 
 test("headless T3 sessions never call ctx.ui, including for command feedback or config warnings", async t => {
@@ -342,7 +342,7 @@ test("/t3-agent loadout changes this session's tools and survives a restart", as
   const restarted = fixture(T3, { branch: [{ type: "custom", customType: LOADOUT_ENTRY, data: { loadout: "full" } }] });
   await restarted.emit("session_start", { reason: "resume" });
   assert.equal(restarted.active().filter(name => name.startsWith("mcp__t3-code__")).length, T3_TOOLS.length);
-  assert.match((await startTurn(restarted)).t3_agent!, /Declared T3 tools: 12\b/);
+  assert.match((await startTurn(restarted)).t3_agent!, /Active T3 tools: 12\b/);
 });
 
 test("/t3-agent forget closes ledger entries without touching T3", async () => {
@@ -457,14 +457,30 @@ test("switching to lean cannot withdraw tools now required by the bridge", async
   }
 });
 
-test("the prompt and status report actual declared T3 counts for a partial or empty catalog", async () => {
+test("codemode-only reports T3 tools as active even though none are declared", async () => {
+  const { createCodemodeToolDefinition } = await import(new URL("./extensions/codemode/tool.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+  const names = T3_TOOLS.slice(0, 3);
+  const tools = names.map(n => ({ name: "mcp__t3-code__" + n, description: n, parameters: { type: "object", properties: {} } }));
+  const { hiddenDeclarations } = createCodemodeToolDefinition({ getMode: () => "only" }).prepareLoadout({
+    declared: tools, callable: tools, getExposure: () => "direct", getNamespace: () => undefined, getPromptGuidelines: () => [],
+  });
+  assert.deepEqual(hiddenDeclarations, tools.map(tool => tool.name));
+  const f = fixture(T3, { t3Tools: names, active: ["codemode", ...hiddenDeclarations] });
+  await f.emit("session_start");
+  const sections: Record<string, string> = {};
+  await f.emit("before_agent_start", { systemPromptOptions: { sections, hiddenTools: hiddenDeclarations } });
+  await f.commands.get("t3-agent").handler("status", f.ctx);
+  for (const report of [sections.t3_agent!, String(f.notices.at(-1)![0])]) assert.match(report, /Active T3 tools: 3\b/);
+});
+
+test("the prompt and status report actual active T3 counts for a partial or empty catalog", async () => {
   for (const count of [20, 0]) {
     const t3Tools = count ? Array.from({ length: 31 }, (_, i) => "tool_" + i) : [];
     const f = fixture(T3, { t3Tools, active: ["read", ...t3Tools.slice(0, count).map(name => "mcp__t3-code__" + name)] });
     await f.emit("session_start");
     await f.commands.get("t3-agent").handler("status", f.ctx);
     for (const report of [(await startTurn(f)).t3_agent!, String(f.notices.at(-1)![0])]) {
-      assert.match(report, new RegExp(`Declared T3 tools: ${count}\\b`));
+      assert.match(report, new RegExp(`Active T3 tools: ${count}\\b`));
       assert.doesNotMatch(report, /every T3 tool is declared|bridge's three/i);
     }
   }
