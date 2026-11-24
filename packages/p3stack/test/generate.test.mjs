@@ -1027,16 +1027,18 @@ pocockCase("17 staged lint rejects missing resources in both modes", ({ run, inp
   }
 });
 
-pocockCase("staged resource checks keep their source scope", ({ run, root, input }) => {
-  const cursorFile = join(root, "vendor/pstack/pstack/skills/bro/SKILL.md");
-  writeFileSync(cursorFile, readFileSync(cursorFile, "utf8") + "\n[missing](references/not-bundled.md)\n");
-  const cursor = run();
-  assert.equal(cursor.status, 0, cursor.stderr);
-  const file = input("engineering/research/SKILL.md");
-  writeFileSync(file, readFileSync(file, "utf8") + "\n[missing](references/not-bundled.md)\n");
-  const pocock = run();
-  assert.equal(pocock.status, 1);
-  assert.match(pocock.stderr, /skills\/research.*|Referenced resource does not exist/);
+pocockCase("all owners pass resource lint before installation, including authored skills", ({ run, root }) => {
+  for (const [path, resource] of [
+    ["vendor/pstack/pstack/skills/bro/SKILL.md", "missing-cursor"],
+    ["authored/skills/release/SKILL.md", "missing-authored"],
+  ]) {
+    const file = join(root, path);
+    writeFileSync(file, readFileSync(file, "utf8") + `\n[missing](references/${resource}.md)\n`);
+  }
+  const result = run();
+  assert.equal(result.status, 1);
+  for (const resource of ["missing-cursor", "missing-authored"]) assert.match(result.stderr, new RegExp(resource));
+  assert.equal(existsSync(join(root, "skills")), false);
 });
 
 pocockCase("18 unavailable staged linter refuses replacement", ({ root, run }) => {

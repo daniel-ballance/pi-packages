@@ -489,15 +489,16 @@ function lint(outDir, deny, problems, removed) {
   }
 }
 
-function lintResources(packageDir, outDir, owners, sources, rows = []) {
+function lintResources(packageDir, outDir) {
   const skills = join(outDir, "skills");
-  const referenceOwners = new Set(rows.filter(row => row.action === "reference" && sources.includes(row.source)).map(row => row.owner));
   const directories = readdirSync(skills, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && (referenceOwners.has(entry.name) || sources.includes(owners.get(`skills/${entry.name}/SKILL.md`))))
+    .filter(entry => entry.isDirectory() && existsSync(join(skills, entry.name, "SKILL.md")))
     .map(entry => join(skills, entry.name)).sort();
   if (!directories.length) throw new Error("No generated skills found; refusing an empty resource check.");
   try {
-    execFileSync(process.execPath, [join(packageDir, "../../scripts/lint-skill/lint-skill.mjs"), "--resource-root", skills, ...directories], { stdio: "pipe" });
+    const report = execFileSync(process.execPath, [join(packageDir, "../../scripts/lint-skill/lint-skill.mjs"), "--resource-root", skills, ...directories], { encoding: "utf8" });
+    // Keep warnings visible without listing every resolved dependency.
+    process.stdout.write(report.split("\n").filter(line => !/^\s+(exists|Dependencies:)/.test(line)).join("\n"));
   } catch (error) {
     throw new Error(`Staged skills failed lint-skill.\n${String(error.stdout ?? "")}\n${String(error.stderr ?? error.message)}`);
   }
@@ -558,7 +559,7 @@ export function generate({ packageDir, outDir }) {
   const hostProblems = lintHosts(outDir);
   if (hostProblems.length) throw new Error(`Host lint failed. Keep tool names in the host map.\n${hostProblems.join("\n")}`);
   if (registry) checkRegistry({ packageDir, outDir, registry });
-  if (checks.resources?.length) lintResources(packageDir, outDir, owners, checks.resources, registry?.skills);
+  if (checks.resources) lintResources(packageDir, outDir);
   return infos;
 }
 
