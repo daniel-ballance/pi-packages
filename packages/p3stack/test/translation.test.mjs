@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { generate } from "../generator/generate.mjs";
@@ -104,4 +104,47 @@ test("slash translation recognizes commands, not URL segments, file paths, or un
 
 test("the prototype's throwaway page is an app route", () => {
   assert.ok(read("skills/interactive-prototype/UI.md").includes("route under `/prototype/<name>`"));
+});
+
+for (const [skill, file, suffix] of [
+  ["architect", "references/rationale-template.md", "arena/SKILL.md"],
+  ["poteto-mode", "playbooks/babysit.md", "bugbot-triage.md"],
+  ["poteto-mode", "playbooks/multi-phase-plan.md", "bugbot-triage.md"],
+  ["poteto-mode", "references/bugbot-triage.md", "playbooks/babysit.md"],
+  ["constraints", "SKILL.md", "references/floor.md"],
+]) {
+  test(`${skill}/${file} reaches ${suffix} from the skill directory`, () => {
+    const skillDir = join(pkg, "skills", skill);
+    const refs = [...readFileSync(join(skillDir, file), "utf8").matchAll(/`([^`\n]+)`|\]\(([^)\n]+)\)/g)]
+      .map(match => match[1] ?? match[2]).filter(path => path.endsWith(suffix));
+    assert.ok(refs.length, `no pointer to ${suffix}`);
+    for (const ref of refs) assert.ok(existsSync(resolve(skillDir, ref)), `${skill} cannot resolve ${ref}`);
+  });
+}
+
+test("constraints supplies a floor command runnable from the consumer repository", () => {
+  const skillDir = join(pkg, "skills/constraints");
+  const operand = read("skills/constraints/SKILL.md").match(/`node "([^"]*floor-check\.mjs)"`/)?.[1];
+  assert.ok(operand, "missing quoted checker path");
+  assert.equal(resolve(operand.replace("<constraints-dir>", skillDir)), join(pkg, "skills/p3stack-mode/scripts/floor-check.mjs"));
+});
+
+test("dyl-review hands results back without prescribing a dropped caller", () => {
+  const skill = read("skills/dyl-review/SKILL.md");
+  assert.match(skill, /hand the block back to that skill/);
+  assert.doesNotMatch(skill, /dyl-ready-pr/);
+});
+
+test("the instrumentation checklist points to the shipped skill and the project's launch process", () => {
+  const checklist = read("skills/instrumentation/references/observability-checklist.md");
+  assert.doesNotMatch(checklist, /observability-and-instrumentation|shipping-and-launch/);
+  assert.match(checklist, /\[instrumentation\]\(SKILL\.md\)/);
+  assert.match(checklist, /rollback triggers, see your launch process/);
+});
+
+test("constraints describes the standards and spec axes and grilling's question rounds", () => {
+  const skill = read("skills/constraints/SKILL.md");
+  assert.doesNotMatch(skill, /five axes|one-question-at-a-time/);
+  assert.match(skill, /code-review[^\n]*standards[^\n]*spec/i);
+  assert.match(skill, /rounds[^\n]*grilling|grilling[^\n]*rounds/i);
 });
