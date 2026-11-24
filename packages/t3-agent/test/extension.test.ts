@@ -211,6 +211,24 @@ test("a new caller-owned preview tab left open gets one automated reminder befor
   assert.equal(settled.continue, undefined);
 });
 
+test("both boundaries append to earlier entries and preserve an earlier continuation", async () => {
+  const f = fixture(T3);
+  await f.emit("session_start");
+  const earlier = { type: "custom", customType: "another-extension" };
+  for (const boundary of ["turn_end", "agent_before_settle"]) {
+    await toolResult(f, "schedule_task", {}, { scheduledTaskId: "s", enabled: false });
+    const prior = { entries: [earlier], continue: true, outcome: "completed" };
+    // Pi replaces only the fields supplied by the handler.
+    const proposal = { ...prior, ...await f.emit(boundary, prior) };
+    assert.deepEqual(proposal.entries.map((e: any) => e.customType), [earlier.customType, ENTRY_TYPE]);
+    assert.equal(proposal.continue, true);
+  }
+  await toolResult(f, "preview_open", { reuseExistingTab: false }, { tabId: "p", control: { ownedByCaller: true } });
+  const reminder = await f.emit("agent_before_settle", { entries: [earlier], continue: true, outcome: "completed" });
+  assert.deepEqual(reminder.entries.map((e: any) => e.customType), [earlier.customType, ENTRY_TYPE, REMINDER_TYPE]);
+  assert.equal(reminder.continue, true);
+});
+
 test("/t3-agent loadout changes this session's tools and survives a restart", async () => {
   const f = fixture(T3);
   await f.emit("session_start", { reason: "startup" });
