@@ -19,7 +19,7 @@ test("terminal-only skills come from resource discovery, never a static manifest
     const paths: string[] = [];
     subagents({
       registerFlag() {},
-      on(event: string, fn: Function) { if (event === "resources_discover") paths.push(...fn().skillPaths); },
+      on(event: string, fn: Function) { if (event === "resources_discover") paths.push(...fn({}, {mode: "rpc"}).skillPaths); },
     } as unknown as ExtensionAPI);
     const skills = paths.flatMap(dir => {
       const loaded = loadSkillsFromDir({ dir, source: "test" });

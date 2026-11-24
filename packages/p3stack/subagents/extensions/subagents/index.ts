@@ -53,20 +53,20 @@ export const FOOTER_CHANNEL = "subagents:footer";
 export default function subagents(pi: ExtensionAPI) {
   // Explicitly loading this package in a child still does not enable recursion.
   if (process.env.PI_SUBAGENT === "1") return;
-  if (detectHost() !== "t3") pi.on("resources_discover", () => ({
-    skillPaths: [fileURLToPath(new URL("../../skills", import.meta.url))],
-  }));
   pi.registerFlag("disable-native-subagents", {
     description: "Disable native subagent tools, managers, workflows and notifications for this launch",
     type: "boolean", default: false,
   });
+  // T3 supplies its own delegation. Accept the CLI flag, but install no hooks.
+  if (detectHost() === "t3") return;
+  pi.on("resources_discover", (_event, ctx) => {
+    if (ctx.mode === "tui" || ctx.mode === "rpc") return { skillPaths: [fileURLToPath(new URL("../../skills", import.meta.url))] };
+  });
   // Pi applies parsed CLI flags after factories load. Register nothing else
   // until session_start, including on reload with the same launch flags.
-  // Inside T3 Code, T3's own delegated tasks are the subagent system. The whole
-  // manager duplicates it, so nothing registers, not even deferred tools.
   let initialized = false;
   pi.on("session_start", (_event, ctx) => {
-    if (initialized || pi.getFlag("disable-native-subagents") === true || detectHost() === "t3") return;
+    if (initialized || pi.getFlag("disable-native-subagents") === true) return;
     if (ctx.mode !== "tui" && ctx.mode !== "rpc") return;
     initialized = true;
     initializeSubagents(pi, ctx);
