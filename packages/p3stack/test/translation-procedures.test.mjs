@@ -125,3 +125,49 @@ test("plan checker accepts installed files outside the consumer repo, not missin
     assert.match(bad.stderr, /installed file/i);
   }
 });
+
+for (const name of ["swarm", "arena"]) {
+  test(`${name} covers the full assignment within the live-child limit`, () => {
+    const fanOut = skill(name).split("## Phase B: Fan out")[1].split("## Phase C")[0];
+    assert.match(fanOut, /every (?:slice|candidate)/i);
+    assert.match(fanOut, /waves[^\n]*live-child limit/i);
+    assert.match(fanOut, /close[^\n]*before[^\n]*next/i);
+    assert.doesNotMatch(fanOut, /all N .* at once/);
+  });
+}
+
+test("recall gives each child scoped history IDs, not a second discovery algorithm", () => {
+  const recall = skill("recall");
+  assert.match(recall, /Session history[^\n]*host-capabilities\.md/);
+  assert.match(recall, /in-scope session or thread IDs/i);
+  assert.doesNotMatch(recall, /~\/\.pi\/agent\/sessions\/|ls -t|chat UUID/);
+});
+
+const reviews = ["thermo-nuclear-review", "thermo-nuclear-code-quality-review"];
+for (const name of ["thermos", "dyl-review"]) {
+  test(`${name} briefs both read-only thermo passes with the installed recipes and rubrics`, () => {
+    const text = skill(name);
+    for (const review of reviews) {
+      assert.ok(text.includes(`(../../agents/${review}-subagent.md)`), review + " recipe");
+      assert.ok(text.includes(`(../${review}/SKILL.md)`), review + " rubric");
+    }
+    assert.doesNotMatch(text, /Thermos plugin/);
+  });
+}
+
+for (const name of reviews) {
+  test(`${name} recipe points to the rubric it uses without a plugin or child forge call`, () => {
+    const text = read(`agents/${name}-subagent.md`);
+    assert.ok(text.includes(`(../skills/${name}/SKILL.md)`));
+    assert.doesNotMatch(text, /Thermos plugin|Invoked delegated child|use `gh` or `glab`/);
+  });
+}
+
+test("dyl-review keeps code-review coordination and Git/forge work in the parent", () => {
+  const text = skill("dyl-review");
+  assert.match(text, /parent[^\n]*Standards[^\n]*Spec/i);
+  const worker = text.split("## Dylan-lens worker")[1].split("## Synthesis")[0];
+  assert.doesNotMatch(worker, /`(?:gh|git|origin) /);
+  assert.match(worker, /title and body[^\n]*(?:parent|main thread)/i);
+  assert.doesNotMatch(text, /child running \[code-review\]|code-review child|every worker the depth calls for in one message/);
+});

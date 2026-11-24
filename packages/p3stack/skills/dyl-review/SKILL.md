@@ -28,13 +28,14 @@ Deep when the invoking skill or the human asks for it (deep / thorough / thermo)
 ## Main-thread rules (strict)
 
 1. Resolve PR URLs/numbers. `<base>` below is the PR's base branch (`gh pr view <n> --json baseRefName`, or `origin pr view <n> --json baseRef`), not assumed `main`. For deep, the PR head must be checked out locally: the current branch, or a throwaway worktree (`git fetch origin <base> <branch>`, then `git worktree add /tmp/dyl-review-<pr> origin/<branch>`, removed when done). Thermos and code-review audit a checkout.
-2. Gather once, then fan out. The main thread writes the PR diff to a file (`git diff origin/<base>...HEAD` from the checkout when there is one, with `origin/<base>` freshly fetched, else `gh pr diff <n>` / `origin pr diff <n>`), then launches every worker the depth calls for in one message, pointing each at that file and at the checkout when there is one:
+2. Gather once, then fan out. The main thread writes the PR diff to a file (`git diff origin/<base>...HEAD` from the checkout when there is one, with `origin/<base>` freshly fetched, else `gh pr diff <n>` / `origin pr diff <n>`), then captures the PR title and body, commit list and changed-file context. Keep PR discussion separate until after the independent audit. Brief each pass with the captured files and checkout path, in waves within the live-child limit:
    - One Dylan-lens worker (below). Always.
-   - Deep only: `thermo-nuclear-review-subagent` and `thermo-nuclear-code-quality-review-subagent` (the pair the `thermos` skill from the Thermos plugin launches), plus one read-only child running [code-review](../code-review/SKILL.md) through **Delegate** in the host capabilities.
-   Analysis happens in the workers, not on the main thread.
+   - Deep only: give one read-only child the [thermo-nuclear-review recipe](../../agents/thermo-nuclear-review-subagent.md) and [rubric](../thermo-nuclear-review/SKILL.md) and another the [thermo-nuclear-code-quality-review recipe](../../agents/thermo-nuclear-code-quality-review-subagent.md) and [rubric](../thermo-nuclear-code-quality-review/SKILL.md). Resolve these installed paths before putting them in the briefs.
+   - In deep review the parent reads [code-review](../code-review/SKILL.md) and starts its Standards and Spec passes as direct children. Give each its axis brief and captured evidence, not the skill to run. Include the standards and smell baseline for Standards, and the spec for Spec; record when there is no spec.
+   If you cannot delegate, apply the assigned rubrics yourself in sequence and disclose that the passes were not independent.
 3. Every worker uses auto / inherit intelligence through **Parent model** under **Delegate** in the host capabilities. Do not pin a cheap/fast model for the review judgment pass.
 4. Keep the main thread thin: launch, wait, synthesize. Nothing user-facing until every worker finishes.
-5. On a re-review (same PR, new tip), tell the Dylan-lens worker and the thermos subagents what changed since the last pass and which earlier asks were deliberately skipped, with the reason, so they re-judge instead of repeating. Give the code-review child that context too.
+5. On a re-review (same PR, new tip), tell the Dylan-lens worker and the thermos subagents what changed since the last pass and which earlier asks were deliberately skipped, with the reason, so they re-judge instead of repeating. Give the Standards and Spec reviewers that context too.
 
 ## Dylan-lens worker
 
@@ -42,7 +43,7 @@ Delegate a read-only child through **Delegate** in the host capabilities. Do not
 
 ### 1. Gather PR context
 
-Read the diff file the main thread wrote. Open surrounding files from the checkout when one exists. Pull title and body read-only via `gh pr view` / `origin pr view`. Focus on the priority list below.
+Read the diff file the main thread wrote. Open surrounding files from the checkout when one exists. Read the PR title and body supplied by the parent. Focus on the priority list below.
 
 ### 2. Lenses (apply in full when relevant)
 

@@ -24,7 +24,7 @@ Open a todolist with one entry per phase before launching anything.
 
 ## Phase B: Fan out
 
-Delegate all N workers at once per **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md), on the step 3 model (your own model for `auto` or `inherit-parent`). Give each worker that writes its own checkout per **Isolation**.
+Cover every slice or race arm in waves no larger than the available live-child limit under **Delegate** in the [host capabilities](../poteto-mode/references/host-capabilities.md). Collect the results and close each wave before starting the next. Use the step 3 model (your own model for `auto` or `inherit-parent`). Give each worker that writes its own checkout per **Isolation**.
 
 When a worker must start from a non-default branch, start its checkout from that branch (**Isolation**).
 
