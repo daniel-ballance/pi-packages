@@ -6,13 +6,15 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 
 - Decide whether to reduce the 92 skills to about 46 entry points. A cheaper first step is to ship the 24 principle skills as poteto-mode references. Both changes affect public `/skill:` names and links. (catalog.md, Decision and §7)
 - Decide when a route actually needs poteto-mode. Only the small-task row skips its full read today; making the read conditional elsewhere would save context but change which rules an agent sees. (router.md §2)
-- Decide whether to replace the ten mandatory live verification lanes per PR with checks for the affected behavior. The multi-PR template and `check-plan.mjs` require ten even for one interface. (catalog.md §3; router.md §6)
-- Decide whether the owner's children should be able to select `todo`. `global/subagents.json` lists the tool but not `loaded:todo` in `extensions`; adding the extension expands the owner's allowlist. (subagents.md §7)
 - Trial shorter descriptions for model-invoked skills, and decide which still need to be advertised. Check discovery with routing off before making a skill explicit-only. (catalog.md §8)
 - Authorize the model, cases, repetitions, and spend for live routing and behavior evals on this branch. Compare base and branch with the same parent and tools; a green offline suite is not a measured change in task success. Test T3 separately from the terminal runners. (evals.md §3)
 - Decide whether nightly maintenance should land every changed tip or report unconsumed changes without a PR. A read-only candidate classifier would separate finding a new commit from adopting it. (generator.md §5)
 - Measure searches avoided by T3's `standard` loadout against the cost of declaring its tools before choosing `lean` as a default. (t3.md §7)
 - Decide whether externally consumed or persisted data warrants a routed migration procedure. The dropped upstream skill covers consumer notice and retirement criteria that the one-wave versus expand–contract rule does not. (catalog.md §10 and “Reachability, merges and upstream admissions”)
+
+## Decided
+
+- Multi-PR plans keep their ten mandatory live verification lanes per PR. The owner chose to leave the template and `check-plan.mjs` as they are (2026-11-24).
 
 ## Larger changes worth doing
 

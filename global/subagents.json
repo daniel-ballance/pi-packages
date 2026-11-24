@@ -87,7 +87,8 @@
   "peerMessageLimit": 0,
   "parentMessageLimit": 20,
   "extensions": [
-    "loaded:claude-subscription"
+    "loaded:claude-subscription",
+    "loaded:todo"
   ],
   "skills": [],
   "promptTemplates": [],
