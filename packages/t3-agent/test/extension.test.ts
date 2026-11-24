@@ -84,6 +84,8 @@ test("the ledger persists only bounded handle data, never URL credentials, promp
   await toolResult(f, "t3_thread_send", { message: "PRIVATE child brief" }, { taskId: "d2" });
   await toolResult(f, "watch_pull_request", {}, { url: "https://user:PRIVATE@github.com/o/r/pull/7?PRIVATE#PRIVATE" });
   await toolResult(f, "watch_pull_request", {}, { url: webhook });
+  // A terminal pull/number alone does not make an arbitrary URL a canonical PR link.
+  await toolResult(f, "watch_pull_request", {}, { url: "https://example.invalid/hooks/PRIVATE/redirect/pull/7" });
   await toolResult(f, "t3_thread_launch", { title: "Build `nightly`\nPRIVATE" }, { threadId: "t", link: "[PRIVATE](t3-thread://v2/e/t?PRIVATE#PRIVATE)" });
   await toolResult(f, "t3_thread_launch", { title: "a".repeat(1000) }, { threadId: "t2" });
   await toolResult(f, "t3_thread_launch", {}, { threadId: "x".repeat(1000) });
@@ -255,6 +257,11 @@ test("reused, human-owned, ambiguous and unavailable preview tabs do not trigger
   // A later observation that the user took over revokes an earlier ownership observation.
   await toolResult(f, "preview_open", { reuseExistingTab: false }, { tabId: "new", control: owned });
   await toolResult(f, "preview_status", {}, { tabId: "new", control: human });
+  assert.ok(!(await f.emit("agent_before_settle", { entries: [], outcome: "completed" }))?.continue);
+
+  // Server preview status also reports ownership of other tabs in the thread.
+  await toolResult(f, "preview_open", { reuseExistingTab: false }, { tabId: "other", control: owned });
+  await toolResult(f, "preview_status", {}, { tabId: "current", tabs: [{ tabId: "other", ...human }] });
   assert.ok(!(await f.emit("agent_before_settle", { entries: [], outcome: "completed" }))?.continue);
 });
 

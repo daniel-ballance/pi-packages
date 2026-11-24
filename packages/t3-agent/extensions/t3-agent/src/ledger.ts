@@ -60,7 +60,10 @@ function prId(value: string): string | undefined {
   const url = URL.parse(value);
   if (url?.protocol !== "https:") return undefined;
   const path = url.pathname.replace(/\/$/, "");
-  if (!/^\/(?:[\w.-]+\/)+[\w.-]+\/(?:pull|pulls|pull-requests|pullrequest|-\/merge_requests)\/[1-9]\d*$/.test(path)) return undefined;
+  const pr = /^\/[\w.-]+\/[\w.-]+\/(?:pull|pulls|pull-requests)\/[1-9]\d*$/;
+  const gitlab = /^\/(?:[\w.-]+\/){2,}-\/merge_requests\/[1-9]\d*$/;
+  const azure = /^\/(?:[\w.-]+\/)+_git\/[\w.-]+\/pullrequest\/[1-9]\d*$/;
+  if (!pr.test(path) && !gitlab.test(path) && !azure.test(path)) return undefined;
   const canonical = url.origin + path; // no userinfo, query or fragment
   return canonical.length <= 512 ? canonical : undefined;
 }
@@ -111,16 +114,20 @@ export function trackRunTab(opened: Set<string>, tool: string, input: Json, resu
   }
   if (!tool.startsWith("preview_")) return;
   const id = previewId(result);
-  if (!id) return;
   const control = record(result?.control);
   const owned = control?.ownedByCaller === true && (control.owner === undefined || control.owner === "agent");
-  if (tool === "preview_open") {
+  if (id && tool === "preview_open") {
     // Current bridges reuse by default and do not always return a reused flag.
     const fresh = !input.tabId && (result?.reused === false || (result?.reused === undefined && input.reuseExistingTab === false));
     if (result?.available !== false && owned && fresh) opened.add(id);
     else opened.delete(id);
-  } else if (control && !owned) {
+  } else if (id && control && !owned) {
     opened.delete(id);
+  }
+  // Status can also report a takeover of another tab, not just the current one.
+  for (const entry of Array.isArray(result?.tabs) ? result.tabs : []) {
+    const tab = record(entry);
+    if (typeof tab?.tabId === "string" && (tab.ownedByCaller === false || tab.owner === "human" || tab.owner === "unclaimed")) opened.delete(tab.tabId);
   }
 }
 
