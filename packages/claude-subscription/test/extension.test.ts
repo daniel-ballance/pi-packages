@@ -145,6 +145,18 @@ test("a failed sign-in is reported in place of the account, and print modes star
   assert.equal(h.notices.length, 1);
 });
 
+test("a look-up cancelled after the account is known shows the account without a problem", async t => {
+  t.mock.method(ClaudeSubscription.prototype, "status", async function(this: ClaudeSubscription) {
+    this.account = { subscriptionType: "Claude Max", email: "user@example.invalid" };
+    throw new Error("Request was aborted");
+  });
+  const h = harness(t);
+  await h.command();
+  assert.match(h.notices[0], /Claude Max · user@example.invalid/);
+  assert.doesNotMatch(h.notices[0], /Account:/);
+  assert.match(h.notices[0], /Plan usage unavailable/);
+});
+
 test("what a turn reports about the plan reaches the command when the full report is unavailable", async t => {
   let instance: ClaudeSubscription | undefined;
   const fake = fakeQuery(async claude => {

@@ -58,7 +58,8 @@ export default function claudeSubscription(pi: ExtensionAPI) {
       const failed = "problem" in status;
       ctx.ui.notify(renderReport(readUsage(failed ? undefined : status.plan, subscription.rateLimit), {
         account: failed ? subscription.account : status.account,
-        accountProblem: failed ? status.problem : undefined,
+        // A known account stands on its own: a cancelled or failed look-up only costs the plan rows.
+        accountProblem: failed && !subscription.account ? status.problem : undefined,
         fastMode: subscription.fastMode, spend: subscription.spend, openSessions: subscription.openSessions,
         configProblems: settings.problems, configPath: settings.path,
       }), "info");
