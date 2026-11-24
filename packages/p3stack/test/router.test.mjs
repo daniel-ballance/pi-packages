@@ -43,6 +43,7 @@ test("a missing reproduction changes the first target, not the owner of the fix"
   const diagnosis = /reproduc(?:ed|e) (?:the )?failure.*confirm(?:ed)? (?:its |the )?cause/i;
   assert.match(router, diagnosis);
   assert.match(router, /before its fix[^\n]*debug tag[^\n]*probe paths[^\n]*step 3/i);
+  assert.match(router, /bug-fix\.md[^\n]*step 3[^\n]*(?:through|to the end)[^\n]*(?:delivery|opening a PR)/i);
   const bug = read("poteto-mode/playbooks/bug-fix.md");
   const afterFix = bug.split("3. Plan the fix.")[1].split("[floor]")[0];
   assert.match(afterFix, /remove[^\n]*tagged[^\n]*throwaway probes[^\n]*rerun the original repro/i);
