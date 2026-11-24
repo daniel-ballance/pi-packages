@@ -57,9 +57,9 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - **Middle Man**: a class or function that mostly just delegates onward. → cut it, call the real target direct.
 - **Refused Bequest**: a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
 
-### 4. Spawn both reviewers with `subagent_spawn`, then `subagent_wait`
+### 4. [Delegate](../poteto-mode/references/host-capabilities.md#delegate) the independent reviews
 
-Spawn both reviewers before waiting; collect and verify both reports before aggregating them.
+Run the reviews in parallel within the live-child limit. Wait for the results; collect and verify both reports before aggregating them.
 
 **Standards subagent prompt** should include:
 

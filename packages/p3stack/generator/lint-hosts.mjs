@@ -4,7 +4,15 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const hostMap = "skills/poteto-mode/references/host-capabilities.md";
-const tokens = ["mcp__t3", "delegate_task", "task_status", "schedule_task", "watch_pull_request", "t3_thread_read"];
+// Match tool identifiers (including the codemode spelling), not substrings of
+// unrelated variable names. T3 prose sometimes uses the unqualified name.
+const hostTool = new RegExp(`\\b(?:${[
+  "subagent_[\\w*]+|mcp__t3(?:[-_]code__[\\w*]+)?|t3_[\\w*]+",
+  "orchestrator_capabilities|delegate_task|task_status|task_cancel|create_threads|request_secret",
+  "schedule_task|list_scheduled_tasks|run_scheduled_task_now|delete_scheduled_task",
+  "link_pull_requests?|(?:un)?watch_pull_request|list_thread_pull_requests|write_pull_request_guides|read_pull_request_guide",
+  "html_preview|html_render|preview_[\\w*]+|device_(?:open|list|screenshot|close)",
+].join("|")})(?!\\w)`, "g");
 
 export function lintHosts(root, paths = [""]) {
   const problems = [];
@@ -17,7 +25,7 @@ export function lintHosts(root, paths = [""]) {
     const output = path.split("\\").join("/");
     if (output === hostMap) return;
     readFileSync(absolute, "utf8").split("\n").forEach((line, index) => {
-      for (const token of tokens) if (line.includes(token)) problems.push(`${output}:${index + 1}: ${token}`);
+      for (const [name] of line.matchAll(hostTool)) problems.push(`${output}:${index + 1}: ${name}`);
     });
   };
   for (const path of paths) visit(path);

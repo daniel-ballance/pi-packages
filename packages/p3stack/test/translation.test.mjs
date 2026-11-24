@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { generate } from "../generator/generate.mjs";
+import { lintHosts } from "../generator/lint-hosts.mjs";
 
 const pkg = fileURLToPath(new URL("..", import.meta.url));
 const read = path => readFileSync(join(pkg, path), "utf8");
@@ -32,7 +33,7 @@ function translate(t, source, files) {
   return path => readFileSync(join(outDir, path), "utf8");
 }
 
-for (const name of ["AskQuestion", "create-skill"]) {
+for (const name of ["AskQuestion", "AskUserQuestion", "create-skill"]) {
   test(`an uncatalogued use of ${name} needs a translation, not a catch-all substitution`, t => {
     const path = "skills/example/SKILL.md";
     assert.throws(() => translate(t, "cursor-plugins", { [path]: `Call \`${name}\` with these arguments.\n` }),
@@ -54,3 +55,31 @@ for (const [path, input, sibling] of [
       /changed upstream/);
   });
 }
+
+test("the review and design instructions resolve delegation through the host map", () => {
+  for (const path of ["code-review/SKILL.md", "codebase-design/SKILL.md", "codebase-design/DESIGN-IT-TWICE.md"]) {
+    const skill = read("skills/" + path);
+    assert.doesNotMatch(skill, /\b(?:subagent_|mcp__t3)/, path);
+    assert.match(skill, /\[Delegate\]\(\.\.\/poteto-mode\/references\/host-capabilities\.md#delegate\)/, path);
+  }
+});
+
+test("host lint catches terminal and T3 calls in agents and skill resources, but not the map or shared tools", t => {
+  const root = mkdtempSync(join(tmpdir(), "p3stack-host-tools-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const map = "skills/poteto-mode/references/host-capabilities.md";
+  const agent = "agents/reviewer.md", resource = "skills/demo/worker.json";
+  for (const [path, contents] of [
+    [agent, "Call subagent_spawn, then subagent_wait.\nUse task_cancel."],
+    [resource, '{"tool":"subagent_workflow_inspect"}\n{"tool":"mcp__t3_code__delegate_task"}'],
+    [map, "subagent_read, mcp__t3-code__delegate_task"],
+    ["skills/demo/SKILL.md", "Ask via ask_user. Read with read. Note the last_task_status_code."],
+  ]) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), contents);
+  }
+  assert.deepEqual(lintHosts(root), [
+    agent + ":1: subagent_spawn", agent + ":1: subagent_wait", agent + ":2: task_cancel",
+    resource + ":1: subagent_workflow_inspect", resource + ":2: mcp__t3_code__delegate_task",
+  ]);
+});
