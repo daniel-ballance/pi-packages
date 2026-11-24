@@ -3,6 +3,8 @@
 // results carry the identifiers only once; after compaction the model would otherwise
 // lose the taskId it needs for task_cancel, or forget the tab it must close.
 
+import { createHash } from "node:crypto";
+
 const KINDS = ["delegate", "schedule", "pr", "thread", "preview", "device"] as const;
 export type HandleKind = (typeof KINDS)[number];
 
@@ -63,11 +65,16 @@ const forgeRoutes = new Map([
   ["codeberg.org", "pulls"], ["dev.azure.com", "pullrequest"],
 ]);
 
-function forgeKey(host: unknown, repository: unknown, number: unknown): string | undefined {
-  if (typeof host !== "string" || host.length > 253 || !/^[\w-]+(?:\.[\w-]+)*(?::\d{1,5})?$/.test(host) ||
-    typeof repository !== "string" || repository.length > 256 || !/^(?:[\w.-]+\/)+[\w.-]+$/.test(repository) ||
+function repoNumber(repository: unknown, number: unknown): string | undefined {
+  if (typeof repository !== "string" || repository.length > 256 || !/^(?:[\w.-]+\/)+[\w.-]+$/.test(repository) ||
     repository.split("/").some(part => part === "." || part === "..") ||
     typeof number !== "number" || !Number.isSafeInteger(number) || number < 1) return undefined;
+  return `${repository.toLowerCase()}#${number}`;
+}
+
+function forgeKey(host: unknown, repository: unknown, number: unknown): string | undefined {
+  if (typeof host !== "string" || host.length > 253 || !/^[\w-]+(?:\.[\w-]+)*(?::\d{1,5})?$/.test(host) ||
+    typeof repository !== "string" || !repoNumber(repository, number)) return undefined;
   const authority = host.toLowerCase(), repo = repository.toLowerCase();
   const route = forgeRoutes.get(authority);
   if (!route) return `${repo}#${number}@${authority}`; // Reported self-hosted target, not a verified web link.
@@ -83,10 +90,25 @@ function keyFromForgeUrl(value: string): string | undefined {
   return match && match[2] === forgeRoutes.get(url.host) ? forgeKey(url.host, match[1], Number(match[3])) : undefined;
 }
 
-function prId(value: string): string | undefined {
+// The old URL-only writer could mistake a callback path for a repository. Match a later
+// structured result by digest without copying that path into another prompt or entry.
+function legacyAlias(key: string): string {
+  return `legacy:${createHash("sha256").update(key).digest("hex").slice(0, 24)}${key.slice(key.indexOf("#"))}`;
+}
+
+function prId(value: string, oldWatch: boolean): string | undefined {
   if (value.length > 2048) return undefined;
-  const scoped = /^([\w./-]+)#([1-9]\d*)@([\w.:-]+)$/.exec(value);
-  return scoped ? forgeKey(scoped[3], scoped[1], Number(scoped[2])) : keyFromForgeUrl(value);
+  const scoped = /^([\w./-]+)#([1-9]\d*)(?:@([\w.:-]+))?$/.exec(value);
+  if (scoped) return scoped[3] ? forgeKey(scoped[3], scoped[1], Number(scoped[2])) : repoNumber(scoped[1], Number(scoped[2]));
+  if (/^legacy:[a-f\d]{24}#[1-9]\d{0,15}@[\w.:-]{1,253}$/.test(value)) return value;
+  const known = keyFromForgeUrl(value);
+  if (known || !oldWatch) return known;
+  const url = URL.parse(value);
+  // Old entries stored canonical HTTPS links, without userinfo, suffix, query or fragment.
+  if (url?.protocol !== "https:" || forgeRoutes.has(url.host) || url.origin + url.pathname !== value) return undefined;
+  const match = /^\/(.+?)\/(?:pull|pulls|pull-requests|-\/merge_requests|pullrequest)\/([1-9]\d*)$/.exec(url.pathname);
+  const key = match && forgeKey(url.host, match[1], Number(match[2]));
+  return key ? legacyAlias(key) : undefined;
 }
 
 /** The same allowlist gates live writes and replay of untrusted, older session entries. */
@@ -95,7 +117,7 @@ function receipt(data: unknown): Handle | undefined {
   if (!raw || !KINDS.includes(raw.kind as HandleKind) || typeof raw.id !== "string") return undefined;
   if (raw.open !== undefined && typeof raw.open !== "boolean") return undefined;
   const kind = raw.kind as HandleKind;
-  const id = kind === "pr" ? prId(raw.id) : kind === "delegate" ? taskId(raw.id) : safeId(raw.id);
+  const id = kind === "pr" ? prId(raw.id, raw.status === "watching" || raw.open === false) : kind === "delegate" ? taskId(raw.id) : safeId(raw.id);
   if (!id) return undefined;
   const explicitTitle = safeTitle(raw.explicitTitle);
   const link = kind === "delegate" || kind === "thread" ? threadLink(raw.link) : undefined;
@@ -240,6 +262,9 @@ export class Ledger {
 
   apply(update: Handle): void {
     const key = `${update.kind}:${scopedId(update)}`;
+    if (update.kind === "pr" && update.id.includes("@") && !update.id.startsWith("legacy:")) {
+      this.handles.delete(`pr:${legacyAlias(update.id)}`);
+    }
     const previous = this.handles.get(key);
     // Re-insert open receipts so iteration order is most recent last. Closed IDs need no cache.
     this.handles.delete(key);

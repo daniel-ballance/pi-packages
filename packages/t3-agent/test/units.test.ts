@@ -204,6 +204,25 @@ test("PR watches and unwatches share a verified forge key across spellings and r
   assert.deepEqual(ledger.open(), []);
 });
 
+test("pre-upgrade PR receipts survive replay without turning an unknown origin into a trusted link", () => {
+  const ledger = new Ledger();
+  const urls = ["https://gitlab.example.com/g/p/-/merge_requests/3", "https://forge.example:4431/team/repo/pulls/4"];
+  const branch = ["o/r#7", ...urls].map(id => ({ type: "custom", customType: ENTRY_TYPE, data: { kind: "pr", id, status: "watching", open: true } }));
+  rebuild(ledger, branch);
+  assert.equal(ledger.open("pr").length, 3);
+  assert.match(ledger.render()!, /watching PR o\/r#7/);
+  assert.ok(contextualTools(ledger).includes("unwatch_pull_request"));
+  assert.match(ledger.render()!, /#3@gitlab\.example\.com/);
+  assert.doesNotMatch(ledger.render()!, /https:|g\/p|team\/repo/);
+  // Structured results identify the same self-hosted watches without trusting the old URL path.
+  for (const [host, repository, number] of [["gitlab.example.com", "g/p", 3], ["forge.example:4431", "team/repo", 4]]) {
+    for (const update of observe("unwatch_pull_request", {}, { host, repository, number, watching: false })) ledger.apply(update);
+  }
+  assert.deepEqual(ledger.open().map(h => h.id), ["o/r#7"]);
+  rebuild(ledger, [...branch, ...branch.map(e => ({ ...e, data: { kind: "pr", id: e.data.id, open: false } }))]);
+  assert.deepEqual(ledger.open(), []);
+});
+
 test("devices use the reported host and id, including on an argument-less close", () => {
   const ledger = new Ledger();
   const apply = (tool: string, input: Record<string, unknown>, result: Record<string, unknown>) =>
