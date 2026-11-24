@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AgentRecord } from "./manager.js";
 import type { PeerState } from "./peers.js";
@@ -16,6 +16,20 @@ export function enforcePrivatePathIfPresent(path: string, mode: number, director
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
+}
+export function ensurePrivateDirectory(directory: string, mode = 0o700) {
+  const created: string[] = [];
+  for (let current = directory; ; current = dirname(current)) {
+    try { lstatSync(current); break; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      created.push(current);
+      if (dirname(current) === current) break;
+    }
+  }
+  if (created.length) mkdirSync(directory, { recursive: true, mode });
+  enforcePrivatePath(directory, mode, true);
+  for (const path of created) if (path !== directory) enforcePrivatePath(path, mode, true);
 }
 function writeJson(path: string, value: unknown, flush = false) {
   const temp = path + ".tmp";
@@ -61,6 +75,7 @@ export class RegistryStore {
   save(records: Iterable<AgentRecord>, changed: AgentRecord[], canArchive: (r: AgentRecord) => boolean, pendingNotices: Notice[], peers?: PeerState) {
     // Keep invalidations even if the write fails. Never overwrite a referenced snapshot in place.
     for (const r of changed) this.dirty.add(r.id);
+    ensurePrivateDirectory(dirname(this.path));
     const archived = new Set<string>();
     let wroteArchive = false;
     const agents = Array.from(records, record => {

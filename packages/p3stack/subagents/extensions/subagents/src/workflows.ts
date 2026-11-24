@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ensurePrivateDirectory } from "./registry.js";
 import { candidateDirectory, snapshot, verifyArtifact, type Artifact } from "./workflow-artifacts.js";
 import { dependencies, parseWorkflow, workUnits, type WorkflowDefinition, type WorkflowStep, type Validator } from "./workflow-definition.js";
 import { CommandStopUnconfirmed, type AgentJob, type WorkflowHost } from "./workflow-host.js";
@@ -59,8 +60,7 @@ export class Workflows {
   private execution?: { id: string; controller: AbortController; active: Map<string, Promise<void>>; timer: NodeJS.Timeout; intervened: boolean };
   private closed = false;
   constructor(readonly directory: string, private host: WorkflowHost, private changed: () => void = () => {}) {
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
-    enforcePrivatePath(directory, 0o700, true);
+    if (!enforcePrivatePathIfPresent(directory, 0o700, true)) return;
     for (const name of readdirSync(directory)) {
       const runDirectory = join(directory, name), path = join(runDirectory, "run.json");
       if (!existsSync(path)) continue;
@@ -81,6 +81,7 @@ export class Workflows {
     }
   }
   private save(run: WorkflowRun) {
+    ensurePrivateDirectory(this.directory);
     const path = join(run.directory, "run.json"), temp = path + ".tmp";
     enforcePrivatePath(run.directory, 0o700, true);
     enforcePrivatePathIfPresent(temp, 0o600, false);
@@ -148,6 +149,7 @@ export class Workflows {
     if (this.execution) throw new Error("Another workflow is running; pause/cancel it first");
     if ([...this.runs.values()].some(r => r.interventionHold)) throw new Error("A workflow is held for intervention; release its child holds and workflow barrier before starting another workflow");
     const definition = parseWorkflow(value); this.host.authorize(definition);
+    ensurePrivateDirectory(this.directory);
     const id = `workflow-${randomUUID().slice(0, 8)}`, directory = join(this.directory, id);
     mkdirSync(directory, { mode: 0o700 });
     enforcePrivatePath(directory, 0o700, true);

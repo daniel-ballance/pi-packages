@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { RpcChild, RpcRejectedError, type Packet } from "./rpc.js";
 import type { ManagementRequest } from "./peer-transport.js";
@@ -12,7 +12,7 @@ import { PeerBroker, type PeerState } from "./peers.js";
 import { noteAssistantCacheHit, noteAutoCompaction, retainFooterExtras, summarizeAgents } from "./usage.js";
 import { BUSY, type WaitEnd } from "./wait.js";
 import { REPORT_KINDS } from "./read-page.js";
-import { enforcePrivatePath, enforcePrivatePathIfPresent, RegistryStore } from "./registry.js";
+import { enforcePrivatePathIfPresent, ensurePrivateDirectory, RegistryStore } from "./registry.js";
 import { ReportInbox, type Notice, type ReadReceipt, type SavedReport, type Update } from "./report-inbox.js";
 export type { Notice, ReadReceipt, Update } from "./report-inbox.js";
 export { reportPage, REPORT_KINDS } from "./read-page.js";
@@ -148,8 +148,7 @@ export class SubagentManager {
   private unfence(id: string) { const n = (this.fenced.get(id) ?? 1) - 1; if (n) this.fenced.set(id, n); else this.fenced.delete(id); }
   readonly peers: PeerBroker;
   constructor(readonly directory: string, private notice: (notice: Notice) => void = () => {}, private changed: () => void = () => {}, private readonly limit: ChildLimit = OMITTED_CHILD_LIMIT, private authorize?: (config: AgentRecord["config"], depth: number) => AgentRecord["config"], readonly peerMessageLimit = 0, readonly parentMessageLimit = 0) {
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
-    enforcePrivatePath(directory, 0o700, true);
+    enforcePrivatePathIfPresent(directory, 0o700, true);
     this.store = new RegistryStore(resolve(directory, "registry.json"));
     this.inbox = new ReportInbox({
       directory, lookup: id => this.records.get(id), attached: id => this.children.has(id),
@@ -241,6 +240,7 @@ export class SubagentManager {
   private log(path: string, text: string) {
     const size = this.logSizes.get(path) ?? (existsSync(path) ? statSync(path).size : 0);
     if (size >= MAX_LOG) return;
+    ensurePrivateDirectory(this.directory);
     const bytes = Buffer.from(text);
     appendFileSync(path, bytes.subarray(0, MAX_LOG - size), { mode: 0o600 });
     this.logSizes.set(path, size + Math.min(bytes.length, MAX_LOG - size));
@@ -432,6 +432,7 @@ export class SubagentManager {
     record.error = undefined;
     record.uiRequests = [];
     const delivery: InputDelivery = {};
+    ensurePrivateDirectory(this.directory);
     const child = new RpcChild({
       executable: config.executable || "pi", args, cwd: resolve(config.cwd), env,
       peerRequest: config.selection?.tools.includes("peer_send") && this.peerMessageLimit > 0 ? async packet => {
