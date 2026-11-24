@@ -14,6 +14,7 @@ Open findings from the November 2026 review of p3stack and t3-agent. Each item s
 ## Decided
 
 - On 2026-11-24 the owner chose 46 invocable skills: move 43 procedures (including the 24 principles) under their owners as references and drop the three remaining entries.
+- With routing off, deep-module prompts no longer select a skill; `tdd`, `architect` and `improve-codebase-architecture` link the `codebase-design` reference.
 - Multi-PR plans keep their ten mandatory live verification lanes per PR. The owner chose to leave the template and `check-plan.mjs` as they are (2026-11-24).
 
 ## Larger changes worth doing

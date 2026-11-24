@@ -279,6 +279,24 @@ test("dyl-review keeps code-review coordination and Git/forge work in the parent
   assert.doesNotMatch(text, /child running \[code-review\]|code-review child|every worker the depth calls for in one message/);
 });
 
+test("domain setup pairs the interview with domain-modeling", () => {
+  assert.match(read("skills/setup-matt-pocock-skills/domain.md"), /(?:alongside|together with) `\/skill:grilling`/);
+});
+
+for (const kind of ["verification-skill", "formal-verification-skill"]) {
+  test(`audit an existing ${kind} before starting the create procedure`, () => {
+    const entry = skill(`create-${kind}`).split("\n## ")[0];
+    assert.match(entry, /audit or realign/i);
+    assert.ok(entry.includes(`(references/maintain-${kind}.md)`));
+  });
+}
+
+test("architect stops on a prompt-only request and compares viable designs on depth", () => {
+  const doc = skill("architect");
+  assert.match(doc, /only to sharpen[^\n]*return the rewritten prompt and stop/i);
+  assert.match(doc, /Compare viable candidates on interface depth\.[^\n]*references\/codebase-design\.md/);
+});
+
 test("Pi help starts at the persistent router and distinguishes an explicit standalone skill", () => {
   const help = skill("poteto-help");
   for (const command of ["/p3stack on`", "/p3stack on autonomous`", "/p3stack off`", "/skill:<name>"]) assert.ok(help.includes(command), command);
@@ -311,7 +329,8 @@ test("the help table offers exactly the emitted commands and names their referen
 test("copyable help recipes can be sent after enabling the Pi router", () => {
   const recipes = read("skills/poteto-help/references/recipes.md");
   assert.match(recipes, /\/p3stack on/);
-  assert.doesNotMatch(recipes, /`\/skill:poteto-mode /);
+  assert.doesNotMatch(recipes, /`\/skill:(?:poteto-mode|p3stack-mode) /);
+  assert.match(recipes, /p3stack-mode\/references\/show-me-your-work\.md[^\n]*decision log/);
 });
 
 test("tracker setup selects the first instruction file Pi loads", () => {

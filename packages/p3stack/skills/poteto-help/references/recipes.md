@@ -43,7 +43,7 @@ After `/p3stack on`, send the task in your own words. With the router off, use t
 ## Away and back
 
 - `im going to bed. <goal> in a fresh worktree off <base>. done means <checks>. keep a decision log. don't ask me before committing. keep going until done. if you're truly stuck after a few hours, stop and write up why.`
-- `/skill:p3stack-mode use show-me-your-work to audit last night's decision log.` Read its Attention section first.
+- `Read p3stack-mode/references/show-me-your-work.md in the installed skills and audit last night's decision log. Start with the handoff's Attention section.`
 - `/skill:ketchup` catches you up on this chat since your last message and lists every call that waits on you.
 - `full autopilot on this queue. each item is independent.`
 - `autopilot these changes, but don't merge. i'll land them.`
