@@ -6,7 +6,7 @@
       "primary": "openai-codex/gpt-6.2-sol:high",
       "fallbacks": [
         "claude/claude-opus-5-5:high",
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "xai/grok-4.7:high"
       ]
     },
@@ -14,7 +14,7 @@
       "primary": "openai-codex/gpt-6.2-sol:high",
       "fallbacks": [
         "claude/claude-opus-5-5:high",
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "xai/grok-4.7:high"
       ]
     },
@@ -22,7 +22,7 @@
       "primary": "openai-codex/gpt-6.2-sol:high",
       "fallbacks": [
         "claude/claude-opus-5-5:high",
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "xai/grok-4.7:high"
       ]
     },
@@ -30,7 +30,7 @@
       "primary": "openai-codex/gpt-6.2-sol:high",
       "fallbacks": [
         "claude/claude-opus-5-5:high",
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "xai/grok-4.7:high"
       ]
     },
@@ -38,7 +38,7 @@
       "primary": "openai-codex/gpt-6.2-sol:high",
       "fallbacks": [
         "claude/claude-opus-5-5:high",
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:low",
         "xai/grok-4.7:high"
       ]
     },
@@ -46,7 +46,7 @@
       "primary": "openai-codex/gpt-6.2-sol:high",
       "fallbacks": [
         "claude/claude-opus-5-5:high",
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:low",
         "xai/grok-4.7:high"
       ]
     },
@@ -54,7 +54,7 @@
       "primary": "openai-codex/gpt-6.2-sol:high",
       "fallbacks": [
         "claude/claude-opus-5-5:high",
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:low",
         "xai/grok-4.7:high"
       ]
     },
@@ -62,14 +62,14 @@
       "primary": "openai-codex/gpt-6.2-sol:high",
       "fallbacks": [
         "claude/claude-opus-5-5:high",
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "xai/grok-4.7:high"
       ]
     },
     "judgment and prose": {
       "primary": "claude/claude-opus-5-5:high",
       "fallbacks": [
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "openai-codex/gpt-6.2-sol:high",
         "xai/grok-4.7:high"
       ]
@@ -77,7 +77,7 @@
     "hardest tasks": {
       "primary": "openai-codex/gpt-6.2-sol:max",
       "fallbacks": [
-        "antigravity/gemini-4-neon:xhigh",
+        "antigravity/gemini-4-neon:high",
         "claude/claude-opus-5-5:high",
         "xai/grok-4.7:high"
       ]
@@ -85,7 +85,7 @@
     "how explainer": {
       "primary": "claude/claude-opus-5-5:high",
       "fallbacks": [
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "openai-codex/gpt-6.2-sol:high",
         "xai/grok-4.7:high"
       ]
@@ -93,7 +93,7 @@
     "why synthesizer": {
       "primary": "claude/claude-opus-5-5:high",
       "fallbacks": [
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "openai-codex/gpt-6.2-sol:high",
         "xai/grok-4.7:high"
       ]
@@ -101,7 +101,7 @@
     "reflect judgment, divergent, synthesizer": {
       "primary": "claude/claude-opus-5-5:high",
       "fallbacks": [
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "openai-codex/gpt-6.2-sol:high",
         "xai/grok-4.7:high"
       ]
@@ -112,14 +112,14 @@
         "openai-codex/gpt-6.2-sol:high"
       ],
       "fallbacks": [
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "xai/grok-4.7:high"
       ]
     },
     "arena cross-judge pool": [
       "claude/claude-opus-5-5:high",
       "openai-codex/gpt-6.2-sol:high",
-      "antigravity/gemini-4-neon:high",
+      "antigravity/gemini-4-neon:medium",
       "xai/grok-4.7:high"
     ],
     "architect runners": {
@@ -128,7 +128,7 @@
         "openai-codex/gpt-6.2-sol:high"
       ],
       "fallbacks": [
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "xai/grok-4.7:high"
       ]
     },
@@ -138,7 +138,7 @@
         "openai-codex/gpt-6.2-sol:high"
       ],
       "fallbacks": [
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "xai/grok-4.7:high"
       ]
     }
