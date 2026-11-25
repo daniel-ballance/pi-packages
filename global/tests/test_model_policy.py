@@ -9,8 +9,8 @@ EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
 REALM_EXCLUDE = ("claude/claude-haiku", "anthropic/claude-haiku")
 REALM_EFFORTS = (
     ("openai-codex/gpt-6-luna", "medium", "max"),
-    ("openai-codex/", "low", "xhigh"),
-    ("openai/", "low", "xhigh"),
+    ("openai-codex/", "low", "max"),
+    ("openai/", "low", "max"),
     ("claude/", "low", "high"),
     ("anthropic/", "low", "high"),
     ("xai/", "low", "high"),
@@ -43,15 +43,16 @@ class ModelPolicyTest(unittest.TestCase):
     def test_rules_cap_floor_exclude_and_reserve(self):
         self.assertEqual(
             outside_realm([
-                "openai-codex/gpt-6-luna:max", "openai-codex/gpt-6.1-sol:xhigh", "xai/grok-4.7:low",
-                "openai-codex/gpt-6.1-sol:max", "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh",
-                "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high",
-                "openai-codex/gpt-6.2-astra:high",
+                "openai-codex/gpt-6-luna:max", "openai-codex/gpt-6.2-sol:max", "openai/gpt-6.2-sol:max",
+                "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh", "anthropic/claude-opus-5-5:max",
+                "xai/grok-4.7:low", "xai/grok-4.7:xhigh", "claude/claude-haiku-5-5:high",
+                "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high", "openai-codex/gpt-6.2-astra:max",
+                "openai-codex/gpt-6.3-astra:high",
             ]),
             [
-                "openai-codex/gpt-6.1-sol:max", "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh",
-                "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high",
-                "openai-codex/gpt-6.2-astra:high",
+                "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh", "anthropic/claude-opus-5-5:max",
+                "xai/grok-4.7:xhigh", "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low",
+                "google/gemini-3.1-pro:high", "openai-codex/gpt-6.2-astra:max", "openai-codex/gpt-6.3-astra:high",
             ],
         )
 

@@ -10,7 +10,7 @@
     "reflect tooling": "openai-codex/gpt-6.2-sol:high",
     "swarm workers": "openai-codex/gpt-6.2-sol:high",
     "judgment and prose": "claude/claude-opus-5-5:high",
-    "hardest tasks": "claude/claude-opus-5-5:high",
+    "hardest tasks": "openai-codex/gpt-6.2-sol:max",
     "how explainer": "claude/claude-opus-5-5:high",
     "why synthesizer": "claude/claude-opus-5-5:high",
     "reflect judgment, divergent, synthesizer": "claude/claude-opus-5-5:high",

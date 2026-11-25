@@ -3,7 +3,31 @@
   "models": [
     {
       "id": "openai-codex/gpt-6-luna:medium",
-      "description": "ChatGPT ladder start for lookups, triage, and small grounded questions; next is openai-codex/gpt-6.2-sol:medium."
+      "description": "ChatGPT ladder start for lookups and triage; next is openai-codex/gpt-6.1-terra:low."
+    },
+    {
+      "id": "openai-codex/gpt-6.1-terra:low",
+      "description": "Low-cost follow-up when Luna falls short; next is openai-codex/gpt-6.1-sol:low."
+    },
+    {
+      "id": "openai-codex/gpt-6.1-sol:low",
+      "description": "Quick code and evidence checks; next is openai-codex/gpt-6.1-terra:medium."
+    },
+    {
+      "id": "openai-codex/gpt-6.1-terra:medium",
+      "description": "Scoped work that needs more thought; next is openai-codex/gpt-6.2-sol:low."
+    },
+    {
+      "id": "openai-codex/gpt-6.2-sol:low",
+      "description": "Quick work on the newer Sol; next is openai-codex/gpt-6.1-terra:high."
+    },
+    {
+      "id": "openai-codex/gpt-6.1-terra:high",
+      "description": "More deliberate scoped work; next is openai-codex/gpt-6.1-sol:medium."
+    },
+    {
+      "id": "openai-codex/gpt-6.1-sol:medium",
+      "description": "Reading and scoped edits; next is openai-codex/gpt-6.2-sol:medium."
     },
     {
       "id": "openai-codex/gpt-6.2-sol:medium",
@@ -15,15 +39,39 @@
     },
     {
       "id": "openai-codex/gpt-6.2-sol:xhigh",
-      "description": "Top of the ChatGPT ladder for the hardest code; if still blocked, return evidence to the parent."
+      "description": "Difficult code and debugging; reserve openai-codex/gpt-6.2-sol:max for work that needs another escalation."
+    },
+    {
+      "id": "openai-codex/gpt-6.2-sol:max",
+      "description": "Top of the ChatGPT ladder and p3stack's hardest-tasks role; if still blocked, return evidence to the parent."
+    },
+    {
+      "id": "claude/claude-sonnet-5-5:low",
+      "description": "Claude ladder start for quick cross-family review; next is claude/claude-sonnet-5-5:medium."
+    },
+    {
+      "id": "claude/claude-sonnet-5-5:medium",
+      "description": "Routine review or prose; next is claude/claude-opus-5-5:low."
+    },
+    {
+      "id": "claude/claude-opus-5-5:low",
+      "description": "Use Opus for a different read on the evidence; next is claude/claude-sonnet-5-5:high."
+    },
+    {
+      "id": "claude/claude-sonnet-5-5:high",
+      "description": "More thorough review; next is claude/claude-opus-5-5:medium."
     },
     {
       "id": "claude/claude-opus-5-5:medium",
-      "description": "Claude ladder start for cross-family review and prose; next is claude/claude-opus-5-5:high."
+      "description": "Substantial review and prose; next is claude/claude-opus-5-5:high."
     },
     {
       "id": "claude/claude-opus-5-5:high",
       "description": "Top of the Claude ladder and p3stack's judgment and prose roles."
+    },
+    {
+      "id": "xai/grok-4.7:low",
+      "description": "Grok backup for quick checks; next is xai/grok-4.7:high."
     },
     {
       "id": "xai/grok-4.7:high",
