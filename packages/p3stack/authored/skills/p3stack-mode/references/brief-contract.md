@@ -15,4 +15,6 @@ In a terminal the writer's header points to the agent recipe and this contract. 
 
 **Shared machine.** When children share a machine, the brief says: the child keeps scratch in its own subfolder and deletes only that subfolder; it reads each command's own exit status; heavy runs go through the project's limiter, if it has one; and tests run where `GIT_DIR` is unset, because fixtures that run Git under an exported `GIT_DIR` (as `git rebase -x` or `git bisect run` can export in a linked worktree) act on the shared repository.
 
+**Dispatch.** Before dispatching a unit, list the files it will likely change and compare them with every open pull request (`gh pr diff N --name-only`). On overlap, hold the unit, or stack it on that pull request; do not let the child discover the overlap. Point the brief at the project's issue that collects known intermittent failures instead of an inline list that grows with each run, and tell the child the project's filing bar.
+
 A child handles only this unit. State assumptions where the brief is silent; stop if an assumption would expand authority. The parent reviews the result against the brief using the [review stance](../p3stack-mode/references/review-stance.md); the worker does not start a reviewer.
