@@ -1,5 +1,6 @@
 {
   "host.ts": [
+    "packages/antigravity-provider/extensions/antigravity-provider/src/host.ts",
     "packages/p3stack/subagents/extensions/subagents/src/host.ts",
     "packages/p3stack/extensions/p3stack/src/host.ts",
     "packages/p3stack/todo/extensions/todo/src/host.ts",
