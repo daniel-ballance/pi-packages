@@ -14,6 +14,7 @@ REALM_EFFORTS = (
     ("claude/", "low", "high"),
     ("anthropic/", "low", "high"),
     ("xai/", "low", "high"),
+    ("antigravity/gemini-4-neon", "low", "medium"),
     ("antigravity/gemini-4-", "low", "xhigh"),
 )
 PARENT_ONLY = ("claude-fable", "-astra", "-carbon", "-argon")
@@ -66,14 +67,17 @@ class ModelPolicyTest(unittest.TestCase):
                 "xai/grok-4.7:low", "xai/grok-4.7:xhigh", "claude/claude-haiku-5-5:high",
                 "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high", "openai-codex/gpt-6.2-astra:max",
                 "openai-codex/gpt-6.3-astra:high",
-                "antigravity/gemini-4-neon:xhigh", "antigravity/gemini-4-hydrogen:low",
-                "antigravity/gemini-4-neon:max", "antigravity/gemini-4-carbon:high",
-                "antigravity/gemini-4-argon:high", "antigravity/claude-opus-5-5:high",
+                "antigravity/gemini-4-neon:medium", "antigravity/gemini-4-hydrogen:low",
+                "antigravity/gemini-4-hydrogen:xhigh", "antigravity/gemini-4-neon:high",
+                "antigravity/gemini-4-neon:xhigh", "antigravity/gemini-4-neon:max",
+                "antigravity/gemini-4-carbon:high", "antigravity/gemini-4-argon:high",
+                "antigravity/claude-opus-5-5:high",
             ]),
             [
                 "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh", "anthropic/claude-opus-5-5:max",
                 "xai/grok-4.7:xhigh", "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low",
                 "google/gemini-3.1-pro:high", "openai-codex/gpt-6.2-astra:max", "openai-codex/gpt-6.3-astra:high",
+                "antigravity/gemini-4-neon:high", "antigravity/gemini-4-neon:xhigh",
                 "antigravity/gemini-4-neon:max", "antigravity/gemini-4-carbon:high",
                 "antigravity/gemini-4-argon:high", "antigravity/claude-opus-5-5:high",
             ],

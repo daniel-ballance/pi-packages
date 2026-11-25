@@ -77,7 +77,7 @@
     "hardest tasks": {
       "primary": "openai-codex/gpt-6.2-sol:max",
       "fallbacks": [
-        "antigravity/gemini-4-neon:high",
+        "antigravity/gemini-4-neon:medium",
         "claude/claude-opus-5-5:high",
         "xai/grok-4.7:high"
       ]

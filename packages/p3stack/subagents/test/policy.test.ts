@@ -31,13 +31,14 @@ test("built-in policy offers Claude and Antigravity children exactly when loaded
     "antigravity": "loaded:antigravity-provider",
   });
   assert.ok(withProviders.models.some(model => model.id === "claude/claude-opus-5-5:high"));
-  assert.ok(withProviders.models.some(model => model.id === "antigravity/gemini-4-neon:xhigh"));
+  assert.ok(withProviders.models.some(model => model.id === "antigravity/gemini-4-neon:medium"));
   assert.ok(withProviders.models.some(model => model.id === "antigravity/gemini-4-hydrogen:high"));
   const outside = withProviders.models.map(model => model.id).filter(id => {
     if (/haiku|fable|astra|carbon|argon/.test(id)) return true;
     if (id.startsWith("openai-codex/gpt-6-luna")) return !/:(medium|high|xhigh|max)$/.test(id);
     if (/^(openai-codex|openai)\//.test(id)) return !/:(low|medium|high|xhigh|max)$/.test(id);
     if (/^(anthropic|claude|xai)\//.test(id)) return !/:(low|medium|high)$/.test(id);
+    if (id.startsWith("antigravity/gemini-4-neon:")) return !/:(low|medium)$/.test(id);
     if (id.startsWith("antigravity/gemini-4-")) return !/:(low|medium|high|xhigh)$/.test(id);
     return true;
   });
