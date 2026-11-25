@@ -27,6 +27,7 @@ Match `any` or the effective grant. For a full-autonomy design request, architec
 7. **Review independence.** Give a reviewer or judge the artifact and its contract, never the author's conclusion. Every finding names its evidence. A spec's silence is not permission for ordinary inputs to break the program. Dispute a wrong finding with evidence and record the dispute, rather than churning code to satisfy it.
 8. **Context.** Give new work to a fresh child with the original goal, the brief, and the prior report. Resume a child only to reuse live state: uncommitted changes or a running process.
 9. **Style.** For replies and PR bodies, read [unslop](../technical-writing/references/unslop.md). Where one of its punctuation rules makes a sentence worse, follow technical-writing and fix the sentence another way.
+10. **Lessons.** Learn a lesson once. When a rule is broken, a finding repeats or a run goes wrong, and the deliverable allows writes, write the lesson down before the run ends, where the next agent reads it: the project's agent instructions or contributing guide for a project rule, and this skill's references for how a run works. Encode an exact rule as poteto-mode's **Encode Lessons in Structure** principle says. A report-only run puts the lesson and its intended destination in its report instead. When the run keeps a ledger, record where each lesson went.
 
 ## Routes
 
