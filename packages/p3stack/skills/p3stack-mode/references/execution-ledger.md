@@ -10,4 +10,10 @@ Record `ts` in UTC (ISO 8601) when the decision is made or the transition occurs
 
 **Recovery.** Match the run ID and checkout. Verify the base and head refs, branch tip, and cited artifacts against the last row. Reconcile live or held children and inspect their effects before redispatching. Before retrying a write that failed or timed out, such as a comment, merge or push, read the remote state; it may have landed. A dispatched job is not a failed job. If its outcome is unknown, keep it pending; continue from the last verified gate, not from memory.
 
+**Checkpoints.** A restart of the parent's session can interrupt its children with no completion wake. So at each scheduled checkpoint, observe every child the ledger shows as pending once, by reading its thread or run state. One read per checkpoint is not polling and does not retrieve a result; never repeat it in a loop or a sleep. If the read is inconclusive, keep the child pending, as Recovery says. For a child the host reports interrupted or stopped:
+
+1. Stop the processes and service units it left running.
+2. Record in the ledger the commits in its checkout and where they are. Push them only when the selected playbook and the grant let the parent write that branch, as when no owner holds it and no pull request is open; otherwise leave them for the next owner.
+3. Count the unit as a retry. Give it to a fresh child that starts from that state only when the playbook's current gate and retry limit allow, and never during a pause.
+
 **Close.** Preserve evidence cited by tickets, PRs, rulings and handoffs. Move durable decisions to the decision record, update any evidence links and verify their new targets. Delete only this run's directory, and only when no retained record or live job still points at its evidence.
