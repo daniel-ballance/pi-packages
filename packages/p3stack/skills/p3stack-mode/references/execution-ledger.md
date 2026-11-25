@@ -10,4 +10,6 @@ Record `ts` in UTC (ISO 8601) when the decision is made or the transition occurs
 
 **Recovery.** Match the run ID and checkout. Verify the base and head refs, branch tip, and cited artifacts against the last row. Reconcile live or held children and inspect their effects before redispatching. Before retrying a write that failed or timed out, such as a comment, merge or push, read the remote state; it may have landed. A dispatched job is not a failed job. If its outcome is unknown, keep it pending; continue from the last verified gate, not from memory.
 
+**Checkpoints.** At each checkpoint, read the status of every child the ledger shows as pending, not only those whose completion woke you. A restart of the parent's session can interrupt its children with no completion wake. For an interrupted child, look for commits in its checkout and for processes or service units it left running. Push or record the work it finished, stop what it left running, then give the unit to a fresh child that starts from that state.
+
 **Close.** Preserve evidence cited by tickets, PRs, rulings and handoffs. Move durable decisions to the decision record, update any evidence links and verify their new targets. Delete only this run's directory, and only when no retained record or live job still points at its evidence.
