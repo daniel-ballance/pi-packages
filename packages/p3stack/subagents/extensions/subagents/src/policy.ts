@@ -91,16 +91,35 @@ function resolveLoaded(loaded: LoadedExtensions, name: string): string {
   return files[0]!;
 }
 export function builtInPolicy(loaded: LoadedExtensions = new Map()): PolicyFile {
-  const policy = loaded.get("todo")?.length === 1 ? { ...DEFAULT_POLICY, extensions: [`${LOADED}todo`] } : DEFAULT_POLICY;
-  if (loaded.get("claude-subscription")?.length !== 1) return policy;
-  const claudeSubscription = `${LOADED}claude-subscription`;
+  const models = [...MENU];
+  const extensions: string[] = [];
+  const providerExtensions: Record<string, string> = {};
+  if (loaded.get("todo")?.length === 1) extensions.push(`${LOADED}todo`);
+  if (loaded.get("claude-subscription")?.length === 1) {
+    const claudeSubscription = `${LOADED}claude-subscription`;
+    models.push(
+      { id: "claude/claude-opus-5-5:high", description: "Judgment and prose. Claude stops at high (Claude subscription)." },
+      { id: "claude/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer (Claude subscription)." },
+    );
+    extensions.push(claudeSubscription);
+    providerExtensions.claude = claudeSubscription;
+  }
+  if (loaded.get("antigravity-provider")?.length === 1) {
+    const antigravity = `${LOADED}antigravity-provider`;
+    models.push(
+      { id: "antigravity/gemini-4-hydrogen:high", description: "Faster Gemini 4 workhorse (Antigravity)." },
+      { id: "antigravity/gemini-4-neon:high", description: "Strong Gemini 4 model (Antigravity)." },
+      { id: "antigravity/gemini-4-neon:xhigh", description: "Reserve for the hardest Gemini 4 tasks (Antigravity)." },
+    );
+    extensions.push(antigravity);
+    providerExtensions.antigravity = antigravity;
+  }
+  if (extensions.length === 0) return DEFAULT_POLICY;
   return {
     ...DEFAULT_POLICY,
-    models: [...MENU,
-      { id: "claude/claude-opus-5-5:high", description: "Judgment and prose. Claude stops at high (Claude subscription)." },
-      { id: "claude/claude-sonnet-5-5:high", description: "Cheaper Claude reviewer (Claude subscription)." }],
-    extensions: [...policy.extensions, claudeSubscription],
-    providerExtensions: { "claude": claudeSubscription },
+    models,
+    extensions,
+    ...(Object.keys(providerExtensions).length ? { providerExtensions } : {}),
   };
 }
 const RESOURCES = ["extensions", "skills", "promptTemplates", "themes"] as const;
