@@ -773,6 +773,12 @@
   },
   {
     "source": "agent-skills",
+    "path": "skills/accessibility-engineering/SKILL.md",
+    "action": "drop",
+    "reason": "Defer this browser audit workflow with frontend-ui-engineering; its companion skill and audit persona are not installed."
+  },
+  {
+    "source": "agent-skills",
     "path": "skills/api-and-interface-design/SKILL.md",
     "action": "drop",
     "reason": "codebase-design and architect cover interface design; deferred as reference."

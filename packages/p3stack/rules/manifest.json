@@ -122,6 +122,10 @@
           "to": "LICENSE-agent-skills"
         }
       ],
+      "exclude": [
+        "^skills/security-and-hardening/references/shared/security-checklist\\.md$",
+        "^skills/observability-and-instrumentation/references/shared/observability-checklist\\.md$"
+      ],
       "upstream": {
         "repository": "addyosmani/agent-skills",
         "checkout": "vendor/agent-skills",
