@@ -107,9 +107,9 @@ export function builtInPolicy(loaded: LoadedExtensions = new Map()): PolicyFile 
   if (loaded.get("antigravity-provider")?.length === 1) {
     const antigravity = `${LOADED}antigravity-provider`;
     models.push(
+      { id: "antigravity/gemini-4-neon:low", description: "Fast Gemini 4 Neon model (Antigravity)." },
       { id: "antigravity/gemini-4-hydrogen:high", description: "Faster Gemini 4 workhorse (Antigravity)." },
-      { id: "antigravity/gemini-4-neon:high", description: "Strong Gemini 4 model (Antigravity)." },
-      { id: "antigravity/gemini-4-neon:xhigh", description: "Reserve for the hardest Gemini 4 tasks (Antigravity)." },
+      { id: "antigravity/gemini-4-neon:medium", description: "Strong Gemini 4 model; Neon stops at medium (Antigravity)." },
     );
     extensions.push(antigravity);
     providerExtensions.antigravity = antigravity;

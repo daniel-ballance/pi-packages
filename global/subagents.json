@@ -91,15 +91,7 @@
     },
     {
       "id": "antigravity/gemini-4-neon:medium",
-      "description": "Substantial Gemini 4 work; next is antigravity/gemini-4-neon:high."
-    },
-    {
-      "id": "antigravity/gemini-4-neon:high",
-      "description": "High-end Gemini 4 work above GPT-6.2 Sol max on the subagent frontier; next is antigravity/gemini-4-neon:xhigh."
-    },
-    {
-      "id": "antigravity/gemini-4-neon:xhigh",
-      "description": "Top of the Antigravity and global subagent frontiers; if still blocked, return evidence to the parent."
+      "description": "Top of the Antigravity ladder and p3stack's standard Gemini 4 fallback; if still blocked, return evidence to the parent."
     }
   ],
   "tools": [
