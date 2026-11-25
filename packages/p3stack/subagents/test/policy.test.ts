@@ -20,22 +20,32 @@ test("built-in policy is a multi-provider menu with delegation, nesting and loop
   for (const resources of [policy.extensions, policy.skills, policy.promptTemplates, policy.themes]) assert.deepEqual(resources, []);
 });
 
-test("built-in policy offers Claude children exactly when the parent loaded claude-subscription once", () => {
-  const withClaude = parsePolicy(builtInPolicy(new Map([["claude-subscription", ["/x/claude-subscription/index.ts"]]])));
-  assert.deepEqual(withClaude.extensions, ["loaded:claude-subscription"]);
-  assert.deepEqual(withClaude.providerExtensions, { "claude": "loaded:claude-subscription" });
-  assert.ok(withClaude.models.some(model => model.id === "claude/claude-opus-5-5:high"));
-  const outside = withClaude.models.map(model => model.id).filter(id => {
-    if (/haiku|fable|astra/.test(id)) return true;
+test("built-in policy offers Claude and Antigravity children exactly when loaded once", () => {
+  const withProviders = parsePolicy(builtInPolicy(new Map([
+    ["claude-subscription", ["/x/claude-subscription/index.ts"]],
+    ["antigravity-provider", ["/x/antigravity-provider/index.ts"]],
+  ])));
+  assert.deepEqual(withProviders.extensions, ["loaded:claude-subscription", "loaded:antigravity-provider"]);
+  assert.deepEqual(withProviders.providerExtensions, {
+    "claude": "loaded:claude-subscription",
+    "antigravity": "loaded:antigravity-provider",
+  });
+  assert.ok(withProviders.models.some(model => model.id === "claude/claude-opus-5-5:high"));
+  assert.ok(withProviders.models.some(model => model.id === "antigravity/gemini-4-neon:xhigh"));
+  assert.ok(withProviders.models.some(model => model.id === "antigravity/gemini-4-hydrogen:high"));
+  const outside = withProviders.models.map(model => model.id).filter(id => {
+    if (/haiku|fable|astra|carbon|argon/.test(id)) return true;
     if (id.startsWith("openai-codex/gpt-6-luna")) return !/:(medium|high|xhigh|max)$/.test(id);
     if (/^(openai-codex|openai)\//.test(id)) return !/:(low|medium|high|xhigh|max)$/.test(id);
     if (/^(anthropic|claude|xai)\//.test(id)) return !/:(low|medium|high)$/.test(id);
+    if (id.startsWith("antigravity/gemini-4-")) return !/:(low|medium|high|xhigh)$/.test(id);
     return true;
   });
   assert.deepEqual(outside, []);
   assert.equal(builtInPolicy(new Map()), DEFAULT_POLICY);
   assert.equal(builtInPolicy(new Map([["web-search", ["/x/web-search/index.ts"]]])), DEFAULT_POLICY);
   assert.equal(builtInPolicy(new Map([["claude-subscription", ["/x/claude-subscription/index.ts", "/y/claude-subscription/index.ts"]]])), DEFAULT_POLICY);
+  assert.equal(builtInPolicy(new Map([["antigravity-provider", ["/x/antigravity-provider/index.ts", "/y/antigravity-provider/index.ts"]]])), DEFAULT_POLICY);
 });
 
 test("with no policy file, unreachable built-in models are dropped without diagnostics", () => {

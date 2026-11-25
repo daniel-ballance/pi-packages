@@ -76,6 +76,30 @@
     {
       "id": "xai/grok-4.7:high",
       "description": "Grok backup when ChatGPT and Claude capacity run low; return to the ChatGPT ladder when capacity allows."
+    },
+    {
+      "id": "antigravity/gemini-4-hydrogen:low",
+      "description": "Antigravity ladder start for fast lookups; next is antigravity/gemini-4-neon:low."
+    },
+    {
+      "id": "antigravity/gemini-4-neon:low",
+      "description": "Quick scoped work on Gemini 4 Neon; next is antigravity/gemini-4-hydrogen:high."
+    },
+    {
+      "id": "antigravity/gemini-4-hydrogen:high",
+      "description": "More thorough Hydrogen pass; next is antigravity/gemini-4-neon:medium."
+    },
+    {
+      "id": "antigravity/gemini-4-neon:medium",
+      "description": "Substantial Gemini 4 work; next is antigravity/gemini-4-neon:high."
+    },
+    {
+      "id": "antigravity/gemini-4-neon:high",
+      "description": "High-end Gemini 4 work above GPT-6.2 Sol max on the subagent frontier; next is antigravity/gemini-4-neon:xhigh."
+    },
+    {
+      "id": "antigravity/gemini-4-neon:xhigh",
+      "description": "Top of the Antigravity and global subagent frontiers; if still blocked, return evidence to the parent."
     }
   ],
   "tools": [
@@ -100,6 +124,7 @@
   "parentMessageLimit": 20,
   "extensions": [
     "loaded:claude-subscription",
+    "loaded:antigravity-provider",
     "loaded:todo"
   ],
   "skills": [],
@@ -114,7 +139,8 @@
     "/home/danballance/Code/pi-packages"
   ],
   "providerExtensions": {
-    "claude": "loaded:claude-subscription"
+    "claude": "loaded:claude-subscription",
+    "antigravity": "loaded:antigravity-provider"
   },
   "maxDepth": 2,
   "loops": {
