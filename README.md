@@ -4,7 +4,7 @@ Pi packages for routed engineering workflows, child agents, task tracking, web s
 
 `p3stack` is unrelated to [RealSid08/p3stack](https://github.com/RealSid08/p3stack).
 
-The repository root is the Pi package. It loads six packages: [`claude-subscription`](packages/claude-subscription/README.md), [`p3stack`](packages/p3stack/README.md), [`computer-use`](packages/computer-use/README.md), [`self-reload`](packages/self-reload/README.md), [`web-search`](packages/web-search/README.md), and [`t3-agent`](packages/t3-agent/README.md). [`mcp-client`](packages/mcp-client/README.md) stays separate as an optional replacement for Pi's built-in MCP client.
+The repository root is the Pi package. It loads six packages: [`claude-subscription`](packages/claude-subscription/README.md), [`p3stack`](packages/p3stack/README.md), [`computer-use`](packages/computer-use/README.md), [`self-reload`](packages/self-reload/README.md), [`web-search`](packages/web-search/README.md), and [`t3-agent`](packages/t3-agent/README.md). [`mcp-client`](packages/mcp-client/README.md) stays separate as an optional replacement for Pi's built-in MCP client. [`antigravity-provider`](packages/antigravity-provider/README.md) stays separate as an optional provider for the Google Antigravity CLI.
 
 ## Install from GitHub
 

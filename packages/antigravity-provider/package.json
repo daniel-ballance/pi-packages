@@ -1,0 +1,47 @@
+{
+  "name": "antigravity-provider",
+  "version": "0.1.0",
+  "description": "Google Antigravity CLI models for Pi over ACP",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "provider",
+    "antigravity",
+    "acp"
+  ],
+  "files": [
+    "extensions",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/antigravity-provider/index.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "test:live": "tsx --test test/live/*.live.ts"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^2.12.0",
+    "@earendil-works/pi-tui": "^1.6.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "typebox": "^1.4.7",
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=1.6.0",
+    "@earendil-works/pi-coding-agent": ">=1.6.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^1.6.0",
+    "@earendil-works/pi-coding-agent": "^1.6.0",
+    "@types/node": "^26.6.7",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
