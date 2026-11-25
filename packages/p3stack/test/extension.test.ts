@@ -242,6 +242,24 @@ test("Pi tool-call outcomes resolve T3 roles from structured MCP envelopes or te
   }
 });
 
+test("T3 capability receipts and failed delegates update the role cache under either tool name", async t => {
+  t.after(asHost("t3"));
+  for (const prefix of ["mcp__t3-code__", "mcp__t3_code__"]) {
+    const catalog = (id: string) => ({ providers: [{ providerInstanceId: id, canRunChildTask: true, models: [
+      { id: "claude/claude-opus-5-5", options: [{ id: "thinkingLevel", values: ["xhigh"] }] },
+    ] }] });
+    const h = harness({ t3: catalog("refetched") });
+    const selected = async () => (await h.call("p3stack_roles", {})).structuredContent.roles["judgment and prose"].providerInstanceId;
+    try {
+      assert.equal(await selected(), "refetched");
+      await h.emit("tool_result", { toolName: prefix + "orchestrator_capabilities", input: {}, structuredContent: catalog("observed") });
+      assert.equal(await selected(), "observed");
+      await h.emit("tool_result", { toolName: prefix + "delegate_task", isError: true });
+      assert.equal(await selected(), "refetched");
+    } finally { h.dispose(); }
+  }
+});
+
 test("a failed T3 catalog call blocks every role even with a registered subagents allowlist", async t => {
   t.after(asHost("t3"));
   const capabilities = { providers: [{ providerInstanceId: "pi-main", canRunChildTask: true, models: [{ id: "claude/claude-opus-5-5" }] }] };

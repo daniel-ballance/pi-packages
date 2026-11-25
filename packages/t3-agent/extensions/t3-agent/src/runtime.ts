@@ -5,7 +5,7 @@
 export type Environment = Readonly<Record<string, string | undefined>>;
 export type RuntimeMode = "approval-required" | "auto-accept-edits" | "auto" | "full-access";
 
-/** Public prefix of the bridge's tools. `mcp__t3_code__` names are hidden duplicates. */
+/** Public prefix for loadout management; the bridge owns the model-only `mcp__t3_code__` aliases. */
 export const T3_PREFIX = "mcp__t3-code__";
 const T3_NAME = /^mcp__t3[-_]code__([a-z][a-z0-9_]*)$/;
 

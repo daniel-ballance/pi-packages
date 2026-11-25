@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { detectHost } from "./host.ts";
 import { grantToken, type Grant } from "./mode.ts";
+import { isT3Tool } from "./t3-tools.ts";
 
 const OPEN = "<p3stack-brief>", CLOSE = "</p3stack-brief>";
 const REVIEW_STANCE = "Judge the work against its contract (the spec, ticket, or brief), not against the author's summary: the author's conclusions are not evidence. Name the evidence for every finding (a command and its output, or file:line) and label each claim measured, inferred, or guess. A spec's silence is not permission for ordinary inputs to break the program.";
@@ -39,8 +40,8 @@ export function registerBrief(pi: ExtensionAPI, isOn: (() => boolean) & { grant(
   if (detectHost() === "t3") {
     // Approval may run before this handler. Validate the parent's prepared text; never rewrite it.
     pi.on("tool_call", event => {
-      if (!isOn() || event.toolName !== "mcp__t3-code__delegate_task") return;
-      const { task, role } = event.input;
+      if (!isOn() || !isT3Tool(event.toolName, "delegate_task")) return;
+      const { task, role }: Record<string, unknown> = event.input;
       if (typeof task !== "string") return;
       if (["approval-required", "auto", "auto-accept-edits"].includes(process.env.T3_PI_RUNTIME_MODE ?? "") &&
           Object.keys(event.input).at(-1) !== "task" && JSON.stringify(event.input, null, 2).length > 4000) {
