@@ -1,34 +1,146 @@
 {
+  "host": "terminal",
   "budget": "medium (high)",
   "roles": {
-    "feature, refactoring": "openai-codex/gpt-6.2-sol:high",
-    "bug-fix": "openai-codex/gpt-6.2-sol:high",
-    "perf-issue": "openai-codex/gpt-6.2-sol:high",
-    "hillclimb": "openai-codex/gpt-6.2-sol:high",
-    "how explorer": "openai-codex/gpt-6.2-sol:high",
-    "why investigators": "openai-codex/gpt-6.2-sol:high",
-    "reflect tooling": "openai-codex/gpt-6.2-sol:high",
-    "swarm workers": "openai-codex/gpt-6.2-sol:high",
-    "judgment and prose": "claude/claude-opus-5-5:high",
-    "hardest tasks": "openai-codex/gpt-6.2-sol:max",
-    "how explainer": "claude/claude-opus-5-5:high",
-    "why synthesizer": "claude/claude-opus-5-5:high",
-    "reflect judgment, divergent, synthesizer": "claude/claude-opus-5-5:high",
-    "arena runners": [
-      "claude/claude-opus-5-5:high",
-      "openai-codex/gpt-6.2-sol:high"
-    ],
+    "feature, refactoring": {
+      "primary": "openai-codex/gpt-6.2-sol:high",
+      "fallbacks": [
+        "claude/claude-opus-5-5:high",
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "bug-fix": {
+      "primary": "openai-codex/gpt-6.2-sol:high",
+      "fallbacks": [
+        "claude/claude-opus-5-5:high",
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "perf-issue": {
+      "primary": "openai-codex/gpt-6.2-sol:high",
+      "fallbacks": [
+        "claude/claude-opus-5-5:high",
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "hillclimb": {
+      "primary": "openai-codex/gpt-6.2-sol:high",
+      "fallbacks": [
+        "claude/claude-opus-5-5:high",
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "how explorer": {
+      "primary": "openai-codex/gpt-6.2-sol:high",
+      "fallbacks": [
+        "claude/claude-opus-5-5:high",
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "why investigators": {
+      "primary": "openai-codex/gpt-6.2-sol:high",
+      "fallbacks": [
+        "claude/claude-opus-5-5:high",
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "reflect tooling": {
+      "primary": "openai-codex/gpt-6.2-sol:high",
+      "fallbacks": [
+        "claude/claude-opus-5-5:high",
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "swarm workers": {
+      "primary": "openai-codex/gpt-6.2-sol:high",
+      "fallbacks": [
+        "claude/claude-opus-5-5:high",
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "judgment and prose": {
+      "primary": "claude/claude-opus-5-5:high",
+      "fallbacks": [
+        "antigravity/gemini-4-neon:high",
+        "openai-codex/gpt-6.2-sol:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "hardest tasks": {
+      "primary": "openai-codex/gpt-6.2-sol:max",
+      "fallbacks": [
+        "antigravity/gemini-4-neon:xhigh",
+        "claude/claude-opus-5-5:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "how explainer": {
+      "primary": "claude/claude-opus-5-5:high",
+      "fallbacks": [
+        "antigravity/gemini-4-neon:high",
+        "openai-codex/gpt-6.2-sol:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "why synthesizer": {
+      "primary": "claude/claude-opus-5-5:high",
+      "fallbacks": [
+        "antigravity/gemini-4-neon:high",
+        "openai-codex/gpt-6.2-sol:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "reflect judgment, divergent, synthesizer": {
+      "primary": "claude/claude-opus-5-5:high",
+      "fallbacks": [
+        "antigravity/gemini-4-neon:high",
+        "openai-codex/gpt-6.2-sol:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "arena runners": {
+      "primary": [
+        "claude/claude-opus-5-5:high",
+        "openai-codex/gpt-6.2-sol:high"
+      ],
+      "fallbacks": [
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
     "arena cross-judge pool": [
       "claude/claude-opus-5-5:high",
-      "openai-codex/gpt-6.2-sol:high"
+      "openai-codex/gpt-6.2-sol:high",
+      "antigravity/gemini-4-neon:high",
+      "xai/grok-4.7:high"
     ],
-    "architect runners": [
-      "claude/claude-opus-5-5:high",
-      "openai-codex/gpt-6.2-sol:high"
-    ],
-    "interrogate reviewers": [
-      "claude/claude-opus-5-5:high",
-      "openai-codex/gpt-6.2-sol:high"
-    ]
+    "architect runners": {
+      "primary": [
+        "claude/claude-opus-5-5:high",
+        "openai-codex/gpt-6.2-sol:high"
+      ],
+      "fallbacks": [
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    },
+    "interrogate reviewers": {
+      "primary": [
+        "claude/claude-opus-5-5:high",
+        "openai-codex/gpt-6.2-sol:high"
+      ],
+      "fallbacks": [
+        "antigravity/gemini-4-neon:high",
+        "xai/grok-4.7:high"
+      ]
+    }
   }
 }

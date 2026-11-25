@@ -40,6 +40,23 @@ def read(name):
     return json.loads((GLOBAL / name).read_text())
 
 
+def role_models(value):
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return value
+    primary = value["primary"]
+    return ([primary] if isinstance(primary, str) else list(primary)) + list(value.get("fallbacks", []))
+
+
+def model_family(configuration):
+    model = configuration.rsplit(":", 1)[0].split("/", 1)[-1]
+    for family in ("gpt", "claude", "gemini", "grok"):
+        if family in model:
+            return family
+    return model
+
+
 class ModelPolicyTest(unittest.TestCase):
     def test_rules_cap_floor_exclude_and_reserve(self):
         self.assertEqual(
@@ -70,9 +87,15 @@ class ModelPolicyTest(unittest.TestCase):
         ids = {
             model
             for value in read("p3stack.json")["roles"].values()
-            for model in ([value] if isinstance(value, str) else value)
+            for model in role_models(value)
         }
         self.assertLessEqual(ids, menu)
+
+    def test_p3stack_roles_cover_all_model_families(self):
+        expected = {"gpt", "claude", "gemini", "grok"}
+        for role, value in read("p3stack.json")["roles"].items():
+            families = {model_family(model) for model in role_models(value)}
+            self.assertEqual(families, expected, f"role {role!r} missing model families")
 
     def test_scoped_models_are_realm_families(self):
         self.assertEqual([model for model in read("settings.json")["enabledModels"] if rule_for(model) is None], [])

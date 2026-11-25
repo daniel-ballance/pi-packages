@@ -395,11 +395,73 @@ test("the agent directory follows Pi for empty, tilde and explicit overrides", (
 test("an invalid trusted role file is reported without masking personal defaults", t => {
   const { cwd, project, personal } = directories(t);
   writeFileSync(personal, JSON.stringify({ roles: { "bug-fix": "pi/gpt-6:medium" } }));
-  for (const invalid of ["{", JSON.stringify({ roles: [] }), JSON.stringify({ host: "cli" })]) {
+  for (const invalid of ["{", JSON.stringify({ roles: [] }), JSON.stringify({ host: "cli" }), JSON.stringify({ roles: { "bug-fix": { primary: "", fallbacks: [] } } }), JSON.stringify({ roles: { "bug-fix": { primary: "pi/gpt-6:medium", extra: true } } })]) {
     writeFileSync(project, invalid);
     const result = resolveRoles(cwd, true);
     assert.equal(result.source, personal);
     assert.equal(result.roles["bug-fix"].value, "pi/gpt-6:medium");
     assert.ok(result.problems.some(problem => problem.includes(project)));
   }
+});
+
+test("roles with primary and fallbacks keep the primary, expose backups, and promote a fallback on absence or distinctFrom", async t => {
+  const models = [
+    "claude/claude-opus-5-5:high",
+    "antigravity/gemini-4-neon:high",
+    "openai-codex/gpt-6.2-sol:high",
+    "xai/grok-4.7:high",
+  ];
+  const pins = {
+    "judgment and prose": {
+      primary: "claude/claude-opus-5-5:high",
+      fallbacks: ["antigravity/gemini-4-neon:high", "openai-codex/gpt-6.2-sol:high", "xai/grok-4.7:high"],
+    },
+    "arena runners": {
+      primary: ["claude/claude-opus-5-5:high", "openai-codex/gpt-6.2-sol:high"],
+      fallbacks: ["antigravity/gemini-4-neon:high", "xai/grok-4.7:high"],
+    },
+  };
+  const normal = await lookup(t, "cli", { fileHost: "terminal", models, pins }).resolve();
+  assert.equal(normal.roles["judgment and prose"], "claude/claude-opus-5-5:high");
+  assert.deepEqual(normal.fallbacks?.["judgment and prose"], ["antigravity/gemini-4-neon:high", "openai-codex/gpt-6.2-sol:high", "xai/grok-4.7:high"]);
+  assert.deepEqual(normal.roles["arena runners"], ["claude/claude-opus-5-5:high", "openai-codex/gpt-6.2-sol:high"]);
+  assert.deepEqual(normal.fallbacks?.["arena runners"], ["antigravity/gemini-4-neon:high", "xai/grok-4.7:high"]);
+
+  const crossFamily = await lookup(t, "cli", { fileHost: "terminal", models, pins }).resolve("claude");
+  assert.equal(crossFamily.roles["judgment and prose"], "antigravity/gemini-4-neon:high");
+  assert.deepEqual(crossFamily.fallbacks?.["judgment and prose"], ["openai-codex/gpt-6.2-sol:high", "xai/grok-4.7:high"]);
+  assert.deepEqual(crossFamily.roles["arena runners"], ["antigravity/gemini-4-neon:high", "openai-codex/gpt-6.2-sol:high"]);
+  assert.deepEqual(crossFamily.fallbacks?.["arena runners"], ["xai/grok-4.7:high"]);
+  assert.ok(crossFamily.problems.some(p => p.includes("used fallback antigravity/gemini-4-neon:high") && p.includes("to differ from claude")));
+
+  const noClaude = await lookup(t, "cli", { fileHost: "terminal", models: models.slice(1), pins }).resolve();
+  assert.equal(noClaude.roles["judgment and prose"], "antigravity/gemini-4-neon:high");
+  assert.deepEqual(noClaude.fallbacks?.["judgment and prose"], ["openai-codex/gpt-6.2-sol:high", "xai/grok-4.7:high"]);
+  assert.deepEqual(noClaude.roles["arena runners"], ["antigravity/gemini-4-neon:high", "openai-codex/gpt-6.2-sol:high"]);
+  assert.deepEqual(noClaude.fallbacks?.["arena runners"], ["xai/grok-4.7:high"]);
+  assert.ok(noClaude.problems.some(p => p.includes("used fallback antigravity/gemini-4-neon:high for unavailable claude/claude-opus-5-5:high")));
+});
+
+test("terminal-host antigravity pins resolve to pi/antigravity/* on T3 even when an empty antigravity instance exists", async t => {
+  const h = lookup(t, "t3", {
+    fileHost: "terminal",
+    pins: {
+      "judgment and prose": {
+        primary: "claude/claude-opus-5-5:high",
+        fallbacks: ["antigravity/gemini-4-neon:high", "openai-codex/gpt-6.2-sol:high"],
+      },
+    },
+    t3: {
+      providers: [
+        provider("antigravity"),
+        provider("pi", t3Model("claude/claude-opus-5-5", "high"), t3Model("antigravity/gemini-4-neon", "high"), t3Model("openai-codex/gpt-6.2-sol", "high")),
+      ],
+    },
+  });
+  const res = await h.resolve();
+  assert.deepEqual(res.roles["judgment and prose"], target("pi", "claude/claude-opus-5-5", "high"));
+  assert.deepEqual(res.fallbacks?.["judgment and prose"], [
+    target("pi", "antigravity/gemini-4-neon", "high"),
+    target("pi", "openai-codex/gpt-6.2-sol", "high"),
+  ]);
 });
