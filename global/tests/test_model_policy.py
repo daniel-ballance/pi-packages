@@ -6,7 +6,7 @@ GLOBAL = Path(__file__).resolve().parents[1]
 EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
 # The owner's realm, kept in step with Pareto's .pi/model-selection.json. The first matching
 # rule decides; a model no rule matches is outside the realm.
-REALM_EXCLUDE = ("claude/claude-haiku", "anthropic/claude-haiku")
+REALM_EXCLUDE = ("claude/claude-haiku", "anthropic/claude-haiku", "antigravity/gemini-4-hydrogen")
 REALM_EFFORTS = (
     ("openai-codex/gpt-6-luna", "medium", "max"),
     ("openai-codex/", "low", "max"),
@@ -67,16 +67,17 @@ class ModelPolicyTest(unittest.TestCase):
                 "xai/grok-4.7:low", "xai/grok-4.7:xhigh", "claude/claude-haiku-5-5:high",
                 "claude/claude-fable-5-2:low", "google/gemini-3.1-pro:high", "openai-codex/gpt-6.2-astra:max",
                 "openai-codex/gpt-6.3-astra:high",
-                "antigravity/gemini-4-neon:medium", "antigravity/gemini-4-hydrogen:low",
-                "antigravity/gemini-4-hydrogen:xhigh", "antigravity/gemini-4-neon:high",
-                "antigravity/gemini-4-neon:xhigh", "antigravity/gemini-4-neon:max",
-                "antigravity/gemini-4-carbon:high", "antigravity/gemini-4-argon:high",
-                "antigravity/claude-opus-5-5:high",
+                "antigravity/gemini-4-neon:low", "antigravity/gemini-4-neon:medium",
+                "antigravity/gemini-4-hydrogen:low", "antigravity/gemini-4-hydrogen:high",
+                "antigravity/gemini-4-neon:high", "antigravity/gemini-4-neon:xhigh",
+                "antigravity/gemini-4-neon:max", "antigravity/gemini-4-carbon:high",
+                "antigravity/gemini-4-argon:high", "antigravity/claude-opus-5-5:high",
             ]),
             [
                 "openai-codex/gpt-6-luna:low", "claude/claude-opus-5-5:xhigh", "anthropic/claude-opus-5-5:max",
                 "xai/grok-4.7:xhigh", "claude/claude-haiku-5-5:high", "claude/claude-fable-5-2:low",
                 "google/gemini-3.1-pro:high", "openai-codex/gpt-6.2-astra:max", "openai-codex/gpt-6.3-astra:high",
+                "antigravity/gemini-4-hydrogen:low", "antigravity/gemini-4-hydrogen:high",
                 "antigravity/gemini-4-neon:high", "antigravity/gemini-4-neon:xhigh",
                 "antigravity/gemini-4-neon:max", "antigravity/gemini-4-carbon:high",
                 "antigravity/gemini-4-argon:high", "antigravity/claude-opus-5-5:high",

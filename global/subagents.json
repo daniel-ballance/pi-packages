@@ -78,16 +78,8 @@
       "description": "Grok backup when ChatGPT and Claude capacity run low; return to the ChatGPT ladder when capacity allows."
     },
     {
-      "id": "antigravity/gemini-4-hydrogen:low",
-      "description": "Antigravity ladder start for fast lookups; next is antigravity/gemini-4-neon:low."
-    },
-    {
       "id": "antigravity/gemini-4-neon:low",
-      "description": "Quick scoped work on Gemini 4 Neon; next is antigravity/gemini-4-hydrogen:high."
-    },
-    {
-      "id": "antigravity/gemini-4-hydrogen:high",
-      "description": "More thorough Hydrogen pass; next is antigravity/gemini-4-neon:medium."
+      "description": "Antigravity ladder start for quick scoped work; next is antigravity/gemini-4-neon:medium."
     },
     {
       "id": "antigravity/gemini-4-neon:medium",
