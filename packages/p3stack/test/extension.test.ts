@@ -142,7 +142,7 @@ test("a trusted project's file wins over the personal one, and a broken file is 
   const broken = harness({ files: { "agent/p3stack.json": { roles: { "bug-fix": 7 } } } });
   try {
     const result = await broken.call("p3stack_roles", {});
-    assert.match(text(result), /ignored .*p3stack\.json: role "bug-fix" must be a model or a list of models/);
+    assert.match(text(result), /ignored .*p3stack\.json: role "bug-fix" must be a model, a list of models, or \{ primary, fallbacks\? \}/);
     assert.match(text(result), /bug-fix: xai\/grok-4\.7:xhigh/);
   } finally { broken.dispose(); }
 });

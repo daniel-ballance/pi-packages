@@ -3,9 +3,9 @@ import { getAgentDir, type ExtensionAPI, type ExtensionToolContext } from "@eare
 import { join } from "node:path";
 import { Type } from "typebox";
 import { detectHost } from "./host.ts";
-import { BUDGETS, JUDGMENT_ROLES, PANEL_ROLES, rolesFor, type Budget, type RoleValue } from "./role-definitions.ts";
+import { BUDGETS, JUDGMENT_ROLES, PANEL_ROLES, rolesFor, type Budget, type RoleValue, type RoleWithFallbacks } from "./role-definitions.ts";
 import { isT3Tool } from "./t3-tools.ts";
-export { BUDGETS, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, type Budget, type RoleValue } from "./role-definitions.ts";
+export { BUDGETS, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, type Budget, type RoleValue, type RoleWithFallbacks } from "./role-definitions.ts";
 
 export const DEFAULT_ROLES = rolesFor("grok-4.7-xhigh-fast", "claude-opus-5-5-xhigh");
 
@@ -54,6 +54,24 @@ type FilePolicy = "pin" | "foreign" | "legacy";
 
 export interface Resolved { source: string; host?: FileHost; budget?: string; roles: Record<string, { value: RoleValue; fromFile: boolean }>; problems: string[] }
 
+const nonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+const nonEmptyList = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0 && value.every(nonEmptyString);
+
+function isRoleWithFallbacks(value: unknown): value is RoleWithFallbacks {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const { primary, fallbacks, ...rest } = value as Record<string, unknown>;
+  if (Object.keys(rest).length > 0) return false;
+  if (!(nonEmptyString(primary) || nonEmptyList(primary))) return false;
+  return fallbacks === undefined || (Array.isArray(fallbacks) && fallbacks.every(nonEmptyString));
+}
+
+function unpackRole(value: RoleValue): { primary: string[]; fallbacks: string[]; isPanel: boolean } {
+  if (typeof value === "string") return { primary: [value], fallbacks: [], isPanel: false };
+  if (Array.isArray(value)) return { primary: value, fallbacks: [], isPanel: true };
+  const isPanel = Array.isArray(value.primary);
+  return { primary: isPanel ? value.primary as string[] : [value.primary as string], fallbacks: value.fallbacks ?? [], isPanel };
+}
+
 function problemsIn(data: unknown): string[] {
   if (!data || typeof data !== "object" || Array.isArray(data)) return ["must be an object with budget and roles"];
   const { host, budget, roles, ...rest } = data as Record<string, unknown>;
@@ -62,8 +80,8 @@ function problemsIn(data: unknown): string[] {
   if (budget !== undefined && typeof budget !== "string") problems.push("budget must be text");
   if (roles !== undefined && (!roles || typeof roles !== "object" || Array.isArray(roles))) return [...problems, "roles must be an object"];
   for (const [role, value] of Object.entries((roles ?? {}) as Record<string, unknown>)) {
-    const valid = typeof value === "string" ? value.trim() !== "" : Array.isArray(value) && value.length > 0 && value.every(entry => typeof entry === "string" && entry.trim() !== "");
-    if (!valid) problems.push(`role "${role}" must be a model or a list of models`);
+    const valid = nonEmptyString(value) || nonEmptyList(value) || isRoleWithFallbacks(value);
+    if (!valid) problems.push(`role "${role}" must be a model, a list of models, or { primary, fallbacks? }`);
   }
   return problems;
 }
@@ -198,7 +216,11 @@ async function selections(pi: CatalogApi, ctx: RoleContext, roles: Resolved["rol
         if (matchesModel(s, search) && !known.has(identity(s))) catalog.choices.push(s);
       }
     };
-    for (const pin of Object.values(roles).flatMap(r => r.fromFile ? r.value : [])) {
+    for (const pin of Object.values(roles).flatMap(r => {
+      if (!r.fromFile) return [];
+      const { primary, fallbacks } = unpackRole(r.value);
+      return [...primary, ...fallbacks];
+    })) {
       const { name } = pinParts(pin), slash = name.indexOf("/");
       if (slash < 0) continue;
       const instanceListed = catalog.instances.has(name.slice(0, slash));
@@ -309,6 +331,7 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
   const defaults = resolveRoles(ctx.cwd, ctx.isProjectTrusted());
   const source = { source: defaults.source, ...(defaults.budget !== undefined && { budget: defaults.budget }) };
   const roles: Record<string, string | Target | null | (string | Target | null)[]> = {};
+  const fallbacks: Record<string, (string | Target | null)[]> = {};
   const problems = [...defaults.problems];
   let catalog: LiveCatalog;
   const author = distinctFrom ? family(distinctFrom) : undefined;
@@ -329,19 +352,54 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
     notes.get(message)!.add(role);
   };
   for (const [role, { value, fromFile }] of Object.entries(defaults.roles)) {
+    const { primary, fallbacks: configuredFallbacks, isPanel } = unpackRole(value);
     const seats: (string | Target | null)[] = [], used: string[] = [];
+    const chosenIdentities = new Set<string>();
+    const consumedFallbacks = new Set<number>();
     const reviewing = JUDGMENT_ROLES.includes(role) || PANEL_ROLES.includes(role);
     const fallbackAuthor = reviewing && parentId ? modelFamily(parentId) : undefined;
-    for (const hint of Array.isArray(value) ? value : [value]) {
+    const resolveHint = (hint: string, panelUsed?: string[]) => {
       const inherit = hint === "auto" || hint === "inherit-parent";
-      const { found, substituted, avoid } = inherit ? { found: parent, substituted: false, avoid: author }
-        : fromFile ? fileChoice(hint, policy, catalog, author) : choose(hint, catalog, author, Array.isArray(value) ? used : undefined, fallbackAuthor);
+      const res = inherit ? { found: parent, substituted: false, avoid: author }
+        : fromFile ? fileChoice(hint, policy, catalog, author) : choose(hint, catalog, author, panelUsed, fallbackAuthor);
+      return { inherit, ...res };
+    };
+    for (const hint of primary) {
+      let chosen = resolveHint(hint, isPanel ? used : undefined);
+      let usedFallbackReason: string | undefined;
+      if (configuredFallbacks.length) {
+        const primaryMissing = !chosen.found;
+        const primaryFamily = chosen.found ? modelFamily(chosen.found.model) : undefined;
+        const authorConflict = Boolean(author && primaryFamily && !independent(primaryFamily, author));
+        const panelDuplicate = Boolean(isPanel && primaryFamily && used.includes(primaryFamily));
+        if (primaryMissing || authorConflict || panelDuplicate) {
+          for (let i = 0; i < configuredFallbacks.length; i++) {
+            if (consumedFallbacks.has(i)) continue;
+            const fbHint = configuredFallbacks[i];
+            const fb = resolveHint(fbHint, isPanel ? used : undefined);
+            if (!fb.found) continue;
+            const fbFamily = modelFamily(fb.found.model);
+            if (author && !independent(fbFamily, author)) continue;
+            if (isPanel && (!KNOWN_FAMILY.test(fbFamily) || used.includes(fbFamily))) continue;
+            consumedFallbacks.add(i);
+            chosen = fb;
+            usedFallbackReason = primaryMissing
+              ? `used fallback ${identity(fb.found)} for unavailable ${hint}`
+              : authorConflict
+                ? `used fallback ${identity(fb.found)} for ${hint} to differ from ${distinctFrom ?? author}`
+                : `used fallback ${identity(fb.found)} for ${hint} to keep panel families distinct`;
+            break;
+          }
+        }
+      }
+      const { inherit, found, substituted, avoid } = chosen;
       if (!found) {
         note(role, `no live catalog selection for ${hint} in the returned list${fromFile ? "" : " at the requested level or below"}. Check the role default or allowlist.`);
         continue;
       }
       const f = modelFamily(found.model);
-      if (substituted) {
+      if (usedFallbackReason) note(role, usedFallbackReason);
+      else if (substituted) {
         const why = avoid && family(hint) === avoid && independent(f, avoid) ? ` to differ from ${distinctFrom ?? avoid}` : "";
         note(role, `substituted ${identity(found)} for ${hint}${why}`);
       }
@@ -351,15 +409,30 @@ export async function liveRoles(pi: CatalogApi, ctx: RoleContext, distinctFrom?:
         else note(role, fromFile ? `pin ${hint} stays in the author's ${avoid} family` : `no model outside the ${avoid} family is offered at this level or below`);
       }
       seats.push(catalog.instances ? (inherit ? null : asTarget(found)) : identity(found));
+      chosenIdentities.add(identity(found));
       used.push(f);
     }
-    if (Array.isArray(value) && value.length > 1 && (used.length < value.length || used.some((f, i) => !KNOWN_FAMILY.test(f) || used.indexOf(f) !== i))) {
+    if (isPanel && primary.length > 1 && (used.length < primary.length || used.some((f, i) => !KNOWN_FAMILY.test(f) || used.indexOf(f) !== i))) {
       note(role, `cannot give every panel seat a distinct family within the available selections and role defaults${author ? ` while avoiding ${author}` : ""}`);
     }
-    if (seats.length) roles[role] = Array.isArray(value) ? seats : seats[0];
+    if (seats.length) roles[role] = isPanel ? seats : seats[0];
+    if (configuredFallbacks.length) {
+      const roleFallbacks: (string | Target | null)[] = [];
+      const seenFallbackIds = new Set(chosenIdentities);
+      for (const fbHint of configuredFallbacks) {
+        const { inherit, found } = resolveHint(fbHint);
+        if (!found) continue;
+        const id = identity(found);
+        if (seenFallbackIds.has(id)) continue;
+        if (author && !independent(modelFamily(found.model), author)) continue;
+        seenFallbackIds.add(id);
+        roleFallbacks.push(catalog.instances ? (inherit ? null : asTarget(found)) : id);
+      }
+      if (roleFallbacks.length) fallbacks[role] = roleFallbacks;
+    }
   }
   for (const [message, affected] of notes) problems.push(`${[...affected].join("; ")}: ${message}`);
-  return { ...source, roles, problems };
+  return { ...source, roles, ...(Object.keys(fallbacks).length && { fallbacks }), problems };
 }
 
 const targetSchema = Type.Object({ providerInstanceId: Type.String(), model: Type.String(), options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), value: Type.String() }))) });
@@ -383,10 +456,14 @@ export function registerRoles(pi: ExtensionAPI, briefHeaders?: () => { work: str
     promptSnippet: "p3stack_roles resolves role models against the live delegation catalog.",
     parameters: Type.Object({ distinctFrom: Type.Optional(Type.String({ description: "The author's model or model family. Reviewers, judges, and adversaries pass it so each role resolves to a different family when the catalog offers one." })) }, { additionalProperties: false }),
     reachesTools: () => detectHost() === "t3" ? [CAPABILITIES] : [],
-    outputSchema: Type.Object({ ...(briefHeaders && { briefHeaders: Type.Optional(Type.Object({ work: Type.String(), report: Type.String() })) }), source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), problems: Type.Array(Type.String()) }),
+    outputSchema: Type.Object({ ...(briefHeaders && { briefHeaders: Type.Optional(Type.Object({ work: Type.String(), report: Type.String() })) }), source: Type.String(), budget: Type.Optional(Type.String()), roles: Type.Record(Type.String(), Type.Union([selectionSchema, Type.Array(selectionSchema)])), fallbacks: Type.Optional(Type.Record(Type.String(), Type.Array(selectionSchema))), problems: Type.Array(Type.String()) }),
     async execute(_call, args, signal, _update, ctx) {
       const resolved = await liveRoles(pi, ctx, args?.distinctFrom?.trim() || undefined, signal);
       const lines = Object.entries(resolved.roles).map(([role, value]) => `${role}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
+      if (resolved.fallbacks && Object.keys(resolved.fallbacks).length) {
+        lines.push("Fallbacks (use in order if the primary hits quota or fails):");
+        for (const [role, list] of Object.entries(resolved.fallbacks)) lines.push(`  ${role}: ${JSON.stringify(list)}`);
+      }
       const head = `Role defaults from ${resolved.source}${resolved.budget ? ` (budget ${resolved.budget})` : ""}.`;
       const headers = briefHeaders?.();
       const result = { ...resolved, ...(headers && { briefHeaders: headers }) };

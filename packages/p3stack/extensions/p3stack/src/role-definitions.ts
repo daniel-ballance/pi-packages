@@ -1,4 +1,8 @@
-export type RoleValue = string | string[];
+export interface RoleWithFallbacks {
+  primary: string | string[];
+  fallbacks?: string[];
+}
+export type RoleValue = string | string[] | RoleWithFallbacks;
 export const CODE_ROLES = ["feature, refactoring", "bug-fix", "perf-issue", "hillclimb", "how explorer", "why investigators", "reflect tooling", "swarm workers"];
 export const JUDGMENT_ROLES = ["judgment and prose", "hardest tasks", "how explainer", "why synthesizer", "reflect judgment, divergent, synthesizer"];
 export const PANEL_ROLES = ["arena runners", "arena cross-judge pool", "architect runners", "interrogate reviewers"];
