@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import { detectHost } from "./host.ts";
 import { BUDGETS, JUDGMENT_ROLES, PANEL_ROLES, rolesFor, type Budget, type RoleValue } from "./role-definitions.ts";
+import { isT3Tool } from "./t3-tools.ts";
 export { BUDGETS, CODE_ROLES, JUDGMENT_ROLES, PANEL_ROLES, type Budget, type RoleValue } from "./role-definitions.ts";
 
 export const DEFAULT_ROLES = rolesFor("grok-4.7-xhigh-fast", "claude-opus-5-5-xhigh");
@@ -371,9 +372,9 @@ export function registerRoles(pi: ExtensionAPI, briefHeaders?: () => { work: str
     pi.on("session_tree", clear);
     pi.on("model_select", clear);
     pi.on("tool_result", event => {
-      if (event.toolName === CAPABILITIES && !Object.keys(record(event.input)).length) {
+      if (isT3Tool(event.toolName, "orchestrator_capabilities") && !Object.keys(record(event.input)).length) {
         try { t3Catalogs.set(pi, parseCatalog(event)); } catch { clear(); }
-      } else if (event.toolName === "mcp__t3-code__delegate_task" && (event.isError || record(event.structuredContent).isError)) clear();
+      } else if (isT3Tool(event.toolName, "delegate_task") && (event.isError || record(event.structuredContent).isError)) clear();
     });
   }
   pi.registerTool({

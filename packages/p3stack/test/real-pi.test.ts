@@ -101,6 +101,30 @@ test("the T3 RPC approval text matches the transported task byte for byte", asyn
   assert.doesNotMatch(delivered.result.content[0].text, /full-autonomy/);
 });
 
+test("T3's model-only delegate alias requires the same brief as the public tool", async t => {
+  const pi = rpc(t, { T3_MCP_URL: "http://t3.invalid/mcp", T3_PI_RUNTIME_MODE: "approval-required" }, [path("./fixtures/supervised-bridge.mjs")]);
+  const alias = "mcp__t3_code__delegate_task";
+  const call = (name: string, args: object) => pi.send({ type: "prompt", message: "CALL " + JSON.stringify({ name, arguments: args }) });
+  const on = pi.send({ type: "prompt", message: "/p3stack on default" });
+  await pi.wait(on, e => e.type === "response" && e.success);
+  const roles = call("p3stack_roles", {});
+  const headers = (await pi.wait(roles, e => e.type === "tool_execution_end" && e.toolName === "p3stack_roles")).result.structuredContent.briefHeaders;
+  await pi.wait(roles, e => e.type === "agent_settled");
+  const task = "Inspect the parser. Return evidence only.";
+  for (const [brief, blocked] of [[task, true], [headers.report + "\n\n" + task, false]] as const) {
+    const input = { task: brief, role: "review" };
+    const from = call(alias, input);
+    const dialog = await pi.wait(from, e => e.type === "extension_ui_request" && e.method === "confirm");
+    assert.deepEqual(JSON.parse(dialog.message), input);
+    pi.send({ type: "extension_ui_response", id: dialog.id, confirmed: true });
+    const result = await pi.wait(from, e => e.type === "tool_execution_end" && e.toolName === alias);
+    assert.equal(result.isError, blocked);
+    if (blocked) assert.match(result.result.content[0].text, /p3stack_roles\.briefHeaders\.report/);
+    else assert.deepEqual(result.result.details, input);
+    await pi.wait(from, e => e.type === "agent_settled");
+  }
+});
+
 for (const route of ["nested", "workflow"]) test(`native ${route} initial delivery carries the worker's scope and grant`, { skip: process.platform === "win32" }, async t => {
   const pi = rpc(t, {}, [path("../subagents/extensions/subagents/index.ts")]);
   writeFileSync(join(pi.root, "pi"), `#!/bin/sh\nexec '${process.execPath}' '${cli}' "$@"\n`, { mode: 0o700 });
