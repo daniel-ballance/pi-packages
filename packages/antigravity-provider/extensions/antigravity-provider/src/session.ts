@@ -9,12 +9,14 @@ import { AgyProcess, type ProcessOptions } from "./process.js";
 import { appendPrompt, instructionsUpdate, runtimeNote, type Forwarded } from "./prompt.js";
 import { Response, type AgyPromptResponse } from "./response.js";
 import { assistantKey, inputBlocks, isFailedTurn, seedBlocks, toolResult, type Entry, type UserBlock } from "./transcript.js";
-import { AWAIT, STAND_IN, failure, stillRunning } from "./tools.js";
+import { detectHost } from "./host.js";
+import { AWAIT, CALL, STAND_IN, failure, stillRunning } from "./tools.js";
 
 const ABORTED = "Request was aborted";
 const DRAIN_BATCH_DELAY_MS = 5;
 const RESULT_BYTES = 8 * 1024 * 1024;
 const END: AgyPromptResponse = { stopReason: "end_turn" };
+const T3_PREFIX = "mcp__t3-code__";
 
 export interface Loadout {
   standIn: boolean;
@@ -69,6 +71,7 @@ type State = { kind: "idle"; abortedIds?: ReadonlySet<string> }
   | { kind: "open"; slot: Slot } | { kind: "paused"; slot: Slot; expected: Map<string, Pending> }
   | { kind: "cancelling"; slot: Slot; timer: NodeJS.Timeout; abortedIds?: ReadonlySet<string>; done: PromiseWithResolvers<void> }
   | { kind: "closed" };
+type Unwrapped = { target: string; args: ToolCall["arguments"] } | { result: CallToolResult };
 type Prompt = { kind: "none" } | { kind: "running" } | { kind: "finished"; result: AgyPromptResponse };
 export type RoutedCall = { kind: "native"; call: ObservedCall; approve(): void; reject(): void; abort(): void;
   wait(onUpdate: () => void, signal?: AbortSignal): Promise<void>; readonly detached?: string }
@@ -441,8 +444,9 @@ export class AgentSession {
     return `\n[Antigravity: ${call.title} (${call.status})${call.output ? `\n${call.output}` : ""}]\n`;
   }
 
-  private mcpRoute(name: string, live: Loadout): "direct" | "stand-in" | "await" | undefined {
+  private mcpRoute(name: string, live: Loadout): "direct" | "stand-in" | "await" | "call" | undefined {
     if (name === AWAIT) return "await";
+    if (name === CALL) return "call";
     if (live.active.has(name) && this.loadout.active.has(name)) return "direct";
     if (live.standIn && this.loadout.standIn) return "stand-in";
   }
@@ -470,7 +474,30 @@ export class AgentSession {
   private currentTools(): Tool[] {
     if (this.toolless) return [];
     const live = this.binding.loadout();
-    return live.tools.filter(tool => this.mcpRoute(tool.name, live));
+    const tools = live.tools.filter(tool => this.mcpRoute(tool.name, live));
+    return this.targets(tools).length ? tools : tools.filter(tool => tool.name !== CALL);
+  }
+
+  private targets(tools = this.currentTools()): Tool[] {
+    return tools.filter(tool => tool.name !== AWAIT && tool.name !== CALL);
+  }
+
+  private unwrap(input: Record<string, unknown> | undefined): Unwrapped {
+    const { name, args } = input ?? {};
+    if (typeof name !== "string") return { result: failure(`${CALL} requires the name of a tool on this server.`) };
+    const targets = this.targets();
+    const tool = targets.find(tool => tool.name === name) ??
+      (detectHost() === "t3" ? targets.find(tool => tool.name === T3_PREFIX + name) : undefined);
+    if (!tool) return { result: this.missing(name) };
+    if (args === undefined) {
+      const { name: target, description, inputSchema } = tool;
+      return { result: { content: [{ type: "text", text: `${JSON.stringify({ name: target, description, inputSchema })}\nTo run it, call ${CALL} with this name and args as a JSON object string, "{}" for none.` }] } };
+    }
+    let parsed: unknown;
+    try { parsed = typeof args === "string" ? JSON.parse(args) : undefined; } catch { parsed = undefined; }
+    const object = asRecord(parsed);
+    if (!object) return { result: failure(`${CALL} args must be a string holding a JSON object, such as "{}"; ${tool.name} did not run.`) };
+    return { target: tool.name, args: object as ToolCall["arguments"] };
   }
 
   private missing(name: string): CallToolResult {
@@ -496,11 +523,15 @@ export class AgentSession {
       try { return await poll.result; }
       finally { if (this.polls.get(wanted) === poll) this.polls.delete(wanted); }
     }
+    // agy adds toolSummary to the arguments it sends; the wrapper's nested args are the target's own.
+    const { toolSummary: _summary, ...direct } = (args ?? {}) as ToolCall["arguments"];
+    const unwrapped = name === CALL ? this.unwrap(args) : { target: name, args: direct };
+    if ("result" in unwrapped) return unwrapped.result;
+    const { target, args: argumentsForPi } = unwrapped;
     const piId = match ? this.id(match[0]) : this.newId();
-    const { toolSummary: _summary, ...argumentsForPi } = (args ?? {}) as ToolCall["arguments"];
     const held = this.hold(piId, signal);
-    this.enqueue({ pending: { kind: "mcp", tool: { type: "toolCall", id: piId, name, arguments: argumentsForPi },
-      held, target: name, args: argumentsForPi, signal } });
+    this.enqueue({ pending: { kind: "mcp", tool: { type: "toolCall", id: piId, name: target, arguments: argumentsForPi },
+      held, target, args: argumentsForPi, signal } });
     return held.result;
   }
 
