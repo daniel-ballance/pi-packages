@@ -46,7 +46,16 @@ test("babysit fixes failures and answers comments before falling back to a forge
     const fallback = doc.search(/if\b[^\n]*?\beither[^\n]*(?:unavailable|absent)[^\n]*forge status[^\n]*stop/i);
     assert.ok(fix >= 0 && fallback > fix, "a missing watch must not skip the fix pass");
   }
-  assert.match(standalone, /call `watch_pull_request` and end the turn/i);
+});
+
+test("babysit handles watch registration before yielding", () => {
+  const standalone = prompt("babysit").split("Without that reminder:")[1]!;
+  for (const doc of [standalone, skill]) {
+    assert.match(doc, /`watching: false`[^\n]*report/i, "an inactive watch cannot wake the thread");
+    assert.match(doc, /checks already pass[^\n]*recheck readiness/i, "the checks wake can be absent on registration");
+    assert.match(doc, /yield only for a remaining blocker[^\n]*wake/i);
+  }
+  assert.match(standalone, /(?:if ready|if checks pass)[^.]*go to step 3/i, "a ready PR must still remove its watch");
 });
 
 test("review pins a default base and orders severity within each axis", () => {
