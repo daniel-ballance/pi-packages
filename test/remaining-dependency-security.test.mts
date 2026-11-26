@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -89,7 +89,7 @@ test("installed legacy development hosts actually resolve patched undici", async
     const sdkName = "@earendil-works/pi-coding-agent";
     const moduleRoot = packageRequire.resolve.paths(sdkName)?.find(path => existsSync(join(path, sdkName, "package.json")));
     assert.ok(moduleRoot);
-    const sdk = join(moduleRoot, sdkName);
+    const sdk = await realpath(join(moduleRoot, sdkName));
     const manifest = JSON.parse(await readFile(join(sdk, "package.json"), "utf8"));
     const require = createRequire(join(sdk, manifest.main));
     const path = require.resolve("undici/package.json");
