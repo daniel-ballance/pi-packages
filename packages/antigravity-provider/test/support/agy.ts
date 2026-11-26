@@ -126,6 +126,12 @@ const app = agent({ name: "fake-agy" })
     }
     if (text === "mcp-missing") await call("fixture_direct", { value: "removed" }, { requestPermission: false });
     if (text === "mcp-active") await call("fixture_direct", { value: "active" });
+    // A model whose declarations agy truncated can still reach Pi tools through the compact wrapper.
+    if (text.startsWith("wrapper ")) {
+      for (const input of JSON.parse(text.slice("wrapper ".length)) as Record<string, unknown>[]) {
+        await call("call_pi_tool", { ...input, toolSummary: "agy metadata" });
+      }
+    }
     const background = { toolCallId: "background-permission", title: "Background command", kind: "execute", status: "in_progress" } as const;
     if (text === "start detached command") await start(background);
     if (text === "request detached permission") await finish(background.toolCallId, await permission(background) === "allow", "background command output");
