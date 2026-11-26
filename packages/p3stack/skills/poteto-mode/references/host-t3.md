@@ -54,7 +54,7 @@ For an inline visual use `mcp__t3-code__html_preview` then `mcp__t3-code__html_r
 
 ## Pull requests
 
-Use `mcp__t3-code__list_thread_pull_requests` only when you need the linked PR list. Link a created PR with `mcp__t3-code__link_pull_request`. For an authorized babysit where both watch tools exist, use `mcp__t3-code__watch_pull_request` instead; it links the PR and stays armed across wakes. Stop that watch with `mcp__t3-code__unwatch_pull_request` at the agreed end. Otherwise give the owner the PR and current forge status; do not promise wakes.
+Use `mcp__t3-code__list_thread_pull_requests` only when you need the linked PR list. Link a created PR with `mcp__t3-code__link_pull_request`. For an authorized babysit where both watch tools exist, use `mcp__t3-code__watch_pull_request` instead; it links the PR and stays armed across wakes. Read the watch result: if `watching: false`, report the current state and stop; if it says checks already pass, recheck readiness now. Yield only for a remaining blocker that can trigger a wake. Stop that watch with `mcp__t3-code__unwatch_pull_request` at the agreed end. Otherwise give the owner the PR and current forge status; do not promise wakes.
 
 ## Session history
 
