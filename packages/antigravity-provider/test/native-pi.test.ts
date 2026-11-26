@@ -311,7 +311,7 @@ test("call_pi_tool reaches T3 tools whose declarations agy left out, describing 
   await h.session.prompt(`wrapper ${JSON.stringify([
     wrapperCall("delegate_task"),
     wrapperCall("delegate_task", JSON.stringify({ task: "harmless" })),
-    wrapperCall("mcp__t3-code__schedule_task", JSON.stringify({ prompt: "harmless" })),
+    wrapperCall("schedule_task", JSON.stringify({ prompt: "harmless" })),
     wrapperCall("fixture_ping", "{}"),
   ])}`);
   const listed: { name: string }[] = h.log("tools")[0];
@@ -350,6 +350,22 @@ test("call_pi_tool keeps Pi's preflight and rejects calls outside the exposed lo
     ...Array(7).fill("Unavailable Pi tool"), "requires the name", ...Array(4).fill("args must be a string holding a JSON object")]);
   assert.deepEqual(h.executions, []);
   assert.deepEqual(h.calls().map(call => call.name), ["mcp__t3-code__delegate_task"]);
+});
+
+test("the fallback and direct MCP calls agree on a deferred tool removed from the declared loadout", { timeout: 10_000 }, async t => {
+  const schedule = "mcp__t3-code__schedule_task";
+  const h = await native(t, { t3: true, wrapperFixtures: true });
+  h.api.setActiveTools([...h.api.getActiveTools(), schedule]);
+  await h.session.prompt("hello");
+  h.api.setActiveTools(h.api.getActiveTools().filter(name => name !== schedule));
+  assert.equal(h.api.getActiveTools().includes(schedule), false);
+  await h.session.prompt("deferred-schedule");
+  await h.session.prompt(`wrapper ${JSON.stringify([
+    wrapperCall("schedule_task", JSON.stringify({ prompt: "via fallback" })),
+    wrapperCall("schedule_task", "{}"),
+  ])}`);
+  assert.deepEqual(h.executions, [`${schedule}:{"prompt":"via direct MCP"}`, `${schedule}:{"prompt":"via fallback"}`]);
+  assert.deepEqual(h.log("result").map(result => Boolean(result.isError)), [false, false, true]);
 });
 
 for (const t3 of [false, true]) test(`questions cancel with an honest transcript note without a UI (${t3 ? "T3" : "CLI"})`, { timeout: 10_000 }, async t => {
