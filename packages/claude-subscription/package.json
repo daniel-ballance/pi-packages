@@ -27,7 +27,7 @@
     "test:live": "tsx --test test/live/*.live.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.331",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.332",
     "@anthropic-ai/sdk": "^1.14.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "zod": "^4.6.7"
@@ -38,9 +38,9 @@
     "typebox": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^1.6.0",
-    "@earendil-works/pi-coding-agent": "^1.6.0",
-    "@types/node": "^26.6.7",
+    "@earendil-works/pi-ai": "^1.6.1",
+    "@earendil-works/pi-coding-agent": "^1.6.1",
+    "@types/node": "^26.6.11",
     "tsx": "^4.23.15",
     "typebox": "^1.4.7",
     "typescript": "^7.0.2"
