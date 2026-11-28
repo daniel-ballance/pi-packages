@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^2.12.0",
-    "@earendil-works/pi-tui": "^1.6.1",
+    "@earendil-works/pi-tui": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "typebox": "^1.4.7",
     "zod": "^4.6.7"
@@ -38,8 +38,8 @@
     "@earendil-works/pi-coding-agent": ">=1.6.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^1.6.1",
-    "@earendil-works/pi-coding-agent": "^1.6.1",
+    "@earendil-works/pi-ai": "^1.7.0",
+    "@earendil-works/pi-coding-agent": "^1.7.0",
     "@types/node": "^26.6.11",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"

@@ -47,7 +47,7 @@ process.exitCode = Number(process.env.CODE ?? 0);`;
 // A hermetic PATH: even a missing/broken stub must never fall through to a real Pi.
 function setup(t, tier) {
   const root = mkdtempSync(join(tmpdir(), `stub-${tier}-`));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 3 }));
   const source = join(root, "source"), bin = join(root, "bin"), output = join(root, "receipts"), scratch = join(root, "tmp"), home = join(root, "home"), log = join(root, "stub.log");
   for (const dir of [source, bin, home, scratch]) mkdirSync(dir);
   const settings = { packages: ["./provider"], defaultProjectTrust: "never" };
