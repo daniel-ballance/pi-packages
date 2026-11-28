@@ -7,10 +7,16 @@ export const STAND_IN = "antigravity";
 export const SOCKET_ENV = "PI_ANTIGRAVITY_BRIDGE";
 export const SERVER_NAME = "pi";
 export const AWAIT = "await_tool_result";
+export const CALL = "call_pi_tool";
 export const MCP_EXCLUSIONS = new Set([
   "read", "bash", "edit", "write", "grep", "find", "ls",
-  "web_search", "web_fetch", "codemode", "tool_search", STAND_IN, AWAIT,
+  "web_search", "web_fetch", "codemode", "tool_search", STAND_IN, AWAIT, CALL,
 ]);
+// agy may truncate the largest declarations it sends the model, so this one stays small.
+const CALL_TOOL: McpTool = { name: CALL,
+  description: "Call a tool on this server by name, including one missing from your tool list. Omit args to get its schema; then pass args as a JSON object string, \"{}\" for none.",
+  inputSchema: { type: "object", properties: { name: { type: "string" }, args: { type: "string" } }, required: ["name"], additionalProperties: false },
+};
 const AWAIT_TOOL: McpTool = { name: AWAIT,
   description: "Collect a Pi tool result after receiving a still-running notice. Use the id from that notice; repeat if it is still running.",
   inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false },
@@ -26,7 +32,7 @@ export function listTools(tools: readonly ToolInfo[], active: ReadonlySet<string
     return { name: declaration.name, description: declaration.description, annotations: tool.annotations,
       inputSchema: { ...declaration.parameters, type: "object" as const } };
   });
-  return [...listed, AWAIT_TOOL];
+  return [...listed, ...listed.length ? [CALL_TOOL] : [], AWAIT_TOOL];
 }
 
 export function bridgeServer(node: string, socket: string) {

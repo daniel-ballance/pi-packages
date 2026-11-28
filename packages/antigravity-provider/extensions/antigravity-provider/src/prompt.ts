@@ -42,7 +42,7 @@ export function forwardedSections(system: SystemMessage | undefined, location: L
 }
 
 export function runtimeNote(model: string): string {
-  return `In case you're asked: you are running in Pi through the Antigravity CLI over ACP, as ${model}. No need to mention this otherwise. Use your own tools for files, commands and the web. Where Pi instructions name read, bash, edit or write, use your equivalents. Pi extension tools are available from the MCP server "pi".`;
+  return `In case you're asked: you are running in Pi through the Antigravity CLI over ACP, as ${model}. No need to mention this otherwise. Use your own tools for files, commands and the web. Where Pi instructions name read, bash, edit or write, use your equivalents. Pi extension tools are available from the MCP server "pi". If a Pi tool you need is missing from your tool list, call call_pi_tool on that server with its name to get its schema, then again with args as a JSON object string ("{}" for none) to run it.`;
 }
 
 export function appendPrompt(model: string, sections: Forwarded): string {

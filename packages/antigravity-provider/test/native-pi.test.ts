@@ -5,12 +5,13 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { Type } from "typebox";
+import { Type, type TSchema } from "typebox";
 import { getCurrentTools, isModelType } from "@earendil-works/pi-ai";
-import { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager, type ExtensionAPI, type ToolExposure } from "@earendil-works/pi-coding-agent";
 import extension from "../extensions/antigravity-provider/index.js";
 
-async function native(t: TestContext, options: { block?: boolean; inactive?: boolean; tools?: string[]; hideDirect?: boolean; ui?: boolean | "throws"; t3?: boolean } = {}) {
+async function native(t: TestContext, options: { block?: boolean; inactive?: boolean; tools?: string[]; hideDirect?: boolean; ui?: boolean | "throws"; t3?: boolean;
+  wrapperFixtures?: boolean; blockTools?: string[] } = {}) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-native-agy-"));
   const logPath = join(cwd, "wire");
   const agy = join(cwd, "agy");
@@ -39,6 +40,23 @@ async function native(t: TestContext, options: { block?: boolean; inactive?: boo
           return { content: [{ type: "text", text: `Pi result: ${value}` }], details: undefined };
         },
       });
+      // Harmless stand-ins for T3 actions and for tools the wrapper must not reach.
+      const harmless = <T extends TSchema>(name: string, exposure: ToolExposure, parameters: T) => pi.registerTool({
+        name, exposure, label: name, description: `Harmless ${name} fixture`, parameters,
+        async execute(_id, args) {
+          executions.push(`${name}:${JSON.stringify(args)}`);
+          return { content: [{ type: "text", text: `Fixture ${name} ran` }], details: undefined };
+        },
+      });
+      if (options.wrapperFixtures) {
+        harmless("mcp__t3-code__delegate_task", "direct", Type.Object({ task: Type.String() }));
+        harmless("mcp__t3-code__schedule_task", "deferred", Type.Object({ prompt: Type.String() }));
+        harmless("fixture_ping", "direct", Type.Object({}));
+        harmless("fixture_model", "model-only", Type.Object({}));
+        harmless("fixture_hidden", "hidden", Type.Object({}));
+      }
+      if (options.blockTools) pi.on("tool_call", event => options.blockTools!.includes(event.toolName)
+        ? { block: true, reason: `Pi blocked ${event.toolName}` } : undefined);
       if (options.block) pi.on("tool_call", event => event.toolName === "antigravity" && event.input.kind === "execute"
         ? { block: true, reason: "Pi blocked this command" } : undefined);
     }],
@@ -151,7 +169,7 @@ for (const hideDirect of [false, true]) {
     const h = await native(t, { tools: ["fixture_direct"], hideDirect });
     await h.session.prompt("mcp-active");
     assert.deepEqual(h.declarations[0], hideDirect ? [] : ["fixture_direct"]);
-    assert.deepEqual(h.log("tools")[0].map((tool: { name: string }) => tool.name), ["fixture_direct", "await_tool_result"]);
+    assert.deepEqual(h.log("tools")[0].map((tool: { name: string }) => tool.name), ["fixture_direct", "call_pi_tool", "await_tool_result"]);
     assert.deepEqual(h.calls().map(call => call.name), ["fixture_direct"]);
     assert.deepEqual(h.log("permission").map(row => row.outcome.optionId), ["allow"]);
     assert.match(JSON.stringify(h.log("result")), /Pi result: active/);
@@ -163,6 +181,7 @@ test("an empty Pi allowlist uses persistent text fallback, not the summary path"
   await h.session.prompt("builtins");
   await h.session.prompt("after fallback");
   assert.deepEqual(h.declarations, [[], []]);
+  assert.deepEqual(h.log("tools")[0].map((tool: { name: string }) => tool.name), ["await_tool_result"], "no wrapper without a callable target");
   assert.deepEqual(h.calls(), []);
   assert.deepEqual(h.log("permission").map(row => row.outcome.optionId), ["deny", "deny"]);
   assert.match(JSON.stringify(h.messages()), /stand-in.*not active.*read output/s);
@@ -271,15 +290,82 @@ test("native tool-choice none does not dispatch a stand-in, even with an active 
 test("tool-list changes notify agy, and stale calls name currently available tools", { timeout: 10_000 }, async t => {
   const h = await native(t);
   await h.session.prompt("hello");
-  assert.deepEqual(h.log("tools")[0].map((tool: { name: string }) => tool.name), ["fixture_direct", "fixture_deferred", "await_tool_result"]);
+  assert.deepEqual(h.log("tools")[0].map((tool: { name: string }) => tool.name), ["fixture_direct", "fixture_deferred", "call_pi_tool", "await_tool_result"]);
   h.api.setActiveTools(h.api.getActiveTools().filter(name => name !== "fixture_direct"));
   await until(() => h.log("toolsChanged").length > 0);
-  assert.deepEqual(h.log("toolsChanged").at(-1).map((tool: { name: string }) => tool.name), ["fixture_deferred", "await_tool_result"]);
+  assert.deepEqual(h.log("toolsChanged").at(-1).map((tool: { name: string }) => tool.name), ["fixture_deferred", "call_pi_tool", "await_tool_result"]);
   await h.session.prompt("mcp-missing");
   assert.equal(h.log("new").length, 1);
   assert.equal(h.log("result")[0].isError, true);
   assert.match(h.log("result")[0].content[0].text, /Unavailable Pi tool fixture_direct.*fixture_deferred/);
+  await h.session.prompt(`wrapper ${JSON.stringify([{ name: "fixture_direct", args: JSON.stringify({ value: "removed" }) }])}`);
+  assert.equal(h.log("result")[1].isError, true);
+  assert.match(h.log("result")[1].content[0].text, /Unavailable Pi tool fixture_direct/);
   assert.deepEqual(h.executions, []);
+});
+
+const wrapperCall = (name: unknown, args?: unknown) => ({ name, ...(args === undefined ? {} : { args }) });
+
+test("call_pi_tool reaches T3 tools whose declarations agy left out, describing before it runs them", { timeout: 10_000 }, async t => {
+  const h = await native(t, { t3: true, wrapperFixtures: true });
+  await h.session.prompt(`wrapper ${JSON.stringify([
+    wrapperCall("delegate_task"),
+    wrapperCall("delegate_task", JSON.stringify({ task: "harmless" })),
+    wrapperCall("schedule_task", JSON.stringify({ prompt: "harmless" })),
+    wrapperCall("fixture_ping", "{}"),
+  ])}`);
+  const listed: { name: string }[] = h.log("tools")[0];
+  const wrapper = listed.find(tool => tool.name === "call_pi_tool");
+  assert.ok(wrapper && listed.some(tool => tool.name === "mcp__t3-code__delegate_task"));
+  assert.ok(Buffer.byteLength(JSON.stringify(wrapper)) <= 500, `wrapper declaration is ${Buffer.byteLength(JSON.stringify(wrapper))} bytes`);
+  const [described, ...ran] = h.log("result");
+  assert.equal(Boolean(described.isError), false);
+  assert.match(described.content[0].text, /mcp__t3-code__delegate_task[\s\S]*"task"/);
+  assert.deepEqual(ran.map(result => [Boolean(result.isError), result.content[0].text]), [
+    [false, "Fixture mcp__t3-code__delegate_task ran"], [false, "Fixture mcp__t3-code__schedule_task ran"], [false, "Fixture fixture_ping ran"]]);
+  assert.deepEqual(h.executions, ['mcp__t3-code__delegate_task:{"task":"harmless"}', 'mcp__t3-code__schedule_task:{"prompt":"harmless"}', "fixture_ping:{}"]);
+  assert.deepEqual(h.calls().map(call => [call.name, call.arguments]), [
+    ["mcp__t3-code__delegate_task", { task: "harmless" }],
+    ["antigravity", { title: "Pi: mcp__t3-code__schedule_task", kind: "pi_tool", input: { name: "mcp__t3-code__schedule_task", arguments: { prompt: "harmless" } } }],
+    ["fixture_ping", {}],
+  ]);
+  assert.deepEqual(h.log("permission").map(row => row.outcome.optionId), ["allow", "allow", "allow", "allow"]);
+});
+
+test("call_pi_tool keeps Pi's preflight and rejects calls outside the exposed loadout without running them", { timeout: 10_000 }, async t => {
+  const h = await native(t, { wrapperFixtures: true, blockTools: ["mcp__t3-code__delegate_task"] });
+  const rejected = [
+    wrapperCall("delegate_task", "{}"), wrapperCall("read", "{}"), wrapperCall("call_pi_tool", "{}"), wrapperCall("await_tool_result", "{}"),
+    wrapperCall("fixture_model", "{}"), wrapperCall("fixture_hidden", "{}"), wrapperCall("antigravity", "{}"), wrapperCall(42, "{}"),
+    wrapperCall("mcp__t3-code__schedule_task", "[1]"), wrapperCall("mcp__t3-code__schedule_task", "null"),
+    wrapperCall("mcp__t3-code__schedule_task", "not json"), wrapperCall("mcp__t3-code__schedule_task", { prompt: "object" }),
+  ];
+  await h.session.prompt(`wrapper ${JSON.stringify([wrapperCall("mcp__t3-code__delegate_task", JSON.stringify({ task: "blocked" })), ...rejected])}`);
+  const [blocked, ...others] = h.log("result");
+  assert.equal(blocked.isError, true);
+  assert.match(blocked.content[0].text, /Pi blocked mcp__t3-code__delegate_task/);
+  assert.equal(others.length, rejected.length);
+  assert.ok(others.every(result => result.isError), JSON.stringify(others));
+  assert.deepEqual(others.map(result => /Unavailable Pi tool|requires the name|args must be a string holding a JSON object/.exec(result.content[0].text)?.[0]), [
+    ...Array(7).fill("Unavailable Pi tool"), "requires the name", ...Array(4).fill("args must be a string holding a JSON object")]);
+  assert.deepEqual(h.executions, []);
+  assert.deepEqual(h.calls().map(call => call.name), ["mcp__t3-code__delegate_task"]);
+});
+
+test("the fallback and direct MCP calls agree on a deferred tool removed from the declared loadout", { timeout: 10_000 }, async t => {
+  const schedule = "mcp__t3-code__schedule_task";
+  const h = await native(t, { t3: true, wrapperFixtures: true });
+  h.api.setActiveTools([...h.api.getActiveTools(), schedule]);
+  await h.session.prompt("hello");
+  h.api.setActiveTools(h.api.getActiveTools().filter(name => name !== schedule));
+  assert.equal(h.api.getActiveTools().includes(schedule), false);
+  await h.session.prompt("deferred-schedule");
+  await h.session.prompt(`wrapper ${JSON.stringify([
+    wrapperCall("schedule_task", JSON.stringify({ prompt: "via fallback" })),
+    wrapperCall("schedule_task", "{}"),
+  ])}`);
+  assert.deepEqual(h.executions, [`${schedule}:{"prompt":"via direct MCP"}`, `${schedule}:{"prompt":"via fallback"}`]);
+  assert.deepEqual(h.log("result").map(result => Boolean(result.isError)), [false, false, true]);
 });
 
 for (const t3 of [false, true]) test(`questions cancel with an honest transcript note without a UI (${t3 ? "T3" : "CLI"})`, { timeout: 10_000 }, async t => {

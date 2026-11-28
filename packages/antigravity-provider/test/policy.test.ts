@@ -17,6 +17,7 @@ test("forwards ordered Pi context, not its harness or duplicate instructions agy
   assert.deepEqual(selected.filter(([name]) => name !== "project_context"), ["addendum", "skills", "p3stack", "t3_agent"].map(name => [name, system.sections?.[name]]));
   const rendered = appendPrompt("model-id", selected);
   assert.match(rendered, /running in Pi through the Antigravity CLI over ACP, as model-id/);
+  assert.match(rendered, /call call_pi_tool .* schema, then again with args as a JSON object string/);
   assert.match(rendered, /outside root instructions.*global instructions/s);
   assert.doesNotMatch(rendered, /inside pi|repository instructions|leaf instructions|Pi documentation|<tools>|<rules>|<cwd>/i);
 });
@@ -37,7 +38,8 @@ test("MCP excludes agy's native equivalents and orchestration surfaces, not call
     { ...create("deferred"), exposure: "deferred" as const }, { ...create("nested"), exposure: "codemode" as const },
     { ...create("model"), exposure: "model-only" as const }, { ...create("hidden"), exposure: "hidden" as const }];
   const tools = listTools(fixtures, new Set([...names, "direct", "model", "hidden"]), true);
-  assert.deepEqual(tools.map(tool => tool.name), ["direct", "deferred", "nested", "await_tool_result"]);
+  assert.deepEqual(tools.map(tool => tool.name), ["direct", "deferred", "nested", "call_pi_tool", "await_tool_result"]);
+  assert.deepEqual(listTools(fixtures, new Set(names), false).map(tool => tool.name), ["await_tool_result"]);
   assert.deepEqual(tools[0].inputSchema, { type: "object", required: ["value"], properties: { value: { type: "string" } } });
 });
 
